@@ -1,14 +1,31 @@
-# Spec de diseño — Jayalo v1: "El corazón en Flutter"
+# Spec de diseño — Jayalo v1: "El corazón en Flutter" (app 100% nativa)
 
-- **Fecha:** 2026-07-16
-- **Estado:** propuesta (pendiente de revisión del PO)
-- **Repo:** `jayalo-flutter` (nuevo, git aparte — `C:\Users\ac\Downloads\jayalo-flutter`)
-- **Fase anterior:** brainstorming aprobado por el PO (dirección "Flutter híbrido incremental,
-  patrón strangler" — decidida, no se re-litiga aquí).
+- **Fecha:** 2026-07-16 (rev. 2 — incorpora las 4 decisiones del PO; la rev. 1 proponía híbrido
+  con WebViews y quedó superada)
+- **Estado:** propuesta (pendiente de revisión final del PO)
+- **Repo:** `jayalo-app` (git aparte — `C:\Users\ac\Downloads\jayalo-app`)
 - **Siguiente paso:** `superpowers:writing-plans` sobre este spec.
 
 > Este documento describe el **qué** y el **porqué**. El **cómo** paso a paso (tasks, orden,
 > criterios de aceptación) vive en el plan de implementación que se escribe después.
+
+---
+
+## 0. Decisiones del PO que gobiernan este spec (2026-07-16)
+
+1. **Crear solicitud (IA) es NATIVA** en la v1 (no WebView).
+2. **El Worker de jayalo-main no se toca**: el emisor de push es una **Supabase Edge Function**.
+3. **El repo se llama `jayalo-app`.**
+4. **Principio de diseño:** *"No quiero que Flutter replique la web. Quiero que tome la lógica de
+   negocio existente (Supabase, Edge Functions, autenticación, IA y base de datos), pero que la
+   experiencia de usuario sea diseñada específicamente para móvil siguiendo Material 3 y las
+   mejores prácticas de Android e iOS."*
+
+**Consecuencia estructural de la decisión 4: NO hay capa WebView.** La app es 100% nativa. Lo que
+no esté construido en nativo simplemente **no está en la v1** (se difiere), salvo lo que por
+política externa deba abrirse en el **navegador del sistema** (PayPal). Esto elimina de raíz el
+punto más delicado del diseño anterior (compartir la sesión Supabase con WebViews) y lo reemplaza
+por un riesgo nuevo y más acotado (hablar con el endpoint de IA desde un cliente nativo, §7).
 
 ---
 
@@ -19,368 +36,299 @@ Llevar Jayalo a una app Android **nativa** (Flutter), empezando por un *vertical
 de una solicitud/oferta** que cliente y proveedor siguen juntos, con **push nativo (FCM) en cada
 transición**.
 
-Dos metas concretas para la v1:
+Metas de la v1:
 
-1. **Validar barato el miedo #1** (rendimiento): que el PO instale el APK en su teléfono de gama
-   media y **SIENTA** una experiencia nativa premium (Material 3, transiciones fluidas) antes de
-   invertir en migrar el resto.
-2. **Encender la punta de lanza** (push notifications nativas): que cliente y proveedor reciban un
-   push en el momento exacto en que el estado de su pedido cambia. Hoy Jayalo solo tiene
-   notificaciones in-app (tabla `notifications`) + correo (Resend).
+1. **Validar el rendimiento y el "feel" nativo** en el teléfono de gama media del PO antes de
+   invertir en el resto de la app.
+2. **Encender la punta de lanza** (push nativas): cliente y proveedor reciben un push en el momento
+   exacto en que el estado de su pedido cambia. Hoy solo hay notificaciones in-app + correo.
+3. **Probar la filosofía de diseño**: UX pensada para móvil (Material 3, patrones Android/iOS),
+   no un calco de las pantallas web.
 
-**Restricción de aislamiento (PO, firme):** el trabajo vive en un repo git **totalmente separado**
-de `jayalo-main`. La **web de Jayalo (frontend) NO se toca**. La única costura con lo existente es
-de backend/datos (ver §9), sin cambios al frontend web.
-
----
-
-## 2. Alcance de la v1
-
-Decisión del PO (2026-07-16): la v1 cubre el **ciclo completo, ambos actores**.
-
-### 2.1 Dentro del alcance (nativo Flutter)
-
-**El corazón — la máquina de estados**, para los dos roles:
-
-- **Cliente:** ver sus solicitudes y su **estado del pedido**, ver las ofertas recibidas,
-  **aprobar una oferta**, ver el contacto una vez desbloqueado, marcar completada / calificar.
-- **Proveedor:** bandeja de **solicitudes que matchean** su negocio, **hacer una oferta** (gratis),
-  ver cuándo su oferta fue **aceptada**, **desbloquear el contacto** pagando con los créditos que
-  ya tiene, obtener el WhatsApp verificado del cliente.
-- **Navegación nativa** del catálogo/solicitudes (listas, filtros básicos) suficiente para llegar a
-  las acciones del corazón.
-- **Login nativo con Google** (innegociable — Jayalo no es email/password) reusando la config OAuth
-  de hoy.
-- **Push FCM** enganchado a las transiciones del corazón (§8), con deep link a la pantalla de
-  estado correspondiente.
-
-### 2.2 Fuera del alcance de la v1 (se quedan en WebView, cargando `jayalo.com`)
-
-Estas superficies se **muestran dentro de la app** vía `webview_flutter`, con la sesión ya
-compartida (§7); se migran a nativo en fases posteriores:
-
-- **Recarga de créditos / PayPal.** Se deja en web a propósito: en móvil regala Google Pay gratis,
-  y es el flujo de dinero (el más riesgoso de reescribir). Además la política de PayPal prohíbe sus
-  páginas en WebView → cuando aplique, se abre en **navegador externo** (no en el WebView embebido).
-- **Crear solicitud (cliente).** Es el flujo **conversacional con IA** (`/requests/new` →
-  `/api/ai/chat-stream`, streaming). Es la pantalla más compleja y arriesgada de reescribir, y NO
-  es parte de las *transiciones* de la máquina de estados (el corazón arranca cuando la solicitud
-  ya existe; la acción clave del cliente en el corazón es **aprobar**, que sí es nativa). Se deja
-  en WebView en v1. **▶ A validar por el PO** (§11): si el PO quiere "crear solicitud" nativa en la
-  v1, sube el alcance de forma notable.
-- **Perfil, configuración, historial completo, chat** con el proveedor/cliente.
-- **Alta/registro de proveedor** (wizard largo) y **conversión de cuenta**.
-
-### 2.3 Explícitamente fuera (ni siquiera WebView en v1)
-
-- Publicación en Play Store (fase posterior; requiere cuenta Google Play Developer US$25, Data
-  Safety, ~12 testers, assets de tienda).
-- iOS (requiere Mac; el PO está en Windows).
-- Migrar a push por Broadcast/realtime avanzado, analítica, etc.
+**Restricción de aislamiento (PO, firme):** el trabajo vive en este repo git separado. La **web de
+Jayalo (frontend) y el Worker NO se tocan**. Las únicas costuras son de datos/backend (§9): una
+tabla nueva + una Edge Function, ambas aditivas y reversibles.
 
 ---
 
-## 3. Arquitectura
+## 2. Filosofía de diseño (decisión 4 del PO)
 
-**Patrón strangler / híbrido incremental.** La app es un **shell nativo Flutter** que:
-
-- Renderiza **nativo** las pantallas del corazón (§5).
-- Embebe **WebViews** de `jayalo.com` para las secciones aún no migradas (§2.2).
-- Comparte **una sola sesión Supabase** entre el shell nativo y los WebViews (§7).
-- El **backend no cambia**: Supabase (Auth, Postgres, RLS, RPCs) y el Worker de Cloudflare
-  (`/api/*`) siguen sirviendo tanto a la web como a la app. La app habla con Supabase vía
-  `supabase_flutter` (PostgREST/Auth), exactamente el mismo backend que la web.
-
-```
-┌─────────────────────────── App Flutter (Android) ───────────────────────────┐
-│                                                                              │
-│   Shell nativo (Material 3, go_router)                                       │
-│   ├── Auth: google_sign_in → supabase.auth.signInWithIdToken                 │
-│   ├── Estado global de sesión (supabase_flutter GoTrue)                      │
-│   │                                                                          │
-│   ├── PANTALLAS NATIVAS (el corazón)                                         │
-│   │     • Cliente: mis solicitudes · estado del pedido · ofertas · aprobar   │
-│   │     • Proveedor: bandeja de solicitudes · ofertar · aceptada · desbloq.  │
-│   │     Datos ↔ Supabase (RLS hereda; RPCs de cobro server-side)             │
-│   │                                                                          │
-│   ├── PUSH: firebase_messaging → token en `device_tokens` → deep link        │
-│   │                                                                          │
-│   └── WebViews (webview_flutter) con sesión inyectada (§7)                    │
-│         recarga/PayPal* · crear solicitud (IA) · perfil · config · chat      │
-│                                                                              │
-└──────────────┬───────────────────────────────────────────┬─────────────────┘
-               │ PostgREST / GoTrue                          │ HTTPS
-        ┌──────▼───────┐                              ┌──────▼──────────────┐
-        │  Supabase    │  (mismo proyecto mfaikl…)    │ Cloudflare Worker    │
-        │  Auth+RLS+DB │                              │ jayalo.com  /api/*   │
-        └──────────────┘                              └──────────────────────┘
-   * PayPal: navegador externo, no WebView embebido (política PayPal).
-```
-
-**Por qué así:** reusa toda la lógica de negocio (RPCs atómicas de cobro, RLS, triggers) sin
-reescribirla; el riesgo se concentra solo en las pantallas nativas del corazón y en la costura de
-sesión. Un fallo en la parte nativa nunca corrompe dinero: los cobros siguen pasando por las mismas
-RPCs `SECURITY DEFINER` que calculan el costo **server-side** (el cliente nunca dicta el precio).
+- **Se reusa la lógica de negocio, no la interfaz.** La fuente de verdad de *comportamiento* es el
+  backend existente: Supabase (Auth, Postgres, RLS, RPCs atómicas), el endpoint de IA del Worker y
+  las reglas de dinero. La fuente de verdad de *interfaz* es este spec + Material 3 — **no** el
+  layout de jayalo.com.
+- **Material 3 expresivo**: theming dinámico donde aporte, tipografía y elevación M3, componentes
+  nativos (bottom navigation, sheets, FAB donde corresponda), motion con propósito (transiciones
+  de contenedor en las transiciones de fase del pedido, no animación decorativa porque sí).
+- **Patrones móviles, no páginas**: bottom sheet para acciones contextuales (aceptar oferta,
+  desbloquear), pull-to-refresh, estados vacíos con guía (el público es análogo — misma doctrina
+  a-prueba-de-tontos del QA de usabilidad de la web), jerga dominicana y montos en RD$ como en la
+  web (la *voz* sí se hereda; el *layout* no).
+- **Android primero, iOS-ready**: v1 compila y se prueba solo en Android (el PO está en Windows),
+  pero el diseño evita Android-ismos que bloqueen iOS después (Flutter lo permite de fábrica).
+- La web queda como referencia de **copy y semántica de fases** (§4), que ya están validadas,
+  no de composición visual.
 
 ---
 
-## 4. El corazón: la máquina de estados
+## 3. Alcance de la v1
 
-Esta máquina **ya existe y está probada en la web** (`src/routes/requests/$requestId.tsx`,
-`MyRequestsView.tsx`, `ProviderOffersSection.tsx`). La app nativa **replica el mismo modelo** (no
-inventa uno nuevo) leyendo las mismas columnas de `customer_requests` y `provider_offers`.
+### 3.1 Dentro (todo nativo)
 
-### 4.1 Estados y transiciones (fuente de verdad: la BD)
+**El ciclo completo del corazón, ambos actores:**
 
-Estados de una **oferta** (`provider_offers.status`): `pending | accepted | completed | rejected`.
-Más las columnas `unlocked_at` (timestamp del desbloqueo) y `points_charged`.
+- **Cliente:** crear solicitud (flujo conversacional IA, §5.1) · mis solicitudes con su fase ·
+  estado del pedido · ver ofertas · **aceptar UNA oferta** · ver contacto al desbloquearse ·
+  marcar completada / calificar.
+- **Proveedor:** bandeja de solicitudes que matchean su negocio · **hacer oferta** (gratis) ·
+  mis ofertas con estado · **desbloquear contacto** pagando con créditos existentes · obtener el
+  WhatsApp verificado del cliente · saldo de créditos (lectura).
+- **Login nativo con Google** (innegociable) reusando la config OAuth existente (§10).
+- **Push FCM** en cada transición del corazón (§8) con deep link a la pantalla de estado.
 
-Fases del **pedido** desde la perspectiva del cliente (derivadas en la UI web y que la app copia):
+### 3.2 Fuera de la v1 (diferido — NO está en la app, ni en WebView)
 
-| Fase | Condición | Copy actual (web) |
+- **Recarga de créditos / PayPal**: el CTA "Recargar" abre `jayalo.com/wallet` en el **navegador
+  del sistema** (Custom Tab). Doble motivo: la política de PayPal prohíbe sus páginas en WebView,
+  y el flujo de dinero es lo más riesgoso de reescribir. El usuario se autentica en su navegador
+  (Google en Chrome funciona normal). Fricción aceptada en v1; recarga nativa = fase posterior.
+- **Chat interno**: el contacto post-desbloqueo en v1 es el **WhatsApp verificado** (deep link),
+  que ya es el desenlace de primera clase del modelo. Chat nativo = fase posterior.
+  **▶ A validar por el PO** (§12).
+- **Perfil/configuración/historial completo**: v1 incluye solo lo mínimo (ver §5.3); el resto,
+  en el navegador si hace falta.
+- **Alta/registro de proveedor y onboarding de cuentas nuevas**: la v1 asume **cuentas ya
+  existentes** (el login Google de un usuario registrado funciona; un usuario totalmente nuevo se
+  registra en la web). **▶ A validar por el PO** (§12).
+- **Play Store** (fase posterior: US$25, Data Safety, ~12 testers) e **iOS** (requiere Mac).
+
+---
+
+## 4. El corazón: la máquina de estados (sin cambios respecto a rev. 1)
+
+La máquina **ya existe y está probada en la web**; la app **replica el modelo de datos, no las
+pantallas**, leyendo las mismas columnas de `customer_requests` y `provider_offers`.
+
+Estados de una **oferta** (`provider_offers.status`): `pending | accepted | completed | rejected`,
+más `unlocked_at` y `points_charged`.
+
+Fases del **pedido** (semántica heredada de la web, presentación nativa nueva):
+
+| Fase | Condición | Semántica |
 |---|---|---|
 | `waiting` | solicitud creada, 0 ofertas | "Esperando ofertas" |
 | `with_offers` | ≥1 oferta, ninguna aceptada | "N ofertas recibidas" |
-| `accepted` | el cliente aceptó **una** oferta, aún sin desbloquear | "Oferta aceptada — El proveedor te contactará pronto." |
-| `unlocked` | la oferta aceptada tiene `unlocked_at` | "Contacto desbloqueado — Ya puedes hablar con el proveedor." |
-| `completed` | solicitud/oferta completada o cerrada | "Solicitud completada — Califica al proveedor." |
+| `accepted` | el cliente aceptó **una** oferta, sin desbloquear | "Oferta aceptada — el proveedor te contactará" |
+| `unlocked` | la oferta aceptada tiene `unlocked_at` | "Contacto desbloqueado" |
+| `completed` | solicitud/oferta completada o cerrada | "Completada — califica" |
 
-**Regla clave confirmada en código:** el cliente **acepta UNA sola oferta** por solicitud. Al
-aceptarla, las demás quedan "aceptada en otra" (`hasAcceptedElsewhere`). La aceptación es atómica:
-`UPDATE ... SET status='accepted' WHERE status='pending'` (guard anti-doble-aceptación concurrente).
+**Reglas confirmadas en código:**
+- El cliente **acepta UNA sola oferta** por solicitud; la aceptación es atómica
+  (`UPDATE … SET status='accepted' WHERE status='pending'`, guard anti-doble-aceptación).
+- **Ofertar es GRATIS**; el **proveedor** paga créditos al **desbloquear** tras `accepted`, vía la
+  RPC `try_unlock_offer` — **el costo se calcula DENTRO de la RPC** (el `_cost` del cliente se
+  ignora), atómica e idempotente. La app muestra el costo estimado con la misma tabla de tiers
+  (portar `pointsForOffer` a Dart **solo para UI**).
+- Al desbloquear, el proveedor obtiene el WhatsApp verificado vía `get_unlocked_offer_contact`.
 
-### 4.2 Quién paga y cuándo
-
-- **Ofertar es GRATIS** para el proveedor.
-- El **proveedor** paga créditos para **desbloquear** el contacto **después** de que el cliente
-  aceptó su oferta. El desbloqueo:
-  - Va por la server function `unlockOffer` → RPC `try_unlock_offer(_offer_id, _cost)`.
-  - **El costo se calcula DENTRO de la RPC** (`points_for_offer_row`), no se confía en el `_cost`
-    del cliente. La app nativa muestra el costo estimado con la misma lógica (`pointsForOffer`) solo
-    para la UI; el cobro real lo fija el servidor.
-  - Es atómico (`SELECT ... FOR UPDATE` sobre oferta + wallet), idempotente
-    (`already_unlocked`), y respeta el guard de wallet.
-  - Al desbloquear, el proveedor obtiene el **WhatsApp verificado** del cliente vía
-    `get_unlocked_offer_contact(_offer_id)` (SECURITY DEFINER, gated por `status='accepted' AND
-    unlocked_at IS NOT NULL`).
-
-### 4.3 Transiciones que disparan push (§8)
-
-| Transición | Push a | Mensaje (borrador) |
-|---|---|---|
-| nueva solicitud que matchea el negocio | proveedor | "Nueva solicitud que te puede interesar" |
-| nueva oferta sobre mi solicitud | cliente | "Recibiste una oferta nueva" |
-| mi oferta fue aceptada | proveedor | "¡Tu oferta fue aceptada! Desbloquea para contactar" |
-| contacto desbloqueado | cliente | "El proveedor ya puede contactarte" |
-
-> Estos cuatro eventos **ya existen** como puntos de disparo de la app (insert en `notifications`
-> y/o correo). El push reusa esos mismos puntos (§9); no se inventan eventos nuevos.
+**Transiciones que disparan push (§8):** nueva solicitud que matchea → proveedor · nueva oferta →
+cliente · oferta aceptada → proveedor · contacto desbloqueado → cliente. Los cuatro eventos ya
+existen como puntos de disparo en la BD (insert en `notifications` / correo); el push se engancha
+ahí, no se inventan eventos nuevos.
 
 ---
 
 ## 5. Pantallas nativas (v1)
 
-Navegación con `go_router`. El shell decide, según el rol del usuario
-(`profiles.account_type`), qué home mostrar.
+Navegación con `go_router`; home por rol (`profiles.account_type`). Lo que sigue define contenido
+y comportamiento; la composición visual la decide la implementación siguiendo §2.
 
 ### 5.1 Cliente
 
-1. **Mis solicitudes** — lista de `customer_requests` del usuario con su fase (badge de color como
-   la web: ámbar `accepted`, esmeralda `unlocked`). Entrada al detalle.
-2. **Estado del pedido** (la pantalla insignia del corazón) — muestra la fase actual con el mismo
-   lenguaje que la web, animada en las transiciones (Material motion). Lista las ofertas recibidas.
-3. **Aprobar oferta** — acción nativa: card de la oferta (precio/rango, mensaje, reputación del
-   proveedor) + confirmar. Ejecuta el `UPDATE status='accepted'` con el guard de estado.
-4. **Contacto desbloqueado** — cuando la oferta pasa a `unlocked`, muestra el CTA para abrir el
-   chat (WebView) o el WhatsApp del proveedor.
-5. (**Crear solicitud** → botón que abre el WebView de `/requests/new` — no nativo en v1, §2.2.)
+1. **Crear solicitud (IA) — nativa** (decisión 1). Chat conversacional móvil de verdad: burbujas,
+   streaming token a token, chips de respuesta rápida cuando la IA ofrezca opciones, campo con
+   micro-affordances móviles. Habla con el endpoint existente `/api/ai/chat-stream` del Worker
+   (SSE) **sin modificarlo** — ver contrato y riesgos en §7. Al confirmar, inserta la
+   `customer_request` (misma escritura que hace la web hoy). Incluye el flag "al por mayor"
+   (kind producto).
+2. **Mis solicitudes** — lista con fase visible de un vistazo (color/badge por fase).
+3. **Estado del pedido** — la pantalla insignia: fase actual prominente, timeline/stepper de las 5
+   fases con transición animada (M3 container transform), lista de ofertas recibidas.
+4. **Aceptar oferta** — bottom sheet con el detalle (precio/rango, mensaje, reputación del
+   proveedor incl. "responde en ~X") + confirmación. Ejecuta el `UPDATE` con guard.
+5. **Contacto** — al pasar a `unlocked`: datos del proveedor + botón WhatsApp.
+6. **Completar/calificar** — cierre del ciclo (rating simple).
 
 ### 5.2 Proveedor
 
-1. **Bandeja de solicitudes** — solicitudes que matchean su negocio (misma lógica de matching que
-   la web; datos vía las mismas queries/RPC). Filtro básico producto/servicio.
-2. **Hacer oferta** — acción nativa: precio fijo / rango / por hora + mensaje. Inserta en
-   `provider_offers` (status `pending`). Gratis.
-3. **Mis ofertas** — lista con estado; resalta las `accepted` pendientes de desbloquear.
-4. **Desbloquear contacto** — acción nativa con confirmación (patrón hold-to-confirm como la web):
-   muestra costo estimado, ejecuta `unlockOffer`, y al éxito revela el WhatsApp del cliente
-   (`get_unlocked_offer_contact`) + CTA a chat/WhatsApp.
-5. **Saldo de créditos** (solo lectura) con CTA "Recargar" → abre WebView/navegador externo (§2.2).
+1. **Bandeja de solicitudes** — solicitudes que matchean el negocio; filtro producto/servicio;
+   marca visual para "al por mayor".
+2. **Hacer oferta** — formulario nativo: precio fijo / rango / por hora + mensaje; muestra el
+   costo de desbloqueo estimado ANTES de ofertar (transparencia, mismo dato que la web).
+3. **Mis ofertas** — lista con estado; resalta `accepted` pendientes de desbloquear (es la acción
+   que gana dinero para Jayalo — merece prominencia).
+4. **Desbloquear** — bottom sheet con costo + saldo + confirmación deliberada (equivalente nativo
+   del hold-to-confirm de la web); al éxito, revela el WhatsApp del cliente con celebración sobria.
+5. **Saldo** — lectura del wallet + CTA "Recargar" → Custom Tab a `jayalo.com/wallet` (§3.2).
 
 ### 5.3 Comunes
 
-- **Login** (Google nativo) y **splash**.
-- **Home/tabs** por rol.
-- **Host de WebView** reutilizable para las secciones embebidas.
+- **Splash + Login Google nativo** (hoja de cuentas Android).
+- **Home/tabs por rol** (bottom navigation M3).
+- **Ajustes mínimos**: cuenta activa, cerrar sesión, versión, enlaces legales (navegador).
 
 ---
 
-## 6. Frontera nativo / WebView
+## 6. Superficies que salen al navegador del sistema (Custom Tabs)
 
-| Superficie | v1 | Motivo |
-|---|---|---|
-| Estado del pedido, ofertas, aprobar, ofertar, desbloquear | **Nativo** | Es el corazón; donde se juega el "feel" premium y el push |
-| Navegación de solicitudes/catálogo (básica) | **Nativo** | Necesaria para llegar a las acciones |
-| Login Google | **Nativo** | Google bloquea OAuth en WebView (`disallowed_useragent`) |
-| Push + deep link | **Nativo** | Objetivo central de la v1 |
-| Crear solicitud (IA) | WebView | Flujo conversacional con streaming; alto riesgo de reescritura |
-| Recarga / PayPal | WebView → **navegador externo** para PayPal | Flujo de dinero; política PayPal prohíbe WebView |
-| Perfil, config, historial, chat | WebView | Aún no migrado; bajo valor para el "feel" inicial |
-| Alta/registro proveedor | WebView | Wizard largo, fuera del corazón |
+| Superficie | Por qué navegador y no la app |
+|---|---|
+| Recarga / PayPal (`jayalo.com/wallet`) | Política PayPal anti-WebView + flujo de dinero sin reescribir en v1 |
+| Registro de cuenta nueva / alta proveedor | Fuera del alcance v1 (§3.2) |
+| Términos / Privacidad | Contenido estático; no amerita nativo |
 
-**Regla de host WebView:** el WebView embebido carga rutas de `jayalo.com` con la sesión ya
-inyectada (§7). Cualquier navegación que Google/PayPal rechacen en WebView se delega al navegador
-del sistema (`url_launcher` con `LaunchMode.externalApplication`).
+No se comparte sesión con el navegador (imposible/innecesario): el usuario se loguea ahí una vez
+con Google. La app refresca el saldo al volver (`onResume`).
 
 ---
 
-## 7. Costura de sesión Supabase (nativo ↔ WebView) — punto delicado
+## 7. Riesgo técnico central: el endpoint de IA desde un cliente nativo
 
-**Problema:** el login lo hace el shell nativo (Google → `signInWithIdToken`). Los WebViews cargan
-`jayalo.com`, cuyo cliente Supabase JS lee la sesión de `localStorage`. Si no se comparte, el
-usuario tendría que volver a loguearse dentro del WebView (y no puede: Google bloquea OAuth en
-WebView).
+Verificado en el código (`src/routes/api/ai/chat-stream.ts` de jayalo-main):
 
-**Enfoque recomendado (a detallar en el plan):** tras el login nativo, obtener la sesión de
-`supabase_flutter` (`supabase.auth.currentSession` → `accessToken`, `refreshToken`) y, **antes de
-cargar la URL** en el WebView, inyectar esa sesión en el `localStorage` del WebView bajo la **clave
-de storage de Supabase** que usa el cliente web (`sb-<project-ref>-auth-token`, formato JSON de
-GoTrue). Con eso el cliente JS de `jayalo.com` arranca ya autenticado.
+- **`Origin` falla cerrado**: rechaza requests sin header `Origin` o con uno no permitido.
+  → La app **fija el header** `Origin: https://jayalo.com` en su cliente HTTP (legítimo: es
+  nuestro propio cliente de confianza; en apps nativas el header es controlable). Cero cambios
+  al Worker.
+- **Turnstile en el primer turno** (`messages.length === 1` exige `turnstileToken` cuando el
+  secreto está configurado — y en prod lo está). Turnstile es un widget **web**; no hay SDK
+  nativo. Opciones, a decidir en el plan:
+  - **(a) Widget en WebView invisible SOLO para obtener el token** (patrón conocido; no es
+    "experiencia web", es plomería oculta de ~1s). Respeta "no tocar el Worker". ⚠️ Requiere que
+    el hostname del widget esté permitido (gotcha 110200 ya conocido).
+  - **(b) Excepción autenticada en el Worker** (aceptar sesión Supabase válida en lugar del token
+    en el primer turno) — **tensión con la decisión 2** (no tocar el Worker); solo si (a) falla.
+- **Rate limit por IP** ya existe (ADR-0025) — aplica igual a la app, sin cambios.
+- **SSE en Dart**: consumir el stream con un cliente HTTP con soporte de streaming (`http` +
+  parseo de eventos, o paquete SSE). El contrato exacto del stream y del `BodySchema`
+  (`messages`, `wholesale`, `turnstileToken`) se lee del código al implementar — no se inventa.
+- El endpoint **no valida sesión server-side** (el "login antes de la IA" de la web es UX
+  client-side + rate limit). La app igualmente exigirá login antes de crear solicitud, como la web.
 
-- **Mecanismo:** `webview_flutter` permite ejecutar JS antes/durante la carga
-  (`runJavaScript` en un handler de navegación, o inyección temprana). Se escribe el JSON de sesión
-  en `window.localStorage` con la clave correcta y luego se navega/recarga.
-- **Refresh de token:** GoTrue en el WebView refresca solo mientras la página vive; el shell nativo
-  es la fuente de verdad. Al reabrir un WebView, se re-inyecta la sesión vigente del shell nativo
-  (que pudo haber refrescado su token). Evita el WebView quedándose con un token viejo.
-- **Cierre de sesión:** logout en el shell → limpiar el `localStorage`/cookies del WebView
-  (`WebViewCookieManager` + `runJavaScript('localStorage.clear()')`).
-
-**Riesgos / a verificar en el plan:**
-- Confirmar la **clave exacta** y el **shape JSON** que el cliente Supabase JS de `jayalo.com`
-  espera en `localStorage` (leer cómo persiste la sesión en la web actual antes de codificar).
-- Sitio SSR: `jayalo.com` es SSR (TanStack Start). La sesión que importa para las acciones del
-  usuario es la del **cliente** (localStorage), no cookies SSR; verificar que las rutas embebidas
-  (chat, perfil) funcionan solo con la sesión en localStorage.
-- Si en el futuro la web adopta cookies httpOnly para auth, esta costura cambia — documentar como
-  supuesto.
+**Riesgo de auth ya conocido:** Turnstile global de Supabase Auth puede devolver `captcha_failed`
+en `signInWithIdToken` → fix conocido: pasar `options.captchaToken`. Verificar en device al
+implementar el login (mismo patrón (a) si hace falta token).
 
 ---
 
 ## 8. Push notifications (FCM)
 
-**Objetivo v1:** el usuario recibe un push nativo en cada transición del corazón (§4.3) y, al
-tocarlo, la app abre (deep link) la pantalla de estado correspondiente.
-
-**Lado app (nativo, en `jayalo-flutter`):**
-- `firebase_messaging` + un proyecto Firebase enganchado al mismo package `com.jayalo.app`.
-- Al loguearse / al arrancar: obtener el **FCM token** y guardarlo en una tabla nueva
-  `device_tokens (user_id, token, platform, updated_at)` vía `supabase_flutter` (RLS: cada usuario
-  gestiona solo sus tokens). Refrescar el token en `onTokenRefresh`.
-- Manejar mensajes en foreground/background/terminated; el payload incluye `type` + `request_id` /
-  `offer_id` para el deep link.
-
-**Lado backend (costura mínima, sin tocar el frontend web) — ver §9.**
+- `firebase_messaging` + proyecto Firebase enganchado al package `com.jayalo.app`
+  (`google-services.json`).
+- Al loguear/arrancar: guardar el FCM token en la tabla nueva `device_tokens` (§9) vía
+  `supabase_flutter`; refrescar en `onTokenRefresh`; borrar al cerrar sesión.
+- Payload con `type` + `request_id`/`offer_id` → deep link (`go_router`) a la pantalla de estado
+  correcta, en foreground/background/terminated.
+- Mensajes de las 4 transiciones (§4), copy final en el plan.
 
 ---
 
-## 9. Costura de backend para el push (única costura con lo existente)
+## 9. Costura de backend (única — la web y el Worker no se tocan)
 
-Hoy, en cada uno de los cuatro eventos (§4.3), la BD ya dispara efectos (insert en `notifications`
-y/o llamada al Worker para el correo). Para el push, la **opción recomendada** es **NO tocar el
-frontend web ni el Worker de jayalo-main**, sino añadir una pieza de backend aislada:
+**Decisión 2 del PO: Edge Function, no Worker.**
 
-1. **Tabla `device_tokens`** (migración nueva en el proyecto Supabase). RLS por dueño; grants de
-   mínimo privilegio (patrón del proyecto).
-2. **Un emisor de FCM** que, en los mismos puntos de disparo que hoy generan `notifications`/correo,
-   lea los `device_tokens` del destinatario y envíe el push vía FCM HTTP v1. Preferencia por una
-   **Supabase Edge Function** dedicada (`send-push`) invocada por el trigger existente, para no
-   modificar el Worker de `jayalo-main`. (Alternativa: un endpoint nuevo en el Worker — se descarta
-   en v1 para respetar el aislamiento; se decide en el plan.)
+1. **Tabla `device_tokens`** `(user_id, token, platform, updated_at)` — migración nueva. RLS por
+   dueño; grants de mínimo privilegio; patrón de seguridad del proyecto (revisar checklist
+   `db-security-check.sql` al crearla).
+2. **Edge Function `send-push`** (Supabase): invocada desde los mismos puntos de disparo que hoy
+   generan `notifications`/correo (trigger → `pg_net`/cola, igual que `enqueue_notification_email`),
+   lee los `device_tokens` del destinatario y envía vía **FCM HTTP v1** (service account de
+   Firebase como secreto de la función). Aditiva, aislada, reversible.
+3. **Nada más.** Las lecturas/escrituras del corazón usan tablas y RPCs existentes tal cual.
 
-> Nota de honestidad sobre el aislamiento: la **web (frontend) no se toca** en ningún caso. Pero el
-> push **sí requiere** este añadido de datos/servidor (tabla + emisor). Es aditivo, aislado y
-> reversible, pero no es "cero backend". Es la única costura de la v1. **▶ A validar por el PO**
-> (§11): ¿Edge Function nueva vs endpoint en el Worker? ¿proyecto Firebase nuevo o reusar uno?
+**▶ Decisión menor pendiente (plan):** proyecto Firebase nuevo dedicado vs. crear FCM dentro del
+proyecto Google Cloud existente `jayalo-501005`. Sin impacto arquitectónico; se decide al hacer
+el setup.
 
 ---
 
 ## 10. Stack técnico
 
-**Flutter (todo GRATIS, licencia BSD). NO usar FlutterFlow** (es un builder de pago tipo Lovable —
-justo la dependencia de la que estamos saliendo).
+**Flutter (GRATIS, BSD). NO FlutterFlow** (builder de pago tipo Lovable — evitar).
 
 | Paquete | Para qué |
 |---|---|
-| `supabase_flutter` | Auth (GoTrue) + PostgREST + RLS heredada. Mismo proyecto `mfaikl…` |
-| `google_sign_in` | Login nativo Google (hoja de cuentas Android) |
+| `supabase_flutter` | Auth + PostgREST + RLS heredada. Mismo proyecto `mfaikl…` |
+| `google_sign_in` | Login nativo Google |
 | `firebase_messaging` + `firebase_core` | Push FCM |
-| `webview_flutter` | Secciones híbridas embebidas |
-| `go_router` | Navegación nativa + deep links del push |
-| `url_launcher` | PayPal / WhatsApp / enlaces al navegador externo |
-| Material 3 (nativo) + motion (`Lottie`/`Rive` si hace falta) | El "feel" premium |
+| `go_router` | Navegación + deep links |
+| `url_launcher` / Custom Tabs | PayPal, WhatsApp, legal, registro |
+| Cliente HTTP con streaming (SSE) | Chat IA nativo (§7) |
+| Material 3 nativo; `lottie`/`rive` solo si una transición concreta lo pide | El "feel" (§2) |
 
-**Reuso de la config OAuth de hoy (no se pierde el trabajo caro):**
-- OAuth client **Android** en Google Cloud (proyecto `jayalo-501005`, package `com.jayalo.app`,
-  SHA-1 debug `C0:02:66:E7:F6:0A:88:9B:02:4A:C3:14:C4:9F:04:8E:B6:89:45:2E`) → sirve idéntico para
-  `google_sign_in` (mismo package, mismo debug keystore).
+**Reuso de config existente (el trabajo caro no se pierde):**
+- OAuth client **Android** (proyecto `jayalo-501005`, package `com.jayalo.app`, SHA-1 debug
+  `C0:02:66:E7:F6:0A:88:9B:02:4A:C3:14:C4:9F:04:8E:B6:89:45:2E`) → idéntico para `google_sign_in`.
 - **Web Client ID** `606236193258-80p6roa1ohq3dd63n3uodnrvqncpt44k.apps.googleusercontent.com` →
-  para `supabase.auth.signInWithIdToken` en Flutter.
-- Android Studio + SDK API 36 ya instalados.
+  para `supabase.auth.signInWithIdToken`.
+- Android Studio + SDK API 36 instalados.
 
-**Gotcha conocido de auth:** Turnstile global puede devolver `captcha_failed` en
-`signInWithIdToken`. Fix conocido: pasar `options.captchaToken`. Verificar en el device.
-
-**Setup pendiente (una vez, guiado con el PO):**
-- Instalar el **SDK de Flutter** en Windows.
-- Crear/enganchar el **proyecto Firebase** (`google-services.json` para `com.jayalo.app`).
+**Setup pendiente (una vez, guiado con el PO):** SDK de Flutter en Windows; proyecto/config
+Firebase (`google-services.json`).
 
 ---
 
 ## 11. Trabajo previo en jayalo-main (fuera de este repo)
 
-- **Revertir el commit `cb675fc`** (helper `signInWithGoogle`/`detectGoogleLoginMode` para la
-  cáscara Capacitor). Era específico de Capacitor (detecta `window.Capacitor`); Flutter no lo usa.
-  Está **sin desplegar**, así que revertirlo no afecta prod y deja `jayalo-main` limpio. Decisión
-  del PO (2026-07-16). *(Este cambio ocurre en el repo `jayalo-main`, no en `jayalo-flutter`; se
-  ejecuta como paso previo, con la confirmación de deploy habitual del PO.)*
-- El repo Capacitor `jayalo-android` queda **archivado** (poco código; superado por este enfoque).
+- **Revertir `cb675fc`** (helper `signInWithGoogle` de la cáscara Capacitor; sin desplegar;
+  Flutter no lo usa). Decisión del PO. Se ejecuta en `jayalo-main` como paso previo.
+- El repo Capacitor `jayalo-android` queda **archivado**.
 
 ---
 
-## 12. Decisiones abiertas para validar con el PO
+## 12. Decisiones — cerradas y abiertas
 
-1. **Crear solicitud (IA):** se deja en WebView en v1 (§2.2). ¿De acuerdo, o el PO la quiere nativa
-   ya en la v1? (Subiría el alcance de forma notable.)
-2. **Push — arquitectura del emisor:** Edge Function `send-push` (recomendado, respeta aislamiento)
-   vs endpoint en el Worker de `jayalo-main`. Y: ¿proyecto Firebase nuevo o reusar uno existente?
-3. **Nombre del repo:** `jayalo-flutter` (usado por defecto). ¿OK?
-4. **Alcance del "feel":** ¿la v1 debe incluir ya motion/transiciones pulidas (Rive/Lottie), o
-   basta Material 3 estándar para la primera validación de rendimiento?
+**Cerradas (PO, 2026-07-16):**
+1. Alcance v1 = ciclo completo, ambos actores. ✔
+2. Crear solicitud (IA) = **nativa**. ✔
+3. Push = **Edge Function** (`send-push`); el Worker no se toca. ✔
+4. Repo = **`jayalo-app`**. ✔
+5. Filosofía = **100% nativa, mobile-first M3**; la web no se replica; sin WebViews. ✔
+6. Revertir `cb675fc` en jayalo-main. ✔
+
+**Abiertas (validar en la revisión de este spec):**
+1. **Chat interno fuera de v1** — contacto post-desbloqueo = WhatsApp (§3.2). ¿OK?
+2. **Onboarding de cuentas nuevas fuera de v1** — la app asume cuentas existentes; registro en la
+   web (§3.2). ¿OK?
+3. **Turnstile para la IA nativa** — opción (a) WebView invisible solo-token (default, no toca el
+   Worker) vs (b) excepción autenticada en el Worker (§7). Se confirma en el plan tras probar (a).
 
 ---
 
 ## 13. Criterios de éxito de la v1
 
-- El PO instala el APK debug en su teléfono de gama media y el corazón **se siente nativo**
-  (transiciones fluidas, sin "sabor a web").
-- Un ciclo completo funciona de punta a punta en el device, con dos cuentas de prueba:
-  solicitud → oferta → aprobación → desbloqueo (con créditos reales de prueba) → contacto.
-- Cada transición dispara un **push nativo** que abre la pantalla de estado correcta (deep link).
-- El login Google nativo funciona y la sesión se comparte con al menos un WebView (p. ej. chat o
-  perfil) **sin re-login**.
-- La web de `jayalo.com` (frontend) **no cambió**; los cobros siguen pasando por las RPCs atómicas
-  server-side (verificable: el `_cost` del cliente se ignora).
+- El PO instala el APK debug en su teléfono de gama media y la app **se siente nativa y diseñada
+  para móvil** — no una web calcada.
+- **Ciclo completo de punta a punta en el device con dos cuentas**: crear solicitud (IA nativa,
+  streaming fluido) → oferta → aceptación → desbloqueo (créditos reales de prueba) → WhatsApp.
+- Cada transición dispara un **push** que abre la pantalla correcta (deep link), incluso con la
+  app cerrada.
+- Login Google nativo funcional; recarga abre el navegador y el saldo se refresca al volver.
+- `jayalo-main` (web + Worker) **sin cambios** (salvo el revert de `cb675fc`); los cobros siguen
+  pasando por las RPCs atómicas server-side.
 
 ---
 
-## Apéndice — referencias en el código de `jayalo-main` (fuente de verdad)
+## Apéndice — referencias de lógica de negocio en `jayalo-main` (fuente de verdad)
 
-- Máquina de estados / fases: `src/routes/requests/$requestId.tsx` (fases `waiting…completed`),
-  `src/components/marketplace/MyRequestsView.tsx` (aceptación, `hasAcceptedElsewhere`).
-- Lado proveedor: `src/components/provider/ProviderOffersSection.tsx` (estados de oferta, unlock).
-- Desbloqueo/cobro: `src/lib/offer-unlock.functions.ts` (`unlockOffer` → `try_unlock_offer`),
-  `src/lib/pointPricing.ts` (costo para UI).
-- Revelado de contacto: migración `…_whatsapp_reveal_offer.sql` (`get_unlocked_offer_contact`).
-- Reglas de dinero y seguridad: `CLAUDE.md` → "Seguridad — decisiones tomadas" (el costo se calcula
-  dentro de la RPC; wallet atómica; grants de mínimo privilegio).
+- Fases del pedido: `src/routes/requests/$requestId.tsx` (derivación `waiting…completed`).
+- Aceptación única: `src/routes/requests/$requestId.tsx` (`hasAcceptedElsewhere`, guard pending).
+- Lado proveedor: `src/components/provider/ProviderOffersSection.tsx`.
+- Desbloqueo/cobro: `src/lib/offer-unlock.functions.ts` → RPC `try_unlock_offer`;
+  `src/lib/pointPricing.ts` (tiers para UI).
+- Contacto: migración `…_whatsapp_reveal_offer.sql` (`get_unlocked_offer_contact`).
+- Endpoint IA: `src/routes/api/ai/chat-stream.ts` (Origin fail-closed, Turnstile primer turno,
+  `BodySchema`, rate limit ADR-0025).
+- Disparo de notificaciones existente (modelo para `send-push`): trigger
+  `enqueue_notification_email` y `notify_new_request_matches`.
+- Reglas de dinero: `CLAUDE.md` de jayalo-main → "Seguridad — decisiones tomadas".
