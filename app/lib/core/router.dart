@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../features/auth/login_screen.dart';
+import '../features/client/create_request_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/shell/home_shell.dart';
 
@@ -22,7 +23,8 @@ GoRouter buildRouter() => GoRouter(
           routes: [
             GoRoute(path: '/client', builder: (_, _) => const _Todo('Mis solicitudes')),
             GoRoute(
-                path: '/client/create', builder: (_, _) => const _Todo('Crear solicitud')),
+                path: '/client/create',
+                builder: (_, _) => const CreateRequestScreen()),
             GoRoute(
                 path: '/client/request/:id',
                 builder: (_, s) => _Todo('Pedido ${s.pathParameters['id']}')),
