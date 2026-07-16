@@ -2,9 +2,8 @@
 -- Push nativo (app Flutter jayalo-app, spec 2026-07-16). Todo ADITIVO:
 -- 1 tabla nueva + 2 triggers + 2 funciones. Cero cambios a objetos existentes.
 --
--- ⚠️ ANTES DE APLICAR: verificar en pg_proc el cualificador real de http_post
--- que usa enqueue_notification_email (la relocación de pg_net del 2026-07-14
--- pudo moverlo de `net.` a otro schema) y ajustar abajo si difiere.
+-- Verificado en prod (2026-07-16) contra pg_proc: enqueue_notification_email usa
+-- `net.http_post` — mismo cualificador usado abajo, no requirió ajuste.
 
 -- 1) Tokens de dispositivo (FCM). Sin datos sensibles: RLS de dueño + grants CRUD.
 CREATE TABLE public.device_tokens (
@@ -35,6 +34,10 @@ BEGIN
        COALESCE(NEW.request_title, 'El proveedor ya puede contactarte'),
        '/requests/' || NEW.request_id, NEW.user_id, 'offer', NEW.id::text);
   END IF;
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Nunca bloquear el UPDATE del desbloqueo por un fallo aquí (mismo patrón
+  -- defensivo que enqueue_notification_email).
   RETURN NEW;
 END; $$;
 
@@ -68,8 +71,19 @@ BEGIN
       'body', NEW.body, 'link', NEW.link)
   );
   RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Nunca bloquear el INSERT de la notificación in-app por un fallo del push.
+  RETURN NEW;
 END; $$;
 
 CREATE TRIGGER trg_push_on_notification
   AFTER INSERT ON public.notifications
   FOR EACH ROW EXECUTE FUNCTION public.push_on_notification();
+
+-- 4) Footgun conocido del proyecto (CLAUDE.md): Supabase auto-otorga EXECUTE a
+--    anon/authenticated en funciones nuevas. Estas 2 son funciones de TRIGGER
+--    (RETURNS trigger) — solo el motor de triggers las invoca, nunca deben ser
+--    llamadas vía PostgREST. Revocar no afecta el disparo de los triggers.
+--    Verificado en prod: get_advisors('security') deja de listarlas tras esto.
+REVOKE ALL ON FUNCTION public.notify_customer_on_unlock() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.push_on_notification() FROM PUBLIC, anon, authenticated;
