@@ -146,9 +146,10 @@ y comportamiento; la composición visual la decide la implementación siguiendo 
 ### 5.1 Cliente
 
 1. **Crear solicitud (IA) — nativa** (decisión 1). Chat conversacional móvil de verdad: burbujas,
-   streaming token a token, chips de respuesta rápida cuando la IA ofrezca opciones, campo con
-   micro-affordances móviles. Habla con el endpoint existente `/api/ai/chat-stream` del Worker
-   (SSE) **sin modificarlo** — ver contrato y riesgos en §7. Al confirmar, inserta la
+   chips de respuesta rápida cuando la IA ofrezca opciones, campo con micro-affordances móviles.
+   Habla con el endpoint existente `/api/ai/chat-stream` del Worker **sin modificarlo** —
+   *corrección post-spec verificada en código*: pese al nombre, NO es streaming; cada turno es
+   un POST que devuelve UN objeto JSON tipado. Ver contrato y riesgos en §7. Al confirmar, inserta la
    `customer_request` (misma escritura que hace la web hoy). Incluye el flag "al por mayor"
    (kind producto).
 2. **Mis solicitudes** — lista con fase visible de un vistazo (color/badge por fase).
@@ -209,9 +210,10 @@ Verificado en el código (`src/routes/api/ai/chat-stream.ts` de jayalo-main):
   - **(b) Excepción autenticada en el Worker** (aceptar sesión Supabase válida en lugar del token
     en el primer turno) — **tensión con la decisión 2** (no tocar el Worker); solo si (a) falla.
 - **Rate limit por IP** ya existe (ADR-0025) — aplica igual a la app, sin cambios.
-- **SSE en Dart**: consumir el stream con un cliente HTTP con soporte de streaming (`http` +
-  parseo de eventos, o paquete SSE). El contrato exacto del stream y del `BodySchema`
-  (`messages`, `wholesale`, `turnstileToken`) se lee del código al implementar — no se inventa.
+- **Contrato del endpoint (verificado)**: NO es SSE — cada turno es un POST→JSON con `type` en
+  `{question, routing, ready, kind_switch, image_request}`. `BodySchema`: `messages[{role,
+  content}]`, `kind?`, `wholesale?`, `turnstileToken?`, `imageDataUrl?`. Cliente Dart = `http`
+  simple.
 - El endpoint **no valida sesión server-side** (el "login antes de la IA" de la web es UX
   client-side + rate limit). La app igualmente exigirá login antes de crear solicitud, como la web.
 
@@ -263,7 +265,7 @@ el setup.
 | `firebase_messaging` + `firebase_core` | Push FCM |
 | `go_router` | Navegación + deep links |
 | `url_launcher` / Custom Tabs | PayPal, WhatsApp, legal, registro |
-| Cliente HTTP con streaming (SSE) | Chat IA nativo (§7) |
+| `http` (POST + JSON por turno) | Chat IA nativo (§7) |
 | Material 3 nativo; `lottie`/`rive` solo si una transición concreta lo pide | El "feel" (§2) |
 
 **Reuso de config existente (el trabajo caro no se pierde):**
