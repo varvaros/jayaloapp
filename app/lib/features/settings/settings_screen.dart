@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../push/push_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -20,7 +21,10 @@ class SettingsScreen extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.logout),
           title: const Text('Cerrar sesión'),
-          onTap: () => Supabase.instance.client.auth.signOut(),
+          onTap: () async {
+            await deleteCurrentToken();
+            await Supabase.instance.client.auth.signOut();
+          },
         ),
       ]),
     );
