@@ -105,6 +105,111 @@ Future<void> submitReview(
   });
 }
 
+// ── Proveedor: bandeja, ofertas, wallet y desbloqueo ────────────────────────
+
+Future<List<Map<String, dynamic>>> providerInbox({String? kind}) async {
+  final rows = List<Map<String, dynamic>>.from(await supa.rpc(
+      'get_provider_inbox_unified',
+      params: {'p_limit': 100, 'p_offset': 0, 'p_kind': kind}));
+  return rows.where((r) => r['source'] == 'marketplace').toList();
+}
+
+Future<Map<String, dynamic>?> requestById(String id) async => await supa
+    .from('customer_requests')
+    .select(
+        'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at')
+    .eq('id', id)
+    .maybeSingle();
+
+Future<String?> myBusinessId() async {
+  final uid = supa.auth.currentUser!.id;
+  final row = await supa
+      .from('provider_businesses')
+      .select('id')
+      .eq('user_id', uid)
+      .limit(1)
+      .maybeSingle();
+  return row?['id'] as String?;
+}
+
+/// Ofertar es GRATIS. Campos idénticos al insert de la web
+/// (RequestRespondSection.tsx L940-954, camino precio fijo/rango).
+Future<void> makeOffer({
+  required Map<String, dynamic> request,
+  required String businessId,
+  double? price,
+  double? priceMin,
+  double? priceMax,
+  required String message,
+}) async {
+  final uid = supa.auth.currentUser!.id;
+  await supa.from('provider_offers').insert({
+    'user_id': uid,
+    'business_id': businessId,
+    'request_id': request['id'],
+    'request_title': request['title'],
+    'price': price,
+    'price_min': priceMin,
+    'price_max': priceMax,
+    'message': message,
+    'status': 'pending',
+    'image_urls': <String>[],
+    'offers_shipping': false,
+    'offers_installation': false,
+    'requires_evaluation': false,
+    'pricing_mode': price != null ? 'fixed' : 'range',
+    'hourly_rate': null,
+  });
+}
+
+Future<List<Map<String, dynamic>>> myOffers() async {
+  final uid = supa.auth.currentUser!.id;
+  return List<Map<String, dynamic>>.from(await supa
+      .from('provider_offers')
+      .select('$offerCols,request_title,points_charged,purchase_completed')
+      .eq('user_id', uid)
+      .order('created_at', ascending: false));
+}
+
+Future<int?> walletBalance() async {
+  final uid = supa.auth.currentUser!.id;
+  final row = await supa
+      .from('provider_wallets')
+      .select('balance')
+      .eq('user_id', uid)
+      .maybeSingle();
+  return row?['balance'] as int?;
+}
+
+/// RPC atómica; el `_cost` enviado se IGNORA server-side (el costo real lo
+/// calcula la RPC — regla de seguridad del proyecto).
+Future<({bool ok, bool already, int charged, int? newBalance})> unlockOffer(
+    String offerId, int estimatedCost) async {
+  final res = await supa.rpc('try_unlock_offer',
+      params: {'_offer_id': offerId, '_cost': estimatedCost}) as Map<String, dynamic>;
+  return (
+    ok: res['ok'] == true,
+    already: res['already_unlocked'] == true,
+    charged: (res['charged'] as num?)?.toInt() ?? 0,
+    newBalance: (res['new_balance'] as num?)?.toInt(),
+  );
+}
+
+Future<({String? firstName, String? phone})> unlockedContact(String offerId) async {
+  final rows = List<Map<String, dynamic>>.from(
+      await supa.rpc('get_unlocked_offer_contact', params: {'_offer_id': offerId}));
+  final r = rows.isEmpty ? const <String, dynamic>{} : rows.first;
+  return (firstName: r['first_name'] as String?, phone: r['phone'] as String?);
+}
+
+Future<void> markPurchaseCompleted(String offerId) async {
+  await supa.from('provider_offers').update({
+    'purchase_completed': true,
+    'purchase_completed_at': DateTime.now().toIso8601String(),
+    'status': 'completed',
+  }).eq('id', offerId);
+}
+
 Future<bool> isProviderAccount() async {
   final uid = supa.auth.currentUser?.id;
   if (uid == null) return false;

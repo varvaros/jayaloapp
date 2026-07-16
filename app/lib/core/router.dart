@@ -5,6 +5,9 @@ import '../features/auth/login_screen.dart';
 import '../features/client/create_request_screen.dart';
 import '../features/client/my_requests_screen.dart';
 import '../features/client/request_status_screen.dart';
+import '../features/provider/inbox_screen.dart';
+import '../features/provider/my_offers_screen.dart';
+import '../features/provider/request_detail_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/shell/home_shell.dart';
 
@@ -31,12 +34,14 @@ GoRouter buildRouter() => GoRouter(
                 path: '/client/request/:id',
                 builder: (_, s) =>
                     RequestStatusScreen(requestId: s.pathParameters['id']!)),
-            GoRoute(path: '/provider', builder: (_, _) => const _Todo('Solicitudes')),
+            GoRoute(
+                path: '/provider', builder: (_, _) => const ProviderInboxScreen()),
             GoRoute(
                 path: '/provider/request/:id',
-                builder: (_, s) => _Todo('Solicitud ${s.pathParameters['id']}')),
+                builder: (_, s) => ProviderRequestDetailScreen(
+                    requestId: s.pathParameters['id']!)),
             GoRoute(
-                path: '/provider/offers', builder: (_, _) => const _Todo('Mis ofertas')),
+                path: '/provider/offers', builder: (_, _) => const MyOffersScreen()),
             GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
           ],
         ),
@@ -49,11 +54,3 @@ class _AuthNotifier extends ChangeNotifier {
   }
 }
 
-/// Placeholder de ruta — cada task de pantallas (8-12) sustituye el suyo.
-class _Todo extends StatelessWidget {
-  const _Todo(this.label);
-  final String label;
-  @override
-  Widget build(BuildContext context) =>
-      Scaffold(appBar: AppBar(title: Text(label)), body: Center(child: Text(label)));
-}

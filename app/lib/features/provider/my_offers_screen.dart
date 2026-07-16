@@ -1,0 +1,307 @@
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../core/config.dart';
+import '../../data/repos.dart';
+import '../../domain/pricing.dart';
+import '../client/request_status_screen.dart' show offerPriceLabel;
+
+int estimatedUnlockCost(Map<String, dynamic> o) {
+  final c = pointsForOffer(
+    price: (o['price'] as num?)?.toDouble(),
+    priceMin: (o['price_min'] as num?)?.toDouble(),
+    priceMax: (o['price_max'] as num?)?.toDouble(),
+    pricingMode: o['pricing_mode'] as String?,
+    hourlyRate: (o['hourly_rate'] as num?)?.toDouble(),
+    estimatedHours: (o['estimated_hours'] as num?)?.toDouble(),
+  );
+  return c < 1 ? 1 : c;
+}
+
+class MyOffersScreen extends StatefulWidget {
+  const MyOffersScreen({super.key});
+  @override
+  State<MyOffersScreen> createState() => _MyOffersScreenState();
+}
+
+class _MyOffersScreenState extends State<MyOffersScreen>
+    with WidgetsBindingObserver {
+  List<Map<String, dynamic>> _offers = [];
+  int? _balance;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refetch();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Al volver del navegador (recarga PayPal), refrescar el saldo (spec §6).
+    if (state == AppLifecycleState.resumed) _refetch();
+  }
+
+  Future<void> _refetch() async {
+    final results = await Future.wait([myOffers(), walletBalance()]);
+    if (!mounted) return;
+    setState(() {
+      _offers = results[0] as List<Map<String, dynamic>>;
+      _balance = results[1] as int?;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final toUnlock = _offers
+        .where((o) => o['status'] == 'accepted' && o['unlocked_at'] == null)
+        .toList();
+    final pending = _offers.where((o) => o['status'] == 'pending').toList();
+    final rest = _offers
+        .where((o) =>
+            o['status'] == 'rejected' ||
+            o['status'] == 'completed' ||
+            (o['status'] == 'accepted' && o['unlocked_at'] != null))
+        .toList();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Mis ofertas')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _refetch,
+              child: ListView(padding: const EdgeInsets.all(16), children: [
+                Card(
+                  color: cs.primaryContainer,
+                  child: ListTile(
+                    leading: const Icon(Icons.account_balance_wallet_outlined),
+                    title: Text('${_balance ?? '—'} créditos',
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    trailing: FilledButton.tonal(
+                      onPressed: () => launchUrl(Uri.parse(AppConfig.walletUrl),
+                          mode: LaunchMode.externalApplication),
+                      child: const Text('Recargar'),
+                    ),
+                  ),
+                ),
+                if (toUnlock.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text('🏆 ¡Te aceptaron! Desbloquea el contacto',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  for (final o in toUnlock) _offerCard(o, highlight: true),
+                ],
+                const SizedBox(height: 16),
+                Text('Pendientes (${pending.length})',
+                    style: Theme.of(context).textTheme.titleMedium),
+                if (pending.isEmpty && toUnlock.isEmpty)
+                  const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text(
+                          'Oferta desde "Solicitudes" — es gratis y te avisamos si te aceptan.')),
+                for (final o in pending) _offerCard(o),
+                const SizedBox(height: 16),
+                if (rest.isNotEmpty)
+                  Text('Historial', style: Theme.of(context).textTheme.titleMedium),
+                for (final o in rest) _offerCard(o),
+              ]),
+            ),
+    );
+  }
+
+  Widget _offerCard(Map<String, dynamic> o, {bool highlight = false}) {
+    final st = o['status'] as String;
+    final unlocked = o['unlocked_at'] != null;
+    final label = switch (st) {
+      'accepted' => unlocked ? 'Desbloqueada' : 'ACEPTADA',
+      'completed' => 'Completada',
+      'rejected' => 'Rechazada',
+      _ => 'Pendiente',
+    };
+    return Card(
+      shape: highlight
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.amber.shade700, width: 2))
+          : null,
+      child: ListTile(
+        title: Text(o['request_title'] as String? ?? '',
+            maxLines: 2, overflow: TextOverflow.ellipsis),
+        subtitle: Text('${offerPriceLabel(o)} · $label'),
+        trailing: highlight ? const Icon(Icons.lock_open) : null,
+        onTap: () => _openOffer(o),
+      ),
+    );
+  }
+
+  void _openOffer(Map<String, dynamic> o) {
+    final st = o['status'] as String;
+    final unlocked = o['unlocked_at'] != null;
+    if (st == 'accepted' && !unlocked) {
+      _showUnlockSheet(o);
+    } else if (unlocked || st == 'completed') {
+      _showContactSheet(o);
+    }
+  }
+
+  void _showUnlockSheet(Map<String, dynamic> o) {
+    final cost = estimatedUnlockCost(o);
+    final enough = (_balance ?? 0) >= cost;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Desbloquear contacto',
+                  style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(
+                  'Costo: $cost crédito${cost == 1 ? '' : 's'} · Tu saldo: ${_balance ?? 0}'),
+              const SizedBox(height: 16),
+              if (!enough)
+                FilledButton(
+                  onPressed: () => launchUrl(Uri.parse(AppConfig.walletUrl),
+                      mode: LaunchMode.externalApplication),
+                  child: const Text('Saldo insuficiente — Recargar'),
+                )
+              else
+                _HoldToUnlockButton(onConfirmed: () async {
+                  Navigator.pop(ctx);
+                  final res = await unlockOffer(o['id'] as String, cost);
+                  if (!mounted) return;
+                  if (res.ok) {
+                    await _refetch();
+                    final refreshed = _offers.firstWhere(
+                        (x) => x['id'] == o['id'],
+                        orElse: () => o);
+                    _showContactSheet(refreshed);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('No se pudo desbloquear. Intenta de nuevo.')));
+                  }
+                }),
+            ]),
+      ),
+    );
+  }
+
+  Future<void> _showContactSheet(Map<String, dynamic> o) async {
+    ({String? firstName, String? phone}) contact;
+    try {
+      contact = await unlockedContact(o['id'] as String);
+    } catch (_) {
+      contact = (firstName: null, phone: null);
+    }
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('✅ Contacto desbloqueado',
+                  style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(contact.phone != null
+                  ? '${contact.firstName ?? 'Cliente'} · ${contact.phone}'
+                  : 'El cliente no tiene WhatsApp verificado disponible; '
+                      'contáctalo por el chat de jayalo.com.'),
+              const SizedBox(height: 16),
+              if (contact.phone != null)
+                FilledButton.icon(
+                  onPressed: () {
+                    final digits = contact.phone!.replaceAll(RegExp(r'\D'), '');
+                    launchUrl(Uri.parse('https://wa.me/$digits'),
+                        mode: LaunchMode.externalApplication);
+                  },
+                  icon: const Icon(Icons.chat),
+                  label: const Text('Abrir WhatsApp'),
+                ),
+              const SizedBox(height: 8),
+              if (o['purchase_completed'] != true)
+                OutlinedButton(
+                  onPressed: () async {
+                    await markPurchaseCompleted(o['id'] as String);
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    _refetch();
+                  },
+                  child: const Text('¿Se concretó la venta? Marcar completada'),
+                ),
+            ]),
+      ),
+    );
+  }
+}
+
+/// Confirmación deliberada: mantener presionado ~1s (equivalente nativo del
+/// hold-to-confirm de la web para acciones de dinero).
+class _HoldToUnlockButton extends StatefulWidget {
+  const _HoldToUnlockButton({required this.onConfirmed});
+  final Future<void> Function() onConfirmed;
+  @override
+  State<_HoldToUnlockButton> createState() => _HoldToUnlockButtonState();
+}
+
+class _HoldToUnlockButtonState extends State<_HoldToUnlockButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900))
+    ..addStatusListener((s) {
+      if (s == AnimationStatus.completed) widget.onConfirmed();
+    });
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTapDown: (_) => _c.forward(),
+      onTapUp: (_) => _c.reverse(),
+      onTapCancel: () => _c.reverse(),
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (_, _) => Stack(alignment: Alignment.center, children: [
+          Container(
+            height: 52,
+            decoration: BoxDecoration(
+                color: cs.primary.withValues(alpha: .25),
+                borderRadius: BorderRadius.circular(26)),
+          ),
+          FractionallySizedBox(
+            widthFactor: _c.value.clamp(0.001, 1),
+            alignment: Alignment.centerLeft,
+            child: Container(
+              height: 52,
+              decoration: BoxDecoration(
+                  color: cs.primary, borderRadius: BorderRadius.circular(26)),
+            ),
+          ),
+          IgnorePointer(
+            child: Text('Mantén presionado para desbloquear',
+                style: TextStyle(
+                    color: _c.value > .45 ? cs.onPrimary : cs.onSurface,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ]),
+      ),
+    );
+  }
+}
