@@ -67,49 +67,72 @@ Deno.serve(async (req) => {
     return new Response("unauthorized", { status: 401 });
   }
 
-  const { user_id, kind, title, body, link } = await req.json();
-  if (!user_id || !title) return new Response("bad request", { status: 400 });
+  try {
+    const { user_id, kind, title, body, link } = await req.json();
+    if (!user_id || !title) return new Response("bad request", { status: 400 });
 
-  const admin = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
-  const { data: tokens } = await admin
-    .from("device_tokens").select("token").eq("user_id", user_id);
-  if (!tokens?.length) return new Response("no tokens", { status: 200 });
-
-  const sa = JSON.parse(Deno.env.get("FCM_SERVICE_ACCOUNT")!);
-  const access = await fcmAccessToken(sa);
-  const results: string[] = [];
-
-  for (const { token } of tokens) {
-    const res = await fetch(
-      `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${access}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: {
-            token,
-            notification: { title, body: body ?? "" },
-            data: { link: link ?? "", kind: kind ?? "" },
-            android: { priority: "HIGH" },
-          },
-        }),
-      },
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    if (res.status === 404 || res.status === 400) {
-      // Token muerto (UNREGISTERED/INVALID) → limpiar.
-      await admin.from("device_tokens").delete().eq("token", token);
-      results.push(`dead:${res.status}`);
-    } else {
-      results.push(`sent:${res.status}`);
+    const { data: tokens } = await admin
+      .from("device_tokens").select("token").eq("user_id", user_id);
+    if (!tokens?.length) return new Response("no tokens", { status: 200 });
+
+    // FCM_SERVICE_ACCOUNT puede ser el JSON crudo o (recomendado) base64 del
+    // JSON — base64 es una sola línea sin caracteres que un editor de secretos
+    // pueda mutilar (pegar el JSON multilínea corrompía las comillas/saltos).
+    const saRaw = Deno.env.get("FCM_SERVICE_ACCOUNT");
+    if (!saRaw) throw new Error("FCM_SERVICE_ACCOUNT no está configurado");
+    const saJson = saRaw.trimStart().startsWith("{")
+      ? saRaw
+      : new TextDecoder().decode(
+          // Quita TODO whitespace (saltos que un editor pudo intercalar al pegar)
+          // antes de decodificar base64.
+          Uint8Array.from(atob(saRaw.replace(/\s/g, "")), (c) => c.charCodeAt(0)),
+        );
+    const sa = JSON.parse(saJson);
+    const access = await fcmAccessToken(sa);
+    const results: string[] = [];
+
+    for (const { token } of tokens) {
+      const res = await fetch(
+        `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${access}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: {
+              token,
+              notification: { title, body: body ?? "" },
+              data: { link: link ?? "", kind: kind ?? "" },
+              android: { priority: "HIGH" },
+            },
+          }),
+        },
+      );
+      const respBody = await res.text();
+      if (res.status === 404 || res.status === 400) {
+        // Token muerto (UNREGISTERED/INVALID) → limpiar.
+        await admin.from("device_tokens").delete().eq("token", token);
+        results.push(`dead:${res.status}:${respBody.slice(0, 120)}`);
+      } else if (res.status !== 200) {
+        results.push(`err:${res.status}:${respBody.slice(0, 200)}`);
+      } else {
+        results.push(`sent:${res.status}`);
+      }
     }
+    return new Response(JSON.stringify({ ok: true, results }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    console.error("send-push error:", e);
+    return new Response(
+      JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
   }
-  return new Response(JSON.stringify({ ok: true, results }), {
-    headers: { "Content-Type": "application/json" },
-  });
 });
