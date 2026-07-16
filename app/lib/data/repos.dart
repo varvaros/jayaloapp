@@ -1,6 +1,39 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../domain/phase.dart';
 
 final supa = Supabase.instance.client;
+
+// ── Cliente: mis solicitudes y ofertas ──────────────────────────────────────
+
+Future<List<Map<String, dynamic>>> myRequests() async {
+  final uid = supa.auth.currentUser!.id;
+  return List<Map<String, dynamic>>.from(await supa
+      .from('customer_requests')
+      .select('id,title,kind,status,is_wholesale,created_at')
+      .eq('user_id', uid)
+      .order('created_at', ascending: false));
+}
+
+const offerCols =
+    'id,request_id,business_id,user_id,price,price_min,price_max,pricing_mode,'
+    'hourly_rate,estimated_hours,message,status,unlocked_at,created_at';
+
+Future<List<Map<String, dynamic>>> offersForRequest(String requestId) async =>
+    List<Map<String, dynamic>>.from(await supa
+        .from('provider_offers')
+        .select(offerCols)
+        .eq('request_id', requestId)
+        .order('created_at', ascending: false));
+
+Stream<List<Map<String, dynamic>>> offersStream(String requestId) => supa
+    .from('provider_offers')
+    .stream(primaryKey: ['id']).eq('request_id', requestId);
+
+OfferLite offerLite(Map<String, dynamic> o) => OfferLite(
+    status: o['status'] as String,
+    unlockedAt: o['unlocked_at'] == null
+        ? null
+        : DateTime.parse(o['unlocked_at'] as String));
 
 /// Insert de solicitud — campos EXACTOS de la web (requests/new.tsx L541-570),
 /// camino sin fotos (v1). `categories`/`rubros` vienen del turno `routing`.
@@ -40,6 +73,35 @@ Future<void> submitRequest({
     'recurrence_note': '',
     'is_wholesale': !isService && wholesale,
     'target_business_id': null,
+  });
+}
+
+Future<bool> acceptOffer({required String offerId}) async {
+  final uid = supa.auth.currentUser!.id;
+  // Guard anti-doble-aceptación: mismo patrón que la web ($requestId.tsx L707-713).
+  final rows = await supa
+      .from('provider_offers')
+      .update({'status': 'accepted', 'customer_id': uid})
+      .eq('id', offerId)
+      .eq('status', 'pending')
+      .select('id');
+  return rows.isNotEmpty;
+}
+
+Future<void> rejectOffer({required String offerId, required String reason}) async {
+  await supa
+      .from('provider_offers')
+      .update({'status': 'rejected', 'rejection_reason': reason})
+      .eq('id', offerId);
+}
+
+Future<void> submitReview(
+    {required String businessId, required int rating, String comment = ''}) async {
+  await supa.from('business_reviews').insert({
+    'business_id': businessId,
+    'reviewer_id': supa.auth.currentUser!.id,
+    'rating': rating,
+    'comment': comment,
   });
 }
 
