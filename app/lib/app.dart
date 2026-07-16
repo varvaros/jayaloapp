@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 const _seed = Color(0xFF7C3AED); // violeta de marca Jayalo
 
@@ -9,13 +10,13 @@ ThemeData jayaloTheme(Brightness b) => ThemeData(
     );
 
 class JayaloApp extends StatelessWidget {
-  const JayaloApp({super.key, required this.home});
-  final Widget home;
+  const JayaloApp({super.key, required this.router});
+  final GoRouter router;
   @override
-  Widget build(BuildContext context) => MaterialApp(
+  Widget build(BuildContext context) => MaterialApp.router(
         title: 'Jayalo',
         theme: jayaloTheme(Brightness.light),
         darkTheme: jayaloTheme(Brightness.dark),
-        home: home,
+        routerConfig: router,
       );
 }
