@@ -11,6 +11,14 @@ Future<void> main() async {
       url: AppConfig.supabaseUrl,
       publishableKey: AppConfig.supabasePublishableKey);
   final router = buildRouter();
-  await initPush(router);
+  // El push es ACCESORIO: si falla (sesión expirada, permiso denegado, sin
+  // Google Play, Firebase caído) la app debe arrancar igual. Sin este guard,
+  // cualquier excepción de initPush impide llegar a runApp y el usuario ve una
+  // PANTALLA EN BLANCO — no un error (verificado en el Redmi 2026-07-17).
+  try {
+    await initPush(router);
+  } catch (e, s) {
+    debugPrint('initPush falló (no bloqueante): $e\n$s');
+  }
   runApp(JayaloApp(router: router));
 }

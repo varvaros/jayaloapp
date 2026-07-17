@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -15,20 +16,35 @@ String mapLinkToRoute(String link) {
 }
 
 Future<void> _saveToken(String token) async {
-  final uid = Supabase.instance.client.auth.currentUser?.id;
-  if (uid == null) return;
-  await Supabase.instance.client.from('device_tokens').upsert({
-    'user_id': uid,
-    'token': token,
-    'platform': 'android',
-    'updated_at': DateTime.now().toIso8601String(),
-  }, onConflict: 'user_id,token');
+  final auth = Supabase.instance.client.auth;
+  // OJO: currentUser puede seguir existiendo con la sesión ya MUERTA (el
+  // refresh token caducó o fue revocado) — el upsert saldría como `anon` y
+  // PostgREST responde 42501. Hay que exigir sesión viva, no solo usuario.
+  final session = auth.currentSession;
+  if (session == null || session.isExpired || auth.currentUser == null) return;
+  try {
+    await Supabase.instance.client.from('device_tokens').upsert({
+      'user_id': auth.currentUser!.id,
+      'token': token,
+      'platform': 'android',
+      'updated_at': DateTime.now().toIso8601String(),
+    }, onConflict: 'user_id,token');
+  } catch (e) {
+    // Registrar el token es best-effort: nunca debe tumbar el arranque.
+    debugPrint('No se pudo registrar el device token: $e');
+  }
 }
 
 Future<void> deleteCurrentToken() async {
-  final t = await FirebaseMessaging.instance.getToken();
-  if (t == null) return;
-  await Supabase.instance.client.from('device_tokens').delete().eq('token', t);
+  // Best-effort igual: si esto lanzara, el usuario no podría CERRAR SESIÓN
+  // (settings_screen lo llama antes de signOut).
+  try {
+    final t = await FirebaseMessaging.instance.getToken();
+    if (t == null) return;
+    await Supabase.instance.client.from('device_tokens').delete().eq('token', t);
+  } catch (e) {
+    debugPrint('No se pudo borrar el device token: $e');
+  }
 }
 
 Future<void> initPush(GoRouter router) async {
