@@ -61,18 +61,29 @@ Deno.serve(async (req) => {
     }
 
     const code = String(Math.floor(100000 + Math.random() * 900000));
-    const { error: upErr } = await admin.from("account_verifications").upsert(
-      {
-        user_id: userId,
-        business_id: businessId ?? null,
-        whatsapp_e164: phone,
-        whatsapp_otp_hash: await sha256Hex(code),
-        whatsapp_otp_expires_at: new Date(Date.now() + OTP_TTL_MS).toISOString(),
-        whatsapp_attempts: 0,
-        whatsapp_last_sent_at: new Date().toISOString(),
-      },
-      { onConflict: businessId ? "user_id,business_id" : "user_id" },
-    );
+    const row = {
+      whatsapp_e164: phone,
+      whatsapp_otp_hash: await sha256Hex(code),
+      whatsapp_otp_expires_at: new Date(Date.now() + OTP_TTL_MS).toISOString(),
+      whatsapp_attempts: 0,
+      whatsapp_last_sent_at: new Date().toISOString(),
+    };
+
+    // NO usar upsert/onConflict aquí. La unicidad de las filas PERSONALES la da
+    // un índice PARCIAL (`account_verifications_personal_unique`: user_id WHERE
+    // business_id IS NULL) — Postgres no puede inferirlo en `ON CONFLICT
+    // (user_id)` y PostgREST no permite expresar el WHERE del índice, así que
+    // devuelve 42P10 "no unique or exclusion constraint matching...". Ese es el
+    // bug que dejó `account_verifications` con CERO filas personales en prod: la
+    // verificación del cliente nunca se pudo sellar (y por eso
+    // get_unlocked_offer_contact siempre lanzaba). Update-or-insert explícito:
+    const { error: upErr } = existing
+        ? await admin.from("account_verifications").update(row).eq("id", existing.id)
+        : await admin.from("account_verifications").insert({
+            ...row,
+            user_id: userId,
+            business_id: businessId ?? null,
+          });
     if (upErr) return json({ error: upErr.message }, 500);
 
     await sendOtpMessage(
