@@ -27,14 +27,25 @@ los 9 commits del plan).
   de solo-escritura (no recuperables) → los valores debe ponerlos el PO desde la consola de
   Twilio. **Paso 2 de abajo, [PO].**
 
-**Único bloqueante restante: el número emisor `TWILIO_SMS_FROM` (paso 1).** El SID y el Auth
-Token ya están cargados (verificado con `secrets list` el 2026-07-17). Todo lo demás del ciclo
-(onboarding de consumidor y de proveedor, fixes de dinero) ya funciona contra prod.
+✅ **Backend COMPLETO (2026-07-17).** Los tres secretos Twilio están cargados y verificados con
+`secrets list`: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_SMS_FROM=+16592993655`.
+
+> ⚠️ **Riesgo abierto — A2P 10DLC.** En la consola de Twilio, el número `+16592993655` aparece
+> con **"Traffic Status: Messaging disabled — Complete A2P registration"** (Voice enabled). El
+> registro A2P 10DLC es obligatorio para SMS a destinos **de EEUU** desde números locales
+> estadounidenses; los destinos **internacionales (RD = país DO)** no lo requieren, y hay
+> evidencia empírica a favor: el 2026-07-14 un OTP llegó a un número RD con este mismo setup
+> ("SMS Delivered" tras guardar Geo Permissions). **Hipótesis:** el envío a +1809/829/849
+> funcionará pese al badge. **Falsable en el primer OTP del E2E**: si Twilio devuelve
+> `30034` (unregistered number) o `21606`, la causa es A2P y hay que completar el registro
+> en Twilio (o usar un número con messaging habilitado). Los logs de la EF `send-otp` lo dirán
+> textual — el copy de error del usuario mostrará el mensaje de Twilio.
 
 ## Paso 0 — Backend
 
-1. **Secretos Twilio para las Edge Functions.** Hacen falta **TRES**: `TWILIO_ACCOUNT_SID` ✅,
-   `TWILIO_AUTH_TOKEN` ✅ y **`TWILIO_SMS_FROM`** ⛔ (falta).
+1. ~~**Secretos Twilio para las Edge Functions**~~ ✅ **HECHO** (2026-07-17): los TRES cargados
+   (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` por el PO; `TWILIO_SMS_FROM=+16592993655` por el
+   agente — un número emisor no es credencial). Referencia por si hay que rehacerlo:
 
    > ⚠️ **Corrección (2026-07-17).** Una versión previa de este runbook decía que bastaban dos
    > porque el emisor saldría de `app_settings.twilio_whatsapp_from`. **Era falso**: verificado
