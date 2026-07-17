@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/repos.dart';
 import '../../domain/chat.dart';
@@ -9,6 +10,7 @@ import '../../domain/chat_time.dart';
 import '../../domain/image_pick.dart';
 import '../client/request_status_screen.dart' show fmtRD;
 import 'widgets/bubbles.dart';
+import 'widgets/chat_dialogs.dart';
 import 'widgets/composer.dart';
 
 const _pageSize = 50;
@@ -26,9 +28,9 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _error = false;
   bool _loadingOlder = false;
   String? _peerAvatarUrl;
-  // ignore: unused_field
   String? _peerName;
   int _tempSeq = 0;
+  bool _greeted = false;
   bool _sending = false;
   bool _uploadingImage = false;
   RealtimeChannel? _channel;
@@ -90,11 +92,61 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Hook para Tasks 8-9 (auto-saludo, auditoría, welcome). Task 7: vacío.
-  // ignore: unused_element
-  Future<void> _afterLoad() async {}
+  /// Hook post-carga: welcome disclaimer, auto-saludo del proveedor y
+  /// auditoría 72h. Cada paso guarda `mounted` tras su(s) await(s) porque
+  /// el usuario puede salir del chat mientras cualquiera de estas llamadas
+  /// de red o el diálogo está en vuelo.
+  Future<void> _afterLoad() async {
+    final conv = _conv;
+    if (conv == null) return;
+    // 1) Welcome disclaimer, 1 vez por conversación.
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final key = 'chat_welcome_${conv['id']}';
+    if (!(prefs.getBool(key) ?? false)) {
+      final cfg = await chatWelcomeConfig();
+      if (!mounted) return;
+      await showWelcomeDialog(context,
+          title: (_isProvider ? cfg['provider_title'] : cfg['customer_title']) as String,
+          body: (_isProvider ? cfg['provider_body'] : cfg['customer_body']) as String,
+          buttonLabel: cfg['button_label'] as String);
+      await prefs.setBool(key, true);
+    }
+    // 2) Auto-saludo del proveedor en chat vacío.
+    if (_isProvider && _isOpen && _session.messages.isEmpty && !_greeted) {
+      _greeted = true;
+      final results = await Future.wait([
+        conversationCustomerFirstName(conv['id'] as String),
+        myBusinessName(),
+        chatWelcomeConfig(),
+      ]);
+      if (!mounted) return;
+      final customer = results[0] as String?;
+      final biz = results[1] as String?;
+      final cfg = results[2] as Map<String, dynamic>;
+      final priceTxt = conv['agreed_price'] != null
+          ? ' por ${fmtRD(conv['agreed_price'] as num)}'
+          : conv['agreed_hourly_rate'] != null
+              ? ' por ${fmtRD(conv['agreed_hourly_rate'] as num)}/hora'
+              : '';
+      final body = buildGreeting(cfg['auto_greeting_template'] as String,
+          firstName: customer?.split(' ').first ?? 'cliente',
+          business: biz ?? 'nuestro negocio',
+          product: conv['product_name'] as String? ?? 'el producto acordado',
+          priceTxt: priceTxt);
+      await _sendRaw('text', body);
+    }
+    // 3) Auditoría 72h.
+    final hasAudit = _session.messages.any((m) => m.kind == 'audit');
+    if (needsAudit(
+        status: conv['status'] as String,
+        createdAt: DateTime.parse(conv['created_at'] as String),
+        hasAudit: hasAudit,
+        now: DateTime.now())) {
+      await _sendRaw('audit', '¿Ya recibiste tu producto?', systemSender: true);
+    }
+  }
 
-  // ignore: unused_element
   Future<void> _reload() async {
     final conv = await fetchConversation(widget.conversationId);
     if (mounted && conv != null) setState(() => _conv = conv);
@@ -186,9 +238,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   /// Envío optimista genérico (texto/dirección/imagen/quick/system/audit).
-  // ignore: unused_element
-  Future<bool> _sendRaw(String kind, String body, {String? senderIdOverride}) async {
-    final sender = senderIdOverride ?? _uid;
+  /// `systemSender: true` fuerza sender NULL (mensajes del sistema/auditoría,
+  /// nunca atribuidos a un usuario) — gana sobre `senderIdOverride`.
+  Future<bool> _sendRaw(String kind, String body,
+      {String? senderIdOverride, bool systemSender = false}) async {
+    final sender = systemSender ? null : (senderIdOverride ?? _uid);
     final tempId = 'temp-${DateTime.now().microsecondsSinceEpoch}-${_tempSeq++}';
     _session.addOptimistic(
         tempId: tempId, senderId: sender, kind: kind, body: body, now: DateTime.now());
@@ -405,20 +459,113 @@ class _ChatScreenState extends State<ChatScreen> {
             : 'Acuerdo sin precio fijo';
     return AppBar(
       titleSpacing: 0,
-      title: ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: conv['product_image_url'] != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: Image.network(conv['product_image_url'] as String,
-                    width: 40, height: 40, fit: BoxFit.cover))
-            : const CircleAvatar(child: Icon(Icons.check, size: 16)),
-        title: Text(conv['product_name'] as String? ?? 'Acuerdo',
-            maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15)),
-        subtitle: Text(price, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12)),
+      title: GestureDetector(
+        onTap: () => showAgreementDetails(context, conv, peerName: _peerName, isProvider: _isProvider),
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: conv['product_image_url'] != null
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.network(conv['product_image_url'] as String,
+                      width: 40, height: 40, fit: BoxFit.cover))
+              : const CircleAvatar(child: Icon(Icons.check, size: 16)),
+          title: Text(conv['product_name'] as String? ?? 'Acuerdo',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15)),
+          subtitle: Text(price, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12)),
+        ),
       ),
-      // Tasks 9: actions (⋮ y tap → detalles) se añaden aquí.
+      actions: [
+        Container(
+          margin: const EdgeInsets.only(right: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(999)),
+          child: Text(
+              conv['status'] == 'abierto'
+                  ? 'Abierto'
+                  : conv['status'] == 'cerrado'
+                      ? 'Completado'
+                      : 'No concretado',
+              style: const TextStyle(fontSize: 11)),
+        ),
+        PopupMenuButton<String>(
+          onSelected: (v) async {
+            switch (v) {
+              case 'complete':
+                if (await showCompleteDialog(context)) {
+                  if (!mounted) return;
+                  try {
+                    await markConversationCompleted(widget.conversationId);
+                    if (!mounted) return;
+                    await _sendRaw('system', '✓ Marcado como completado por el proveedor.',
+                        systemSender: true);
+                    if (!mounted) return;
+                    _snack('Marcado como completado.');
+                    await _reload();
+                  } catch (_) {
+                    _snack('No se pudo marcar. Intenta de nuevo.');
+                  }
+                }
+              case 'lost':
+                final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                          title: const Text('¿Marcar como no concretado?'),
+                          content: const Text(
+                              'Esta acción es definitiva, la conversación no se puede reabrir.'),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: const Text('Cancelar')),
+                            FilledButton(
+                                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                                onPressed: () => Navigator.of(ctx).pop(true),
+                                child: const Text('Sí, marcar')),
+                          ],
+                        ));
+                if (!mounted) return;
+                if (ok == true) {
+                  try {
+                    await markConversationLost(widget.conversationId);
+                    if (!mounted) return;
+                    _snack('Marcado como no concretado.');
+                    await _reload();
+                  } catch (_) {
+                    _snack('No se pudo marcar. Intenta de nuevo.');
+                  }
+                }
+              case 'report':
+                final r = await showReportDialog(context, reportedName: _peerName);
+                if (!mounted) return;
+                if (r != null) {
+                  try {
+                    await reportAccount(
+                        reporterId: _uid,
+                        reportedUserId: (_isProvider
+                            ? _conv!['customer_id']
+                            : _conv!['provider_user_id']) as String,
+                        convId: widget.conversationId,
+                        reason: r.$1,
+                        details: r.$2);
+                    if (!mounted) return;
+                    _snack('Denuncia enviada. Gracias por avisarnos.');
+                  } catch (_) {
+                    _snack('No se pudo enviar la denuncia.');
+                  }
+                }
+            }
+          },
+          itemBuilder: (_) => [
+            if (_isProvider && _isOpen) ...[
+              const PopupMenuItem(value: 'complete', child: Text('Marcar como completado')),
+              const PopupMenuItem(value: 'lost', child: Text('Marcar como perdido')),
+            ],
+            const PopupMenuItem(value: 'report', child: Text('Denunciar cuenta')),
+          ],
+        ),
+      ],
     );
   }
 
