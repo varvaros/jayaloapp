@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/phase.dart';
 
@@ -219,4 +221,142 @@ Future<bool> isProviderAccount() async {
       .eq('user_id', uid)
       .maybeSingle();
   return row?['account_type'] == 'provider';
+}
+
+// ── Onboarding y verificación (spec 2026-07-16-onboarding-nativo) ───────────
+
+Future<Map<String, dynamic>?> myProfile() async {
+  final uid = supa.auth.currentUser?.id;
+  if (uid == null) return null;
+  return await supa
+      .from('profiles')
+      .select('account_type,first_name,last_name,phone')
+      .eq('user_id', uid)
+      .maybeSingle();
+}
+
+/// ¿La fila PERSONAL (business_id NULL) está sellada? Es el gate del revelado.
+Future<bool> whatsappVerified() async {
+  final uid = supa.auth.currentUser!.id;
+  final row = await supa
+      .from('account_verifications')
+      .select('whatsapp_verified_at')
+      .eq('user_id', uid)
+      .isFilter('business_id', null)
+      .maybeSingle();
+  return row?['whatsapp_verified_at'] != null;
+}
+
+Future<bool> isWhatsappTakenRemote(String digits) async =>
+    await supa.rpc('is_whatsapp_taken', params: {
+      '_whatsapp': digits,
+      '_exclude_user': supa.auth.currentUser!.id,
+    }) ==
+    true;
+
+/// Alta de consumidor — payload idéntico a choose-role.tsx L88-104 de la web.
+Future<void> completeConsumerProfile({
+  required String firstName,
+  required String lastName,
+  required String whatsapp, // E.164
+  required String address,
+  double? lat,
+  double? lng,
+  required String termsVersion,
+}) async {
+  final u = supa.auth.currentUser!;
+  await supa.from('profiles').upsert({
+    'user_id': u.id,
+    'email': u.email,
+    'first_name': firstName.isEmpty ? null : firstName,
+    'last_name': lastName.isEmpty ? null : lastName,
+    'phone': whatsapp,
+    'whatsapp': whatsapp,
+    'address': address,
+    'lat': lat,
+    'lng': lng,
+    'location_captured_at':
+        (lat != null && lng != null) ? DateTime.now().toIso8601String() : null,
+    'account_type': 'consumer',
+    'terms_accepted_at': DateTime.now().toIso8601String(),
+    'terms_version': termsVersion,
+  }, onConflict: 'user_id');
+}
+
+/// Alta de proveedor — RPC atómica (ADR-0029). Lanza con slug estable
+/// (whatsapp_taken/phone_taken/rnc_taken/…) que mapea onboardingErrorCopy.
+Future<String> completeProviderOnboarding({
+  required String firstName,
+  required String lastName,
+  required String phone, // E.164
+  required Map<String, dynamic> business, // shape pending_business
+  required String termsVersion,
+}) async {
+  final res = await supa.rpc('complete_provider_onboarding', params: {
+    '_first_name': firstName,
+    '_last_name': lastName,
+    '_phone': phone,
+    '_business': business,
+    '_terms_version': termsVersion,
+  }) as Map<String, dynamic>;
+  return res['business_id'] as String;
+}
+
+/// Los EF devuelven { error } con copy en español en 4xx; FunctionException
+/// trae ese body en `details` — re-lanzar siempre el mensaje humano.
+Never _throwFunctionError(FunctionException e) {
+  final details = e.details;
+  final msg = details is Map ? details['error'] : null;
+  throw Exception(msg ?? 'Error de conexión. Intenta de nuevo.');
+}
+
+Future<void> sendOtp({required String phone, String? businessId}) async {
+  try {
+    final res = await supa.functions.invoke('send-otp', body: {
+      'phone': phone,
+      'business_id': ?businessId,
+    });
+    final data = res.data as Map<String, dynamic>?;
+    if (data?['ok'] != true) {
+      throw Exception(data?['error'] ?? 'No se pudo enviar el código');
+    }
+  } on FunctionException catch (e) {
+    _throwFunctionError(e);
+  }
+}
+
+Future<({bool ok, bool businessBadgeVerified})> verifyOtp(
+    {required String code, String? businessId}) async {
+  try {
+    final res = await supa.functions.invoke('verify-otp', body: {
+      'code': code,
+      'business_id': ?businessId,
+    });
+    final data = res.data as Map<String, dynamic>?;
+    if (data?['ok'] != true) {
+      throw Exception(data?['error'] ?? 'No se pudo verificar el código');
+    }
+    return (ok: true, businessBadgeVerified: data?['business_badge_verified'] == true);
+  } on FunctionException catch (e) {
+    _throwFunctionError(e);
+  }
+}
+
+/// Chequeo liviano PRE-cobro (paridad web ProviderOffersSection.tsx:670):
+/// nunca desbloquear si el contacto no es revelable.
+Future<bool> canRevealOffer(String offerId) async =>
+    await supa.rpc('can_reveal_offer_whatsapp', params: {'_offer_id': offerId}) == true;
+
+Future<List<Map<String, dynamic>>> rubrosForCategories(List<String> categoryIds) async =>
+    List<Map<String, dynamic>>.from(await supa
+        .from('rubros')
+        .select('id,name,category_id')
+        .inFilter('category_id', categoryIds)
+        .order('name'));
+
+Future<String?> uploadBusinessLogo(String filePath) async {
+  final uid = supa.auth.currentUser!.id;
+  final path = '$uid/logo-${DateTime.now().millisecondsSinceEpoch}.jpg';
+  await supa.storage.from('business-logos').upload(path, File(filePath));
+  return supa.storage.from('business-logos').getPublicUrl(path);
 }

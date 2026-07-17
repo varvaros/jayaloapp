@@ -8,4 +8,9 @@ abstract final class AppConfig {
   static const siteUrl = 'https://jayalo.com';
   static const aiEndpoint = '$siteUrl/api/ai/chat-stream';
   static const walletUrl = '$siteUrl/provider/wallet';
+  static const termsUrl = '$siteUrl/terminos';
+  static const privacyUrl = '$siteUrl/privacidad';
+
+  /// DEBE coincidir con TERMS_VERSION de la web (src/components/legal).
+  static const termsVersion = '2.0';
 }
