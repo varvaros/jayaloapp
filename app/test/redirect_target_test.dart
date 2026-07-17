@@ -29,6 +29,14 @@ void main() {
             loggedIn: true, role: RoleState.needsOnboarding, location: '/onboarding/consumer'),
         isNull);
   });
+
+  // Bug hallado en el device (2026-07-17): el gate resolvía needsOnboarding y
+  // devolvía null estando en /gate → el usuario quedaba ATRAPADO en el spinner
+  // para siempre. El gate solo retiene mientras el rol es unknown.
+  test('needsOnboarding en /gate SALE al selector (no se queda en el spinner)', () {
+    expect(redirectTarget(loggedIn: true, role: RoleState.needsOnboarding, location: '/gate'),
+        '/onboarding');
+  });
   test('consumer no entra a onboarding → /client', () {
     expect(redirectTarget(loggedIn: true, role: RoleState.consumer, location: '/onboarding'),
         '/client');
