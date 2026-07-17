@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/phase.dart';
@@ -46,6 +47,7 @@ Future<void> submitRequest({
   required bool wholesale,
   required List<String> categories,
   required List<String> rubros,
+  List<String> imageUrls = const [],
 }) async {
   final uid = supa.auth.currentUser!.id;
   final isService = kind == 'servicio';
@@ -55,8 +57,9 @@ Future<void> submitRequest({
     'title': title,
     'description': bullets.join(' • '),
     'bullets': bullets,
-    'image_url': '',
-    'image_urls': <String>[],
+    // image_url = primaria (paridad web requests/new.tsx L570); image_urls = todas.
+    'image_url': imageUrls.isEmpty ? '' : imageUrls.first,
+    'image_urls': imageUrls,
     'image_thumb_url': null,
     'with_shipping': false,
     'with_installation': false,
@@ -143,6 +146,7 @@ Future<void> makeOffer({
   double? priceMin,
   double? priceMax,
   required String message,
+  List<String> imageUrls = const [],
 }) async {
   final uid = supa.auth.currentUser!.id;
   await supa.from('provider_offers').insert({
@@ -155,7 +159,7 @@ Future<void> makeOffer({
     'price_max': priceMax,
     'message': message,
     'status': 'pending',
-    'image_urls': <String>[],
+    'image_urls': imageUrls,
     'offers_shipping': false,
     'offers_installation': false,
     'requires_evaluation': false,
@@ -380,3 +384,39 @@ Future<String?> uploadBusinessLogo(String filePath) async {
   await supa.storage.from('business-logos').upload(path, File(filePath));
   return supa.storage.from('business-logos').getPublicUrl(path);
 }
+
+// ── Fotos de solicitudes y ofertas ──────────────────────────────────────────
+// Espejan `src/lib/image/uploadRequestImage.ts` de la web: se sube al bucket
+// `business-logos` (reusado, público) con prefijo de ruta distinto y se guarda
+// la URL pública — NUNCA base64 en la BD.
+
+/// Foto de una solicitud del cliente → `{uid}/requests/<ts>-<rand>.<ext>`.
+Future<String> uploadRequestImage(String filePath) =>
+    _uploadMarketplaceImage(filePath, 'requests');
+
+/// Foto de una oferta del proveedor → `{uid}/offers/<ts>-<rand>.<ext>`.
+Future<String> uploadOfferImage(String filePath) =>
+    _uploadMarketplaceImage(filePath, 'offers');
+
+final _rand = Random();
+
+Future<String> _uploadMarketplaceImage(String filePath, String kind) async {
+  final uid = supa.auth.currentUser!.id;
+  final dot = filePath.lastIndexOf('.');
+  final ext =
+      (dot == -1 ? '' : filePath.substring(dot + 1).toLowerCase()).isEmpty
+          ? 'jpg'
+          : filePath.substring(dot + 1).toLowerCase();
+  final rand = _rand.nextInt(1 << 31).toRadixString(16);
+  final path =
+      '$uid/$kind/${DateTime.now().millisecondsSinceEpoch}-$rand.$ext';
+  await supa.storage.from('business-logos').upload(path, File(filePath),
+      fileOptions: FileOptions(contentType: _imageContentType(ext)));
+  return supa.storage.from('business-logos').getPublicUrl(path);
+}
+
+String _imageContentType(String ext) => switch (ext) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => 'image/jpeg',
+    };

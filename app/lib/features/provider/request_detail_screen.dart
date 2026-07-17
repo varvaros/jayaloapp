@@ -1,9 +1,14 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/config.dart';
 import '../../data/repos.dart';
+import '../../domain/image_pick.dart';
 import '../../domain/pricing.dart';
+
+const _maxOfferPhotos = 5;
 
 class ProviderRequestDetailScreen extends StatefulWidget {
   const ProviderRequestDetailScreen({super.key, required this.requestId});
@@ -23,6 +28,7 @@ class _ProviderRequestDetailScreenState
   final _min = TextEditingController();
   final _max = TextEditingController();
   final _msg = TextEditingController();
+  final List<XFile> _photos = [];
 
   @override
   void initState() {
@@ -38,6 +44,19 @@ class _ProviderRequestDetailScreenState
         priceMax: _fixed ? null : double.tryParse(_max.text),
       );
 
+  Future<void> _pickPhoto(ImageSource source) async {
+    final picked = await ImagePicker()
+        .pickImage(source: source, maxWidth: 1200, imageQuality: 85);
+    if (picked == null) return;
+    final res = validatePickedImage(
+        sizeBytes: await picked.length(),
+        path: picked.path,
+        currentCount: _photos.length,
+        maxCount: _maxOfferPhotos);
+    if (res is ImagePickError) return _toast(res.message);
+    if (mounted) setState(() => _photos.add(picked));
+  }
+
   Future<void> _submit() async {
     final req = _req!;
     final p = double.tryParse(_price.text);
@@ -52,13 +71,17 @@ class _ProviderRequestDetailScreenState
     }
     setState(() => _busy = true);
     try {
+      // Subir las fotos a Storage antes de insertar (nunca base64 en la BD).
+      final imageUrls =
+          await Future.wait(_photos.map((x) => uploadOfferImage(x.path)));
       await makeOffer(
           request: req,
           businessId: _businessId!,
           price: _fixed ? p : null,
           priceMin: _fixed ? null : mn,
           priceMax: _fixed ? null : mx,
-          message: _msg.text.trim());
+          message: _msg.text.trim(),
+          imageUrls: imageUrls);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('¡Oferta enviada! Te avisamos si te aceptan. 🚀')));
@@ -72,6 +95,24 @@ class _ProviderRequestDetailScreenState
 
   void _toast(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
+  Widget _thumb(File file, int index) => Stack(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.file(file,
+              width: 76, height: 76, fit: BoxFit.cover),
+        ),
+        Positioned(
+          top: -6,
+          right: -6,
+          child: IconButton(
+            tooltip: 'Quitar',
+            icon: const Icon(Icons.cancel, size: 22),
+            onPressed:
+                _busy ? null : () => setState(() => _photos.removeAt(index)),
+          ),
+        ),
+      ]);
 
   @override
   Widget build(BuildContext context) {
@@ -143,6 +184,44 @@ class _ProviderRequestDetailScreenState
               maxLines: 3,
               decoration: const InputDecoration(
                   labelText: 'Mensaje al cliente', border: OutlineInputBorder())),
+          const SizedBox(height: 16),
+          Text('Fotos de tu producto (hasta $_maxOfferPhotos)',
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          if (_photos.isNotEmpty)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var i = 0; i < _photos.length; i++)
+                  _thumb(File(_photos[i].path), i),
+              ],
+            ),
+          if (_photos.length < _maxOfferPhotos)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => _pickPhoto(ImageSource.camera),
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: const Text('Cámara'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => _pickPhoto(ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('Galería'),
+                  ),
+                ),
+              ]),
+            ),
           const SizedBox(height: 12),
           if (_estimatedCost > 0)
             Text(

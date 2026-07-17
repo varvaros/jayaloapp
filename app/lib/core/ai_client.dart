@@ -25,11 +25,17 @@ class AiClient {
   /// Un turno = un POST. El primer turno (messages.length == 1) DEBE llevar
   /// turnstileToken. El header Origin es obligatorio (el endpoint falla
   /// cerrado; somos nuestro propio cliente de confianza).
+  /// `imageDataUrl` / `imageDataUrl2` (data URL base64, máx 8 MB c/u) son el
+  /// contrato multimodal de la web: el cliente los manda en CADA POST y el
+  /// servidor decide a qué mensaje del historial adjuntarlos
+  /// (`chat-stream.ts` L408). El modelo ve la foto.
   Future<AiTurn> sendTurn({
     required List<AiMessage> messages,
     String? kind, // 'producto' | 'servicio'
     bool wholesale = false,
     String? turnstileToken,
+    String? imageDataUrl,
+    String? imageDataUrl2,
   }) async {
     final res = await _http.post(
       Uri.parse(AppConfig.aiEndpoint),
@@ -42,6 +48,8 @@ class AiClient {
         'kind': ?kind,
         if (wholesale) 'wholesale': true,
         'turnstileToken': ?turnstileToken,
+        'imageDataUrl': ?imageDataUrl,
+        'imageDataUrl2': ?imageDataUrl2,
       }),
     );
     final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;

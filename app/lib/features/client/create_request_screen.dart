@@ -1,11 +1,24 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/ai_client.dart';
 import '../../core/turnstile.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_turns.dart';
+import '../../domain/image_pick.dart';
 import '../verification/verify_banner.dart';
+
+const _maxRequestPhotos = 2;
+
+/// Foto pendiente de una solicitud: el `dataUrl` base64 viaja a la IA en cada
+/// turno; la ruta local (`file.path`) se sube a Storage al enviar.
+class _PendingPhoto {
+  _PendingPhoto(this.file, this.dataUrl);
+  final XFile file;
+  final String dataUrl;
+}
 
 class CreateRequestScreen extends StatefulWidget {
   const CreateRequestScreen({super.key});
@@ -34,6 +47,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   bool _busy = false;
   List<String> _categories = [];
   List<String> _rubros = [];
+  final List<_PendingPhoto> _photos = [];
   AiReady? _ready;
 
   Future<void> _send(String text) async {
@@ -51,7 +65,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           messages: _messages,
           kind: _kind,
           wholesale: _wholesale,
-          turnstileToken: token);
+          turnstileToken: token,
+          imageDataUrl: _photos.isNotEmpty ? _photos[0].dataUrl : null,
+          imageDataUrl2: _photos.length > 1 ? _photos[1].dataUrl : null);
       _messages.add(AiMessage('assistant', jsonEncode(_turnToJson(turn))));
       await _handleTurn(turn);
     } on AiHttpException catch (e) {
@@ -74,15 +90,80 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     }
   }
 
+  /// Elige y valida una foto; la agrega a `_photos` (con su base64 cacheado).
+  /// Devuelve true si se agregó.
+  Future<bool> _pickPhoto(ImageSource source) async {
+    final picked = await ImagePicker()
+        .pickImage(source: source, maxWidth: 1200, imageQuality: 85);
+    if (picked == null) return false;
+    final bytes = await picked.readAsBytes();
+    final res = validatePickedImage(
+        sizeBytes: bytes.length,
+        path: picked.path,
+        currentCount: _photos.length,
+        maxCount: _maxRequestPhotos);
+    if (res is ImagePickError) {
+      _toast(res.message);
+      return false;
+    }
+    final dataUrl = 'data:${_imageMime(picked.path)};base64,${base64Encode(bytes)}';
+    if (mounted) setState(() => _photos.add(_PendingPhoto(picked, dataUrl)));
+    return true;
+  }
+
+  /// Responde al turno `image_request`: adjunta y manda un turno para que la IA
+  /// prosiga (la foto viaja en imageDataUrl de este mismo POST).
+  Future<void> _pickForRequest(ImageSource source) async {
+    if (await _pickPhoto(source)) {
+      await _send('Aquí tienes una foto para más contexto.');
+    }
+  }
+
+  /// Adjuntar espontáneo desde la barra de entrada.
+  Future<void> _showPickSheet() async {
+    if (_photos.length >= _maxRequestPhotos) {
+      _toast('Puedes subir hasta $_maxRequestPhotos fotos.');
+      return;
+    }
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Tomar foto'),
+              onTap: () => Navigator.pop(context, ImageSource.camera)),
+          ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Elegir de la galería'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery)),
+        ]),
+      ),
+    );
+    if (source != null) await _pickPhoto(source);
+  }
+
+  String _imageMime(String path) {
+    final dot = path.lastIndexOf('.');
+    final ext = dot == -1 ? '' : path.substring(dot + 1).toLowerCase();
+    return switch (ext) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => 'image/jpeg',
+    };
+  }
+
   Future<void> _handleTurn(AiTurn turn) async {
     switch (turn) {
       case AiQuestion q:
         setState(() => _bubbles.add(_Bubble.ai(q, q.question)));
       case AiKindSwitch k:
         setState(() => _bubbles.add(_Bubble.ai(k, k.message)));
-      case AiImageRequest _:
-        // v1 sin fotos: responder y seguir.
-        await _send('No puedo enviar foto ahora, sigamos sin foto.');
+      case AiImageRequest ir:
+        // La IA pide una foto: mostramos el mensaje y ofrecemos adjuntarla
+        // (los botones viven en _turnActions). El modelo la verá vía imageDataUrl.
+        setState(() => _bubbles.add(_Bubble.ai(
+            ir, ir.hint.isEmpty ? ir.message : '${ir.message}\n${ir.hint}')));
       case AiRouting r:
         setState(() {
           _categories = r.categories;
@@ -138,13 +219,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     }
     setState(() => _busy = true);
     try {
+      // Subir las fotos a Storage antes de insertar (nunca base64 en la BD).
+      final imageUrls =
+          await Future.wait(_photos.map((p) => uploadRequestImage(p.file.path)));
       await submitRequest(
           title: r.title,
           bullets: r.bullets,
           kind: _kind,
           wholesale: r.wholesale || _wholesale,
           categories: _categories,
-          rubros: _rubros);
+          rubros: _rubros,
+          imageUrls: imageUrls);
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('¡Solicitud enviada! 🎉')));
@@ -242,6 +327,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 ),
         ),
         if (_busy) const LinearProgressIndicator(),
+        if (_photos.isNotEmpty) _photoStrip(),
         if (_ready == null)
           SafeArea(
             child: Padding(
@@ -253,6 +339,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 decoration: InputDecoration(
                   hintText: started ? 'Escribe tu respuesta…' : '¿Qué estás buscando?',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(28)),
+                  prefixIcon: IconButton(
+                      tooltip: 'Adjuntar foto',
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      onPressed: _busy ? null : _showPickSheet),
                   suffixIcon: IconButton(
                       icon: const Icon(Icons.send), onPressed: () => _send(_input.text)),
                 ),
@@ -263,10 +353,53 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     );
   }
 
+  Widget _photoStrip() => Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Wrap(spacing: 8, children: [
+            for (var i = 0; i < _photos.length; i++)
+              Stack(children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.file(File(_photos[i].file.path),
+                      width: 64, height: 64, fit: BoxFit.cover),
+                ),
+                Positioned(
+                  top: -6,
+                  right: -6,
+                  child: IconButton(
+                    tooltip: 'Quitar',
+                    icon: const Icon(Icons.cancel, size: 20),
+                    onPressed: _busy
+                        ? null
+                        : () => setState(() => _photos.removeAt(i)),
+                  ),
+                ),
+              ]),
+          ]),
+        ),
+      );
+
   Widget _turnActions(AiTurn? t) => switch (t) {
         AiQuestion q => Wrap(spacing: 8, runSpacing: 4, children: [
             for (final op in q.options)
               ActionChip(label: Text(op), onPressed: () => _send(op)),
+          ]),
+        AiImageRequest _ => Wrap(spacing: 8, runSpacing: 4, children: [
+            if (_photos.length < _maxRequestPhotos) ...[
+              ActionChip(
+                  avatar: const Icon(Icons.photo_camera_outlined, size: 18),
+                  label: const Text('Cámara'),
+                  onPressed: () => _pickForRequest(ImageSource.camera)),
+              ActionChip(
+                  avatar: const Icon(Icons.photo_library_outlined, size: 18),
+                  label: const Text('Galería'),
+                  onPressed: () => _pickForRequest(ImageSource.gallery)),
+            ],
+            ActionChip(
+                label: const Text('Seguir sin foto'),
+                onPressed: () => _send('Sigamos sin foto.')),
           ]),
         AiKindSwitch k => Wrap(spacing: 8, runSpacing: 4, children: [
             for (final op in k.options)
