@@ -1,35 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../data/repos.dart';
+import '../../core/session_state.dart';
 
-class HomeShell extends StatefulWidget {
+class HomeShell extends StatelessWidget {
   const HomeShell({super.key, required this.child});
   final Widget child;
-  @override
-  State<HomeShell> createState() => _HomeShellState();
-}
-
-class _HomeShellState extends State<HomeShell> {
-  bool? _provider;
-
-  @override
-  void initState() {
-    super.initState();
-    isProviderAccount().then((p) {
-      if (!mounted) return;
-      setState(() => _provider = p);
-      // Aterriza en el home correcto según el rol.
-      final loc = GoRouterState.of(context).matchedLocation;
-      if (p && loc == '/client') context.go('/provider');
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
-    if (_provider == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    final provider = _provider!;
+    // El gate garantiza que aquí el rol ya está resuelto (spec §4);
+    // no hace falta re-consultar profiles como antes.
+    final provider = roleStore.value == RoleState.provider;
     final loc = GoRouterState.of(context).matchedLocation;
     final tabs = provider
         ? const [
@@ -55,7 +36,7 @@ class _HomeShellState extends State<HomeShell> {
       }
     }
     return Scaffold(
-      body: widget.child,
+      body: child,
       bottomNavigationBar: NavigationBar(
         selectedIndex: idx,
         onDestinationSelected: (i) => context.go(tabs[i].$1),
