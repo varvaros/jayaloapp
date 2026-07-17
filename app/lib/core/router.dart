@@ -13,6 +13,7 @@ import '../features/provider/inbox_screen.dart';
 import '../features/provider/my_offers_screen.dart';
 import '../features/provider/request_detail_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/shell/back_guard.dart';
 import '../features/shell/home_shell.dart';
 import 'session_state.dart';
 
@@ -42,24 +43,34 @@ GoRouter buildRouter() => GoRouter(
             builder: (_, _) => const ProviderOnboardingScreen()),
         ShellRoute(
           builder: (_, _, child) => HomeShell(child: child),
+          // BackGuard va DENTRO de cada ruta (no en HomeShell) para que el
+          // PopScope se registre en el navigator anidado; ver back_guard.dart.
           routes: [
-            GoRoute(path: '/client', builder: (_, _) => const MyRequestsScreen()),
+            GoRoute(
+                path: '/client',
+                builder: (_, _) => const BackGuard(child: MyRequestsScreen())),
             GoRoute(
                 path: '/client/create',
-                builder: (_, _) => const CreateRequestScreen()),
+                builder: (_, _) => const BackGuard(child: CreateRequestScreen())),
             GoRoute(
                 path: '/client/request/:id',
-                builder: (_, s) =>
-                    RequestStatusScreen(requestId: s.pathParameters['id']!)),
+                builder: (_, s) => BackGuard(
+                    child:
+                        RequestStatusScreen(requestId: s.pathParameters['id']!))),
             GoRoute(
-                path: '/provider', builder: (_, _) => const ProviderInboxScreen()),
+                path: '/provider',
+                builder: (_, _) => const BackGuard(child: ProviderInboxScreen())),
             GoRoute(
                 path: '/provider/request/:id',
-                builder: (_, s) => ProviderRequestDetailScreen(
-                    requestId: s.pathParameters['id']!)),
+                builder: (_, s) => BackGuard(
+                    child: ProviderRequestDetailScreen(
+                        requestId: s.pathParameters['id']!))),
             GoRoute(
-                path: '/provider/offers', builder: (_, _) => const MyOffersScreen()),
-            GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
+                path: '/provider/offers',
+                builder: (_, _) => const BackGuard(child: MyOffersScreen())),
+            GoRoute(
+                path: '/settings',
+                builder: (_, _) => const BackGuard(child: SettingsScreen())),
           ],
         ),
       ],
