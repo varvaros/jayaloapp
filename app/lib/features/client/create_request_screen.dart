@@ -5,6 +5,7 @@ import '../../core/ai_client.dart';
 import '../../core/turnstile.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_turns.dart';
+import '../verification/verify_banner.dart';
 
 class CreateRequestScreen extends StatefulWidget {
   const CreateRequestScreen({super.key});
@@ -175,6 +176,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Crear solicitud')),
       body: Column(children: [
+        // Nudge de verificación (spec §6.1) — cerrable, nunca bloquea el envío.
+        const VerifyWhatsappBanner(),
         if (!started)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
