@@ -345,6 +345,23 @@ Future<({bool ok, bool businessBadgeVerified})> verifyOtp(
   }
 }
 
+/// Magic link autenticado hacia /provider/wallet (ADR-0031): evita que el
+/// proveedor tenga que loguearse a mano en el navegador al recargar. El pago
+/// sigue ocurriendo 100% en la web — esto es solo un handoff de sesión.
+Future<String> createWalletLoginLink() async {
+  try {
+    final res = await supa.functions.invoke('create-wallet-login-link');
+    final data = res.data as Map<String, dynamic>?;
+    final url = data?['url'] as String?;
+    if (data?['ok'] != true || url == null) {
+      throw Exception(data?['error'] ?? 'No se pudo generar el enlace');
+    }
+    return url;
+  } on FunctionException catch (e) {
+    _throwFunctionError(e);
+  }
+}
+
 /// Chequeo liviano PRE-cobro (paridad web ProviderOffersSection.tsx:670):
 /// nunca desbloquear si el contacto no es revelable.
 Future<bool> canRevealOffer(String offerId) async =>

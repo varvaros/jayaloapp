@@ -154,11 +154,16 @@ class _MyOffersScreenState extends State<MyOffersScreen>
       .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
 
   /// ADR-0031: el pago SIEMPRE ocurre fuera de la app (navegador del sistema).
+  /// Intenta abrir con un magic link autenticado (evita el segundo login);
+  /// si falla, cae al link plano (el usuario puede necesitar loguearse ahí).
   Future<void> _openWallet() async {
+    Uri target = Uri.parse(AppConfig.walletUrl);
+    try {
+      target = Uri.parse(await createWalletLoginLink());
+    } catch (_) {}
     var ok = false;
     try {
-      ok = await launchUrl(Uri.parse(AppConfig.walletUrl),
-          mode: LaunchMode.externalApplication);
+      ok = await launchUrl(target, mode: LaunchMode.externalApplication);
     } catch (_) {}
     if (!ok && mounted) {
       _snack('No se pudo abrir el navegador. Visita jayalo.com para recargar.');
