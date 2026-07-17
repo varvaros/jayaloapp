@@ -27,33 +27,49 @@ los 9 commits del plan).
   de solo-escritura (no recuperables) → los valores debe ponerlos el PO desde la consola de
   Twilio. **Paso 2 de abajo, [PO].**
 
-**Único bloqueante restante: los secretos de Twilio (paso 1).** Sin ellos, `send-otp` devuelve
-"Twilio no está configurado" y la verificación no se puede probar. Todo lo demás del ciclo
+**Único bloqueante restante: el número emisor `TWILIO_SMS_FROM` (paso 1).** El SID y el Auth
+Token ya están cargados (verificado con `secrets list` el 2026-07-17). Todo lo demás del ciclo
 (onboarding de consumidor y de proveedor, fixes de dinero) ya funciona contra prod.
 
 ## Paso 0 — Backend
 
-1. **Secretos Twilio para las Edge Functions.** Solo hacen falta **DOS**: `TWILIO_ACCOUNT_SID`
-   y `TWILIO_AUTH_TOKEN` (el número emisor sale de `app_settings.twilio_whatsapp_from`, que ya
-   está poblado y es el que la web usa hoy para SMS — por eso `TWILIO_SMS_FROM` no es
-   necesario). Los valores están en la **consola de Twilio** (los del Worker no se pueden leer;
-   el `.env` local los tiene vacíos). Cargarlos **desde archivo por CLI**, nunca pegándolos en
-   el dashboard (gotcha de corrupción de `FCM_SERVICE_ACCOUNT`):
+1. **Secretos Twilio para las Edge Functions.** Hacen falta **TRES**: `TWILIO_ACCOUNT_SID` ✅,
+   `TWILIO_AUTH_TOKEN` ✅ y **`TWILIO_SMS_FROM`** ⛔ (falta).
+
+   > ⚠️ **Corrección (2026-07-17).** Una versión previa de este runbook decía que bastaban dos
+   > porque el emisor saldría de `app_settings.twilio_whatsapp_from`. **Era falso**: verificado
+   > contra prod, esa fila **no existe** (`app_settings` tiene 8 claves y esa no está). La web
+   > funciona porque lee el secreto `TWILIO_WHATSAPP_FROM` **del Worker de Cloudflare**, que
+   > las Edge Functions no ven. Sin `TWILIO_SMS_FROM`, `send-otp` cae al sandbox
+   > `+14155238886` y Twilio rechaza el envío (error 21606 o similar).
+   >
+   > Se usa un secreto y NO se puebla `app_settings.twilio_whatsapp_from` porque esa fila
+   > tendría precedencia también para la **web** (`getOtpFromRaw` la lee primero) — y la
+   > doctrina es no alterar el comportamiento del Worker.
+
+   `TWILIO_SMS_FROM` = el mismo número Twilio SMS-capable que la web usa hoy (el del secreto
+   `TWILIO_WHATSAPP_FROM` del Worker; en la consola de Twilio → Phone Numbers → Active
+   numbers). **No es una credencial**: es el remitente que ven los usuarios en el SMS.
+
+   Cargar **desde archivo por CLI**, nunca pegando en el dashboard (gotcha de corrupción de
+   `FCM_SERVICE_ACCOUNT`):
 
    ```bash
-   # archivo temporal FUERA del repo, con las 2 líneas TWILIO_ACCOUNT_SID=... / TWILIO_AUTH_TOKEN=...
+   # archivo temporal FUERA del repo. Ya cargados: SID y AUTH_TOKEN.
+   # Falta:  TWILIO_SMS_FROM=+1XXXXXXXXXX
    npx supabase secrets set --env-file %TEMP%\twilio.env --project-ref mfaiklvobnvgusbcssbx
    del %TEMP%\twilio.env
    ```
 
    Verificar después: `npx supabase secrets list --project-ref mfaiklvobnvgusbcssbx` debe
-   listar ambos.
+   listar los tres.
 
-   > **Por qué lo hace el PO y no el agente:** manejar tokens/API keys en texto plano está
-   > fuera de lo que Claude puede hacer, aunque se le autorice — leerlos de la consola de
-   > Twilio los volcaría al transcript. El `Auth Token` de Twilio permite enviar SMS (dinero
+   > **Por qué el SID/Auth Token los carga el PO y no el agente:** manejar tokens/API keys en
+   > texto plano está fuera de lo que Claude puede hacer, aunque se le autorice — leerlos de la
+   > consola de Twilio los volcaría al transcript. El `Auth Token` permite enviar SMS (dinero
    > real / toll fraud), así que es exactamente el tipo de credencial que no debe pasar por el
-   > agente. Es un comando de una línea.
+   > agente. `TWILIO_SMS_FROM` sí puede pasar por el agente: es un número público, no un
+   > secreto.
 
 2. ~~**Aplicar la migración de la RPC**~~ ✅ **HECHO y verificado** (2026-07-17) — ver la
    evidencia arriba.
