@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/repos.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
+import '../shell/home_scroll.dart';
 
 class ProviderInboxScreen extends StatefulWidget {
   const ProviderInboxScreen({super.key});
@@ -46,7 +47,9 @@ class _ProviderInboxScreenState extends State<ProviderInboxScreen> {
                 }
                 final items = snap.data!;
                 if (items.isEmpty) {
-                  return ListView(children: const [
+                  return ListView(
+                      controller: homeScrollController,
+                      children: const [
                     SizedBox(height: 120),
                     Icon(Icons.inbox_outlined, size: 56),
                     Padding(
@@ -57,6 +60,7 @@ class _ProviderInboxScreenState extends State<ProviderInboxScreen> {
                   ]);
                 }
                 return ListView.builder(
+                  controller: homeScrollController,
                   itemCount: items.length,
                   itemBuilder: (_, i) {
                     final r = items[i];

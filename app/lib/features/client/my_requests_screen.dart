@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/repos.dart';
 import '../../domain/phase.dart';
+import '../shell/home_scroll.dart';
 
 String timeAgo(DateTime d) {
   final diff = DateTime.now().difference(d);
@@ -67,7 +68,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
             }
             final items = snap.data!;
             if (items.isEmpty) {
-              return ListView(children: const [
+              return ListView(controller: homeScrollController, children: const [
                 SizedBox(height: 120),
                 Icon(Icons.receipt_long_outlined, size: 56),
                 Padding(
@@ -79,6 +80,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
               ]);
             }
             return ListView.builder(
+              controller: homeScrollController,
               itemCount: items.length,
               itemBuilder: (_, i) {
                 final (r, phase) = items[i];
