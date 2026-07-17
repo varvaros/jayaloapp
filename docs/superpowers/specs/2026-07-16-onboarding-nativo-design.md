@@ -1,9 +1,11 @@
 # Spec de diseño — Onboarding nativo (consumidor y proveedor)
 
-- **Fecha:** 2026-07-16
-- **Estado:** propuesta (pendiente de revisión del PO)
+- **Fecha:** 2026-07-16 (rev. 2 — incorpora las 3 decisiones del PO sobre las preguntas
+  abiertas: OTP fuera del onboarding con disparador al solicitar/confirmar cuenta, badge como
+  la web, foto opcional)
+- **Estado:** validado por el PO (2026-07-16)
 - **Repo:** `jayalo-app` (+ 2 ADRs en jayalo-main: 0029 RPC atómica, 0030 OTP Edge Functions)
-- **Siguiente paso:** validación del PO → `superpowers:writing-plans` sobre este spec.
+- **Siguiente paso:** `superpowers:writing-plans` sobre este spec.
 
 > Este documento describe el **qué** y el **porqué**. El **cómo** paso a paso vive en el plan
 > de implementación que se escribe después. Complementa (no reemplaza) el spec de la v1
@@ -47,8 +49,10 @@ la raíz (usuarios sin identidad completa); los fixes de §8 atacan los síntoma
 
 Metas:
 
-1. **Cero usuarios "a medias"**: al terminar el onboarding, todo consumidor tiene contacto
-   revelable y todo proveedor tiene negocio + categorías + wallet, atómicamente.
+1. **Cero usuarios "a medias"**: al terminar el onboarding, todo consumidor tiene identidad
+   completa (nombre, WhatsApp, ubicación, términos, `account_type`) y todo proveedor tiene
+   negocio + categorías + wallet, atómicamente. La verificación OTP queda diferida por
+   diseño (decisión PO §10.1) — el cobro sin contraprestación lo bloquea §8.2.
 2. **Registro nativo digno de la Play Store**: un usuario totalmente nuevo instala, entra con
    Google y llega a operar sin tocar jayalo.com.
 3. **Ningún cobro sin contraprestación posible** (fixes §8, independientes del onboarding).
@@ -81,11 +85,13 @@ Metas:
 
 - **Gate post-login** (§4): sesión con `account_type` NULL → onboarding, siempre.
 - **Selector de rol** (§5).
-- **Onboarding de consumidor** (§6): nombre precargado, WhatsApp + OTP por SMS, ubicación
-  GPS, términos.
-- **Onboarding de proveedor** (§7): negocio, categorías/rubros, ubicación, WhatsApp + OTP,
-  foto opcional, términos → `complete_provider_onboarding`.
-- **OTP nativo** vía Edge Functions `send-otp`/`verify-otp` (ADR-0030).
+- **Onboarding de consumidor** (§6): nombre precargado, WhatsApp (sin OTP), ubicación GPS,
+  términos.
+- **Onboarding de proveedor** (§7): negocio, categorías/rubros, ubicación, WhatsApp (sin
+  OTP), foto opcional, términos → `complete_provider_onboarding`.
+- **OTP nativo diferido** vía Edge Functions `send-otp`/`verify-otp` (ADR-0030): prompt
+  cerrable al crear solicitud + "Confirmar mi cuenta" en Ajustes (§6.1) + badge del negocio
+  post-onboarding (§7.4).
 - **Fixes correlacionados en la app** (§8): catch silencioso, chequeo pre-desbloqueo,
   redirección por rol.
 
@@ -132,18 +138,14 @@ residuo en la BD.
 
 ## 6. Onboarding de consumidor
 
-Produce exactamente lo que la web escribe en `choose-role.tsx:85-105` + la verificación OTP
-que la web deja para después (aquí es parte del flujo, ver decisión abierta §10.1):
+Produce exactamente lo que la web escribe en `choose-role.tsx:85-105`. **La verificación OTP
+NO es parte del onboarding** (decisión PO §10.1): el flujo pide el número, no el código.
 
 1. **"Así te llamas"** — nombre y apellido precargados de las claims de Google
    (`given_name`/`family_name`, fallback split de `full_name`), editables. Cero tecleo en el
    caso feliz.
 2. **"Tu WhatsApp"** — teléfono RD (normalización E.164, mismas reglas que
-   `normalizePhone`), luego **OTP**: "Te enviamos un código por SMS al ###" (copy SMS, no
-   WhatsApp — el canal real es `app_settings.otp_channel`, hoy `'sms'`). Reenvío con
-   countdown de 60s; errores con copy propio (incorrecto / expirado / demasiados intentos).
-   Sella `account_verifications.whatsapp_verified_at` (fila personal) → el contacto queda
-   revelable = la raíz del bug de §1 cerrada para cuentas nuevas.
+   `normalizePhone`), pre-chequeo de duplicado para UX. Sin OTP aquí.
 3. **"Dónde estás"** — botón "Usar mi ubicación" (permiso de ubicación → lat/lng +
    `location_captured_at`) + campo de dirección en texto (obligatorio, como la web). Sin
    permiso o sin señal → solo dirección manual, lat/lng NULL (la web lo permite igual).
@@ -155,6 +157,28 @@ que la web deja para después (aquí es parte del flujo, ver decisión abierta �
    ("Este teléfono ya está registrado en otra cuenta…"). → `/client` con push ya operativo.
 
 Sin RPC nueva: es una escritura única, atómica por naturaleza (ADR-0029 lo justifica).
+
+### 6.1 Disparador de verificación de WhatsApp (decisión PO §10.1)
+
+La verificación por OTP se dispara **fuera del onboarding**, en dos superficies:
+
+- **Al crear una solicitud** (usuario sin `whatsapp_verified_at`): banner/notificación
+  **cerrable** — no bloquea el envío — con el argumento de confianza: *"Confirma tu WhatsApp:
+  las solicitudes verificadas generan más confianza y reciben más ofertas."* Tap → hoja de
+  OTP (§6.2). Cerrarla no la elimina para siempre: reaparece en la próxima solicitud (es un
+  nudge, no un muro).
+- **"Confirmar mi cuenta"** en Ajustes: entrada permanente para verificar cuando el usuario
+  quiera.
+
+### 6.2 Hoja de OTP (compartida)
+
+"Te enviamos un código por SMS al ###" (copy SMS, no WhatsApp — el canal real es
+`app_settings.otp_channel`, hoy `'sms'`). Reenvío con countdown de 60s; errores con copy
+propio (incorrecto / expirado / demasiados intentos). Sella
+`account_verifications.whatsapp_verified_at` (fila personal) → el contacto queda revelable.
+Consecuencia aceptada: **existirán consumidores sin verificar por diseño** — por eso el
+chequeo pre-desbloqueo (§8.2) es obligatorio, no opcional: es la única barrera que impide el
+cobro sin contraprestación.
 
 ## 7. Onboarding de proveedor
 
@@ -171,22 +195,18 @@ composición visual la decide la implementación, M3 §2 del spec v1):
    consume la web.
 3. **"Dónde trabajas"** — GPS propone ciudad/sector (reverse geocode local si es viable, si
    no, selección manual con listas de la web); país fijo RD en v1.
-4. **"Tu WhatsApp"** — número del negocio precargado con el del perfil si existe; OTP igual
-   que §6.2. Al verificar DESPUÉS del cierre (ver orden abajo) se espeja el badge
-   `provider_businesses.whatsapp_verified_at` si el número coincide (semántica web).
-5. **"Foto" (opcional)** — cámara o galería → bucket `business-logos` (`logo_url`).
-   Saltable con "Después".
+4. **"Tu WhatsApp"** — número del negocio precargado con el del perfil si existe;
+   pre-chequeo de duplicado. **Sin OTP en el flujo** (decisión PO §10.2): el badge
+   "WhatsApp verificado" del negocio se obtiene DESPUÉS, como en la web — entrada
+   "Confirmar mi WhatsApp" en la vista del proveedor que abre la hoja de OTP (§6.2) con
+   `business_id` y espeja el badge si el número coincide (semántica web).
+5. **"Foto" (opcional, decisión PO §10.3)** — cámara o galería → bucket `business-logos`
+   (`logo_url`). Saltable con "Después".
 6. **Términos + cierre** — un solo tap final: llama
    `complete_provider_onboarding(_first_name, _last_name, _phone, _business, _terms_version)`.
    Errores por slug (`whatsapp_taken`, `phone_taken`, `rnc_taken`) → copy específico con
    salida ("Usa otro número o inicia sesión con la cuenta que lo tiene"). → `/provider` con
    wallet en 0 y el CTA "Recargar" existente.
-
-**Orden OTP vs RPC:** el OTP del negocio requiere `business_id` para espejar el badge → la
-verificación del paso 4 se ejecuta contra la fila personal durante el flujo, y el espejo al
-negocio ocurre tras el cierre (la Edge Function `verify-otp` re-sellada con `business_id`, o
-el espejo diferido — detalle para el plan). Alternativa simple: paso 4 verifica solo la fila
-personal y el badge del negocio se ofrece post-onboarding en `/provider` — ver §10.2.
 
 ## 8. Fixes correlacionados (independientes del onboarding, mismo PR-tema)
 
@@ -216,24 +236,25 @@ La web migra a ambas DESPUÉS (registrado en los ADRs como deuda con dueño, no 
 **Cerradas (PO, 2026-07-16):** onboarding 100% nativo · sin fecha · diseño móvil desde cero ·
 RPC atómica · iOS descartado.
 
-**Abiertas (validar en la revisión de este spec):**
+**Cerradas en la revisión de este spec (PO, 2026-07-16, rev. 2):**
 
-1. **¿OTP obligatorio para el consumidor dentro del onboarding?** Propuesta: SÍ (este spec,
-   §6.2). Es más fricción que la web (que lo difiere), pero garantiza que toda solicitud
-   nueva sea desbloqueable — y el producto vende leads con WhatsApp verificado. Alternativa:
-   saltable con re-prompt bloqueante al crear la primera solicitud.
-2. **¿Badge de WhatsApp del negocio dentro del onboarding o después?** Propuesta: la
-   verificación personal va dentro (paso 4) y el espejo del badge se resuelve tras el cierre;
-   si complica, mover el badge a post-onboarding como la web (§7, orden OTP vs RPC).
-3. **¿Foto del negocio en v1 del onboarding?** Propuesta: sí pero opcional y saltable (§7.5).
-   Quitar el paso si el PO prefiere el flujo mínimo.
+1. **OTP del consumidor: FUERA del onboarding.** El disparador es al crear una solicitud o
+   al querer confirmar la cuenta: notificación cerrable con el argumento "las solicitudes
+   verificadas generan más confianza" (§6.1). No bloquea.
+2. **Badge de WhatsApp del negocio: como la web** — post-onboarding, desde la vista del
+   proveedor (§7.4).
+3. **Foto del negocio: opcional y saltable** (§7.5).
 
 ## 11. Criterios de éxito
 
 - **Cuenta Google NUEVA de punta a punta en el Redmi**: instalar → Google → onboarding
-  consumidor (nombre precargado, OTP por SMS real, GPS) → crear solicitud; con la segunda
-  cuenta: onboarding proveedor → ofertar → aceptación → desbloqueo → **el contacto revela el
-  número verificado** (el bug de §1, reproducido antes del fix, ya no reproduce).
+  consumidor (nombre precargado, GPS) → crear solicitud → aparece el banner cerrable de
+  verificación → verificar con OTP por SMS real; con la segunda cuenta: onboarding
+  proveedor → ofertar → aceptación → desbloqueo → **el contacto revela el número
+  verificado** (el bug de §1, reproducido antes del fix, ya no reproduce).
+- **Consumidor SIN verificar**: el proveedor con oferta aceptada ve en la hoja de
+  desbloqueo que el contacto no está disponible ANTES de pagar (§8.2) — cero créditos
+  cobrados; el banner de §6.1 reaparece en la próxima solicitud del cliente.
 - **Atomicidad demostrada**: simular fallo a mitad del alta (p. ej. categoría inválida) →
   cero filas nuevas en `profiles`/`provider_businesses`/`provider_wallets`; reintento con
   éxito no duplica nada (`already` funciona).
