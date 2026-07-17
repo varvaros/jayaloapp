@@ -420,3 +420,200 @@ String _imageContentType(String ext) => switch (ext) {
       'webp' => 'image/webp',
       _ => 'image/jpeg',
     };
+
+// ── Chat (spec 2026-07-17-chat-app-design.md) ───────────────────────────────
+
+const chatMsgCols = 'id,sender_id,kind,body,created_at';
+
+Future<List<Map<String, dynamic>>> conversationsList() async =>
+    List<Map<String, dynamic>>.from(await supa.rpc('get_my_conversations_list'));
+
+Future<Map<String, dynamic>?> fetchConversation(String id) async =>
+    await supa
+        .from('conversations')
+        .select('id,kind,source_id,customer_id,provider_user_id,product_name,'
+            'agreed_price,agreed_hourly_rate,agreed_estimated_hours,'
+            'product_image_url,request_title,status,created_at')
+        .eq('id', id)
+        .maybeSingle();
+
+/// Página de historial, más recientes primero. Cursor COMPUESTO (created_at,id)
+/// — un cursor de una sola columna salta filas con timestamps iguales.
+Future<List<Map<String, dynamic>>> messagesPage(String convId,
+    {String? beforeCreatedAt, String? beforeId, int limit = 50}) async {
+  var q = supa
+      .from('conversation_messages')
+      .select(chatMsgCols)
+      .eq('conversation_id', convId);
+  if (beforeCreatedAt != null && beforeId != null) {
+    q = q.or('created_at.lt.$beforeCreatedAt,'
+        'and(created_at.eq.$beforeCreatedAt,id.lt.$beforeId)');
+  }
+  return List<Map<String, dynamic>>.from(await q
+      .order('created_at', ascending: false)
+      .order('id', ascending: false)
+      .limit(limit));
+}
+
+/// Gap al volver de background: solo lo nuevo desde el último visto.
+Future<List<Map<String, dynamic>>> messagesSince(String convId, String afterCreatedAt) async =>
+    List<Map<String, dynamic>>.from(await supa
+        .from('conversation_messages')
+        .select(chatMsgCols)
+        .eq('conversation_id', convId)
+        .gt('created_at', afterCreatedAt)
+        .order('created_at', ascending: true));
+
+Future<Map<String, dynamic>> insertChatMessage(
+        {required String convId, required String? senderId, required String kind, required String body}) async =>
+    Map<String, dynamic>.from(await supa
+        .from('conversation_messages')
+        .insert({'conversation_id': convId, 'sender_id': senderId, 'kind': kind, 'body': body})
+        .select(chatMsgCols)
+        .single());
+
+Future<void> updateQuickBody(String messageId, String body) async =>
+    supa.from('conversation_messages').update({'body': body}).eq('id', messageId);
+
+Future<void> markConversationCompleted(String convId) async =>
+    supa.rpc('mark_conversation_completed', params: {'_conversation_id': convId});
+
+Future<void> markConversationLost(String convId) async =>
+    supa.from('conversations').update({'status': 'perdido'}).eq('id', convId);
+
+Future<void> improveOfferPrice(String convId, num newPrice) async =>
+    supa.from('conversations').update({'agreed_price': newPrice}).eq('id', convId);
+
+Future<bool> hasConversationRating(String convId) async =>
+    (await supa.from('conversation_ratings').select('id').eq('conversation_id', convId).maybeSingle()) != null;
+
+Future<void> submitConversationRating(
+        {required String convId, required String customerId, required String providerUserId,
+        required int overall, required bool quality, required bool fulfillment,
+        required bool service, required bool condition, String? comment}) async =>
+    supa.from('conversation_ratings').insert({
+      'conversation_id': convId,
+      'customer_id': customerId,
+      'provider_user_id': providerUserId,
+      'overall': overall,
+      'quality_ok': quality,
+      'fulfillment_ok': fulfillment,
+      'service_ok': service,
+      'condition_ok': condition,
+      'comment': (comment == null || comment.trim().isEmpty) ? null : comment.trim(),
+    });
+
+Future<void> reportAccount(
+        {required String reporterId, required String reportedUserId, String? convId,
+        required String reason, String? details}) async =>
+    supa.from('account_reports').insert({
+      'reporter_id': reporterId,
+      'reported_user_id': reportedUserId,
+      'conversation_id': convId,
+      'reason': reason,
+      'details': (details == null || details.trim().isEmpty) ? null : details.trim(),
+    });
+
+/// Gotcha #14: matchear por LINK (formato actual + legado), nunca entity_id.
+Future<void> markChatNotificationsRead(String convId) async {
+  final uid = supa.auth.currentUser!.id;
+  final readAt = DateTime.now().toUtc().toIso8601String();
+  await Future.wait([
+    supa.from('notifications').update({'read_at': readAt})
+        .eq('user_id', uid).eq('kind', 'message_new')
+        .eq('link', '/messages?c=$convId').isFilter('read_at', null),
+    supa.from('notifications').update({'read_at': readAt})
+        .eq('user_id', uid).eq('kind', 'message_new')
+        .eq('link', '/messages/$convId').isFilter('read_at', null),
+  ]);
+}
+
+/// Foto del chat → `{uid}/chat/<ts>-<rand>.<ext>` (mismo bucket público).
+Future<String> uploadChatImage(String filePath) => _uploadMarketplaceImage(filePath, 'chat');
+
+Future<String?> myBusinessAddressBody() async {
+  final uid = supa.auth.currentUser!.id;
+  final biz = await supa
+      .from('provider_businesses')
+      .select('id,name,city,sector')
+      .eq('user_id', uid)
+      .limit(1)
+      .maybeSingle();
+  if (biz == null) return null;
+  final address = await supa.rpc('get_business_address', params: {'_business_id': biz['id']});
+  if (address == null || (address as String).isEmpty) return null;
+  final cityLine = [biz['sector'], biz['city']].whereType<String>().where((s) => s.isNotEmpty).join(', ');
+  return [biz['name'], address, cityLine].whereType<String>().where((s) => s.isNotEmpty).join('\n');
+}
+
+Future<String?> myContactBody() async {
+  final uid = supa.auth.currentUser!.id;
+  final p = await supa.from('profiles')
+      .select('first_name,last_name,phone,whatsapp').eq('user_id', uid).maybeSingle();
+  if (p == null) return null;
+  final fullName = [p['first_name'], p['last_name']]
+      .whereType<String>().where((s) => s.isNotEmpty).join(' ').trim();
+  final lines = <String>[
+    if (fullName.isNotEmpty) 'Nombre: $fullName',
+    if (p['phone'] is String && (p['phone'] as String).isNotEmpty) 'Teléfono: ${p['phone']}',
+    if (p['whatsapp'] is String && (p['whatsapp'] as String).isNotEmpty && p['whatsapp'] != p['phone'])
+      'WhatsApp: ${p['whatsapp']}',
+  ];
+  return lines.isEmpty ? null : '📇 Mis datos de contacto\n${lines.join('\n')}';
+}
+
+Future<String?> myLocationBody() async {
+  final uid = supa.auth.currentUser!.id;
+  final p = await supa.from('profiles')
+      .select('address,address_reference,sector,city').eq('user_id', uid).maybeSingle();
+  if (p == null) return null;
+  final cityLine = [p['sector'], p['city']].whereType<String>().where((s) => s.isNotEmpty).join(', ');
+  final parts = <String>[
+    if (p['address'] is String && (p['address'] as String).isNotEmpty) p['address'] as String,
+    if (cityLine.isNotEmpty) cityLine,
+    if (p['address_reference'] is String && (p['address_reference'] as String).isNotEmpty)
+      'Referencia: ${p['address_reference']}',
+  ];
+  return parts.isEmpty ? null : parts.join('\n');
+}
+
+/// Defaults idénticos a DEFAULT_CHAT_WELCOME de la web + override de app_settings.
+const defaultChatWelcome = <String, String>{
+  'provider_title': 'Aviso de seguridad antes de vender',
+  'provider_body':
+      'Jayalo te conecta con clientes, pero no participa en pagos, entregas ni garantías.\n\nAntes de entregar un producto o servicio, verifica la identidad del cliente y confirma que el pago haya sido recibido. Evita confiar únicamente en comprobantes de pago.\n\nCualquier acuerdo, pago o entrega es responsabilidad exclusiva del proveedor y del cliente. Jayalo no se hace responsable por fraudes, incumplimientos o disputas entre las partes.',
+  'customer_title': 'Aviso de seguridad antes de comprar',
+  'customer_body':
+      'Jayalo te conecta con el proveedor, pero no participa en el pago, la entrega ni la garantía del producto o servicio.\n\nAntes de pagar: confirma el producto/servicio, el precio total y la forma de entrega por este chat. Si es posible, verifica el producto en persona antes de pagar.\n\nEvita transferir dinero por adelantado a cuentas que no puedas verificar. Cualquier acuerdo es responsabilidad tuya y del proveedor.',
+  'button_label': 'Entiendo y acepto',
+  'auto_greeting_template':
+      '¡Hola, {first_name}! Gracias por elegir {business}. Confirmo que el acuerdo es: {product}{price}. Estoy listo para concretar la entrega.',
+};
+
+Future<Map<String, dynamic>> chatWelcomeConfig() async {
+  try {
+    final row = await supa.from('app_settings')
+        .select('value').eq('key', 'chat_welcome_messages').maybeSingle();
+    final v = row?['value'];
+    return {...defaultChatWelcome, if (v is Map) ...Map<String, dynamic>.from(v)};
+  } catch (_) {
+    return Map<String, dynamic>.from(defaultChatWelcome); // best-effort, nunca bloquea
+  }
+}
+
+Future<String?> conversationCustomerFirstName(String convId) async {
+  final rows = List<Map<String, dynamic>>.from(await supa
+      .rpc('get_conversation_customer_name', params: {'_conversation_id': convId}));
+  if (rows.isEmpty) return null;
+  final full = [rows.first['first_name'], rows.first['last_name']]
+      .whereType<String>().where((s) => s.isNotEmpty).join(' ').trim();
+  return full.isEmpty ? null : full;
+}
+
+Future<String?> myBusinessName() async {
+  final uid = supa.auth.currentUser!.id;
+  final biz = await supa.from('provider_businesses')
+      .select('name').eq('user_id', uid).limit(1).maybeSingle();
+  final n = biz?['name'];
+  return (n is String && n.isNotEmpty) ? n : null;
+}
