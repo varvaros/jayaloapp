@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/config.dart';
 import '../../data/repos.dart';
 import '../../domain/pricing.dart';
+import '../../domain/recharge.dart';
 import '../client/request_status_screen.dart' show offerPriceLabel;
 
 int estimatedUnlockCost(Map<String, dynamic> o) {
@@ -85,8 +86,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                     title: Text('${_balance ?? '—'} créditos',
                         style: const TextStyle(fontWeight: FontWeight.w800)),
                     trailing: FilledButton.tonal(
-                      onPressed: () => launchUrl(Uri.parse(AppConfig.walletUrl),
-                          mode: LaunchMode.externalApplication),
+                      onPressed: _openWallet,
                       child: const Text('Recargar'),
                     ),
                   ),
@@ -153,6 +153,18 @@ class _MyOffersScreenState extends State<MyOffersScreen>
   void _snack(String msg) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
 
+  /// ADR-0031: el pago SIEMPRE ocurre fuera de la app (navegador del sistema).
+  Future<void> _openWallet() async {
+    var ok = false;
+    try {
+      ok = await launchUrl(Uri.parse(AppConfig.walletUrl),
+          mode: LaunchMode.externalApplication);
+    } catch (_) {}
+    if (!ok && mounted) {
+      _snack('No se pudo abrir el navegador. Visita jayalo.com para recargar.');
+    }
+  }
+
   /// Paridad con la web (ProviderOffersSection.tsx:670): NUNCA cobrar si el
   /// contacto no es revelable (cliente sin WhatsApp verificado u opt-out).
   /// Es la barrera del bug de dinero 2026-07-16.
@@ -195,7 +207,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
 
   void _showUnlockSheet(Map<String, dynamic> o) {
     final cost = estimatedUnlockCost(o);
-    final enough = (_balance ?? 0) >= cost;
+    final needsRecharge = shouldOfferRecharge(balance: _balance, cost: cost);
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -211,10 +223,9 @@ class _MyOffersScreenState extends State<MyOffersScreen>
               Text(
                   'Costo: $cost crédito${cost == 1 ? '' : 's'} · Tu saldo: ${_balance ?? 0}'),
               const SizedBox(height: 16),
-              if (!enough)
+              if (needsRecharge)
                 FilledButton(
-                  onPressed: () => launchUrl(Uri.parse(AppConfig.walletUrl),
-                      mode: LaunchMode.externalApplication),
+                  onPressed: _openWallet,
                   child: const Text('Saldo insuficiente — Recargar'),
                 )
               else
