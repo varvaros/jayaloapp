@@ -144,10 +144,53 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     final st = o['status'] as String;
     final unlocked = o['unlocked_at'] != null;
     if (st == 'accepted' && !unlocked) {
-      _showUnlockSheet(o);
+      _preUnlockCheck(o);
     } else if (unlocked || st == 'completed') {
       _showContactSheet(o);
     }
+  }
+
+  void _snack(String msg) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
+
+  /// Paridad con la web (ProviderOffersSection.tsx:670): NUNCA cobrar si el
+  /// contacto no es revelable (cliente sin WhatsApp verificado u opt-out).
+  /// Es la barrera del bug de dinero 2026-07-16.
+  Future<void> _preUnlockCheck(Map<String, dynamic> o) async {
+    bool revealable;
+    try {
+      revealable = await canRevealOffer(o['id'] as String);
+    } catch (_) {
+      _snack('No pudimos comprobar el contacto. Revisa tu conexión e intenta de nuevo.');
+      return;
+    }
+    if (!mounted) return;
+    if (!revealable) {
+      showModalBottomSheet(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Contacto aún no disponible',
+                    style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                const Text(
+                    'Este cliente todavía no tiene su WhatsApp verificado, así que no se '
+                    'puede desbloquear su contacto (y no se te cobraría nada). '
+                    'Te avisaremos si lo confirma.'),
+                const SizedBox(height: 16),
+                FilledButton.tonal(
+                    onPressed: () => Navigator.pop(ctx), child: const Text('Entendido')),
+              ]),
+        ),
+      );
+      return;
+    }
+    _showUnlockSheet(o);
   }
 
   void _showUnlockSheet(Map<String, dynamic> o) {
@@ -200,7 +243,35 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     try {
       contact = await unlockedContact(o['id'] as String);
     } catch (_) {
-      contact = (firstName: null, phone: null);
+      if (!mounted) return;
+      // Derecho YA pagado: jamás presentar un fallo como "no hay contacto"
+      // (el catch silencioso aquí era el bug de dinero 2026-07-16).
+      showModalBottomSheet(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('No pudimos cargar el contacto',
+                    style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                const Text('Tu desbloqueo está guardado — no se te volverá a cobrar. '
+                    'Revisa tu conexión e intenta de nuevo.'),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showContactSheet(o);
+                  },
+                  child: const Text('Reintentar'),
+                ),
+              ]),
+        ),
+      );
+      return;
     }
     if (!mounted) return;
     showModalBottomSheet(
