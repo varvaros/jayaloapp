@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/config.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
 import '../../push/push_service.dart';
@@ -35,6 +37,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     final ok = await showOtpSheet(context, phone: (p?['phone'] as String?) ?? '');
     if (ok) _load();
+  }
+
+  /// Cerrar sesión de VERDAD: hay que cerrar también la de Google, no solo la
+  /// de Supabase. El SDK de Google cachea la cuenta y `signIn()` la reutiliza
+  /// en silencio → el siguiente login entraba con la MISMA cuenta y no se podía
+  /// cambiar de usuario (en un teléfono compartido, además, "cerrar sesión" no
+  /// protegía nada). Verificado en el device 2026-07-17.
+  Future<void> _signOut() async {
+    await deleteCurrentToken(); // best-effort (ya trae su try/catch)
+    try {
+      await GoogleSignIn(serverClientId: AppConfig.googleWebClientId).signOut();
+    } catch (e) {
+      // Si Google falla, la sesión de Supabase debe cerrarse igual.
+      debugPrint('GoogleSignIn.signOut falló (no bloqueante): $e');
+    }
+    await Supabase.instance.client.auth.signOut();
   }
 
   /// Sello del negocio (spec §7.4): OTP con business_id — espeja el badge si
@@ -88,10 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ListTile(
           leading: const Icon(Icons.logout),
           title: const Text('Cerrar sesión'),
-          onTap: () async {
-            await deleteCurrentToken();
-            await Supabase.instance.client.auth.signOut();
-          },
+          onTap: _signOut,
         ),
       ]),
     );
