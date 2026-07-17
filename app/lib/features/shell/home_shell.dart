@@ -18,11 +18,13 @@ class HomeShell extends StatelessWidget {
         ? const [
             ('/provider', Icons.inbox_outlined, 'Solicitudes'),
             ('/provider/offers', Icons.local_offer_outlined, 'Mis ofertas'),
+            ('/messages', Icons.chat_bubble_outline, 'Mensajes'),
             ('/settings', Icons.settings_outlined, 'Ajustes'),
           ]
         : const [
             ('/client', Icons.receipt_long_outlined, 'Mis solicitudes'),
             ('/client/create', Icons.add_circle_outline, 'Crear'),
+            ('/messages', Icons.chat_bubble_outline, 'Mensajes'),
             ('/settings', Icons.settings_outlined, 'Ajustes'),
           ];
     // Match más específico primero (evita que '/client' capture '/client/create').

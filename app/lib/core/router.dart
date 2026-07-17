@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../features/auth/login_screen.dart';
+import '../features/chat/chat_screen.dart';
+import '../features/chat/conversations_screen.dart';
 import '../features/client/create_request_screen.dart';
 import '../features/client/my_requests_screen.dart';
 import '../features/client/request_status_screen.dart';
@@ -71,6 +73,13 @@ GoRouter buildRouter() => GoRouter(
             GoRoute(
                 path: '/settings',
                 builder: (_, _) => const BackGuard(child: SettingsScreen())),
+            GoRoute(
+                path: '/messages',
+                builder: (_, _) => const BackGuard(child: ConversationsScreen())),
+            GoRoute(
+                path: '/messages/:id',
+                builder: (_, s) => BackGuard(
+                    child: ChatScreen(conversationId: s.pathParameters['id']!))),
           ],
         ),
       ],
