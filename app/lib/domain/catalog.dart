@@ -1,0 +1,46 @@
+/// Categorías del marketplace — port de jayalo-main src/mocks/categories.ts
+/// (la tabla `categories` de prod está VACÍA; la web usa este mismo mock; el
+/// matching solicitud↔negocio es por slug de texto). Regenerar con el script
+/// del plan (Task 3) si la web cambia la lista.
+typedef Category = ({String id, String name});
+
+const List<Category> kCategories = [
+  (id: 'autos', name: 'Autos'),
+  (id: 'ferreteria', name: 'Ferretería'),
+  (id: 'hogar', name: 'Hogar'),
+  (id: 'electronica', name: 'Electrónica'),
+  (id: 'ropa', name: 'Ropa y calzado'),
+  (id: 'maquinarias', name: 'Maquinaria y equipos'),
+  (id: 'plomeria', name: 'Plomería'),
+  (id: 'electricidad', name: 'Electricidad'),
+  (id: 'pintura', name: 'Pintura'),
+  (id: 'eventos', name: 'Eventos'),
+  (id: 'servicios', name: 'Servicios generales'),
+  (id: 'belleza', name: 'Belleza'),
+  (id: 'salud', name: 'Salud y bienestar'),
+  (id: 'mascotas', name: 'Mascotas'),
+  (id: 'mudanzas', name: 'Mudanzas y transporte'),
+  (id: 'tecnologia', name: 'Tecnología e IT'),
+  (id: 'educacion', name: 'Educación y cursos'),
+  (id: 'gastronomia', name: 'Gastronomía y catering'),
+  (id: 'construccion', name: 'Construcción'),
+  (id: 'jardineria', name: 'Jardinería'),
+  (id: 'limpieza', name: 'Limpieza'),
+  (id: 'seguridad', name: 'Seguridad'),
+  (id: 'legal', name: 'Legal'),
+  (id: 'contabilidad', name: 'Contabilidad y finanzas'),
+  (id: 'marketing', name: 'Marketing y publicidad'),
+  (id: 'fotografia', name: 'Fotografía y video'),
+  (id: 'agricultura', name: 'Agricultura'),
+  (id: 'deportes', name: 'Deportes y fitness'),
+  (id: 'arte', name: 'Arte y manualidades'),
+  (id: 'joyeria', name: 'Joyería y relojería'),
+  (id: 'cerrajeria', name: 'Cerrajería'),
+  (id: 'climatizacion', name: 'Aire y refrigeración'),
+  (id: 'medios', name: 'Medios y Periodismo'),
+  (id: 'redaccion', name: 'Redacción y Corrección'),
+  (id: 'relaciones_publicas', name: 'Relaciones Públicas'),
+  (id: 'contenido', name: 'Contenido y Publicaciones'),
+  (id: 'investigacion', name: 'Investigación'),
+  (id: 'editorial', name: 'Producción Editorial'),
+  (id: 'locucion', name: 'Locución y Presentación'),];
