@@ -238,8 +238,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   /// Envío optimista genérico (texto/dirección/imagen/quick/system/audit).
-  /// `systemSender: true` fuerza sender NULL (mensajes del sistema/auditoría,
-  /// nunca atribuidos a un usuario) — gana sobre `senderIdOverride`.
+  /// `systemSender: true` fuerza sender NULL — gana sobre `senderIdOverride`.
+  /// RLS de prod: solo `kind 'audit'` acepta sender NULL; `kind 'system'`
+  /// exige sender_id = auth.uid(), así que va sin `systemSender`.
   Future<bool> _sendRaw(String kind, String body,
       {String? senderIdOverride, bool systemSender = false}) async {
     final sender = systemSender ? null : (senderIdOverride ?? _uid);
@@ -499,8 +500,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   try {
                     await markConversationCompleted(widget.conversationId);
                     if (!mounted) return;
-                    await _sendRaw('system', '✓ Marcado como completado por el proveedor.',
-                        systemSender: true);
+                    // RLS: 'system' exige sender_id = auth.uid(); solo 'audit' va con NULL.
+                    await _sendRaw('system', '✓ Marcado como completado por el proveedor.');
                     if (!mounted) return;
                     _snack('Marcado como completado.');
                     await _reload();
