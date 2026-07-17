@@ -53,7 +53,12 @@ class ChatSession {
       createdAtRaw: now.toUtc().toIso8601String(),
       sendStatus: SendStatus.sending,
     ));
-    if (senderId != null) _pending.add(_Pending(tempId, senderId, kind, body));
+    // Trackear SIEMPRE, incluso con senderId null (ej. 'audit'): si no se
+    // trackea, un mensaje con sender NULL que llegue por realtime antes de
+    // confirmarse el insert no tiene con qué reconciliar en mergeServer y
+    // queda como burbuja duplicada transitoria. mergeServer matchea por
+    // (senderId, kind, body) y null == null funciona en Dart.
+    _pending.add(_Pending(tempId, senderId, kind, body));
     return tempId;
   }
 

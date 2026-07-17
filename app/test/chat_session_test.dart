@@ -100,20 +100,39 @@ void main() {
   });
 
   // FIX 3: confirmOptimistic no debe duplicar si mergeServer ya reconcilió
-  // la fila real primero (realtime ganó la carrera). Se usa senderId: null
-  // para que la heurística de reconciliación de mergeServer (que solo
-  // trackea `_pending` cuando hay senderId) NO empate al temp, forzando que
-  // mergeServer inserte la fila real como mensaje NUEVO y el temp quede
-  // vivo — el escenario donde el guard de confirmOptimistic es necesario.
+  // la fila real primero (realtime ganó la carrera). AJUSTE (Task 9 fix 3):
+  // antes se usaba senderId: null para forzar el no-match, aprovechando que
+  // addOptimistic con senderId null NO se agregaba a `_pending`. Con el fix
+  // de FIX 3, addOptimistic SIEMPRE agrega a `_pending` (senderId null
+  // incluido), así que ahora se fuerza el no-match con un body distinto
+  // entre el optimista y la fila real — la heurística de mergeServer
+  // matchea por (senderId, kind, body), así que un body distinto no matchea
+  // igual que antes lo lograba el senderId null.
   test('confirmOptimistic es no-op si la fila real ya fue reconciliada por mergeServer', () {
     final s = ChatSession();
-    s.addOptimistic(tempId: 'temp-1', senderId: null, kind: 'text', body: 'hola', now: DateTime.utc(2026, 7, 17));
-    final realRow = row('real-1', null, 'hola', '2026-07-17T10:00:00Z');
+    s.addOptimistic(tempId: 'temp-1', senderId: 'u', kind: 'text', body: 'hola', now: DateTime.utc(2026, 7, 17));
+    final realRow = row('real-1', 'u', 'distinto', '2026-07-17T10:00:00Z');
     final changed = s.mergeServer(realRow);
     expect(changed, isTrue);
     expect(s.messages.map((m) => m.id).toSet(), {'temp-1', 'real-1'});
     s.confirmOptimistic('temp-1', realRow);
     expect(s.messages.where((m) => m.id == 'real-1').length, 1);
     expect(s.messages.length, 1);
+  });
+
+  // FIX 3 (Task 9 review, Important): addOptimistic solo agregaba a
+  // `_pending` cuando senderId != null, así que un mensaje con sender NULL
+  // (ej. 'audit', insertado con systemSender) que llega por realtime ANTES
+  // de que confirme su propio insert no tenía con qué reconciliar por
+  // heurística en mergeServer → quedaba como mensaje nuevo separado del
+  // optimista, produciendo burbuja duplicada transitoria. Con el fix,
+  // `_pending` trackea también senderId null (null == null matchea en Dart).
+  test('addOptimistic con senderId null se reconcilia por mergeServer (no duplica)', () {
+    final s = ChatSession();
+    s.addOptimistic(tempId: 'temp-1', senderId: null, kind: 'audit', body: '¿Ya recibiste tu producto?', now: DateTime.utc(2026, 7, 17));
+    final changed = s.mergeServer(row('real-1', null, '¿Ya recibiste tu producto?', '2026-07-17T10:00:00Z', 'audit'));
+    expect(changed, isTrue);
+    expect(s.messages.length, 1);
+    expect(s.messages.single.id, 'real-1');
   });
 }

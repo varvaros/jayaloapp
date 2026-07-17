@@ -134,7 +134,12 @@ class _ChatScreenState extends State<ChatScreen> {
           business: biz ?? 'nuestro negocio',
           product: conv['product_name'] as String? ?? 'el producto acordado',
           priceTxt: priceTxt);
-      await _sendRaw('text', body);
+      // Re-chequeo: los 3 awaits de arriba (Future.wait) dejan una ventana
+      // donde un mensaje puede llegar por realtime. Si ya no está vacío, no
+      // enviar el saludo (pero _greeted queda en true, no reintentar).
+      if (_session.messages.isEmpty) {
+        await _sendRaw('text', body);
+      }
     }
     // 3) Auditoría 72h.
     final hasAudit = _session.messages.any((m) => m.kind == 'audit');
@@ -500,9 +505,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   try {
                     await markConversationCompleted(widget.conversationId);
                     if (!mounted) return;
-                    // RLS: 'system' exige sender_id = auth.uid(); solo 'audit' va con NULL.
-                    await _sendRaw('system', '✓ Marcado como completado por el proveedor.');
-                    if (!mounted) return;
+                    // El mensaje system lo inserta la RPC (la RLS bloquea inserts post-cierre).
                     _snack('Marcado como completado.');
                     await _reload();
                   } catch (_) {
