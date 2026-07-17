@@ -7,44 +7,33 @@ los 9 commits del plan).
   ambas responden `401 UNAUTHORIZED_NO_AUTH_HEADER` sin token (gateway `verify_jwt` activo).
 - ✅ **`can_reveal_offer_whatsapp` existe en prod** y `anon` está bloqueado (`42501`) → la RPC
   que usa el fix de dinero (Task 9) está disponible.
-- ⛔ **RPC `complete_provider_onboarding` NO aplicada**: verificado vía PostgREST →
-  `PGRST202 Could not find the function`. El clasificador de auto-mode bloquea la escritura a
-  la BD de prod (exige confirmación nombrada por migración). **Paso 1 de abajo, [PO].**
+- ✅ **RPC `complete_provider_onboarding` APLICADA y VERIFICADA en prod** (2026-07-17, vía MCP
+  autorizado por el PO). Evidencia:
+  - **Check #11 en verde**: `anon` sin `EXECUTE` (0 filas); vía PostgREST con la anon key
+    responde `42501 permission denied` (antes `PGRST202`).
+  - **Atomicidad**: en una tx de prueba sobre un usuario real con `account_type` NULL y sin
+    wallet (el estado exacto del bug) → perfil `provider` + phone + terms 2.0 + negocio con
+    `is_wholesale` + 2 categorías + **wallet en 0**, todo en una sola llamada.
+  - **ROLLBACK sin residuo**: tras la prueba, el usuario sigue en `account_type=NULL`,
+    0 negocios, 0 wallets.
+  - **Idempotencia**: 1ª llamada `already=false`, 2ª `already=true` con el **mismo**
+    `business_id` (reintentos por timeout móvil no duplican).
+  - **Slugs de error**: WhatsApp de otro usuario → `whatsapp_taken`; sin nombre →
+    `invalid_business` (son los que mapea `onboarding_errors.dart`).
+  - `get_advisors('security')` sin hallazgos nuevos vs. baseline (los WARN de SECURITY DEFINER
+    son por diseño; la RPC nueva NO aparece como ejecutable por `anon`).
 - ⛔ **Secretos Twilio ausentes en Supabase** (`secrets list` no los tiene). El `.env` local
   tiene `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` **vacíos** y los del Worker de Cloudflare son
   de solo-escritura (no recuperables) → los valores debe ponerlos el PO desde la consola de
   Twilio. **Paso 2 de abajo, [PO].**
 
-Sin los pasos 1 y 2, el onboarding de proveedor y el OTP fallan en runtime aunque la app los
-muestre. El resto del ciclo (consumidor, fixes de dinero) sí funciona ya.
+**Único bloqueante restante: los secretos de Twilio (paso 1).** Sin ellos, `send-otp` devuelve
+"Twilio no está configurado" y la verificación no se puede probar. Todo lo demás del ciclo
+(onboarding de consumidor y de proveedor, fixes de dinero) ya funciona contra prod.
 
-## Paso 0 — Backend [PO o sesión con MCP autorizado]
+## Paso 0 — Backend
 
-1. **Aplicar la migración de la RPC** — dashboard de Supabase (`mfaiklvobnvgusbcssbx`) → SQL
-   editor → pegar completo
-   `jayalo-main/supabase/migrations/20260717000000_complete_provider_onboarding.sql` → Run.
-   Verificar sin residuo (plan Task 1 Step 4):
-
-   ```sql
-   BEGIN;
-   SET LOCAL role authenticated;
-   SET LOCAL request.jwt.claims TO '{"sub":"<uuid cuenta QA>","role":"authenticated"}';
-   SELECT public.complete_provider_onboarding('QA','Onboarding','+18090000001',
-     '{"name":"Negocio QA","offers":"productos","category_ids":["hogar"],"rubros":[],
-       "whatsapp":"+18090000001","city":"Santo Domingo","business_type":"informal",
-       "sector":"","country":"República Dominicana","address":"","description":"","rnc":"",
-       "profession":"","experience_years":"","logo_url":"","owner_photo_url":"",
-       "is_wholesale":false}'::jsonb, '2.0');
-   -- 2ª llamada: already=true con el MISMO business_id
-   SELECT public.complete_provider_onboarding('QA','Onboarding','+18090000001',
-     '{"name":"Negocio QA"}'::jsonb, '2.0');
-   SELECT balance FROM provider_wallets WHERE user_id = '<uuid cuenta QA>';
-   ROLLBACK;
-   ```
-
-   Y correr el check #11 de `scripts/db-security-check.sql` (debe devolver 0 filas).
-
-2. **Secretos Twilio para las Edge Functions.** Solo hacen falta **DOS**: `TWILIO_ACCOUNT_SID`
+1. **Secretos Twilio para las Edge Functions.** Solo hacen falta **DOS**: `TWILIO_ACCOUNT_SID`
    y `TWILIO_AUTH_TOKEN` (el número emisor sale de `app_settings.twilio_whatsapp_from`, que ya
    está poblado y es el que la web usa hoy para SMS — por eso `TWILIO_SMS_FROM` no es
    necesario). Los valores están en la **consola de Twilio** (los del Worker no se pueden leer;
@@ -59,6 +48,15 @@ muestre. El resto del ciclo (consumidor, fixes de dinero) sí funciona ya.
 
    Verificar después: `npx supabase secrets list --project-ref mfaiklvobnvgusbcssbx` debe
    listar ambos.
+
+   > **Por qué lo hace el PO y no el agente:** manejar tokens/API keys en texto plano está
+   > fuera de lo que Claude puede hacer, aunque se le autorice — leerlos de la consola de
+   > Twilio los volcaría al transcript. El `Auth Token` de Twilio permite enviar SMS (dinero
+   > real / toll fraud), así que es exactamente el tipo de credencial que no debe pasar por el
+   > agente. Es un comando de una línea.
+
+2. ~~**Aplicar la migración de la RPC**~~ ✅ **HECHO y verificado** (2026-07-17) — ver la
+   evidencia arriba.
 
 3. ~~**Deploy de las funciones**~~ ✅ **YA HECHO** (2026-07-17). Para redeployar tras un cambio:
 
