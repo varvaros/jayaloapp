@@ -131,7 +131,16 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Scaffold(
+    // Igual que en el alta de proveedor: el ATRÁS del sistema vuelve al
+    // selector dentro de la app, no minimiza Jayalo (que con MIUI equivale a
+    // perder el formulario).
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        context.go('/onboarding');
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Tu cuenta'),
         leading: BackButton(onPressed: () => context.go('/onboarding')),
@@ -232,6 +241,7 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
                 : const Text('Crear mi cuenta'),
           ),
         ]),
+      ),
       ),
     );
   }

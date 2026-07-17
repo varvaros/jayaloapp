@@ -40,6 +40,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   final List<String> _rubros = [];
   List<Map<String, dynamic>> _dbRubros = [];
   bool _loadingRubros = false;
+  String? _rubrosError;
 
   // Paso 3 — dónde trabajas
   final _city = TextEditingController();
@@ -124,15 +125,31 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       }
     });
     if (_categories.isEmpty) {
-      setState(() => _dbRubros = []);
+      setState(() {
+        _dbRubros = [];
+        _rubrosError = null;
+      });
       return;
     }
-    setState(() => _loadingRubros = true);
+    await _loadRubros();
+  }
+
+  Future<void> _loadRubros() async {
+    setState(() {
+      _loadingRubros = true;
+      _rubrosError = null;
+    });
     try {
       final rows = await rubrosForCategories(List.of(_categories));
       if (mounted) setState(() => _dbRubros = rows);
-    } catch (_) {
-      // Rubros son opcionales: sin red se puede seguir sin ellos.
+    } catch (e) {
+      // Antes esto era un catch silencioso: si la consulta fallaba, los rubros
+      // simplemente no aparecían y el usuario no tenía forma de saber por qué
+      // (el PO reportó "no vi rubro" en el E2E). Ahora se dice y se reintenta.
+      debugPrint('[onboarding] rubros fallaron: $e');
+      if (mounted) {
+        setState(() => _rubrosError = 'No pudimos cargar los rubros.');
+      }
     } finally {
       if (mounted) setState(() => _loadingRubros = false);
     }
@@ -239,6 +256,22 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // El botón ATRÁS del sistema debe retroceder de paso, no minimizar la app:
+    // con context.go() no hay pila que popear, así que Android salía de Jayalo,
+    // MIUI mataba el proceso y al reabrir el formulario empezaba de cero
+    // (verificado con el PO en el device 2026-07-17). Doctrina del proyecto:
+    // nunca perder lo que el usuario ya tecleó.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _back();
+      },
+      child: _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Tu negocio (${_step + 1}/$_steps)'),
@@ -377,15 +410,31 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
                 : null,
           ),
       ]),
-      if (_loadingRubros) const Padding(
-        padding: EdgeInsets.all(12),
-        child: Center(child: CircularProgressIndicator()),
-      ),
-      if (_dbRubros.isNotEmpty) ...[
-        const SizedBox(height: 16),
-        Text('¿Algo más específico? (opcional)',
-            style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
+      // La sección de rubros SIEMPRE es visible (antes solo aparecía si la
+      // consulta traía datos: si el usuario no elegía categoría, o la query
+      // fallaba, no había ni rastro de que los rubros existieran).
+      const SizedBox(height: 24),
+      Text('¿Algo más específico? (opcional)',
+          style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 4),
+      Text('Los rubros ayudan a que te lleguen solicitudes más precisas.',
+          style: Theme.of(context).textTheme.bodySmall),
+      const SizedBox(height: 8),
+      if (_categories.isEmpty)
+        const Text('Elige una categoría arriba y aquí te mostramos sus rubros.')
+      else if (_loadingRubros)
+        const Padding(
+          padding: EdgeInsets.all(12),
+          child: Center(child: CircularProgressIndicator()),
+        )
+      else if (_rubrosError != null)
+        Row(children: [
+          Expanded(child: Text(_rubrosError!)),
+          TextButton(onPressed: _loadRubros, child: const Text('Reintentar')),
+        ])
+      else if (_dbRubros.isEmpty)
+        const Text('Esta categoría no tiene rubros; puedes continuar sin elegir ninguno.')
+      else
         Wrap(spacing: 8, runSpacing: 4, children: [
           for (final r in _dbRubros)
             FilterChip(
@@ -397,7 +446,6 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
               }),
             ),
         ]),
-      ],
     ]);
   }
 
