@@ -11,6 +11,7 @@ import {
   OTP_TTL_MS,
   RESEND_COOLDOWN_MS,
   sendOtpMessage,
+  getOtpChannel,
 } from "../_shared/otp.ts";
 
 Deno.serve(async (req) => {
@@ -91,7 +92,9 @@ Deno.serve(async (req) => {
       phone,
       `Tu código de verificación Jayalo: ${code}\n\nVence en 10 minutos.`,
     );
-    return json({ ok: true, phone });
+    // Devolver el canal REAL usado: el copy de la app lo sigue, así no miente
+    // cuando app_settings.otp_channel cambie a 'whatsapp' (Twilio Sender).
+    return json({ ok: true, phone, channel: await getOtpChannel(admin) });
   } catch (e) {
     return json({ error: (e as Error).message ?? "Error inesperado" }, 500);
   }

@@ -310,7 +310,9 @@ Never _throwFunctionError(FunctionException e) {
   throw Exception(msg ?? 'Error de conexión. Intenta de nuevo.');
 }
 
-Future<void> sendOtp({required String phone, String? businessId}) async {
+/// Devuelve el canal REAL por el que salió el código ('sms' | 'whatsapp') para
+/// que el copy no mienta si `app_settings.otp_channel` cambia.
+Future<String> sendOtp({required String phone, String? businessId}) async {
   try {
     final res = await supa.functions.invoke('send-otp', body: {
       'phone': phone,
@@ -320,6 +322,7 @@ Future<void> sendOtp({required String phone, String? businessId}) async {
     if (data?['ok'] != true) {
       throw Exception(data?['error'] ?? 'No se pudo enviar el código');
     }
+    return (data?['channel'] as String?) ?? 'sms';
   } on FunctionException catch (e) {
     _throwFunctionError(e);
   }

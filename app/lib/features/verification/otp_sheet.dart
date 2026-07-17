@@ -38,6 +38,7 @@ class _OtpSheetState extends State<_OtpSheet> {
   String? _error;
   int _resendIn = 0;
   Timer? _timer;
+  String _channel = 'sms'; // lo confirma send-otp; el copy lo sigue
 
   @override
   void initState() {
@@ -68,7 +69,8 @@ class _OtpSheetState extends State<_OtpSheet> {
       _error = null;
     });
     try {
-      await sendOtp(phone: widget.phone, businessId: widget.businessId);
+      final channel = await sendOtp(phone: widget.phone, businessId: widget.businessId);
+      if (mounted) setState(() => _channel = channel);
       _startCountdown();
     } catch (e) {
       if (mounted) {
@@ -115,11 +117,17 @@ class _OtpSheetState extends State<_OtpSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Confirma tu WhatsApp', style: Theme.of(context).textTheme.titleLarge),
+          Text('Confirma tu número', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
+          // El canal lo dice send-otp (app_settings.otp_channel). Con SMS hay
+          // que ser EXPLÍCITO: el usuario espera el mensaje en WhatsApp porque
+          // lo que verifica es su WhatsApp (feedback del PO en el E2E).
           Text(_sending
               ? 'Enviando el código…'
-              : 'Te enviamos un código por SMS al ${widget.phone}.'),
+              : _channel == 'whatsapp'
+                  ? 'Te enviamos un código por WhatsApp al ${widget.phone}.'
+                  : 'Te enviamos un código por mensaje de texto (SMS) al '
+                      '${widget.phone}.\nOjo: llega como SMS, no por WhatsApp.'),
           const SizedBox(height: 16),
           TextField(
             controller: _code,

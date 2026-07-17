@@ -64,7 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.verified_outlined),
             title: const Text('Confirmar mi cuenta'),
-            subtitle: const Text('Verifica tu WhatsApp por SMS'),
+            subtitle: const Text('Te enviamos un código por mensaje de texto (SMS)'),
             onTap: _verifyPersonal,
           ),
         if (_verified == true)

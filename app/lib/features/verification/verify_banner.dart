@@ -38,7 +38,8 @@ class _VerifyWhatsappBannerState extends State<VerifyWhatsappBanner> {
     if (_dismissed || _verified != false) return const SizedBox.shrink();
     return MaterialBanner(
       content: const Text(
-          'Confirma tu WhatsApp: las solicitudes verificadas generan más confianza y reciben más ofertas.'),
+          'Confirma tu número (te llega un código por SMS): las solicitudes verificadas '
+          'generan más confianza y reciben más ofertas.'),
       leading: const Icon(Icons.verified_outlined),
       actions: [
         TextButton(onPressed: _verify, child: const Text('Confirmar ahora')),
