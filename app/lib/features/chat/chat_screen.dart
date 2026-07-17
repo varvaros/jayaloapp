@@ -146,9 +146,12 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final rows = await messagesPage(widget.conversationId, limit: _pageSize);
       _session.seedFirstPage(rows, _pageSize);
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        _jumpToBottom();
+      }
     } catch (_) {/* reintenta el realtime igual */}
-    _setupRealtime();
+    if (mounted) _setupRealtime();
   }
 
   void _maybeLoadOlder() {
@@ -224,7 +227,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _openLightbox(String src) {
     showDialog<void>(
         context: context,
-        builder: (_) => Dialog.fullscreen(
+        builder: (dialogContext) => Dialog.fullscreen(
             backgroundColor: Colors.black,
             child: Stack(children: [
               Center(child: InteractiveViewer(child: Image.network(src))),
@@ -232,7 +235,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   top: 8, right: 8,
                   child: IconButton(
                       icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.of(context).pop())),
+                      onPressed: () => Navigator.of(dialogContext).pop())),
             ])));
   }
 
