@@ -14,7 +14,7 @@ class ChatComposer extends StatefulWidget {
   });
   final bool isProvider;
   final bool sending;
-  final Future<void> Function(String text) onSendText;
+  final Future<bool> Function(String text) onSendText;
   final void Function(PlusAction) onPlusAction;
   final void Function(QuickItem) onQuickItem;
 
@@ -35,7 +35,8 @@ class _ChatComposerState extends State<ChatComposer> {
     final raw = _ctrl.text;
     if (sanitizeChatText(raw).isEmpty) return;
     _ctrl.clear();
-    await widget.onSendText(raw);
+    final ok = await widget.onSendText(raw);
+    if (!ok && mounted) _ctrl.text = raw;
   }
 
   void _openPlusMenu() {

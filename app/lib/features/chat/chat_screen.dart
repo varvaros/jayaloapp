@@ -229,18 +229,20 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _sendText(String raw) async {
+  Future<bool> _sendText(String raw) async {
     final body = sanitizeChatText(raw);
-    if (body.isEmpty) return;
+    if (body.isEmpty) return true;
     setState(() => _sending = true);
-    await _sendRaw('text', body);
+    final ok = await _sendRaw('text', body);
     if (mounted) setState(() => _sending = false);
+    return ok;
   }
 
   Future<void> _handlePlus(PlusAction action) async {
     switch (action) {
       case PlusAction.sendAddress:
         final body = await myBusinessAddressBody();
+        if (!mounted) return;
         if (body == null) {
           _snack('Configura la dirección de tu local en tu perfil de proveedor.');
           return;
@@ -248,6 +250,7 @@ class _ChatScreenState extends State<ChatScreen> {
         await _sendRaw('address', body);
       case PlusAction.sendContact:
         final body = await myContactBody();
+        if (!mounted) return;
         if (body == null) {
           _snack('Completa tus datos en tu perfil primero.');
           return;
@@ -255,6 +258,7 @@ class _ChatScreenState extends State<ChatScreen> {
         await _sendRaw('text', body);
       case PlusAction.sendLocation:
         final body = await myLocationBody();
+        if (!mounted) return;
         if (body == null) {
           _snack('Agrega tu dirección en tu perfil primero.');
           return;
@@ -272,6 +276,7 @@ class _ChatScreenState extends State<ChatScreen> {
         source: ImageSource.gallery, maxWidth: 1200, imageQuality: 85);
     if (picked == null) return;
     final size = await picked.length();
+    if (!mounted) return;
     final check = validatePickedImage(
         sizeBytes: size, path: picked.path, currentCount: 0, maxCount: 1);
     if (check is ImagePickError) {
@@ -303,8 +308,10 @@ class _ChatScreenState extends State<ChatScreen> {
     await _sendRaw('quick', payload);
   }
 
-  void _snack(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   /// Task 10 implementa la hoja de "mejorar oferta" (bajar precio).
   void _openImproveOffer() {}
