@@ -87,7 +87,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 label: const Text('Continuar con Google'),
               ),
               const SizedBox(height: 12),
-              Text('¿Cuenta nueva? Regístrate en jayalo.com',
+              // El registro es NATIVO desde el onboarding (spec 2026-07-16):
+              // mandar a jayalo.com sería mentirle al usuario nuevo.
+              Text('¿Primera vez? Entra con Google y creamos tu cuenta al momento.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall),
             ],
