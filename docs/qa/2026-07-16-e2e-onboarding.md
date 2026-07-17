@@ -1,8 +1,22 @@
-# E2E onboarding nativo — runbook (preparado 2026-07-16, ejecución pendiente)
+# E2E onboarding nativo — runbook (preparado 2026-07-16)
 
-**Estado:** la app está lista e instalada en el Redmi (build debug con los 9 commits del plan).
-La corrida E2E está **bloqueada por 3 pasos de backend** que el clasificador de esta sesión no
-dejó ejecutar (BD y deploys). Hacerlos en orden y luego correr la checklist.
+**Estado (actualizado 2026-07-17):** la app está lista e instalada en el Redmi (build debug con
+los 9 commits del plan).
+
+- ✅ **Edge Functions DESPLEGADAS y vivas** (`send-otp`, `verify-otp`): verificado con curl —
+  ambas responden `401 UNAUTHORIZED_NO_AUTH_HEADER` sin token (gateway `verify_jwt` activo).
+- ✅ **`can_reveal_offer_whatsapp` existe en prod** y `anon` está bloqueado (`42501`) → la RPC
+  que usa el fix de dinero (Task 9) está disponible.
+- ⛔ **RPC `complete_provider_onboarding` NO aplicada**: verificado vía PostgREST →
+  `PGRST202 Could not find the function`. El clasificador de auto-mode bloquea la escritura a
+  la BD de prod (exige confirmación nombrada por migración). **Paso 1 de abajo, [PO].**
+- ⛔ **Secretos Twilio ausentes en Supabase** (`secrets list` no los tiene). El `.env` local
+  tiene `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` **vacíos** y los del Worker de Cloudflare son
+  de solo-escritura (no recuperables) → los valores debe ponerlos el PO desde la consola de
+  Twilio. **Paso 2 de abajo, [PO].**
+
+Sin los pasos 1 y 2, el onboarding de proveedor y el OTP fallan en runtime aunque la app los
+muestre. El resto del ciclo (consumidor, fixes de dinero) sí funciona ya.
 
 ## Paso 0 — Backend [PO o sesión con MCP autorizado]
 
@@ -30,16 +44,23 @@ dejó ejecutar (BD y deploys). Hacerlos en orden y luego correr la checklist.
 
    Y correr el check #11 de `scripts/db-security-check.sql` (debe devolver 0 filas).
 
-2. **Secretos Twilio para las Edge Functions** (los valores están en los secretos del Worker /
-   la consola de Twilio; NO pegarlos en el dashboard — gotcha de corrupción):
+2. **Secretos Twilio para las Edge Functions.** Solo hacen falta **DOS**: `TWILIO_ACCOUNT_SID`
+   y `TWILIO_AUTH_TOKEN` (el número emisor sale de `app_settings.twilio_whatsapp_from`, que ya
+   está poblado y es el que la web usa hoy para SMS — por eso `TWILIO_SMS_FROM` no es
+   necesario). Los valores están en la **consola de Twilio** (los del Worker no se pueden leer;
+   el `.env` local los tiene vacíos). Cargarlos **desde archivo por CLI**, nunca pegándolos en
+   el dashboard (gotcha de corrupción de `FCM_SERVICE_ACCOUNT`):
 
    ```bash
-   # archivo temporal fuera del repo con TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_SMS_FROM
+   # archivo temporal FUERA del repo, con las 2 líneas TWILIO_ACCOUNT_SID=... / TWILIO_AUTH_TOKEN=...
    npx supabase secrets set --env-file %TEMP%\twilio.env --project-ref mfaiklvobnvgusbcssbx
    del %TEMP%\twilio.env
    ```
 
-3. **Deploy de las funciones** (desde `C:\Users\ac\Downloads\jayalo-app`):
+   Verificar después: `npx supabase secrets list --project-ref mfaiklvobnvgusbcssbx` debe
+   listar ambos.
+
+3. ~~**Deploy de las funciones**~~ ✅ **YA HECHO** (2026-07-17). Para redeployar tras un cambio:
 
    ```bash
    npx supabase functions deploy send-otp --project-ref mfaiklvobnvgusbcssbx
