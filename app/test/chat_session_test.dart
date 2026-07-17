@@ -73,4 +73,47 @@ void main() {
     expect(s.messages.where((m) => m.id == '2').length, 1);
     expect(s.messages.where((m) => m.id == '1').length, 1);
   });
+
+  // FIX 1: seedFirstPage no debe destruir mensajes optimistas en vuelo.
+  test('seedFirstPage preserva optimistas "sending" al final y siguen reconciliables', () {
+    final s = ChatSession();
+    s.addOptimistic(tempId: 'temp-1', senderId: 'u', kind: 'text', body: 'hola', now: DateTime.utc(2026, 7, 17, 10, 5));
+    s.seedFirstPage([row('1', 'a', 'x', '2026-07-17T10:00:00Z')], 50);
+    expect(s.messages.map((m) => m.id).toList(), ['1', 'temp-1']);
+    expect(s.messages.last.sendStatus, SendStatus.sending);
+    s.confirmOptimistic('temp-1', row('real-1', 'u', 'hola', '2026-07-17T10:06:00Z'));
+    expect(s.messages.map((m) => m.id).toList(), ['1', 'real-1']);
+    expect(s.messages.last.sendStatus, SendStatus.sent);
+  });
+
+  // FIX 2: el orden de mergeServer debe comparar por DateTime, no por string
+  // crudo — el mismo instante formateado como '+00:00' (fila existente) vs
+  // 'Z' (fila nueva) NO son iguales como string ('Z' > '+00:00' siempre,
+  // sin importar el instante real), así que el string-compare rompe tanto
+  // la igualdad como el desempate por id. Con DateTime real hay empate de
+  // tiempo y debe desempatar por id ('1' < '2' → la nueva va primero).
+  test('mergeServer ordena por createdAt real (empate) y desempata por id, no por string crudo mixto', () {
+    final s = ChatSession();
+    s.seedFirstPage([row('2', 'a', 'x', '2026-07-17T10:00:00+00:00')], 50);
+    s.mergeServer(row('1', 'b', 'y', '2026-07-17T10:00:00Z'));
+    expect(s.messages.map((m) => m.id).toList(), ['1', '2']);
+  });
+
+  // FIX 3: confirmOptimistic no debe duplicar si mergeServer ya reconcilió
+  // la fila real primero (realtime ganó la carrera). Se usa senderId: null
+  // para que la heurística de reconciliación de mergeServer (que solo
+  // trackea `_pending` cuando hay senderId) NO empate al temp, forzando que
+  // mergeServer inserte la fila real como mensaje NUEVO y el temp quede
+  // vivo — el escenario donde el guard de confirmOptimistic es necesario.
+  test('confirmOptimistic es no-op si la fila real ya fue reconciliada por mergeServer', () {
+    final s = ChatSession();
+    s.addOptimistic(tempId: 'temp-1', senderId: null, kind: 'text', body: 'hola', now: DateTime.utc(2026, 7, 17));
+    final realRow = row('real-1', null, 'hola', '2026-07-17T10:00:00Z');
+    final changed = s.mergeServer(realRow);
+    expect(changed, isTrue);
+    expect(s.messages.map((m) => m.id).toSet(), {'temp-1', 'real-1'});
+    s.confirmOptimistic('temp-1', realRow);
+    expect(s.messages.where((m) => m.id == 'real-1').length, 1);
+    expect(s.messages.length, 1);
+  });
 }
