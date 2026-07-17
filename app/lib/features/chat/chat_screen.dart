@@ -1,11 +1,15 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/repos.dart';
 import '../../domain/chat.dart';
 import '../../domain/chat_session.dart';
 import '../../domain/chat_time.dart';
+import '../../domain/image_pick.dart';
 import '../client/request_status_screen.dart' show fmtRD;
 import 'widgets/bubbles.dart';
+import 'widgets/composer.dart';
 
 const _pageSize = 50;
 
@@ -25,12 +29,13 @@ class _ChatScreenState extends State<ChatScreen> {
   // ignore: unused_field
   String? _peerName;
   int _tempSeq = 0;
+  bool _sending = false;
+  bool _uploadingImage = false;
   RealtimeChannel? _channel;
   AppLifecycleListener? _lifecycle;
   final _scroll = ScrollController();
 
   String get _uid => supa.auth.currentUser!.id;
-  // ignore: unused_element
   bool get _isProvider => _conv?['provider_user_id'] == _uid;
   bool get _isOpen => _conv?['status'] == 'abierto';
 
@@ -224,6 +229,86 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _sendText(String raw) async {
+    final body = sanitizeChatText(raw);
+    if (body.isEmpty) return;
+    setState(() => _sending = true);
+    await _sendRaw('text', body);
+    if (mounted) setState(() => _sending = false);
+  }
+
+  Future<void> _handlePlus(PlusAction action) async {
+    switch (action) {
+      case PlusAction.sendAddress:
+        final body = await myBusinessAddressBody();
+        if (body == null) {
+          _snack('Configura la dirección de tu local en tu perfil de proveedor.');
+          return;
+        }
+        await _sendRaw('address', body);
+      case PlusAction.sendContact:
+        final body = await myContactBody();
+        if (body == null) {
+          _snack('Completa tus datos en tu perfil primero.');
+          return;
+        }
+        await _sendRaw('text', body);
+      case PlusAction.sendLocation:
+        final body = await myLocationBody();
+        if (body == null) {
+          _snack('Agrega tu dirección en tu perfil primero.');
+          return;
+        }
+        await _sendRaw('address', body);
+      case PlusAction.sendPhoto:
+        await _pickAndSendPhoto();
+      case PlusAction.improveOffer:
+        _openImproveOffer(); // Task 10
+    }
+  }
+
+  Future<void> _pickAndSendPhoto() async {
+    final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 1200, imageQuality: 85);
+    if (picked == null) return;
+    final size = await picked.length();
+    final check = validatePickedImage(
+        sizeBytes: size, path: picked.path, currentCount: 0, maxCount: 1);
+    if (check is ImagePickError) {
+      _snack(check.message);
+      return;
+    }
+    setState(() => _uploadingImage = true);
+    try {
+      final url = await uploadChatImage(picked.path);
+      await _sendRaw('image', url);
+    } catch (_) {
+      _snack('No se pudo enviar la imagen.');
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
+  }
+
+  Future<void> _sendQuickItem(QuickItem item) async {
+    if (item.options.isEmpty) {
+      await _sendRaw('text', item.question);
+      return;
+    }
+    final payload = jsonEncode({
+      'question': item.question,
+      'options': item.options,
+      'selected': null,
+      'answered_by': null,
+    });
+    await _sendRaw('quick', payload);
+  }
+
+  void _snack(String msg) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+
+  /// Task 10 implementa la hoja de "mejorar oferta" (bajar precio).
+  void _openImproveOffer() {}
+
   void _openLightbox(String src) {
     showDialog<void>(
         context: context,
@@ -330,7 +415,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  /// Task 7: banner de cerrado o espacio del composer (Task 8 lo reemplaza).
+  /// Banner de cerrado, o composer si la conversación sigue abierta.
   Widget _buildBottom(Map<String, dynamic> conv) {
     if (!_isOpen) {
       final txt = conv['status'] == 'cerrado'
@@ -343,6 +428,12 @@ class _ChatScreenState extends State<ChatScreen> {
           child: Text(txt, textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 13, color: Colors.grey)));
     }
-    return const SizedBox.shrink(); // Task 8: composer
+    return ChatComposer(
+      isProvider: _isProvider,
+      sending: _sending || _uploadingImage,
+      onSendText: _sendText,
+      onPlusAction: _handlePlus,
+      onQuickItem: _sendQuickItem,
+    );
   }
 }
