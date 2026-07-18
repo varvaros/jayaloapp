@@ -13,10 +13,8 @@ import 'nav_destinations.dart';
 const _pillHeight = 64.0;
 const _centerSize = 56.0;
 
-/// Alto que una barra FLOTANTE no reserva por sí sola. Toda lista del shell
-/// debe añadir este padding al final o su último elemento queda debajo de la
-/// barra, invisible. Ni `analyze` ni los tests lo detectan: solo se ve
-/// recorriendo la lista hasta abajo en un teléfono.
+/// Alto propio de la barra SIN el inset de zona segura del sistema (el
+/// `SafeArea(top: false)` interno se lo suma aparte).
 ///
 /// Derivado de las piezas que dibuja `FloatingNavBar.build` (para que no
 /// pueda desincronizarse si cambian `_pillHeight`/`_centerSize`):
@@ -24,17 +22,32 @@ const _centerSize = 56.0;
 ///   _centerSize / 2`) + padding inferior (`12`)
 ///   = `_pillHeight + _centerSize + 12` = 64 + 56 + 12 = 132.
 ///
-/// Esta constante NO incluye el inset de zona segura del sistema (el
-/// `SafeArea(top: false)` interno de la barra se lo suma a su propio alto).
-/// Las pantallas deben usar la FUNCIÓN [navBarReservedSpace] — esta
-/// constante suelta es solo para contextos sin `BuildContext` disponible.
+/// OJO: esta constante NO es lo que una lista del shell debe reservar. Con
+/// `home_shell.dart` usando `extendBody: true`, el propio `Scaffold` ya mete
+/// el alto COMPLETO de la barra (esto + el inset) dentro del `MediaQuery` que
+/// ve el cuerpo — así lo hace `_BodyBuilder` en
+/// `flutter/lib/src/material/scaffold.dart`:
+///   `bottom = extendBody ? max(metrics.padding.bottom,
+///   bottomWidgetsHeight) : metrics.padding.bottom`
+/// Sumarle esta constante al padding de una lista cuenta el alto de la barra
+/// DOS veces (fue el bug de C1: dejaba un hueco muerto de ~132px al final de
+/// cada lista). La función [navBarReservedSpace] es la que deben usar las
+/// pantallas; esta constante suelta solo sirve para contextos sin
+/// `BuildContext` disponible y para el test de coherencia que la compara con
+/// el alto real renderizado.
 const double kNavBarReservedSpace = _pillHeight + _centerSize + 12;
 
-/// Espacio real que debe reservar una lista del shell: [kNavBarReservedSpace]
-/// más el inset inferior de zona segura del dispositivo (barra de gestos,
-/// etc.), que la barra absorbe con su `SafeArea(top: false)` interno.
+/// Espacio real que debe reservar una lista del shell para que su último
+/// elemento no quede tapado por la barra flotante.
+///
+/// Con `extendBody: true` (el caso normal dentro del shell) el `Scaffold` ya
+/// infla `MediaQuery.paddingOf(context).bottom` al alto completo de la barra
+/// — no hace falta (ni hay que) sumarle nada más encima. Cuando la barra
+/// está OCULTA (`extendBody: false`, p. ej. dentro de un chat) ese mismo
+/// valor es simplemente el inset real del dispositivo, que es justo lo que
+/// hace falta ahí también.
 double navBarReservedSpace(BuildContext context) =>
-    kNavBarReservedSpace + MediaQuery.paddingOf(context).bottom;
+    MediaQuery.paddingOf(context).bottom;
 
 class FloatingNavBar extends StatelessWidget {
   const FloatingNavBar({
@@ -45,6 +58,12 @@ class FloatingNavBar extends StatelessWidget {
   });
 
   final List<NavDestination> destinations;
+
+  /// Índice del destino activo, o `-1` (lo que devuelve
+  /// [activeIndex] cuando la ruta actual no es ninguna pestaña — ver I2) para
+  /// que la barra se pinte sin nada teñido y sin ninguna etiqueta visible.
+  /// No hace falta ningún caso especial: `-1` nunca coincide con ningún
+  /// índice real de [destinations] ni con [kCenterIndex].
   final int currentIndex;
   final ValueChanged<int> onSelected;
 

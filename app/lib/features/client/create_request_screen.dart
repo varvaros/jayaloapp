@@ -358,15 +358,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         if (_ready == null)
           SafeArea(
             // '/client/create' es una pestaña del shell: la barra flotante
-            // sigue visible aquí (ver home_shell.dart), así que este composer
-            // fijo —no parte del ListView de arriba— necesita SU PROPIO
-            // colchón para no quedar debajo de ella. `SafeArea` ya reserva el
-            // inset del sistema; lo que falta es el alto propio de la barra
-            // (`kNavBarReservedSpace`, no la función, para no duplicar el
-            // inset que `SafeArea` ya sumó).
+            // sigue visible aquí (ver home_shell.dart), pero con
+            // `extendBody: true` el `Scaffold` ya infla
+            // `MediaQuery.paddingOf(context).bottom` al alto COMPLETO de la
+            // barra (ver el doc-comment de `navBarReservedSpace` en
+            // `floating_nav_bar.dart`) — y `SafeArea` lee ese mismo
+            // `MediaQuery`. Sumarle `kNavBarReservedSpace` aquí encima
+            // contaba la barra dos veces (bug C2: 144px de hueco muerto
+            // entre el campo de escribir y la barra). El padding de 12 de
+            // abajo es solo el respiro visual normal del composer.
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  16, 4, 16, 12 + kNavBarReservedSpace),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
               child: TextField(
                 controller: _input,
                 enabled: !_busy,
