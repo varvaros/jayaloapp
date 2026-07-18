@@ -1561,13 +1561,17 @@ Esperado: `No issues found!`, suite verde.
 
 - [ ] **Step 3: Reservar espacio en cada pantalla del shell**
 
-En **cada uno** de estos archivos, localizar el widget de scroll raíz (`ListView`, `ListView.builder`, `SingleChildScrollView` o `CustomScrollView`) y asegurarse de que su `padding` incluye `bottom: kNavBarReservedSpace`. Añadir el import `import '../shell/floating_nav_bar.dart';` (ajustar la ruta relativa según la carpeta).
+En **cada uno** de estos archivos, localizar el widget de scroll raíz (`ListView`, `ListView.builder`, `SingleChildScrollView` o `CustomScrollView`) y asegurarse de que su `padding` incluye abajo el espacio que reserva la barra. Añadir el import `import '../shell/floating_nav_bar.dart';` (ajustar la ruta relativa según la carpeta).
+
+Usar la **función**, no la constante suelta: `navBarReservedSpace(context)` devuelve el alto de la barra más el inset de zona segura del dispositivo, que varía según el teléfono. La constante `kNavBarReservedSpace` (132) solo cubre la barra y existe para contextos sin `BuildContext`.
 
 Si el scroll ya tiene padding, sumar el valor al `bottom` existente en vez de sustituirlo. Si no tiene padding, añadirlo:
 
 ```dart
-padding: const EdgeInsets.only(bottom: kNavBarReservedSpace),
+padding: EdgeInsets.only(bottom: navBarReservedSpace(context)),
 ```
+
+Ojo: al dejar de ser `const`, hay que quitar el `const` del `EdgeInsets` (y del widget entero si lo tenía).
 
 Lista completa — marcar una por una:
 
@@ -1585,7 +1589,26 @@ Lista completa — marcar una por una:
 
 **Excepción: `lib/features/chat/chat_screen.dart` no lleva padding.** El chat tiene su propio composer anclado abajo y no es una ruta con barra visible; si se le añade, deja un hueco muerto sobre el campo de escribir.
 
-**Caso especial `EmptyState`:** su `ListView` interno no acepta padding desde fuera. Añadir en `brand_kit.dart`, dentro del `ListView` de `EmptyState`, `padding: const EdgeInsets.only(bottom: kNavBarReservedSpace)`. Con eso las 11 pantallas quedan cubiertas también en vacío.
+**Caso especial `EmptyState`:** su `ListView` interno no acepta padding desde fuera. Añadir en `brand_kit.dart`, dentro del `ListView` de `EmptyState`, `padding: EdgeInsets.only(bottom: navBarReservedSpace(context))`. Con eso las 11 pantallas quedan cubiertas también en vacío.
+
+**Comprobación de que no se quedó ninguna fuera**, antes de dar el paso por hecho:
+
+```bash
+grep -rL "navBarReservedSpace" \
+  lib/features/client/my_requests_screen.dart \
+  lib/features/client/create_request_screen.dart \
+  lib/features/client/request_status_screen.dart \
+  lib/features/client/reputation_screen.dart \
+  lib/features/provider/inbox_screen.dart \
+  lib/features/provider/my_offers_screen.dart \
+  lib/features/provider/request_detail_screen.dart \
+  lib/features/provider/stats_screen.dart \
+  lib/features/chat/conversations_screen.dart \
+  lib/features/settings/settings_screen.dart \
+  lib/features/notifications/notifications_screen.dart
+```
+
+No debe listar ningún archivo. Si lista alguno, es una pantalla que se quedó sin reservar espacio.
 
 - [ ] **Step 4: Verificar**
 
