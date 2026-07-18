@@ -143,4 +143,34 @@ void main() {
       expect(groupByDay([], now: DateTime(2026, 7, 18)), isEmpty);
     });
   });
+
+  group('mapLinkToRoute', () {
+    test('mensajes: query ?c=, path directo y lista', () {
+      expect(mapLinkToRoute('/messages?c=abc-123', provider: false), '/messages/abc-123');
+      expect(mapLinkToRoute('/messages/abc-123', provider: true), '/messages/abc-123');
+      expect(mapLinkToRoute('/messages', provider: false), '/messages');
+    });
+    test('solicitud del cliente', () {
+      expect(mapLinkToRoute('/requests/deadbeef-1', provider: false), '/client/request/deadbeef-1');
+    });
+    test('BUG (a): detalle de solicitud del proveedor va al detalle nativo', () {
+      expect(mapLinkToRoute('/provider/requests/deadbeef-2', provider: true),
+          '/provider/request/deadbeef-2');
+    });
+    test('ofertas del proveedor en sus dos formatos', () {
+      expect(mapLinkToRoute('/provider/offers', provider: true), '/provider/offers');
+      expect(mapLinkToRoute('/provider?view=offers', provider: true), '/provider/offers');
+    });
+    test('wallet y resto de /provider caen en /provider', () {
+      expect(mapLinkToRoute('/provider?panel=wallet', provider: true), '/provider');
+      expect(mapLinkToRoute('/provider/wallet', provider: true), '/provider');
+      expect(mapLinkToRoute('/provider', provider: true), '/provider');
+    });
+    test('BUG (b): desconocido/vacío cae por ROL activo, no fijo /client', () {
+      expect(mapLinkToRoute('/empleos/xyz', provider: true), '/provider');
+      expect(mapLinkToRoute('/empleos/xyz', provider: false), '/client');
+      expect(mapLinkToRoute('', provider: true), '/provider');
+      expect(mapLinkToRoute('', provider: false), '/client');
+    });
+  });
 }

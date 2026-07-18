@@ -4,16 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Mapea `/requests/ID` o `/provider/requests/ID` (links de la web en
-/// notifications.link) a la ruta nativa correspondiente.
-String mapLinkToRoute(String link) {
-  final reqMatch = RegExp(r'^/requests/([0-9a-f-]+)').firstMatch(link);
-  if (reqMatch != null) return '/client/request/${reqMatch.group(1)}';
-  final provMatch = RegExp(r'^/provider/requests/([0-9a-f-]+)').firstMatch(link);
-  if (provMatch != null) return '/provider/offers';
-  if (link.startsWith('/provider')) return '/provider';
-  return '/client';
-}
+import '../core/session_state.dart';
+import '../domain/notifications.dart';
 
 Future<void> _saveToken(String token) async {
   final auth = Supabase.instance.client.auth;
@@ -64,7 +56,8 @@ Future<void> initPush(GoRouter router) async {
 
   void goFrom(RemoteMessage m) {
     final link = m.data['link'] as String? ?? '';
-    router.go(mapLinkToRoute(link));
+    router.go(mapLinkToRoute(link,
+        provider: roleStore.value == RoleState.provider));
   }
 
   final initial = await fcm.getInitialMessage();
