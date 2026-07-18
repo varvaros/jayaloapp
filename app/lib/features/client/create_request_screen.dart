@@ -9,6 +9,7 @@ import '../../data/repos.dart';
 import '../../domain/ai_turns.dart';
 import '../../domain/image_pick.dart';
 import '../verification/verify_banner.dart';
+import '../notifications/notification_bell.dart';
 
 const _maxRequestPhotos = 2;
 
@@ -259,7 +260,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     final cs = Theme.of(context).colorScheme;
     final started = _messages.isNotEmpty;
     return Scaffold(
-      appBar: AppBar(title: const Text('Crear solicitud')),
+      appBar: AppBar(
+          title: const Text('Crear solicitud'),
+          actions: const [NotificationBell()]),
       body: Column(children: [
         // Nudge de verificación (spec §6.1) — cerrable, nunca bloquea el envío.
         const VerifyWhatsappBanner(),

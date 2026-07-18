@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/repos.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
 import '../shell/home_scroll.dart';
+import '../notifications/notification_bell.dart';
 
 class ProviderInboxScreen extends StatefulWidget {
   const ProviderInboxScreen({super.key});
@@ -19,7 +20,9 @@ class _ProviderInboxScreenState extends State<ProviderInboxScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Solicitudes para ti')),
+      appBar: AppBar(
+          title: const Text('Solicitudes para ti'),
+          actions: const [NotificationBell()]),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

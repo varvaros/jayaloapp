@@ -5,6 +5,7 @@ import '../../data/repos.dart';
 import '../../domain/pricing.dart';
 import '../../domain/recharge.dart';
 import '../client/request_status_screen.dart' show offerPriceLabel;
+import '../notifications/notification_bell.dart';
 
 int estimatedUnlockCost(Map<String, dynamic> o) {
   final c = pointsForOffer(
@@ -73,7 +74,9 @@ class _MyOffersScreenState extends State<MyOffersScreen>
             (o['status'] == 'accepted' && o['unlocked_at'] != null))
         .toList();
     return Scaffold(
-      appBar: AppBar(title: const Text('Mis ofertas')),
+      appBar: AppBar(
+          title: const Text('Mis ofertas'),
+          actions: const [NotificationBell()]),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(

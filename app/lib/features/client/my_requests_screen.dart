@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/repos.dart';
 import '../../domain/phase.dart';
 import '../shell/home_scroll.dart';
+import '../notifications/notification_bell.dart';
 
 String timeAgo(DateTime d) {
   final diff = DateTime.now().difference(d);
@@ -57,7 +58,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Mis solicitudes')),
+      appBar: AppBar(
+          title: const Text('Mis solicitudes'),
+          actions: const [NotificationBell()]),
       body: RefreshIndicator(
         onRefresh: () async => setState(() => _load = _fetch()),
         child: FutureBuilder(
