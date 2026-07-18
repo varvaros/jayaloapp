@@ -423,7 +423,11 @@ class ReputationView extends StatelessWidget {
     }
 
     return ListView(
-      controller: homeScrollController,
+      // Controlador PROPIO, no `homeScrollController`. Ese singleton lo lee
+      // `BackGuard._handleBack` con `c.offset`, que lanza "Too many elements"
+      // si hay más de una posición adjunta — y el AnimatedSwitcher del shell
+      // mantiene dos pestañas montadas durante los 250 ms del cambio.
+      controller: _scroll,
       padding: const EdgeInsets.only(bottom: 24),
       children: [
         const SectionHeader(text: 'CÓMO TE VEN'),
@@ -659,7 +663,6 @@ import '../client/reputation_screen.dart' show MetricTile;
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
-import '../shell/home_scroll.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -706,7 +709,11 @@ class _StatsScreenState extends State<StatsScreen> {
 }
 
 /// Solo dibuja.
-class StatsView extends StatelessWidget {
+///
+/// Es Stateful solo para alojar su propio `ScrollController`: usar el
+/// singleton `homeScrollController` aquí tumbaría la app (ver el comentario
+/// del `ListView` de abajo). Misma solución que `ReputationView`.
+class StatsView extends StatefulWidget {
   const StatsView({
     super.key,
     required this.data,
@@ -719,7 +726,23 @@ class StatsView extends StatelessWidget {
   final int servicios;
 
   @override
+  State<StatsView> createState() => _StatsViewState();
+}
+
+class _StatsViewState extends State<StatsView> {
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final data = widget.data;
+    final productos = widget.productos;
+    final servicios = widget.servicios;
     final completed = (data['completed_count'] as num?)?.toInt() ?? 0;
     final clients = (data['clients_count'] as num?)?.toInt() ?? 0;
     final points = (data['points_invested'] as num?)?.toInt() ?? 0;
@@ -729,7 +752,7 @@ class StatsView extends StatelessWidget {
 
     if (completed == 0 && reviews == 0) {
       return EmptyState(
-        controller: homeScrollController,
+        controller: _scroll,
         message: 'Todavía no has completado ningún trabajo.\n\n'
             'Cuando cierres el primero verás aquí cuántos clientes has '
             'atendido, cuánto has facturado y cómo te califican.',
@@ -737,7 +760,11 @@ class StatsView extends StatelessWidget {
     }
 
     return ListView(
-      controller: homeScrollController,
+      // Controlador PROPIO, no `homeScrollController`. Ese singleton lo lee
+      // `BackGuard._handleBack` con `c.offset`, que lanza "Too many elements"
+      // si hay más de una posición adjunta — y el AnimatedSwitcher del shell
+      // mantiene dos pestañas montadas durante los 250 ms del cambio.
+      controller: _scroll,
       padding: const EdgeInsets.only(bottom: 24),
       children: [
         const SectionHeader(text: 'CÓMO TE CALIFICAN'),
