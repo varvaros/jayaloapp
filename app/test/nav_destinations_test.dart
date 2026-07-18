@@ -79,4 +79,23 @@ void main() {
       expect(activeIndex(cliente, '/notifications'), 0);
     });
   });
+
+  group('showsNavBar', () {
+    test('la lista de conversaciones sí muestra la barra', () {
+      expect(showsNavBar('/messages'), isTrue);
+    });
+
+    test('el detalle de una conversación la oculta', () {
+      expect(showsNavBar('/messages/abc-123'), isFalse);
+    });
+
+    test('las demás rutas del shell sí muestran la barra', () {
+      expect(showsNavBar('/client'), isTrue);
+      expect(showsNavBar('/provider'), isTrue);
+      expect(showsNavBar('/settings'), isTrue);
+      expect(showsNavBar('/notifications'), isTrue);
+      expect(showsNavBar('/client/request/abc-123'), isTrue);
+      expect(showsNavBar('/provider/request/abc-123'), isTrue);
+    });
+  });
 }

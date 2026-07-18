@@ -18,6 +18,7 @@ class HomeShell extends StatelessWidget {
     final dests = destinationsFor(roleStore.value);
     final loc = GoRouterState.of(context).matchedLocation;
     final idx = activeIndex(dests, loc);
+    final showNavBar = showsNavBar(loc);
 
     // Cambiar de pestaña reemplaza la única página del Navigator anidado (no
     // la empuja encima), y Flutter no anima ese reemplazo por defecto —
@@ -29,8 +30,13 @@ class HomeShell extends StatelessWidget {
     // navegación entre pares, distinto al deslizado jerárquico de un push.
     return Scaffold(
       // La barra FLOTA: el cuerpo se extiende por debajo de ella. Cada
-      // pantalla reserva `kNavBarReservedSpace` al final de su scroll.
-      extendBody: true,
+      // pantalla reserva `kNavBarReservedSpace` al final de su scroll. Dentro
+      // de una conversación la barra se oculta (decisión PO: ahí no se
+      // navega, se conversa) y `extendBody` deja de tener sentido — sin él el
+      // cuerpo ocupa el alto normal y el campo de escribir del chat queda
+      // donde debe, sin el hueco que dejaría el espacio reservado para una
+      // barra que ya no está.
+      extendBody: showNavBar,
       body: AnimatedSwitcher(
         duration:
             JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base,
@@ -47,11 +53,13 @@ class HomeShell extends StatelessWidget {
         ),
         child: KeyedSubtree(key: ValueKey(dests[idx].route), child: child),
       ),
-      bottomNavigationBar: FloatingNavBar(
-        destinations: dests,
-        currentIndex: idx,
-        onSelected: (i) => context.go(dests[i].route),
-      ),
+      bottomNavigationBar: showNavBar
+          ? FloatingNavBar(
+              destinations: dests,
+              currentIndex: idx,
+              onSelected: (i) => context.go(dests[i].route),
+            )
+          : null,
     );
   }
 }

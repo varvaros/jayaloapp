@@ -74,6 +74,16 @@ const _proveedor = [
 List<NavDestination> destinationsFor(RoleState role) =>
     role == RoleState.provider ? _proveedor : _cliente;
 
+/// Si la barra debe verse en esta ubicación.
+///
+/// Dentro de una conversación no se navega, se conversa (como WhatsApp o
+/// Messenger): la barra flotante solo tapa el campo de escribir y roba
+/// ~132 px en una pantalla donde el teclado ya se come la mitad. La LISTA de
+/// conversaciones (`/messages`) sí es navegación y conserva la barra; solo el
+/// detalle (`/messages/<id>`) la oculta.
+bool showsNavBar(String location) =>
+    location == '/messages' || !location.startsWith('/messages/');
+
 /// Índice del destino activo para una ubicación del router.
 ///
 /// Gana el prefijo MÁS LARGO: '/provider/stats' empieza por '/provider' (el
