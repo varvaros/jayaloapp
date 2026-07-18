@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../data/repos.dart';
 import '../../domain/pricing.dart';
 import '../../domain/recharge.dart';
+import '../client/my_requests_screen.dart' show timeAgo;
 import '../client/request_status_screen.dart' show offerPriceLabel;
 import '../notifications/notification_bell.dart';
+import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 
 int estimatedUnlockCost(Map<String, dynamic> o) {
@@ -61,9 +64,13 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     });
   }
 
+  /// Tono ámbar del dinero (`accepted` de la web) según el tema.
+  StatusTone get _amber => Theme.of(context).brightness == Brightness.dark
+      ? JayaloStatus.acceptedDark
+      : JayaloStatus.acceptedLight;
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final toUnlock = _offers
         .where((o) => o['status'] == 'accepted' && o['unlocked_at'] == null)
         .toList();
@@ -82,64 +89,123 @@ class _MyOffersScreenState extends State<MyOffersScreen>
           ? const JayaloLoaderBlock()
           : RefreshIndicator(
               onRefresh: _refetch,
-              child: ListView(padding: const EdgeInsets.all(16), children: [
-                Card(
-                  color: cs.primaryContainer,
-                  child: ListTile(
-                    leading: const Icon(Icons.account_balance_wallet_outlined),
-                    title: Text('${_balance ?? '—'} créditos',
-                        style: const TextStyle(fontWeight: FontWeight.w800)),
-                    trailing: FilledButton.tonal(
-                      onPressed: _openWallet,
-                      child: const Text('Recargar'),
-                    ),
-                  ),
-                ),
+              child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  children: [
+                _WalletCard(
+                    balance: _balance, tone: _amber, onRecharge: _openWallet),
                 if (toUnlock.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  Text('🏆 ¡Te aceptaron! Desbloquea el contacto',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  for (final o in toUnlock) _offerCard(o, highlight: true),
+                  const SectionHeader(
+                      text: '🏆 ¡Te aceptaron! Desbloquea el contacto'),
+                  for (final o in toUnlock) _acceptedCard(o),
                 ],
-                const SizedBox(height: 16),
-                Text('Pendientes (${pending.length})',
-                    style: Theme.of(context).textTheme.titleMedium),
+                SectionHeader(text: 'Pendientes (${pending.length})'),
                 if (pending.isEmpty && toUnlock.isEmpty)
                   const Padding(
-                      padding: EdgeInsets.all(12),
+                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                       child: Text(
                           'Oferta desde "Solicitudes" — es gratis y te avisamos si te aceptan.')),
                 for (final o in pending) _offerCard(o),
-                const SizedBox(height: 16),
-                if (rest.isNotEmpty)
-                  Text('Historial', style: Theme.of(context).textTheme.titleMedium),
+                if (rest.isNotEmpty) const SectionHeader(text: 'Historial'),
                 for (final o in rest) _offerCard(o),
+                const SizedBox(height: 16),
               ]),
             ),
     );
   }
 
-  Widget _offerCard(Map<String, dynamic> o, {bool highlight = false}) {
+  /// "O1 · Tarjeta teñida ámbar" (elegida por el PO): el momento de dinero del
+  /// proveedor no puede pasar desapercibido.
+  Widget _acceptedCard(Map<String, dynamic> o) {
+    final tone = _amber;
+    return JayaloCard(
+      tint: tone.bg,
+      onTap: () => _openOffer(o),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: tone.ink.withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.lock_open, size: 20, color: tone.ink),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(o['request_title'] as String? ?? '',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, color: tone.ink)),
+                const SizedBox(height: 2),
+                Text('${offerPriceLabel(o)} · Toca para desbloquear',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: tone.ink.withValues(alpha: .8))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _offerCard(Map<String, dynamic> o) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final st = o['status'] as String;
     final unlocked = o['unlocked_at'] != null;
-    final label = switch (st) {
-      'accepted' => unlocked ? 'Desbloqueada' : 'ACEPTADA',
-      'completed' => 'Completada',
-      'rejected' => 'Rechazada',
-      _ => 'Pendiente',
+    final (label, tone) = switch (st) {
+      'accepted' when unlocked => (
+          'Desbloqueada',
+          dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight
+        ),
+      'completed' => (
+          'Completada',
+          dark ? JayaloStatus.completedDark : JayaloStatus.completedLight
+        ),
+      'rejected' => (
+          'Rechazada',
+          dark ? JayaloStatus.completedDark : JayaloStatus.completedLight
+        ),
+      _ => (
+          'Pendiente',
+          dark ? JayaloStatus.pendingDark : JayaloStatus.pendingLight
+        ),
     };
-    return Card(
-      shape: highlight
-          ? RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.amber.shade700, width: 2))
-          : null,
-      child: ListTile(
-        title: Text(o['request_title'] as String? ?? '',
-            maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${offerPriceLabel(o)} · $label'),
-        trailing: highlight ? const Icon(Icons.lock_open) : null,
-        onTap: () => _openOffer(o),
+    final created = o['created_at'] as String?;
+    final cs = Theme.of(context).colorScheme;
+    return JayaloCard(
+      onTap: () => _openOffer(o),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(o['request_title'] as String? ?? '',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(
+                    created == null
+                        ? offerPriceLabel(o)
+                        : '${offerPriceLabel(o)} · ${timeAgo(DateTime.parse(created))}',
+                    style: TextStyle(
+                        fontSize: 13, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          StatusChip(label: label, tone: tone),
+        ],
       ),
     );
   }
@@ -332,6 +398,62 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                   child: const Text('¿Se concretó la venta? Marcar completada'),
                 ),
             ]),
+      ),
+    );
+  }
+}
+
+/// "W1 · Tarjeta ámbar" (elegida por el PO): el saldo en el tono del dinero,
+/// con el número grande y Recargar a mano.
+class _WalletCard extends StatelessWidget {
+  const _WalletCard(
+      {required this.balance, required this.tone, required this.onRecharge});
+  final int? balance;
+  final StatusTone tone;
+  final VoidCallback onRecharge;
+
+  @override
+  Widget build(BuildContext context) {
+    return JayaloCard(
+      tint: tone.bg,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: tone.ink.withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.account_balance_wallet_outlined,
+                size: 20, color: tone.ink),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${balance ?? '—'} crédito${balance == 1 ? '' : 's'}',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: tone.ink)),
+                Text('Tu saldo para desbloquear contactos',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: tone.ink.withValues(alpha: .8))),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: onRecharge,
+            style: FilledButton.styleFrom(
+                backgroundColor: tone.ink, foregroundColor: tone.bg),
+            child: const Text('Recargar'),
+          ),
+        ],
       ),
     );
   }
