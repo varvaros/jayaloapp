@@ -139,11 +139,13 @@ class _OtpSheetState extends State<_OtpSheet> {
             style: const TextStyle(fontSize: 24, letterSpacing: 8),
             textAlign: TextAlign.center,
             decoration: InputDecoration(
+              // Sin `border:` propio: hereda el relleno sin línea (F1) del
+              // tema global — antes este campo era el único con un
+              // OutlineInputBorder visible, desentonando con el resto.
               counterText: '',
               hintText: '······',
               errorText: _error,
               errorMaxLines: 3,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onChanged: (_) => setState(() => _error = null),
             onSubmitted: (_) {
