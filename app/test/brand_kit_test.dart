@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/core/brand.dart';
+import 'package:jayalo_app/core/motion.dart';
 import 'package:jayalo_app/domain/phase.dart';
 import 'package:jayalo_app/features/shared/brand_kit.dart';
 
@@ -105,6 +107,76 @@ void main() {
     testWidgets('sin CTA no muestra botón', (tester) async {
       await tester.pumpWidget(host(const EmptyState(message: 'Vacío')));
       expect(find.byType(FilledButton), findsNothing);
+    });
+  });
+
+  group('doctrina de movimiento', () {
+    testWidgets('JayaloCard se encoge al presionar y vuelve al soltar',
+        (tester) async {
+      await tester.pumpWidget(host(JayaloCard(
+          onTap: () {}, child: const SizedBox(width: 200, height: 60))));
+
+      AnimatedScale scaleOf() =>
+          tester.widget<AnimatedScale>(find.byType(AnimatedScale));
+      expect(scaleOf().scale, 1);
+
+      final gesture =
+          await tester.startGesture(tester.getCenter(find.byType(JayaloCard)));
+      // El highlight de InkWell tarda un frame corto en activarse.
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(scaleOf().scale, JayaloMotion.pressedScale,
+          reason: 'presionada debe encoger');
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(scaleOf().scale, 1, reason: 'al soltar vuelve suave a 1');
+    });
+
+    testWidgets('sin onTap no hay feedback de escala', (tester) async {
+      await tester.pumpWidget(
+          host(const JayaloCard(child: SizedBox(width: 200, height: 60))));
+      await tester
+          .startGesture(tester.getCenter(find.byType(JayaloCard)));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+          tester.widget<AnimatedScale>(find.byType(AnimatedScale)).scale, 1);
+    });
+
+    testWidgets('cascadeIn respeta "reducir animaciones"', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: jayaloTheme(Brightness.light),
+        home: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: Scaffold(body: const Text('hola').cascadeIn(0)),
+        ),
+      ));
+      expect(find.byType(Animate), findsNothing,
+          reason: 'con reduce-motion no se envuelve en Animate');
+      expect(find.text('hola'), findsOneWidget);
+    });
+
+    testWidgets('SkeletonList pinta N tarjetas y brilla sin excepciones',
+        (tester) async {
+      await tester.pumpWidget(host(const SizedBox(
+          height: 400, width: 300, child: SkeletonList(count: 3))));
+      expect(find.byType(SkeletonCard), findsNWidgets(3));
+      // El shimmer es un loop: se avanza a mano (pumpAndSettle nunca acaba).
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('SkeletonCard queda quieto con "reducir animaciones"',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: jayaloTheme(Brightness.light),
+        home: const MediaQuery(
+          data: MediaQueryData(disableAnimations: true),
+          child: Scaffold(body: SkeletonCard()),
+        ),
+      ));
+      expect(find.byType(Animate), findsNothing);
     });
   });
 

@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/brand.dart';
+import '../../core/motion.dart';
 import '../../domain/phase.dart';
 import 'jayalo_loader.dart';
 
@@ -35,10 +36,15 @@ StatusTone toneFor(BuildContext context, RequestPhase phase) {
   };
 }
 
-/// La tarjeta que respira: radius 16, margen 16×4, transición de color de
-/// 300ms (así el paso de "viva" a neutra se desvanece, nunca salta).
+/// La tarjeta que respira: radius 16, margen 16×4, transición de color suave
+/// (así el paso de "viva" a neutra se desvanece, nunca salta).
 /// [tint] nulo = tarjeta neutra sobre la superficie de card.
-class JayaloCard extends StatelessWidget {
+///
+/// Doctrina de movimiento: si es tocable, responde al dedo AL INSTANTE —
+/// se encoge levemente mientras está presionada (además del ripple) y vuelve
+/// suave al soltar. Con "reducir animaciones" el feedback queda solo en el
+/// ripple del sistema.
+class JayaloCard extends StatefulWidget {
   const JayaloCard({
     super.key,
     required this.child,
@@ -58,24 +64,41 @@ class JayaloCard extends StatelessWidget {
   final EdgeInsetsGeometry margin;
 
   @override
+  State<JayaloCard> createState() => _JayaloCardState();
+}
+
+class _JayaloCardState extends State<JayaloCard> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final pressable = widget.onTap != null && !JayaloMotion.reduced(context);
     return Padding(
-      padding: margin,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-            padding: padding,
-            decoration: BoxDecoration(
-              color: tint ?? cs.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(16),
+      padding: widget.margin,
+      child: AnimatedScale(
+        scale: _pressed ? JayaloMotion.pressedScale : 1,
+        duration: JayaloMotion.fast,
+        curve: JayaloMotion.enter,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: widget.onTap,
+            // onHighlightChanged dispara al presionar/soltar/cancelar — es la
+            // señal más temprana que da InkWell, sin retrasar el onTap.
+            onHighlightChanged:
+                pressable ? (v) => setState(() => _pressed = v) : null,
+            child: AnimatedContainer(
+              duration: JayaloMotion.page,
+              curve: Curves.easeOut,
+              padding: widget.padding,
+              decoration: BoxDecoration(
+                color: widget.tint ?? cs.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: widget.child,
             ),
-            child: child,
           ),
         ),
       ),
@@ -220,16 +243,88 @@ class ErrorRetry extends StatelessWidget {
 }
 
 /// Cascada de entrada de listas: fade + slide 10% hacia arriba con stagger de
-/// 40ms por ítem, tope en 14 para no eternizar listas largas. Respeta
-/// "reducir animaciones" vía flutter_animate (Animate.restartOnHotReload no
-/// aplica; disableAnimations lo corta el propio framework en tests).
+/// 40ms por ítem, tope en 14 para no eternizar listas largas. Con "reducir
+/// animaciones" del sistema los ítems aparecen quietos.
 extension CascadeIn on Widget {
-  Widget cascadeIn(int index, {Key? key}) => animate(key: key)
-      .fadeIn(duration: 250.ms, delay: (40 * min(index, 14)).ms)
-      .slideY(
-          begin: .10,
-          end: 0,
-          duration: 250.ms,
-          delay: (40 * min(index, 14)).ms,
-          curve: Curves.easeOutCubic);
+  Widget cascadeIn(int index, {Key? key}) => Builder(
+        key: key,
+        builder: (context) {
+          if (JayaloMotion.reduced(context)) return this;
+          final delay = (40 * min(index, 14)).ms;
+          return animate()
+              .fadeIn(duration: JayaloMotion.base, delay: delay)
+              .slideY(
+                  begin: .10,
+                  end: 0,
+                  duration: JayaloMotion.base,
+                  delay: delay,
+                  curve: JayaloMotion.enter);
+        },
+      );
+}
+
+/// Skeleton con la silueta de la tarjeta que respira (ícono 40×40 + dos
+/// líneas), con un brillo que recorre en loop. Decisión PO 2026-07-18: el
+/// skeleton se usa SOLO en /notifications (su spec original lo pedía); el
+/// resto de la app carga con la mascota [JayaloLoaderBlock].
+class SkeletonCard extends StatelessWidget {
+  const SkeletonCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    Widget block({double? width, required double height, double radius = 6}) =>
+        Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(radius),
+          ),
+        );
+    final card = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(children: [
+          block(width: 40, height: 40, radius: 12),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                block(height: 14),
+                const SizedBox(height: 6),
+                FractionallySizedBox(
+                    widthFactor: .6, child: block(height: 12)),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+    if (JayaloMotion.reduced(context)) return card;
+    return card
+        .animate(onPlay: (c) => c.repeat())
+        .shimmer(
+            duration: 1200.ms,
+            color: cs.onSurface.withValues(alpha: .08));
+  }
+}
+
+/// Lista de skeletons para el estado de carga de una pantalla de lista.
+class SkeletonList extends StatelessWidget {
+  const SkeletonList({super.key, this.count = 6});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [for (var i = 0; i < count; i++) const SkeletonCard()],
+      );
 }
