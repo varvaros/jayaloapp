@@ -4,12 +4,14 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
+import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 
 /// Alta de proveedor (spec §7): 6 pasos que SOLO recolectan; la única
@@ -556,20 +558,27 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     return _pad([
       Text('Revisa y confirma', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 12),
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(_name.text.trim(),
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-            const SizedBox(height: 4),
-            Text(catNames),
-            Text('${_city.text.trim()}'
-                '${_sector.text.trim().isEmpty ? '' : ' · ${_sector.text.trim()}'}'),
-            Text('WhatsApp: ${normalizePhone(_phone.text)}'),
-            if (_wholesale) const Text('Vende al por mayor'),
-          ]),
-        ),
+      JayaloCard(
+        margin: EdgeInsets.zero,
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(_name.text.trim(),
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+          const SizedBox(height: 4),
+          Text(catNames),
+          Text('${_city.text.trim()}'
+              '${_sector.text.trim().isEmpty ? '' : ' · ${_sector.text.trim()}'}'),
+          Text('WhatsApp: ${normalizePhone(_phone.text)}'),
+          if (_wholesale) ...[
+            const SizedBox(height: 8),
+            StatusChip(
+                label: 'Al por mayor',
+                icon: Icons.storefront_outlined,
+                tone: Theme.of(context).brightness == Brightness.dark
+                    ? JayaloStatus.respondedDark
+                    : JayaloStatus.respondedLight),
+          ],
+        ]),
       ),
       const SizedBox(height: 12),
       CheckboxListTile(
