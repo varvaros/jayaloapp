@@ -14,8 +14,8 @@ String timeAgo(DateTime d) {
   return 'hace ${diff.inDays} d';
 }
 
-/// Copy e ícono del chip de fase (variante "C · Chip y pasos" elegida por el
-/// PO). Con ofertas muestra el conteo real — es el dato que hace abrir la app.
+/// Ícono y copy corto por fase. Con ofertas muestra el conteo real — es el
+/// dato que hace abrir la app.
 (IconData, String) phaseChip(RequestPhase p, int offerCount) => switch (p) {
       RequestPhase.waiting => (Icons.schedule, 'Esperando ofertas'),
       RequestPhase.withOffers => (
@@ -106,9 +106,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   }
 }
 
-/// Variante "C · Chip y pasos": tarjeta neutra con chip de estado arriba a la
-/// derecha y una mini-barra de progreso de 5 segmentos (una por fase) que
-/// muestra el avance de un vistazo sin abrir el detalle.
+/// Variante "A · Respiración plena" (elegida por el PO): la tarjeta entera se
+/// tiñe del tono de su fase, igual que una notificación sin leer. Las fases
+/// vivas (con ofertas, aceptada, desbloqueado) llevan color; esperando y
+/// completada van apagadas como una notificación leída.
 class _RequestCard extends StatelessWidget {
   const _RequestCard({
     required this.title,
@@ -124,55 +125,56 @@ class _RequestCard extends StatelessWidget {
   final int offerCount;
   final VoidCallback onTap;
 
+  static const _live = {
+    RequestPhase.withOffers,
+    RequestPhase.accepted,
+    RequestPhase.unlocked,
+  };
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tone = toneFor(context, phase);
-    final idx = RequestPhase.values.indexOf(phase);
+    final alive = _live.contains(phase);
+    final bg =
+        alive ? tone.bg : cs.surfaceContainerHighest.withValues(alpha: .55);
+    final fg = alive ? tone.ink : cs.onSurfaceVariant;
+    final ic = alive ? tone.ink : cs.outline;
     final (icon, label) = phaseChip(phase, offerCount);
     return JayaloCard(
       onTap: onTap,
-      child: Column(
+      tint: bg,
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: ic.withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 20, color: ic),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                   title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(fontWeight: FontWeight.w700, color: fg),
                 ),
-              ),
-              const SizedBox(width: 8),
-              StatusChip(label: label, tone: tone, icon: icon),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              for (var i = 0; i < RequestPhase.values.length; i++) ...[
-                if (i > 0) const SizedBox(width: 4),
-                Expanded(
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOut,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: i <= idx ? tone.ink : cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                  ),
+                const SizedBox(height: 4),
+                Text(
+                  '$label · ${timeAgo(createdAt)}',
+                  style: TextStyle(
+                      fontSize: 12, color: fg.withValues(alpha: .75)),
                 ),
               ],
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            timeAgo(createdAt),
-            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+            ),
           ),
         ],
       ),
