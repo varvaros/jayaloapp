@@ -11,19 +11,6 @@ import '../../domain/pricing.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 
-/// "F1 · Rellenos suaves" (elegida por el PO): campos sin borde con fondo
-/// gris suave y radius 12. Misma receta que usará "Crear solicitud".
-InputDecoration filledField(BuildContext context, String label) =>
-    InputDecoration(
-      labelText: label,
-      filled: true,
-      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-    );
-
 const _maxOfferPhotos = 5;
 
 class ProviderRequestDetailScreen extends StatefulWidget {

@@ -178,6 +178,21 @@ class EmptyState extends StatelessWidget {
       );
 }
 
+/// "F1 · Rellenos suaves" (elegida por el PO): campos sin borde con fondo
+/// gris suave y radius 12. La receta única de TextField de la app.
+InputDecoration filledField(BuildContext context, String label,
+        {String? hint}) =>
+    InputDecoration(
+      labelText: label,
+      hintText: hint,
+      filled: true,
+      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+    );
+
 /// Error amable + Reintentar — patrón único de error de la app.
 class ErrorRetry extends StatelessWidget {
   const ErrorRetry({
