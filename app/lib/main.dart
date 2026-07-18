@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
@@ -11,14 +13,15 @@ Future<void> main() async {
       url: AppConfig.supabaseUrl,
       publishableKey: AppConfig.supabasePublishableKey);
   final router = buildRouter();
-  // El push es ACCESORIO: si falla (sesión expirada, permiso denegado, sin
-  // Google Play, Firebase caído) la app debe arrancar igual. Sin este guard,
-  // cualquier excepción de initPush impide llegar a runApp y el usuario ve una
-  // PANTALLA EN BLANCO — no un error (verificado en el Redmi 2026-07-17).
-  try {
-    await initPush(router);
-  } catch (e, s) {
-    debugPrint('initPush falló (no bloqueante): $e\n$s');
-  }
+  // El push es ACCESORIO y arranca DESPUÉS de la primera pantalla. El try/catch
+  // de antes solo cubría que initPush LANZARA; si en vez de lanzar se QUEDA
+  // COLGADO (el diálogo de permiso de Android 13+ que MIUI a veces no muestra,
+  // o getToken sin responder), nunca se llegaba a runApp y la app se quedaba en
+  // BLANCO para siempre — reproducido en el Redmi con instalación limpia
+  // 2026-07-18. Pintar primero es la única forma de que un cuelgue del push no
+  // pueda secuestrar el arranque.
   runApp(JayaloApp(router: router));
+  unawaited(initPush(router).catchError((Object e, StackTrace s) {
+    debugPrint('initPush falló (no bloqueante): $e\n$s');
+  }));
 }
