@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/core/session_state.dart';
-import 'package:jayalo_app/features/provider/stats_screen.dart';
 import 'package:jayalo_app/features/shell/floating_nav_bar.dart';
 import 'package:jayalo_app/features/shell/nav_destinations.dart';
 
@@ -11,19 +10,31 @@ import 'package:jayalo_app/features/shell/nav_destinations.dart';
 /// de `home_shell.dart`), YA es el alto COMPLETO de la barra — ver el
 /// doc-comment de `navBarReservedSpace` en `floating_nav_bar.dart`, que cita
 /// la fuente exacta en `_BodyBuilder` del Scaffold de Flutter. El resultado
-/// era casi el doble del espacio necesario: un hueco muerto al final de
-/// cada lista.
+/// era casi el doble del espacio necesario: un hueco muerto SCROLLEABLE al
+/// final de cada lista.
 ///
-/// Ningún test anterior lo detectó porque todos montaban listas VACÍAS
-/// (`EmptyState`), donde un hueco de más no se nota. Aquí se monta
-/// `StatsView` con datos reales — una pantalla real del shell, no un mock —
-/// dentro de un `Scaffold` con `extendBody: true` y una `FloatingNavBar` de
-/// verdad como `bottomNavigationBar`, tal como lo arma `home_shell.dart`.
+/// Una versión anterior de este test montaba una lista más corta que el
+/// viewport (`StatsView`, que no scrollea) y medía la posición del último
+/// elemento. Con contenido corto ese elemento queda pegado arriba (offset 0)
+/// TANTO con el bug como con el fix — el padding duplicado solo agrega
+/// espacio scrolleable por debajo, sin mover nada visible — así que el test
+/// pasaba en los dos mundos por igual (se comprobó revirtiendo el fix de C1:
+/// el test seguía en verde). Por eso aquí la lista tiene que desbordar el
+/// viewport de verdad: solo con scroll real se puede llegar al fondo y medir
+/// el hueco muerto que el bug deja.
+///
+/// Se hace scroll hasta `maxScrollExtent` (el fondo real del contenido, sin
+/// física de rebote que lo disimule) y se mide el hueco entre el borde
+/// inferior del último ítem y el borde superior de la barra flotante. Con el
+/// fix ese hueco es ~0 (el padding reservado coincide exactamente con el
+/// alto real renderizado de la barra). Con el bug de C1 reintroducido crece
+/// en, aproximadamente, `kNavBarReservedSpace` (~132px), porque la lista
+/// reserva ese espacio de más y por lo tanto scrollea de más antes de
+/// terminar.
 void main() {
   testWidgets(
-      'con extendBody y una lista con contenido, el último elemento queda '
-      'visible por encima de la barra y el hueco no es desproporcionado '
-      '(espacio reservado del orden del alto real de la barra, no el doble)',
+      'con extendBody y una lista que desborda el viewport, el hueco '
+      'scrolleable al final no duplica el alto de la barra',
       (tester) async {
     addTearDown(tester.view.reset);
     tester.view.physicalSize = const Size(390, 844);
@@ -34,22 +45,42 @@ void main() {
     tester.view.viewPadding = const FakeViewPadding(bottom: 34);
 
     final dests = destinationsFor(RoleState.provider);
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+
+    const itemHeight = 60.0;
+    // 20 * 60 = 1200px de contenido: desborda de sobra los 844px del
+    // viewport, incluso sumando el padding reservado más grande (el del
+    // bug, ~298px). Sin este desborde la lista no scrollea y el test vuelve
+    // a ser ciego (ver doc-comment de arriba).
+    const itemCount = 20;
+    const lastItemKey = ValueKey('lastItem');
 
     await tester.pumpWidget(MaterialApp(
       theme: jayaloTheme(Brightness.light),
       home: Scaffold(
         extendBody: true,
-        body: const StatsView(
-          data: {
-            'clients_count': 8,
-            'completed_count': 12,
-            'points_invested': 45,
-            'revenue_total': 128500,
-            'avg_rating': 4.8,
-            'reviews_count': 9,
-          },
-          productos: 12,
-          servicios: 3,
+        // Builder para que el `context` de la lista sea DESCENDIENTE del
+        // body del Scaffold: solo ahí `MediaQuery.paddingOf` ya viene
+        // inflado por `extendBody` al alto real de la barra (la inflación
+        // la hace `_BodyBuilder`, no el propio `Scaffold`).
+        body: Builder(
+          builder: (context) => ListView.builder(
+            controller: controller,
+            // El mismo patrón que usan las pantallas reales del shell (ver
+            // p. ej. `my_requests_screen.dart`): el padding inferior es
+            // exactamente `navBarReservedSpace(context)`, sin nada más
+            // sumado, para que el hueco medido aquí sea el que produce esa
+            // función y no un padding extra propio de la pantalla.
+            padding: EdgeInsets.only(bottom: navBarReservedSpace(context)),
+            itemCount: itemCount,
+            itemBuilder: (_, i) => Container(
+              key: i == itemCount - 1 ? lastItemKey : null,
+              height: itemHeight,
+              alignment: Alignment.center,
+              child: Text('Item $i'),
+            ),
+          ),
         ),
         bottomNavigationBar: FloatingNavBar(
           destinations: dests,
@@ -60,25 +91,32 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    final barTop = tester.getTopLeft(find.byType(FloatingNavBar)).dy;
-    final barHeight = tester.getSize(find.byType(FloatingNavBar)).height;
-    // Último elemento real de StatsView (sección "LO QUE OFRECES", ver
-    // stats_screen.dart): la tarjeta de catálogo.
-    final lastItemBottom = tester.getBottomLeft(find.byType(CatalogCard)).dy;
+    // Ir al fondo real del scroll con `jumpTo`, no con un `drag`: así no hay
+    // física de rebote que temporalmente esconda o exagere el hueco muerto.
+    controller.jumpTo(controller.position.maxScrollExtent);
+    await tester.pump();
 
-    expect(lastItemBottom, lessThanOrEqualTo(barTop),
+    final barTop = tester.getTopLeft(find.byType(FloatingNavBar)).dy;
+    final lastItemBottom =
+        tester.getBottomLeft(find.byKey(lastItemKey)).dy;
+
+    expect(lastItemBottom, lessThanOrEqualTo(barTop + 1),
         reason: 'el último elemento de la lista debe quedar visible por '
-            'encima de la barra flotante, no debajo de ella');
+            'encima de la barra flotante, no debajo de ella, incluso en el '
+            'fondo del scroll');
 
     final gap = barTop - lastItemBottom;
-    // Antes del fix el hueco sumaba prácticamente otro `kNavBarReservedSpace`
-    // completo (~132px) de más; con el fix debe quedar muy por debajo del
-    // alto real de la barra — el orden de magnitud es el padding propio que
-    // `StatsView` añade a mano (24px), no el alto de la barra otra vez.
-    expect(gap, lessThan(barHeight),
+    // Con el fix el padding reservado coincide con el alto real de la
+    // barra: el fondo del scroll llega justo hasta donde empieza la barra y
+    // el hueco es ~0. Con el bug de C1 (padding reservado contando la barra
+    // dos veces) el fondo del scroll queda ~kNavBarReservedSpace (~132px)
+    // más arriba de lo necesario. El umbral de abajo separa ambos mundos
+    // con holgura de sobra para variación de plataforma.
+    expect(gap, lessThan(60),
         reason:
-            'el hueco entre el último elemento y la barra ($gap) es del '
-            'orden del alto de la barra ($barHeight px): señal de que el '
-            'espacio reservado está contando la barra dos veces otra vez');
+            'el hueco entre el último elemento y la barra en el fondo del '
+            'scroll ($gap px) sugiere que el espacio reservado cuenta el '
+            'alto de la barra dos veces (con el bug de C1 este hueco crece '
+            'en ~kNavBarReservedSpace, ~132px)');
   });
 }
