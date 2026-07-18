@@ -78,14 +78,19 @@ sustituye.
 (violeta `#7147F2` en claro, azul `#3E98FF` en oscuro), icono en `onPrimary`. Su propia sombra,
 un punto más marcada que la de la píldora, para que se lea como una capa por encima.
 
-**Estados.** Activo: icono teñido de `primary` + punto de 4 px debajo. Inactivo:
-`onSurfaceVariant`, sin punto. El botón central activo lleva el punto debajo de la píldora, no
-dentro del círculo.
-
 **Etiquetas: texto solo bajo el icono activo** (decisión PO). La barra queda limpia como la
 referencia, pero el usuario siempre puede leer dónde está parado — la doctrina de "a prueba de
 tontos" para público analógico se cumple sin engordar la barra con cuatro textos. Al cambiar de
 pestaña el texto se desliza a la nueva posición.
+
+**Estados.** Activo: icono teñido de `primary` + su etiqueta debajo. Inactivo:
+`onSurfaceVariant`, sin texto. El botón central activo lleva su etiqueta bajo el círculo, fuera
+de la píldora.
+
+**El punto de la referencia no se usa.** En la imagen original el punto marca cuál está activo
+*porque no hay texto*. Al añadir la etiqueta, el punto pasa a ser un segundo indicador de lo
+mismo: dos señales para un solo estado, y la etiqueta ya es la más clara de las dos para este
+público. Se queda solo la etiqueta.
 
 **Accesibilidad.** Todos los destinos llevan `Semantics(label:)` con su nombre completo,
 tengan texto visible o no. Un lector de pantalla nunca anuncia "botón" a secas.
@@ -233,7 +238,9 @@ millones, y el caso nulo.
 **De widget (`floating_nav_bar.dart`)**:
 
 - Solo el destino activo muestra texto; los otros tres, únicamente icono.
-- El punto de activo aparece bajo el destino correcto, incluido el central.
+- El botón central también puede estar activo y mostrar su etiqueta.
+- Estar en Estadísticas no enciende el botón central, aunque `/provider/stats` empiece por
+  `/provider`.
 - Con `reduced motion` activo no se programan animaciones.
 - Todos los destinos exponen su `Semantics` label completo.
 
