@@ -89,7 +89,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) _unsubscribe();
     if (state == AppLifecycleState.resumed) {
-      _loadFirst(silent: true);
+      // Desde la pantalla de error el resume recarga completo: el merge
+      // silencioso no limpia `_error` y dejaría los datos frescos ocultos.
+      _loadFirst(silent: !_error);
       _subscribe();
     }
   }
