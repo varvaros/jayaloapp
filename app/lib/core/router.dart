@@ -11,6 +11,7 @@ import '../features/onboarding/choose_role_screen.dart';
 import '../features/onboarding/consumer_onboarding_screen.dart';
 import '../features/onboarding/gate_screen.dart';
 import '../features/onboarding/provider_onboarding_screen.dart';
+import '../features/notifications/notifications_screen.dart';
 import '../features/provider/inbox_screen.dart';
 import '../features/provider/my_offers_screen.dart';
 import '../features/provider/request_detail_screen.dart';
@@ -91,6 +92,10 @@ GoRouter buildRouter() => GoRouter(
                           peerName: m?['peer_name'] as String?,
                           peerAvatarUrl: m?['peer_avatar_url'] as String?));
                 }),
+            GoRoute(
+                path: '/notifications',
+                builder: (_, _) =>
+                    const BackGuard(child: NotificationsScreen())),
           ],
         ),
       ],
