@@ -1,5 +1,9 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/session_state.dart';
 import '../../data/notifications_repository.dart';
@@ -35,13 +39,17 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen> {
+class _NotificationsScreenState extends State<NotificationsScreen>
+    with WidgetsBindingObserver {
   final List<AppNotification> _items = [];
   bool _loading = true;
   bool _error = false;
   bool _hasMore = false;
   bool _loadingMore = false;
   int _page = 0;
+  RealtimeChannel? _channel;
+  // Id de la tarjeta recién llegada por realtime (dispara su animación).
+  String? _justArrivedId;
 
   /// La píldora y "marcar todas" se alimentan del store COMPARTIDO (verdad
   /// del servidor tras [_loadFirst], optimista en tap/marcar-todas): el conteo
@@ -52,18 +60,54 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     notifCountStore.addListener(_onStoreChanged);
     _loadFirst();
+    _subscribe();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     notifCountStore.removeListener(_onStoreChanged);
+    _unsubscribe();
     super.dispose();
   }
 
   void _onStoreChanged() {
     if (mounted) setState(() {});
+  }
+
+  /// Realtime SOLO en foreground (spec §1, patrón del chat): al background se
+  /// suelta el socket; al volver se re-carga la página 1 (cubre el gap) y se
+  /// re-suscribe.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) _unsubscribe();
+    if (state == AppLifecycleState.resumed) {
+      _loadFirst();
+      _subscribe();
+    }
+  }
+
+  void _subscribe() {
+    _unsubscribe();
+    _channel = subscribeNotifications((row) {
+      if (!mounted) return;
+      final n = AppNotification.fromMap(row);
+      if (_items.any((x) => x.id == n.id)) return;
+      setState(() {
+        _items.insert(0, n);
+        _justArrivedId = n.id;
+      });
+      notifCountStore.add(1);
+    });
+  }
+
+  void _unsubscribe() {
+    final ch = _channel;
+    _channel = null;
+    if (ch != null) unsubscribeNotifications(ch);
   }
 
   Future<void> _loadFirst() async {
@@ -125,12 +169,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   void _markAll() {
-    final unread = _items.where((n) => n.unread).toList();
-    if (unread.isEmpty) return;
+    if (_unread == 0) return;
     markAllNotificationsRead().catchError((_) {});
     notifCountStore.zero();
-    // Cascada suave: las tarjetas se apagan escalonadas (el AnimatedContainer
-    // de cada tarjeta hace el fade de color al cambiar readAt).
+    // Cascada solo sobre lo cargado; las páginas no cargadas ya quedaron
+    // marcadas por el update de arriba.
+    final unread = _items.where((n) => n.unread).toList();
     for (var i = 0; i < unread.length; i++) {
       Future.delayed(Duration(milliseconds: 60 * i), () {
         if (!mounted) return;
@@ -191,6 +235,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final cs = Theme.of(context).colorScheme;
     final groups = groupByDay(_items);
     final children = <Widget>[];
+    var cardIndex = 0;
     for (final g in groups) {
       children.add(Padding(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
@@ -204,7 +249,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
       ));
       for (final n in g.items) {
-        children.add(_buildCard(n));
+        children.add(_buildCard(n, cardIndex++));
       }
     }
     if (_hasMore) {
@@ -225,8 +270,50 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Widget _buildCard(AppNotification n) =>
-      _NotifCard(key: ValueKey(n.id), n: n, onTap: () => _open(n));
+  Widget _buildCard(AppNotification n, int index) {
+    // Swipe horizontal = marcar leída; la tarjeta NUNCA se elimina:
+    // confirmDismiss siempre devuelve false → Dismissible la regresa a su
+    // sitio con rebote y el AnimatedContainer desvanece el color (~300ms).
+    // Sobre una leída el mismo gesto es no-op y solo rebota (spec §3).
+    Widget card = Dismissible(
+      key: ValueKey('sw-${n.id}'),
+      direction: DismissDirection.horizontal,
+      dismissThresholds: const {
+        DismissDirection.startToEnd: .35,
+        DismissDirection.endToStart: .35,
+      },
+      movementDuration: const Duration(milliseconds: 250),
+      confirmDismiss: (_) async {
+        _markReadOptimistic(n);
+        return false;
+      },
+      child: _NotifCard(key: ValueKey(n.id), n: n, onTap: () => _open(n)),
+    );
+    if (n.id == _justArrivedId) {
+      // Llegada realtime: entra deslizándose desde arriba con un destello
+      // breve del color de su familia (spec §3).
+      final fam = familyColors(context, familyFor(n.kind));
+      card = card
+          .animate(key: ValueKey('new-${n.id}'))
+          .slideY(begin: -.35, end: 0, duration: 300.ms, curve: Curves.easeOutCubic)
+          .fadeIn(duration: 250.ms)
+          .then()
+          .shimmer(duration: 700.ms, color: fam.icon.withValues(alpha: .35));
+    } else {
+      // Cascada de entrada: fade + slide 12px hacia arriba, ~40ms de stagger
+      // (tope en los primeros ~14 items para no eternizar listas largas).
+      card = card
+          .animate(key: ValueKey('in-${n.id}'))
+          .fadeIn(duration: 250.ms, delay: (40 * min(index, 14)).ms)
+          .slideY(
+              begin: .10,
+              end: 0,
+              duration: 250.ms,
+              delay: (40 * min(index, 14)).ms,
+              curve: Curves.easeOutCubic);
+    }
+    return card;
+  }
 }
 
 class _NotifCard extends StatelessWidget {
