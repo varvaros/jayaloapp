@@ -52,6 +52,31 @@ Esto NO es opinión: es lo que ya está aprobado y en producción visual en `/no
 - Transición entre estados con `AnimatedContainer` de **300ms** `easeOut` (el color se desvanece, nada desaparece de golpe).
 - Tap con `InkWell` con el mismo `borderRadius` que la tarjeta (que el ripple no se salga del redondeado).
 
+### 1.3pre Sistema central de movimiento — `core/motion.dart` (PO 2026-07-18, 2ª directriz)
+
+El PO amplió la doctrina: sensación premium tipo iOS/Pixel/Linear/Revolut —
+viva pero NUNCA lenta. Reglas duras:
+
+- **TODA duración y curva sale de `JayaloMotion`** (`core/motion.dart`):
+  `fast` 150ms (feedback táctil), `base` 250ms (cascadas, pestañas), `page`
+  300ms (pantallas, desvanecidos de tinte); curvas `enter`=easeOutCubic,
+  `exit`=easeInCubic, `emphasized`=easeInOutCubic. No escribir `Duration(…)`
+  ni `Curves.…` sueltos en pantallas.
+- **Respuesta inmediata al toque**: `JayaloCard` tocable se encoge a
+  `pressedScale` (.98) mientras está presionada (vía `onHighlightChanged`,
+  que NO retrasa el onTap) y vuelve suave. El ripple M3 se mantiene.
+- **`JayaloMotion.reduced(context)`** = respeto a "reducir animaciones" del
+  sistema; lo consultan las transiciones de página, el switcher de pestañas,
+  `cascadeIn`, el skeleton y el loader. Toda animación nueva debe hacerlo.
+- **Skeletons**: `SkeletonCard`/`SkeletonList` existen en el kit, pero por
+  decisión del PO se usan SOLO en `/notifications` (su spec ya los pedía);
+  el resto de la app carga con la mascota `JayaloLoaderBlock` — la mascota
+  es identidad de marca y se queda.
+- Diálogos, bottom sheets y menús: heredan las animaciones fluidas de M3;
+  no fijarles duraciones propias.
+- Nada de animaciones que retrasen la interacción; las listas animan
+  entradas con `cascadeIn` (y llegadas realtime con slide+shimmer, ver §1.3).
+
 ### 1.3bis Transición de pantalla — doctrina de movimiento (decisión PO 2026-07-18)
 
 **Toda transición debe sentirse premium: deslizado suave con ease-out, nunca el
