@@ -38,8 +38,9 @@ created_at, entity_type, entity_id`. RLS ya en producción (la web la usa).
 
 ## 2. Campana y badge (`NotificationBell`)
 
-- Ícono campana en el AppBar de: my_requests, create_request (cliente), inbox, my_offers
-  (proveedor) — y las pantallas principales equivalentes de cada shell.
+- Ícono campana en el AppBar de exactamente 4 pantallas: my_requests y create_request
+  (shell cliente), inbox y my_offers (shell proveedor). Las demás (chat, ajustes,
+  detalles) NO llevan campana.
 - Badge circular rojo con el conteo, tope **"9+"**.
 - Ciclo de vida del conteo: fetch al montar la pantalla que la contiene + al
   `AppLifecycleState.resumed`. Tras marcar leídas: baja optimista + revalida.
