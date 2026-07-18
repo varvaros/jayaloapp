@@ -45,6 +45,7 @@ class JayaloCard extends StatelessWidget {
     this.onTap,
     this.tint,
     this.padding = const EdgeInsets.all(12),
+    this.margin = const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
   });
 
   final Widget child;
@@ -52,11 +53,15 @@ class JayaloCard extends StatelessWidget {
   final Color? tint;
   final EdgeInsetsGeometry padding;
 
+  /// Margen exterior estándar de lista; pásalo en cero cuando la tarjeta vive
+  /// dentro de un contenedor que ya trae su propio padding.
+  final EdgeInsetsGeometry margin;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: margin,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
