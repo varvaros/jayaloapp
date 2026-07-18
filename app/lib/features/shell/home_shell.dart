@@ -39,8 +39,28 @@ class HomeShell extends StatelessWidget {
         }
       }
     }
+    // Cambiar de pestaña reemplaza la única página del Navigator anidado (no
+    // la empuja encima), y Flutter no anima ese reemplazo por defecto —
+    // `pageTransitionsTheme` (doctrina de movimiento, `app.dart`) solo cubre
+    // pushes reales, como entrar al detalle de una solicitud, que sigue
+    // dentro de la MISMA pestaña (`idx` no cambia, la key tampoco: no hay
+    // doble transición). Aquí se anima el cambio de pestaña aparte, con
+    // "fade through" (fundido + escala sutil) — el patrón de Material para
+    // navegación entre pares, distinto al deslizado jerárquico de un push.
     return Scaffold(
-      body: child,
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: .98, end: 1).animate(animation),
+            child: child,
+          ),
+        ),
+        child: KeyedSubtree(key: ValueKey(tabs[idx].$1), child: child),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: idx,
         onDestinationSelected: (i) => context.go(tabs[i].$1),
