@@ -4,10 +4,25 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/config.dart';
+import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/pricing.dart';
+import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
+
+/// "F1 · Rellenos suaves" (elegida por el PO): campos sin borde con fondo
+/// gris suave y radius 12. Misma receta que usará "Crear solicitud".
+InputDecoration filledField(BuildContext context, String label) =>
+    InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+    );
 
 const _maxOfferPhotos = 5;
 
@@ -128,9 +143,17 @@ class _ProviderRequestDetailScreenState
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Text(req['title'] as String, style: Theme.of(context).textTheme.titleLarge),
         if (req['is_wholesale'] == true)
-          const Align(
+          Align(
               alignment: Alignment.centerLeft,
-              child: Chip(label: Text('Al por mayor'))),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: StatusChip(
+                    label: 'Al por mayor',
+                    icon: Icons.storefront_outlined,
+                    tone: Theme.of(context).brightness == Brightness.dark
+                        ? JayaloStatus.respondedDark
+                        : JayaloStatus.respondedLight),
+              )),
         const SizedBox(height: 8),
         for (final b in bullets) Text('• $b'),
         const Divider(height: 32),
@@ -157,8 +180,7 @@ class _ProviderRequestDetailScreenState
                 controller: _price,
                 keyboardType: TextInputType.number,
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                    labelText: 'Precio (RD\$)', border: OutlineInputBorder()))
+                decoration: filledField(context, 'Precio (RD\$)'))
           else
             Row(children: [
               Expanded(
@@ -166,25 +188,20 @@ class _ProviderRequestDetailScreenState
                       controller: _min,
                       keyboardType: TextInputType.number,
                       onChanged: (_) => setState(() {}),
-                      decoration: const InputDecoration(
-                          labelText: 'Desde (RD\$)',
-                          border: OutlineInputBorder()))),
+                      decoration: filledField(context, 'Desde (RD\$)'))),
               const SizedBox(width: 8),
               Expanded(
                   child: TextField(
                       controller: _max,
                       keyboardType: TextInputType.number,
                       onChanged: (_) => setState(() {}),
-                      decoration: const InputDecoration(
-                          labelText: 'Hasta (RD\$)',
-                          border: OutlineInputBorder()))),
+                      decoration: filledField(context, 'Hasta (RD\$)'))),
             ]),
           const SizedBox(height: 12),
           TextField(
               controller: _msg,
               maxLines: 3,
-              decoration: const InputDecoration(
-                  labelText: 'Mensaje al cliente', border: OutlineInputBorder())),
+              decoration: filledField(context, 'Mensaje al cliente')),
           const SizedBox(height: 16),
           Text('Fotos de tu producto (hasta $_maxOfferPhotos)',
               style: Theme.of(context).textTheme.titleSmall),
@@ -225,10 +242,24 @@ class _ProviderRequestDetailScreenState
             ),
           const SizedBox(height: 12),
           if (_estimatedCost > 0)
-            Text(
-                'Ofertar es GRATIS. Si te aceptan, desbloquear el contacto te '
-                'costará ~$_estimatedCost crédito${_estimatedCost == 1 ? '' : 's'}.',
-                style: Theme.of(context).textTheme.bodySmall),
+            Builder(builder: (context) {
+              // Ámbar = dinero: el costo del unlock se ve claro ANTES de
+              // ofertar, sin asustar (ofertar sigue siendo gratis).
+              final tone = Theme.of(context).brightness == Brightness.dark
+                  ? JayaloStatus.acceptedDark
+                  : JayaloStatus.acceptedLight;
+              return Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: tone.bg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                    'Ofertar es GRATIS. Si te aceptan, desbloquear el contacto '
+                    'te costará ~$_estimatedCost crédito${_estimatedCost == 1 ? '' : 's'}.',
+                    style: TextStyle(fontSize: 12, color: tone.ink)),
+              );
+            }),
           const SizedBox(height: 12),
           FilledButton(
               onPressed: _busy ? null : _submit,
