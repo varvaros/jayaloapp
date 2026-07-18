@@ -79,15 +79,23 @@ viva pero NUNCA lenta. Reglas duras:
 
 ### 1.3bis Transición de pantalla — doctrina de movimiento (decisión PO 2026-07-18)
 
-**Toda transición debe sentirse premium: deslizado suave con ease-out, nunca el
-zoom/fade genérico de Android por defecto.** Se resuelve UNA sola vez en
-`app.dart` (`_JayaloPageTransitionsBuilder` en el `pageTransitionsTheme` de
+**Toda transición debe sentirse premium: deslizado suave en eje VERTICAL,
+nunca el zoom/fade genérico de Android por defecto.** Se resuelve UNA sola vez
+en `app.dart` (`_JayaloPageTransitionsBuilder` en el `pageTransitionsTheme` de
 `jayaloTheme`), no ruta por ruta: cubre las ~15 `GoRoute` de `core/router.dart`
-sin tocarlas. Entrante desliza 6% del ancho desde la derecha + fade-in;
-saliente (al empujar, no al volver) se desliza 4% a la izquierda y se atenúa a
-40% de opacidad — profundidad tipo "shared axis" de M3, no un corte plano.
-Curva `easeOutCubic` (entrada) / `easeInCubic` (reversa), duración 300ms
-(la que ya trae `MaterialPageRoute` por defecto — no hace falta forzarla).
+sin tocarlas.
+
+Eje vertical por decisión del PO (2026-07-18, revisión de la 1ª versión que era
+horizontal): **la sección entrante SUBE desde abajo (8% del alto) + fade-in, y
+la saliente se GUARDA hacia arriba (4%) atenuándose a 40%**. Curva
+`easeInOutCubic` (`JayaloMotion.emphasized`) en ambas direcciones — arranca y
+termina suave, sin tirón; es lo que da la sensación de que la sección "se
+acomoda" en su sitio. Duración 300ms (la que ya trae `MaterialPageRoute` por
+defecto — no hace falta forzarla).
+
+El cambio de pestaña usa el MISMO lenguaje vertical (subida de 4% + fade) pero
+en `base` (250ms), porque cambiar de pestaña no es entrar "más adentro" que la
+pantalla actual.
 Test de contrato: `test/page_transitions_test.dart` (si alguien revierte el
 tema sin querer, el `SlideTransition` desaparece y el test lo detecta, porque
 el zoom por defecto de M3 usa Scale+Fade, no Slide).
