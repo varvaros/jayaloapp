@@ -624,3 +624,69 @@ Future<String?> myBusinessName() async {
   final n = biz?['name'];
   return (n is String && n.isNotEmpty) ? n : null;
 }
+
+// ── Métricas: reputación del cliente y estadísticas del proveedor ───────────
+
+/// Reputación del usuario actual como CLIENTE. `null` si la RPC no devuelve
+/// fila (usuario recién creado sin actividad).
+///
+/// Campos: avg_rating, reviews_count, completed_purchases, requests_count,
+/// median_response_minutes, response_samples.
+Future<Map<String, dynamic>?> customerReputation() async {
+  final uid = supa.auth.currentUser!.id;
+  final rows = List<Map<String, dynamic>>.from(
+      await supa.rpc('get_customer_reputation', params: {'_customer_id': uid}));
+  return rows.isEmpty ? null : rows.first;
+}
+
+/// Estadísticas del usuario actual como PROVEEDOR: fusiona las dos RPCs en un
+/// solo mapa porque la pantalla las muestra juntas y ninguna tiene sentido
+/// sola. Las claves ausentes quedan en 0 (proveedor sin actividad todavía).
+///
+/// Campos: clients_count, completed_count, points_invested, revenue_total,
+/// avg_rating, reviews_count.
+Future<Map<String, dynamic>> providerStats() async {
+  final uid = supa.auth.currentUser!.id;
+  final results = await Future.wait([
+    supa.rpc('get_provider_stats', params: {'_user_id': uid}),
+    supa.rpc('get_provider_reviews_summary', params: {'_user_id': uid}),
+  ]);
+  final stats = List<Map<String, dynamic>>.from(results[0] as List);
+  final reviews = List<Map<String, dynamic>>.from(results[1] as List);
+  return {
+    ...(stats.isEmpty ? const <String, dynamic>{} : stats.first),
+    ...(reviews.isEmpty ? const <String, dynamic>{} : reviews.first),
+  };
+}
+
+/// Cuántos productos y cuántos servicios tiene publicados el proveedor.
+/// Solo la CIFRA — el catálogo navegable es un spec aparte.
+Future<({int productos, int servicios})> providerCatalogCounts() async {
+  final uid = supa.auth.currentUser!.id;
+  final rows = List<Map<String, dynamic>>.from(await supa
+      .from('provider_products')
+      .select('kind')
+      .eq('user_id', uid));
+  return (
+    productos: rows.where((r) => r['kind'] == 'producto').length,
+    servicios: rows.where((r) => r['kind'] == 'servicio').length,
+  );
+}
+
+/// TODAS las solicitudes abiertas, de cualquier rubro, excluyendo las propias.
+///
+/// Decisión PO 2026-07-17: esta vista existe para que el marketplace no se vea
+/// vacío, así que NUNCA filtra por rubro ni categoría del proveedor. Antes la
+/// web aplicaba las preferencias por defecto y dejaba la pestaña en "0
+/// resultados" aunque hubiera solicitudes abiertas de otros rubros.
+Future<List<Map<String, dynamic>>> allOpenRequests({String? kind}) async {
+  final uid = supa.auth.currentUser!.id;
+  var q = supa
+      .from('customer_requests')
+      .select('id,title,description,kind,urgency,zone,created_at')
+      .eq('status', 'open')
+      .neq('user_id', uid);
+  if (kind != null) q = q.eq('kind', kind);
+  return List<Map<String, dynamic>>.from(
+      await q.order('created_at', ascending: false).limit(100));
+}
