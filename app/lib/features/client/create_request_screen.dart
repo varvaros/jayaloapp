@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/ai_client.dart';
+import '../../core/brand.dart';
 import '../../core/turnstile.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_turns.dart';
 import '../../domain/image_pick.dart';
 import '../verification/verify_banner.dart';
 import '../notifications/notification_bell.dart';
+import '../shared/brand_kit.dart';
+import '../shared/jayalo_loader.dart';
 
 const _maxRequestPhotos = 2;
 
@@ -294,10 +297,18 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(32),
-                    child: Text(
-                        'Dinos qué buscas y la IA arma tu solicitud\npara que los proveedores te oferten.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyLarge),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // La mascota "buscando" — el mismo vacío de la web.
+                        const JayaloMascot(size: 76),
+                        const SizedBox(height: 16),
+                        Text(
+                            'Dinos qué buscas y la IA arma tu solicitud\npara que los proveedores te oferten.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyLarge),
+                      ],
+                    ),
                   ),
                 )
               : ListView.builder(
@@ -329,7 +340,18 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                   },
                 ),
         ),
-        if (_busy) const LinearProgressIndicator(),
+        if (_busy)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+            child: Row(children: [
+              const JayaloSpinner(size: 16),
+              const SizedBox(width: 8),
+              Text('Pensando…',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            ]),
+          ),
         if (_photos.isNotEmpty) _photoStrip(),
         if (_ready == null)
           SafeArea(
@@ -341,7 +363,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 onSubmitted: _send,
                 decoration: InputDecoration(
                   hintText: started ? 'Escribe tu respuesta…' : '¿Qué estás buscando?',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(28)),
+                  // "F1 · Rellenos suaves" (elegido por el PO para este grupo).
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(28),
+                      borderSide: BorderSide.none),
                   prefixIcon: IconButton(
                       tooltip: 'Adjuntar foto',
                       icon: const Icon(Icons.add_photo_alternate_outlined),
@@ -416,29 +443,40 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                     _send(op);
                   }),
           ]),
-        AiReady r => Card(
-            margin: const EdgeInsets.only(top: 4),
-            child: Padding(
+        AiReady r => Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: JayaloCard(
               padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(r.title, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                for (final b in r.bullets) Text('• $b'),
-                if (r.wholesale || _wholesale)
-                  const Padding(
-                      padding: EdgeInsets.only(top: 6),
-                      child: Chip(label: Text('Al por mayor'))),
-                const SizedBox(height: 12),
-                Row(children: [
-                  FilledButton(
-                      onPressed: _busy ? null : _submit,
-                      child: const Text('Enviar solicitud')),
-                  const SizedBox(width: 8),
-                  TextButton(
-                      onPressed: () => setState(() => _ready = null),
-                      child: const Text('Corregir algo')),
-                ]),
-              ]),
+              margin: EdgeInsets.zero,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(r.title,
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                    for (final b in r.bullets) Text('• $b'),
+                    if (r.wholesale || _wholesale)
+                      Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: StatusChip(
+                              label: 'Al por mayor',
+                              icon: Icons.storefront_outlined,
+                              tone: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? JayaloStatus.respondedDark
+                                  : JayaloStatus.respondedLight)),
+                    const SizedBox(height: 12),
+                    Row(children: [
+                      FilledButton(
+                          onPressed: _busy ? null : _submit,
+                          child: const Text('Enviar solicitud')),
+                      const SizedBox(width: 8),
+                      TextButton(
+                          onPressed: () => setState(() => _ready = null),
+                          child: const Text('Corregir algo')),
+                    ]),
+                  ]),
             ),
           ),
         _ => const SizedBox.shrink(),
