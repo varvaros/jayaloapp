@@ -43,12 +43,27 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _loadingMore = false;
   int _page = 0;
 
-  int get _unread => _items.where((n) => n.unread).length;
+  /// La píldora y "marcar todas" se alimentan del store COMPARTIDO (verdad
+  /// del servidor tras [_loadFirst], optimista en tap/marcar-todas): el conteo
+  /// local de `_items` subcontaría cuando hay más no-leídas que las páginas
+  /// cargadas en memoria.
+  int get _unread => notifCountStore.count;
 
   @override
   void initState() {
     super.initState();
+    notifCountStore.addListener(_onStoreChanged);
     _loadFirst();
+  }
+
+  @override
+  void dispose() {
+    notifCountStore.removeListener(_onStoreChanged);
+    super.dispose();
+  }
+
+  void _onStoreChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadFirst() async {
@@ -131,32 +146,37 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       appBar: AppBar(
         title: const Text('Notificaciones'),
         actions: [
-          // Píldora "N nuevas": se encoge hasta desaparecer al llegar a 0.
-          AnimatedScale(
-            scale: _unread > 0 ? 1 : 0,
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOutBack,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: cs.primaryContainer,
-                borderRadius: BorderRadius.circular(99),
-              ),
-              child: Text(
-                '$_unread nueva${_unread == 1 ? '' : 's'}',
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: cs.onPrimaryContainer),
+          // Sin píldora ni "marcar todas" sobre el esqueleto o el error: en
+          // esos estados el conteo no corresponde a lo que se ve.
+          if (!_loading && !_error) ...[
+            // Píldora "N nuevas": se encoge hasta desaparecer al llegar a 0.
+            AnimatedScale(
+              scale: _unread > 0 ? 1 : 0,
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOutBack,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  '$_unread nueva${_unread == 1 ? '' : 's'}',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onPrimaryContainer),
+                ),
               ),
             ),
-          ),
-          if (_unread > 0)
-            IconButton(
-              tooltip: 'Marcar todas como leídas',
-              icon: const Icon(Icons.done_all),
-              onPressed: _markAll,
-            ),
+            if (_unread > 0)
+              IconButton(
+                tooltip: 'Marcar todas como leídas',
+                icon: const Icon(Icons.done_all),
+                onPressed: _markAll,
+              ),
+          ],
           const SizedBox(width: 4),
         ],
       ),
