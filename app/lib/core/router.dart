@@ -6,6 +6,7 @@ import '../features/chat/chat_screen.dart';
 import '../features/chat/conversations_screen.dart';
 import '../features/client/create_request_screen.dart';
 import '../features/client/my_requests_screen.dart';
+import '../features/client/reputation_screen.dart';
 import '../features/client/request_status_screen.dart';
 import '../features/notifications/notifications_screen.dart';
 import '../features/onboarding/choose_role_screen.dart';
@@ -55,6 +56,9 @@ GoRouter buildRouter() => GoRouter(
             GoRoute(
                 path: '/client/create',
                 builder: (_, _) => const BackGuard(child: CreateRequestScreen())),
+            GoRoute(
+                path: '/client/reputation',
+                builder: (_, _) => const BackGuard(child: ReputationScreen())),
             GoRoute(
                 path: '/client/request/:id',
                 builder: (_, s) => BackGuard(
