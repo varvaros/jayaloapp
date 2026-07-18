@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/brand.dart';
 import '../../data/repos.dart';
 import 'otp_sheet.dart';
 
@@ -36,17 +37,53 @@ class _VerifyWhatsappBannerState extends State<VerifyWhatsappBanner> {
   @override
   Widget build(BuildContext context) {
     if (_dismissed || _verified != false) return const SizedBox.shrink();
-    return MaterialBanner(
-      content: const Text(
-          'Confirma tu número (te llega un código por SMS): las solicitudes verificadas '
-          'generan más confianza y reciben más ofertas.'),
-      leading: const Icon(Icons.verified_outlined),
-      actions: [
-        TextButton(onPressed: _verify, child: const Text('Confirmar ahora')),
-        TextButton(
-            onPressed: () => setState(() => _dismissed = true),
-            child: const Text('Ahora no')),
-      ],
+    // Tinte "pendiente" (ámbar suave): es un nudge, no una alerta.
+    final tone = Theme.of(context).brightness == Brightness.dark
+        ? JayaloStatus.pendingDark
+        : JayaloStatus.pendingLight;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: tone.bg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.verified_outlined, size: 20, color: tone.ink),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                    'Confirma tu número (te llega un código por SMS): las '
+                    'solicitudes verificadas generan más confianza y reciben '
+                    'más ofertas.',
+                    style: TextStyle(fontSize: 13, color: tone.ink)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                  onPressed: () => setState(() => _dismissed = true),
+                  style: TextButton.styleFrom(foregroundColor: tone.ink),
+                  child: const Text('Ahora no')),
+              TextButton(
+                  onPressed: _verify,
+                  style: TextButton.styleFrom(
+                      foregroundColor: tone.ink,
+                      textStyle:
+                          const TextStyle(fontWeight: FontWeight.w700)),
+                  child: const Text('Confirmar ahora')),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
