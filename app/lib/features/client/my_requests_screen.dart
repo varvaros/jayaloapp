@@ -4,6 +4,7 @@ import '../../data/repos.dart';
 import '../../domain/phase.dart';
 import '../shell/home_scroll.dart';
 import '../notifications/notification_bell.dart';
+import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 
 String timeAgo(DateTime d) {
@@ -13,16 +14,18 @@ String timeAgo(DateTime d) {
   return 'hace ${diff.inDays} d';
 }
 
-(Color, String) phaseBadge(BuildContext c, RequestPhase p) {
-  final cs = Theme.of(c).colorScheme;
-  return switch (p) {
-    RequestPhase.waiting => (cs.outline, 'Esperando ofertas'),
-    RequestPhase.withOffers => (cs.primary, 'Con ofertas'),
-    RequestPhase.accepted => (Colors.amber.shade800, 'Oferta aceptada'),
-    RequestPhase.unlocked => (Colors.green.shade700, 'Contacto desbloqueado'),
-    RequestPhase.completed => (cs.outline, 'Completada'),
-  };
-}
+/// Copy e ícono del chip de fase (variante "C · Chip y pasos" elegida por el
+/// PO). Con ofertas muestra el conteo real — es el dato que hace abrir la app.
+(IconData, String) phaseChip(RequestPhase p, int offerCount) => switch (p) {
+      RequestPhase.waiting => (Icons.schedule, 'Esperando ofertas'),
+      RequestPhase.withOffers => (
+          Icons.local_offer_outlined,
+          '$offerCount oferta${offerCount == 1 ? '' : 's'}'
+        ),
+      RequestPhase.accepted => (Icons.handshake, 'Aceptada'),
+      RequestPhase.unlocked => (Icons.lock_open, 'Desbloqueado'),
+      RequestPhase.completed => (Icons.done_all, 'Completada'),
+    };
 
 class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({super.key});
@@ -31,9 +34,9 @@ class MyRequestsScreen extends StatefulWidget {
 }
 
 class _MyRequestsScreenState extends State<MyRequestsScreen> {
-  late Future<List<(Map<String, dynamic>, RequestPhase)>> _load = _fetch();
+  late Future<List<(Map<String, dynamic>, RequestPhase, int)>> _load = _fetch();
 
-  Future<List<(Map<String, dynamic>, RequestPhase)>> _fetch() async {
+  Future<List<(Map<String, dynamic>, RequestPhase, int)>> _fetch() async {
     final reqs = await myRequests();
     if (reqs.isEmpty) return [];
     final ids = reqs.map((r) => r['id'] as String).toList();
@@ -51,7 +54,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           r,
           phaseForRequest(
               requestStatus: r['status'] as String,
-              offers: byReq[r['id']] ?? const [])
+              offers: byReq[r['id']] ?? const []),
+          byReq[r['id']]?.length ?? 0,
         )
     ];
   }
@@ -72,41 +76,105 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
             }
             final items = snap.data!;
             if (items.isEmpty) {
-              return ListView(controller: homeScrollController, children: const [
-                SizedBox(height: 120),
-                Icon(Icons.receipt_long_outlined, size: 56),
-                Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text(
-                      'Aún no has pedido nada.\nToca "Crear" y dinos qué buscas.',
-                      textAlign: TextAlign.center),
-                ),
-              ]);
+              return EmptyState(
+                controller: homeScrollController,
+                message: 'Aún no has pedido nada.\n'
+                    'Cuéntanos qué buscas y los proveedores te harán ofertas.',
+                ctaLabel: 'Crear solicitud',
+                onCta: () => context.go('/client/create'),
+              );
             }
             return ListView.builder(
               controller: homeScrollController,
+              padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: items.length,
               itemBuilder: (_, i) {
-                final (r, phase) = items[i];
-                final (color, label) = phaseBadge(context, phase);
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  child: ListTile(
-                    title: Text(r['title'] as String,
-                        maxLines: 2, overflow: TextOverflow.ellipsis),
-                    subtitle:
-                        Text(timeAgo(DateTime.parse(r['created_at'] as String))),
-                    trailing: Chip(
-                        label: Text(label,
-                            style: TextStyle(color: color, fontSize: 12)),
-                        side: BorderSide(color: color.withValues(alpha: .4))),
-                    onTap: () => context.go('/client/request/${r['id']}'),
-                  ),
-                );
+                final (r, phase, offerCount) = items[i];
+                return _RequestCard(
+                  title: r['title'] as String,
+                  createdAt: DateTime.parse(r['created_at'] as String),
+                  phase: phase,
+                  offerCount: offerCount,
+                  onTap: () => context.go('/client/request/${r['id']}'),
+                ).cascadeIn(i);
               },
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+/// Variante "C · Chip y pasos": tarjeta neutra con chip de estado arriba a la
+/// derecha y una mini-barra de progreso de 5 segmentos (una por fase) que
+/// muestra el avance de un vistazo sin abrir el detalle.
+class _RequestCard extends StatelessWidget {
+  const _RequestCard({
+    required this.title,
+    required this.createdAt,
+    required this.phase,
+    required this.offerCount,
+    required this.onTap,
+  });
+
+  final String title;
+  final DateTime createdAt;
+  final RequestPhase phase;
+  final int offerCount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tone = toneFor(context, phase);
+    final idx = RequestPhase.values.indexOf(phase);
+    final (icon, label) = phaseChip(phase, offerCount);
+    return JayaloCard(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 8),
+              StatusChip(label: label, tone: tone, icon: icon),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              for (var i = 0; i < RequestPhase.values.length; i++) ...[
+                if (i > 0) const SizedBox(width: 4),
+                Expanded(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: i <= idx ? tone.ink : cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            timeAgo(createdAt),
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
+        ],
       ),
     );
   }
