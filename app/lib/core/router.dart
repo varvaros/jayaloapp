@@ -78,8 +78,19 @@ GoRouter buildRouter() => GoRouter(
                 builder: (_, _) => const BackGuard(child: ConversationsScreen())),
             GoRoute(
                 path: '/messages/:id',
-                builder: (_, s) => BackGuard(
-                    child: ChatScreen(conversationId: s.pathParameters['id']!))),
+                builder: (_, s) {
+                  // Task I-2: peer_name/avatar llegan por `extra` desde la
+                  // lista de conversaciones (evita el RPC agregado). Si no
+                  // vienen (deep-link/push futuro), quedan null y ChatScreen
+                  // cae al fallback con `conversationsList()`.
+                  final x = s.extra;
+                  final m = x is Map ? x : null;
+                  return BackGuard(
+                      child: ChatScreen(
+                          conversationId: s.pathParameters['id']!,
+                          peerName: m?['peer_name'] as String?,
+                          peerAvatarUrl: m?['peer_avatar_url'] as String?));
+                }),
           ],
         ),
       ],

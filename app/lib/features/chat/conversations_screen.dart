@@ -133,7 +133,13 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             : '';
     return ListTile(
       onTap: () async {
-        await context.push('/messages/${c['id']}');
+        // Task I-2: pasa peer_name/avatar ya resueltos en esta lista para que
+        // ChatScreen no tenga que llamar de nuevo al RPC agregado
+        // `conversationsList()` solo para esos dos campos.
+        await context.push('/messages/${c['id']}', extra: {
+          'peer_name': c['peer_name'],
+          'peer_avatar_url': c['peer_avatar_url'],
+        });
         _load(); // refresh al volver del chat (badges/último mensaje)
       },
       leading: CircleAvatar(

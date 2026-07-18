@@ -487,6 +487,13 @@ Future<void> improveOfferPrice(String convId, num newPrice) async =>
 Future<bool> hasConversationRating(String convId) async =>
     (await supa.from('conversation_ratings').select('id').eq('conversation_id', convId).maybeSingle()) != null;
 
+/// ¿Ya existe un mensaje de auditoría en esta conversación? Query dedicada:
+/// mirar los 50 cargados no basta (la auditoría puede estar más atrás).
+Future<bool> hasAuditMessage(String convId) async =>
+    (await supa.from('conversation_messages').select('id')
+        .eq('conversation_id', convId).eq('kind', 'audit')
+        .limit(1).maybeSingle()) != null;
+
 Future<void> submitConversationRating(
         {required String convId, required String customerId, required String providerUserId,
         required int overall, required bool quality, required bool fulfillment,

@@ -17,8 +17,16 @@ import 'widgets/rating_form.dart';
 const _pageSize = 50;
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, required this.conversationId});
+  const ChatScreen(
+      {super.key, required this.conversationId, this.peerName, this.peerAvatarUrl});
   final String conversationId;
+  // Pasados por la lista de conversaciones (Task I-2): si vienen presentes,
+  // evitan volver a llamar al RPC agregado `conversationsList()` solo para
+  // resolver el nombre/avatar del peer — ahorro de batería/red al entrar
+  // desde la lista. Si son null (deep-link/push futuro sin `extra`), se
+  // mantiene el fallback con `conversationsList()`.
+  final String? peerName;
+  final String? peerAvatarUrl;
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
@@ -65,26 +73,35 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _load() async {
     setState(() => _error = false);
     try {
+      // Task I-2: si la lista de conversaciones ya nos pasó peer_name/avatar
+      // (extra del push), no hace falta el RPC agregado `conversationsList()`
+      // solo para resolverlos — ahorro de batería/red al entrar desde la lista.
+      final needsPeerFetch = widget.peerName == null;
       final results = await Future.wait([
         fetchConversation(widget.conversationId),
         messagesPage(widget.conversationId, limit: _pageSize),
-        conversationsList(), // para peer name/avatar (fila de esta conv)
+        if (needsPeerFetch) conversationsList() else Future.value(const <Map<String, dynamic>>[]),
         hasConversationRating(widget.conversationId),
       ]);
       final conv = results[0] as Map<String, dynamic>?;
       if (conv == null) throw StateError('not found');
       final page = results[1] as List<Map<String, dynamic>>;
-      final listRow = (results[2] as List<Map<String, dynamic>>)
-          .where((c) => c['id'] == widget.conversationId).toList();
       final hasRating = results[3] as bool;
       _session.seedFirstPage(page, _pageSize);
       if (!mounted) return;
       setState(() {
         _conv = conv;
         _hasRating = hasRating;
-        if (listRow.isNotEmpty) {
-          _peerName = listRow.first['peer_name'] as String?;
-          _peerAvatarUrl = listRow.first['peer_avatar_url'] as String?;
+        if (!needsPeerFetch) {
+          _peerName = widget.peerName;
+          _peerAvatarUrl = widget.peerAvatarUrl;
+        } else {
+          final listRow = (results[2] as List<Map<String, dynamic>>)
+              .where((c) => c['id'] == widget.conversationId).toList();
+          if (listRow.isNotEmpty) {
+            _peerName = listRow.first['peer_name'] as String?;
+            _peerAvatarUrl = listRow.first['peer_avatar_url'] as String?;
+          }
         }
       });
       _setupRealtime();
@@ -146,14 +163,24 @@ class _ChatScreenState extends State<ChatScreen> {
         await _sendRaw('text', body);
       }
     }
-    // 3) Auditoría 72h.
-    final hasAudit = _session.messages.any((m) => m.kind == 'audit');
-    if (needsAudit(
-        status: conv['status'] as String,
-        createdAt: DateTime.parse(conv['created_at'] as String),
-        hasAudit: hasAudit,
-        now: DateTime.now())) {
-      await _sendRaw('audit', '¿Ya recibiste tu producto?', systemSender: true);
+    // 3) Auditoría 72h. Solo el CLIENTE la dispara: es el destinatario del
+    // "¿Ya recibiste tu producto?" y así hay un solo actor, sin carrera
+    // cross-device entre cliente y proveedor abriendo el chat a la vez.
+    // `_session.messages` solo trae los últimos 50 — en conversaciones largas
+    // eso no basta para saber si la auditoría ya existe (podría estar más
+    // atrás), así que primero evaluamos la parte barata (status/72h con los
+    // datos ya cargados de `conv`) y solo si puede hacer falta consultamos.
+    if (!_isProvider &&
+        needsAudit(
+            status: conv['status'] as String,
+            createdAt: DateTime.parse(conv['created_at'] as String),
+            hasAudit: false,
+            now: DateTime.now())) {
+      final already = await hasAuditMessage(conv['id'] as String);
+      if (!mounted) return;
+      if (!already) {
+        await _sendRaw('audit', '¿Ya recibiste tu producto?', systemSender: true);
+      }
     }
   }
 
@@ -407,7 +434,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
                 FilledButton(
                     onPressed: () async {
-                      final next = num.tryParse(ctrl.text);
+                      final next = num.tryParse(ctrl.text.replaceAll(',', '').trim());
                       if (next == null || next <= 0) {
                         _snack('Ingresa un precio válido.');
                         return;
