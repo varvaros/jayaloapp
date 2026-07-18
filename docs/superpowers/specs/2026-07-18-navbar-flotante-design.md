@@ -52,6 +52,14 @@ estado). Las dos rutas ya existen dentro del `ShellRoute`, así que el estado ac
 La **campana de notificaciones** se queda en el `AppBar` con su badge, como está hoy. No baja a
 la barra.
 
+**Dentro de una conversación la barra se oculta** (decisión PO 2026-07-18, tomada durante la
+implementación). Todas las rutas cuelgan del mismo `ShellRoute` plano, así que `/messages/:id`
+mostraba la barra igual que las demás; con la barra sólida el chat vivía encima de ella, pero al
+flotar tapaba el campo de escribir. En un chat no se navega, se conversa — es lo que hacen
+WhatsApp y Messenger — y ocultarla devuelve 132 px de alto a una pantalla donde el teclado ya se
+come la mitad. La lista de conversaciones (`/messages`) sí la muestra; solo desaparece en el
+detalle.
+
 ### Iconos
 
 | Destino | Icono |
@@ -288,3 +296,6 @@ bordes. El círculo está centrado, lejos de los bordes laterales, así que no s
    mostrando todo; la pantalla nueva es solo de métricas y se llama Reputación.
 4. **2026-07-18** — El catálogo navegable se saca de este alcance y va a su propio spec.
 5. **2026-07-18** — Etiquetas: texto solo bajo el icono activo.
+6. **2026-07-18** — La barra se oculta dentro de una conversación (`/messages/:id`), no en la
+   lista de mensajes. Decisión tomada durante la implementación, al descubrirse que el plan
+   afirmaba erróneamente que el chat no mostraba la barra.
