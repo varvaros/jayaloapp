@@ -12,6 +12,7 @@ import '../client/request_status_screen.dart' show fmtRD;
 import 'widgets/bubbles.dart';
 import 'widgets/chat_dialogs.dart';
 import 'widgets/composer.dart';
+import 'widgets/rating_form.dart';
 
 const _pageSize = 50;
 
@@ -33,6 +34,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _greeted = false;
   bool _sending = false;
   bool _uploadingImage = false;
+  bool _hasRating = false;
   RealtimeChannel? _channel;
   AppLifecycleListener? _lifecycle;
   final _scroll = ScrollController();
@@ -67,16 +69,19 @@ class _ChatScreenState extends State<ChatScreen> {
         fetchConversation(widget.conversationId),
         messagesPage(widget.conversationId, limit: _pageSize),
         conversationsList(), // para peer name/avatar (fila de esta conv)
+        hasConversationRating(widget.conversationId),
       ]);
       final conv = results[0] as Map<String, dynamic>?;
       if (conv == null) throw StateError('not found');
       final page = results[1] as List<Map<String, dynamic>>;
       final listRow = (results[2] as List<Map<String, dynamic>>)
           .where((c) => c['id'] == widget.conversationId).toList();
+      final hasRating = results[3] as bool;
       _session.seedFirstPage(page, _pageSize);
       if (!mounted) return;
       setState(() {
         _conv = conv;
+        _hasRating = hasRating;
         if (listRow.isNotEmpty) {
           _peerName = listRow.first['peer_name'] as String?;
           _peerAvatarUrl = listRow.first['peer_avatar_url'] as String?;
@@ -373,8 +378,64 @@ class _ChatScreenState extends State<ChatScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  /// Task 10 implementa la hoja de "mejorar oferta" (bajar precio).
-  void _openImproveOffer() {}
+  /// Mejorar oferta: el proveedor baja el precio acordado en un chat abierto
+  /// y se lo notifica al cliente con un mensaje system en el chat. El
+  /// mensaje va SIN `systemSender` (sender = _uid): la RLS de prod exige
+  /// `sender_id = auth.uid()` para `kind 'system'` (solo `audit` acepta
+  /// sender NULL). Como el update y el mensaje ocurren en chat abierto, no
+  /// hay problema de status (a diferencia de "completado", donde el RLS
+  /// bloquea inserts post-cierre).
+  void _openImproveOffer() {
+    final current = _conv?['agreed_price'] as num?;
+    final ctrl = TextEditingController(text: current?.toString() ?? '');
+    showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: const Text('Mejorar oferta'),
+              content: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Text(
+                    'Reduce el precio acordado. Se notificará al cliente en el chat con el ahorro.',
+                    style: TextStyle(fontSize: 13)),
+                const SizedBox(height: 8),
+                Text('Precio actual: ${current != null ? fmtRD(current) : '—'}'),
+                TextField(
+                    controller: ctrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Nuevo precio (RD\$)')),
+              ]),
+              actions: [
+                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+                FilledButton(
+                    onPressed: () async {
+                      final next = num.tryParse(ctrl.text);
+                      if (next == null || next <= 0) {
+                        _snack('Ingresa un precio válido.');
+                        return;
+                      }
+                      if (current != null && next >= current) {
+                        _snack('El nuevo precio debe ser menor al actual.');
+                        return;
+                      }
+                      Navigator.of(ctx).pop();
+                      try {
+                        await improveOfferPrice(widget.conversationId, next);
+                        if (!mounted) return;
+                        final body = current != null
+                            ? '🎉 El proveedor mejoró la oferta a ${fmtRD(next)} — ahorro de ${fmtRD(current - next)}.'
+                            : '🎉 El proveedor estableció un nuevo precio: ${fmtRD(next)}.';
+                        await _sendRaw('system', body);
+                        if (!mounted) return;
+                        _snack('Oferta mejorada.');
+                        await _reload();
+                      } catch (_) {
+                        if (!mounted) return;
+                        _snack('No se pudo mejorar la oferta.');
+                      }
+                    },
+                    child: const Text('Mejorar oferta')),
+              ],
+            ));
+  }
 
   void _openLightbox(String src) {
     showDialog<void>(
@@ -575,6 +636,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// Banner de cerrado, o composer si la conversación sigue abierta.
   Widget _buildBottom(Map<String, dynamic> conv) {
+    if (!_isProvider && conv['status'] == 'cerrado' && !_hasRating) {
+      return RatingPanel(
+          convId: widget.conversationId,
+          customerId: conv['customer_id'] as String,
+          providerUserId: conv['provider_user_id'] as String,
+          onDone: () => setState(() => _hasRating = true));
+    }
     if (!_isOpen) {
       final txt = conv['status'] == 'cerrado'
           ? 'Pedido marcado como completado. El chat queda cerrado y ya no es posible enviar mensajes.'
@@ -583,8 +651,15 @@ class _ChatScreenState extends State<ChatScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(14),
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Text(txt, textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: Colors.grey)));
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(txt, textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: Colors.grey)),
+            if (_hasRating && !_isProvider)
+              const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text('Ya enviaste tu calificación.',
+                      style: TextStyle(fontSize: 12))),
+          ]));
     }
     return ChatComposer(
       isProvider: _isProvider,
