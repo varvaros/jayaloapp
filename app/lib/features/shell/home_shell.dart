@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/motion.dart';
 import '../../core/session_state.dart';
 
 class HomeShell extends StatelessWidget {
@@ -49,13 +50,15 @@ class HomeShell extends StatelessWidget {
     // navegación entre pares, distinto al deslizado jerárquico de un push.
     return Scaffold(
       body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
+        duration:
+            JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base,
+        switchInCurve: JayaloMotion.enter,
+        switchOutCurve: JayaloMotion.exit,
         transitionBuilder: (child, animation) => FadeTransition(
           opacity: animation,
           child: ScaleTransition(
-            scale: Tween<double>(begin: .98, end: 1).animate(animation),
+            scale: Tween<double>(begin: JayaloMotion.pressedScale, end: 1)
+                .animate(animation),
             child: child,
           ),
         ),

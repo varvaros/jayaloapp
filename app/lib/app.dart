@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/brand.dart';
+import 'core/motion.dart';
 
 /// Doctrina de movimiento (decisión PO 2026-07-18): TODA transición de
 /// pantalla debe sentirse premium — deslizado suave con ease-out, nunca el
@@ -23,14 +24,17 @@ class _JayaloPageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    // Accesibilidad: con "reducir animaciones" la pantalla cambia sin
+    // movimiento (el sistema ya acorta la ruta; no se pelea con él).
+    if (JayaloMotion.reduced(context)) return child;
     final incoming = CurvedAnimation(
         parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic);
+        curve: JayaloMotion.enter,
+        reverseCurve: JayaloMotion.exit);
     final outgoing = CurvedAnimation(
         parent: secondaryAnimation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic);
+        curve: JayaloMotion.enter,
+        reverseCurve: JayaloMotion.exit);
     return SlideTransition(
       position: Tween<Offset>(begin: const Offset(.06, 0), end: Offset.zero)
           .animate(incoming),
