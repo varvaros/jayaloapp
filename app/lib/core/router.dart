@@ -16,6 +16,7 @@ import '../features/onboarding/provider_onboarding_screen.dart';
 import '../features/provider/inbox_screen.dart';
 import '../features/provider/my_offers_screen.dart';
 import '../features/provider/request_detail_screen.dart';
+import '../features/provider/stats_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/shell/back_guard.dart';
 import '../features/shell/home_shell.dart';
@@ -75,6 +76,9 @@ GoRouter buildRouter() => GoRouter(
             GoRoute(
                 path: '/provider/offers',
                 builder: (_, _) => const BackGuard(child: MyOffersScreen())),
+            GoRoute(
+                path: '/provider/stats',
+                builder: (_, _) => const BackGuard(child: StatsScreen())),
             GoRoute(
                 path: '/settings',
                 builder: (_, _) => const BackGuard(child: SettingsScreen())),
