@@ -4,7 +4,6 @@ import '../../data/repos.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
-import '../shell/home_scroll.dart';
 
 /// Umbral de la web (`src/lib/responseTime.ts`): con menos de 5 respuestas
 /// medidas la mediana no representa nada y se omite por completo.
@@ -42,12 +41,33 @@ class _ReputationScreenState extends State<ReputationScreen> {
 }
 
 /// Solo dibuja. Recibe el mapa crudo de `get_customer_reputation`.
-class ReputationView extends StatelessWidget {
+///
+/// StatefulWidget solo para poseer su propio ScrollController (con dispose
+/// correcto): esta pantalla NO es la home, así que no debe compartir
+/// `homeScrollController` con `MyRequestsScreen` — el `AnimatedSwitcher` del
+/// shell mantiene ambas pestañas montadas ~250ms durante el cambio, y dos
+/// `ScrollPosition` adjuntas al mismo controller hacen que `BackGuard` lance
+/// `StateError` al leer `c.offset` en cualquier ATRÁS.
+class ReputationView extends StatefulWidget {
   const ReputationView({super.key, required this.data});
   final Map<String, dynamic> data;
 
   @override
+  State<ReputationView> createState() => _ReputationViewState();
+}
+
+class _ReputationViewState extends State<ReputationView> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final data = widget.data;
     final reviews = (data['reviews_count'] as num?)?.toInt() ?? 0;
     final purchases = (data['completed_purchases'] as num?)?.toInt() ?? 0;
     final requests = (data['requests_count'] as num?)?.toInt() ?? 0;
@@ -57,7 +77,7 @@ class ReputationView extends StatelessWidget {
 
     if (reviews == 0 && purchases == 0 && requests == 0) {
       return EmptyState(
-        controller: homeScrollController,
+        controller: _scrollController,
         message: 'Todavía no tienes reputación.\n\n'
             'Se construye sola: pide lo que necesitas, completa tus compras '
             'y califica a quien te atendió. Los proveedores la verán y te '
@@ -66,7 +86,7 @@ class ReputationView extends StatelessWidget {
     }
 
     return ListView(
-      controller: homeScrollController,
+      controller: _scrollController,
       padding: const EdgeInsets.only(bottom: 24),
       children: [
         const SectionHeader(text: 'CÓMO TE VEN'),
