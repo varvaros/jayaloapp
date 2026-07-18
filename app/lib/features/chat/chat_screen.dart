@@ -611,7 +611,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                 onPressed: () => Navigator.of(ctx).pop(false),
                                 child: const Text('Cancelar')),
                             FilledButton(
-                                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                                style: FilledButton.styleFrom(
+                                    backgroundColor:
+                                        Theme.of(ctx).colorScheme.error),
                                 onPressed: () => Navigator.of(ctx).pop(true),
                                 child: const Text('Sí, marcar')),
                           ],
@@ -679,7 +681,9 @@ class _ChatScreenState extends State<ChatScreen> {
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Text(txt, textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
             if (_hasRating && !_isProvider)
               const Padding(
                   padding: EdgeInsets.only(top: 4),

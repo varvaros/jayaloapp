@@ -70,8 +70,8 @@ class _RatingPanelState extends State<RatingPanel> {
           child: Column(children: [
             const Text('¡Califica este proveedor!',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            const Text('Tu opinión ayuda a otros clientes.',
-                style: TextStyle(fontSize: 13, color: Colors.grey)),
+            Text('Tu opinión ayuda a otros clientes.',
+                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
             const SizedBox(height: 8),
             FilledButton.icon(
                 onPressed: () => setState(() => _expanded = true),
@@ -84,9 +84,9 @@ class _RatingPanelState extends State<RatingPanel> {
         color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
         child: SingleChildScrollView(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text(
+          Text(
               'Al calificar a este proveedor, reconoces que la transacción fue realizada de forma privada. Jayalo no interviene en disputas comerciales ni garantiza la veracidad de la información intercambiada. Tu calificación ayuda a la comunidad a identificar proveedores responsables.',
-              style: TextStyle(fontSize: 11, color: Colors.grey)),
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
           const SizedBox(height: 10),
           const Text('Califica esta transacción',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
@@ -105,7 +105,9 @@ class _RatingPanelState extends State<RatingPanel> {
                       child: Text('$n',
                           style: TextStyle(
                               fontWeight: FontWeight.w600,
-                              color: n <= _overall ? cs.onPrimary : Colors.grey)))),
+                              color: n <= _overall
+                                  ? cs.onPrimary
+                                  : cs.onSurfaceVariant)))),
           ]),
           const SizedBox(height: 8),
           for (final (label, val, set) in [

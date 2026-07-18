@@ -93,10 +93,13 @@ class _ChatComposerState extends State<ChatComposer> {
         isScrollControlled: true,
         builder: (ctx) => SafeArea(
                 child: ListView(shrinkWrap: true, padding: const EdgeInsets.all(12), children: [
-              const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
+              Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
                   child: Text('Mensajes predeterminados',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey))),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(ctx).colorScheme.onSurfaceVariant))),
               for (final item in list)
                 Card(
                     child: ListTile(
@@ -107,8 +110,12 @@ class _ChatComposerState extends State<ChatComposer> {
                           for (final o in item.options)
                             Chip(label: Text(o, style: const TextStyle(fontSize: 11)),
                                 visualDensity: VisualDensity.compact),
-                          const Text('(responderá con botones)',
-                              style: TextStyle(fontSize: 11, color: Colors.grey)),
+                          Text('(responderá con botones)',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(ctx)
+                                      .colorScheme
+                                      .onSurfaceVariant)),
                         ]),
                   onTap: () {
                     Navigator.of(ctx).pop();

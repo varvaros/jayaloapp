@@ -34,7 +34,10 @@ void showAgreementDetails(BuildContext context, Map<String, dynamic> conv,
   Widget row(String k, String v) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(k, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+        Text(k,
+            style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 13)),
         Flexible(child: Text(v, textAlign: TextAlign.end, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500))),
       ]));
   showModalBottomSheet<void>(
