@@ -8,25 +8,94 @@ import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 
-class ProviderInboxScreen extends StatefulWidget {
+/// Signature de las fuentes de datos del inbox: `providerInbox` (Para ti,
+/// filtra por rubro del proveedor) y `allOpenRequests` (Todas, cualquier
+/// rubro). Inyectada en [ProviderInboxView] para que la pantalla se pueda
+/// probar sin red.
+typedef InboxFetch = Future<List<Map<String, dynamic>>> Function(
+    {String? kind, required bool todas});
+
+class ProviderInboxScreen extends StatelessWidget {
   const ProviderInboxScreen({super.key});
+
+  static Future<List<Map<String, dynamic>>> _fetch(
+          {String? kind, required bool todas}) =>
+      todas ? allOpenRequests(kind: kind) : providerInbox(kind: kind);
+
   @override
-  State<ProviderInboxScreen> createState() => _ProviderInboxScreenState();
+  Widget build(BuildContext context) =>
+      const ProviderInboxView(fetch: _fetch);
 }
 
-class _ProviderInboxScreenState extends State<ProviderInboxScreen> {
-  String? _kind;
-  late Future<List<Map<String, dynamic>>> _load = providerInbox();
+/// Dibuja el toggle "Para ti/Todas", el filtro de tipo y la lista.
+///
+/// StatefulWidget porque el toggle y el filtro son estado de UI que vive
+/// junto al de carga (mismo espíritu que separar ReputationView/StatsView de
+/// sus pantallas, extendido aquí: `fetch` se inyecta para poder montar este
+/// widget en tests sin tocar la red). `actions` también es inyectable: por
+/// defecto es la campana real, pero [NotificationBell] toca `supa` en su
+/// `initState` (vía `notifCountStore`), que revienta si Supabase no está
+/// inicializado — en los tests se pasa una lista vacía.
+class ProviderInboxView extends StatefulWidget {
+  const ProviderInboxView({
+    super.key,
+    required this.fetch,
+    this.actions = const [NotificationBell()],
+  });
 
-  void _refetch() => setState(() => _load = providerInbox(kind: _kind));
+  final InboxFetch fetch;
+  final List<Widget> actions;
+
+  @override
+  State<ProviderInboxView> createState() => _ProviderInboxViewState();
+}
+
+class _ProviderInboxViewState extends State<ProviderInboxView> {
+  String? _kind;
+
+  /// false = "Para ti" (su rubro), true = "Todas" (cualquier rubro).
+  /// NO persiste entre sesiones: al entrar siempre arranca en "Para ti", que
+  /// es la vista con solicitudes relevantes para ofertar.
+  bool _todas = false;
+
+  late Future<List<Map<String, dynamic>>> _load =
+      widget.fetch(kind: _kind, todas: _todas);
+
+  // Bloque, no expresión: `setState(() => _load = future)` hace que la
+  // closure DEVUELVA ese future (una asignación se evalúa al valor asignado)
+  // y Flutter revienta con "setState() callback argument returned a
+  // Future." en cuanto se llama (lo descubrió el test del toggle). El mismo
+  // patrón roto vive en my_requests_screen.dart, reputation_screen.dart y
+  // stats_screen.dart, pero tocar esos archivos queda fuera de esta tarea.
+  void _refetch() {
+    final next = widget.fetch(kind: _kind, todas: _todas);
+    setState(() {
+      _load = next;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-          title: const Text('Solicitudes para ti'),
-          actions: const [NotificationBell()]),
+          title:
+              Text(_todas ? 'Todas las solicitudes' : 'Solicitudes para ti'),
+          actions: widget.actions),
       body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('Para ti')),
+              ButtonSegment(value: true, label: Text('Todas')),
+            ],
+            selected: {_todas},
+            onSelectionChanged: (s) {
+              _todas = s.first;
+              _refetch();
+            },
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: SegmentedButton<String?>(
@@ -55,9 +124,11 @@ class _ProviderInboxScreenState extends State<ProviderInboxScreen> {
                 if (items.isEmpty) {
                   return EmptyState(
                     controller: homeScrollController,
-                    message:
-                        'Aquí verás las solicitudes que coinciden con tu negocio.\n'
-                        'Te avisaremos cuando llegue una nueva.',
+                    message: _todas
+                        ? 'Ahora mismo no hay solicitudes abiertas.\n'
+                            'Vuelve más tarde: entran nuevas todos los días.'
+                        : 'Aquí verás las solicitudes que coinciden con tu negocio.\n'
+                            'Te avisaremos cuando llegue una nueva.',
                   );
                 }
                 return ListView.builder(
