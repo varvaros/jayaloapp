@@ -3,6 +3,53 @@ import 'package:go_router/go_router.dart';
 
 import 'core/brand.dart';
 
+/// Doctrina de movimiento (decisión PO 2026-07-18): TODA transición de
+/// pantalla debe sentirse premium — deslizado suave con ease-out, nunca el
+/// zoom/fade genérico de Android por defecto. Un solo builder aquí cubre las
+/// ~15 rutas de `core/router.dart` sin tocarlas una por una.
+///
+/// La entrante desliza desde la derecha (6% del ancho) + fade in; la saliente
+/// (bajo `secondaryAnimation`, solo se anima al EMPUJAR una ruta encima, no al
+/// volver) se desliza levemente a la izquierda y se atenúa — el efecto de
+/// profundidad tipo "shared axis" de Material 3, no un corte plano.
+class _JayaloPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _JayaloPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final incoming = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic);
+    final outgoing = CurvedAnimation(
+        parent: secondaryAnimation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic);
+    return SlideTransition(
+      position: Tween<Offset>(begin: const Offset(.06, 0), end: Offset.zero)
+          .animate(incoming),
+      child: FadeTransition(
+        opacity: incoming,
+        child: SlideTransition(
+          position: Tween<Offset>(
+                  begin: Offset.zero, end: const Offset(-.04, 0))
+              .animate(outgoing),
+          child: FadeTransition(
+            opacity: Tween<double>(begin: 1, end: .4).animate(outgoing),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Los colores salen de `core/brand.dart` (tokens portados de la web) para que
 /// app y jayalo.com se vean como la misma marca.
 ThemeData jayaloTheme(Brightness b) {
@@ -23,6 +70,11 @@ ThemeData jayaloTheme(Brightness b) {
         borderSide: BorderSide.none,
       ),
     ),
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {
+      // Solo Android: es la única plataforma que empaqueta la app (iOS
+      // descartado, ver memoria del proyecto).
+      TargetPlatform.android: _JayaloPageTransitionsBuilder(),
+    }),
   );
 }
 

@@ -52,6 +52,27 @@ Esto NO es opinión: es lo que ya está aprobado y en producción visual en `/no
 - Transición entre estados con `AnimatedContainer` de **300ms** `easeOut` (el color se desvanece, nada desaparece de golpe).
 - Tap con `InkWell` con el mismo `borderRadius` que la tarjeta (que el ripple no se salga del redondeado).
 
+### 1.3bis Transición de pantalla — doctrina de movimiento (decisión PO 2026-07-18)
+
+**Toda transición debe sentirse premium: deslizado suave con ease-out, nunca el
+zoom/fade genérico de Android por defecto.** Se resuelve UNA sola vez en
+`app.dart` (`_JayaloPageTransitionsBuilder` en el `pageTransitionsTheme` de
+`jayaloTheme`), no ruta por ruta: cubre las ~15 `GoRoute` de `core/router.dart`
+sin tocarlas. Entrante desliza 6% del ancho desde la derecha + fade-in;
+saliente (al empujar, no al volver) se desliza 4% a la izquierda y se atenúa a
+40% de opacidad — profundidad tipo "shared axis" de M3, no un corte plano.
+Curva `easeOutCubic` (entrada) / `easeInCubic` (reversa), duración 300ms
+(la que ya trae `MaterialPageRoute` por defecto — no hace falta forzarla).
+Test de contrato: `test/page_transitions_test.dart` (si alguien revierte el
+tema sin querer, el `SlideTransition` desaparece y el test lo detecta, porque
+el zoom por defecto de M3 usa Scale+Fade, no Slide).
+
+Modales y diálogos (`showModalBottomSheet`, `showDialog`) NO llevan
+`transitionDuration` propia en ningún archivo del proyecto — ya heredan las
+animaciones fluidas de Material 3 (fade+scale en diálogos, deslizado hacia
+arriba en hojas). Si se agrega un modal nuevo, NO fijarle una duración
+personalizada salvo que se note más abrupto que esto.
+
 ### 1.3 Vocabulario de animación (`flutter_animate`)
 
 - **Cascada de entrada de listas:** `fadeIn(250ms)` + `slideY(begin: .10, curve: easeOutCubic)` con stagger de **40ms** por ítem, tope en ~14 ítems (`min(index, 14)`).
