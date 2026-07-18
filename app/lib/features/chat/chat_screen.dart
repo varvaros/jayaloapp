@@ -8,7 +8,7 @@ import '../../domain/chat.dart';
 import '../../domain/chat_session.dart';
 import '../../domain/chat_time.dart';
 import '../../domain/image_pick.dart';
-import '../client/request_status_screen.dart' show fmtRD;
+import '../../domain/money.dart';
 import 'widgets/bubbles.dart';
 import 'widgets/chat_dialogs.dart';
 import 'widgets/composer.dart';

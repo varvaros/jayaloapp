@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../client/request_status_screen.dart' show fmtRD;
+import '../../../domain/money.dart';
 
 /// Disclaimer de bienvenida (1 vez por conversación).
 Future<void> showWelcomeDialog(BuildContext context,

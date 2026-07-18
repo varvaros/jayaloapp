@@ -2,15 +2,12 @@ import 'package:flutter/material.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/chat_time.dart';
+import '../../domain/money.dart';
 import '../../domain/phase.dart';
 import 'my_requests_screen.dart' show phaseChip;
 import 'offer_actions.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
-
-String fmtRD(num? v) => v == null
-    ? ''
-    : 'RD\$${v.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},')}';
 
 String offerPriceLabel(Map<String, dynamic> o) {
   if (o['price'] != null) return fmtRD(o['price'] as num);

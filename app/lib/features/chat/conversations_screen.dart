@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/chat_time.dart';
-import '../client/request_status_screen.dart' show fmtRD;
+import '../../domain/money.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 
