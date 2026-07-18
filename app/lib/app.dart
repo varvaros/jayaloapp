@@ -12,6 +12,17 @@ ThemeData jayaloTheme(Brightness b) {
     colorScheme: cs,
     scaffoldBackgroundColor: cs.surface,
     visualDensity: VisualDensity.standard,
+    // "F1 · Rellenos suaves" (elegida por el PO): la receta única de campo de
+    // texto — fondo gris suave, radius 12, sin borde. Los TextField que no
+    // pasan decoración explícita la heredan de aquí.
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: cs.surfaceContainerHighest,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+    ),
   );
 }
 
