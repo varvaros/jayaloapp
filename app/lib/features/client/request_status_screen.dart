@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
+import '../../domain/chat_time.dart';
 import '../../domain/phase.dart';
+import 'my_requests_screen.dart' show phaseChip;
 import 'offer_actions.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
@@ -31,12 +33,12 @@ const _phaseCopy = {
   RequestPhase.completed: 'Califica al proveedor para ayudar a la comunidad.',
 };
 
-/// Etiquetas cortas del "camino de píldoras" (variante D2 elegida por el PO).
-const _phaseShort = {
-  RequestPhase.waiting: 'Publicada',
+/// Títulos del héroe de fase (variante D1 elegida por el PO).
+const _phaseTitle = {
+  RequestPhase.waiting: 'Esperando ofertas',
   RequestPhase.withOffers: 'Con ofertas',
-  RequestPhase.accepted: 'Aceptada',
-  RequestPhase.unlocked: 'Desbloqueado',
+  RequestPhase.accepted: 'Oferta aceptada',
+  RequestPhase.unlocked: 'Contacto desbloqueado',
   RequestPhase.completed: 'Completada',
 };
 
@@ -85,7 +87,12 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
               children: [
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 350),
-                  child: _PhasePath(key: ValueKey(phase), phase: phase),
+                  child: _PhaseHero(
+                      key: ValueKey(phase),
+                      phase: phase,
+                      offerCount: offers.length,
+                      createdAt:
+                          DateTime.parse(req['created_at'] as String)),
                 ),
                 SectionHeader(text: 'Ofertas (${offers.length})'),
                 if (offers.isEmpty)
@@ -166,59 +173,94 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
   }
 }
 
-/// D2 · Camino de píldoras: las fases pasadas en gris con check, la actual con
-/// el color de su tono, las futuras huecas. Debajo, el copy de la fase.
-class _PhasePath extends StatelessWidget {
-  const _PhasePath({super.key, required this.phase});
+/// D1 · Héroe teñido (elegido por el PO): tarjeta grande del color de la fase
+/// con ícono, título, copy, la referencia de día y hora de publicación, y el
+/// stepper de puntos del avance.
+class _PhaseHero extends StatelessWidget {
+  const _PhaseHero({
+    super.key,
+    required this.phase,
+    required this.offerCount,
+    required this.createdAt,
+  });
+
   final RequestPhase phase;
+  final int offerCount;
+  final DateTime createdAt;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final doneTone =
-        dark ? JayaloStatus.completedDark : JayaloStatus.completedLight;
+    final tone = toneFor(context, phase);
     final idx = RequestPhase.values.indexOf(phase);
+    final (icon, _) = phaseChip(phase, offerCount);
     return JayaloCard(
+      tint: tone.bg,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Tu solicitud va así:',
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
+          Row(
             children: [
-              for (var i = 0; i < RequestPhase.values.length; i++)
-                if (i < idx)
-                  StatusChip(
-                      label: _phaseShort[RequestPhase.values[i]]!,
-                      tone: doneTone,
-                      icon: Icons.check)
-                else if (i == idx)
-                  StatusChip(
-                      label: _phaseShort[RequestPhase.values[i]]!,
-                      tone: toneFor(context, phase))
-                else
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: cs.outlineVariant),
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                    child: Text(_phaseShort[RequestPhase.values[i]]!,
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: tone.ink.withValues(alpha: .14),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 20, color: tone.ink),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_phaseTitle[phase]!,
                         style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 18,
                             fontWeight: FontWeight.w700,
-                            color: cs.onSurfaceVariant)),
-                  ),
+                            color: tone.ink)),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Publicada: ${formatDayLabel(createdAt)} · ${formatTimeHM(createdAt)}',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: tone.ink.withValues(alpha: .65)),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(_phaseCopy[phase]!),
+          const SizedBox(height: 10),
+          Text(_phaseCopy[phase]!,
+              style: TextStyle(
+                  fontSize: 13, color: tone.ink.withValues(alpha: .85))),
+          const SizedBox(height: 14),
+          Row(children: [
+            for (var i = 0; i < RequestPhase.values.length; i++) ...[
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+                width: i == idx ? 14 : 12,
+                height: i == idx ? 14 : 12,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: i <= idx
+                      ? tone.ink
+                      : tone.ink.withValues(alpha: .2),
+                ),
+              ),
+              if (i < RequestPhase.values.length - 1)
+                Expanded(
+                  child: Container(
+                      height: 3,
+                      color: i < idx
+                          ? tone.ink
+                          : tone.ink.withValues(alpha: .2)),
+                ),
+            ],
+          ]),
         ],
       ),
     );
