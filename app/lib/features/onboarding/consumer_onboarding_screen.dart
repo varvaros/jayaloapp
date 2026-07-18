@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
+import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 
 /// Alta de consumidor (spec §6): nombre precargado de las claims de Google,
@@ -198,9 +200,12 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
               label: const Text('Usar mi ubicación'),
             )
           else
-            Chip(
-              avatar: Icon(Icons.check_circle, color: cs.primary, size: 18),
-              label: const Text('Ubicación captada ✓'),
+            StatusChip(
+              label: 'Ubicación captada ✓',
+              icon: Icons.check_circle,
+              tone: Theme.of(context).brightness == Brightness.dark
+                  ? JayaloStatus.unlockedDark
+                  : JayaloStatus.unlockedLight,
             ),
           const SizedBox(height: 8),
           TextField(
