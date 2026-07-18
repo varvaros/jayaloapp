@@ -10,14 +10,31 @@ import 'package:flutter/material.dart';
 import '../../core/motion.dart';
 import 'nav_destinations.dart';
 
+const _pillHeight = 64.0;
+const _centerSize = 56.0;
+
 /// Alto que una barra FLOTANTE no reserva por sí sola. Toda lista del shell
 /// debe añadir este padding al final o su último elemento queda debajo de la
 /// barra, invisible. Ni `analyze` ni los tests lo detectan: solo se ve
 /// recorriendo la lista hasta abajo en un teléfono.
-const double kNavBarReservedSpace = 96;
+///
+/// Derivado de las piezas que dibuja `FloatingNavBar.build` (para que no
+/// pueda desincronizarse si cambian `_pillHeight`/`_centerSize`):
+///   padding superior (`_centerSize / 2`) + SizedBox (`_pillHeight +
+///   _centerSize / 2`) + padding inferior (`12`)
+///   = `_pillHeight + _centerSize + 12` = 64 + 56 + 12 = 132.
+///
+/// Esta constante NO incluye el inset de zona segura del sistema (el
+/// `SafeArea(top: false)` interno de la barra se lo suma a su propio alto).
+/// Las pantallas deben usar la FUNCIÓN [navBarReservedSpace] — esta
+/// constante suelta es solo para contextos sin `BuildContext` disponible.
+const double kNavBarReservedSpace = _pillHeight + _centerSize + 12;
 
-const _pillHeight = 64.0;
-const _centerSize = 56.0;
+/// Espacio real que debe reservar una lista del shell: [kNavBarReservedSpace]
+/// más el inset inferior de zona segura del dispositivo (barra de gestos,
+/// etc.), que la barra absorbe con su `SafeArea(top: false)` interno.
+double navBarReservedSpace(BuildContext context) =>
+    kNavBarReservedSpace + MediaQuery.paddingOf(context).bottom;
 
 class FloatingNavBar extends StatelessWidget {
   const FloatingNavBar({
@@ -114,6 +131,7 @@ class _SideItem extends StatelessWidget {
       button: true,
       selected: active,
       excludeSemantics: true,
+      onTap: onTap,
       child: InkWell(
         onTap: onTap,
         customBorder: const CircleBorder(),
@@ -167,6 +185,7 @@ class _CenterButton extends StatelessWidget {
       button: true,
       selected: active,
       excludeSemantics: true,
+      onTap: onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
