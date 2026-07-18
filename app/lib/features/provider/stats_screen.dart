@@ -27,7 +27,10 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  void _refetch() => setState(() => _load = _fetch());
+  // Bloque para que setState no devuelva un Future (leer inbox_screen.dart).
+  void _refetch() => setState(() {
+    _load = _fetch();
+  });
 
   @override
   Widget build(BuildContext context) => Scaffold(

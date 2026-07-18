@@ -19,7 +19,10 @@ class ReputationScreen extends StatefulWidget {
 class _ReputationScreenState extends State<ReputationScreen> {
   late Future<Map<String, dynamic>?> _load = customerReputation();
 
-  void _refetch() => setState(() => _load = customerReputation());
+  // Bloque para que setState no devuelva un Future (leer inbox_screen.dart).
+  void _refetch() => setState(() {
+    _load = customerReputation();
+  });
 
   @override
   Widget build(BuildContext context) => Scaffold(

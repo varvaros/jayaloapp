@@ -68,7 +68,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           title: const Text('Mis solicitudes'),
           actions: const [NotificationBell()]),
       body: RefreshIndicator(
-        onRefresh: () async => setState(() => _load = _fetch()),
+        // onRefresh espera Future<void>; bloque de setState para no devolver Future.
+        onRefresh: () async {
+          setState(() {
+            _load = _fetch();
+          });
+        },
         child: FutureBuilder(
           future: _load,
           builder: (context, snap) {
