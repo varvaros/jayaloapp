@@ -13,6 +13,7 @@ import 'widgets/bubbles.dart';
 import 'widgets/chat_dialogs.dart';
 import 'widgets/composer.dart';
 import 'widgets/rating_form.dart';
+import '../shared/jayalo_loader.dart';
 
 const _pageSize = 50;
 
@@ -493,7 +494,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ])));
     }
     if (conv == null) {
-      return Scaffold(appBar: AppBar(), body: const Center(child: CircularProgressIndicator()));
+      return Scaffold(appBar: AppBar(), body: const JayaloLoaderBlock());
     }
     final ms = _session.messages;
     return Scaffold(
@@ -509,9 +510,7 @@ class _ChatScreenState extends State<ChatScreen> {
               if (j >= ms.length) {
                 return const Padding(
                     padding: EdgeInsets.all(12),
-                    child: Center(child: SizedBox(
-                        width: 18, height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))));
+                    child: Center(child: JayaloSpinner(size: 18)));
               }
               final i = ms.length - 1 - j;
               final m = ms[i];

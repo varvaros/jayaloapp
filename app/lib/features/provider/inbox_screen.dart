@@ -4,6 +4,7 @@ import '../../data/repos.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
 import '../shell/home_scroll.dart';
 import '../notifications/notification_bell.dart';
+import '../shared/jayalo_loader.dart';
 
 class ProviderInboxScreen extends StatefulWidget {
   const ProviderInboxScreen({super.key});
@@ -46,7 +47,7 @@ class _ProviderInboxScreenState extends State<ProviderInboxScreen> {
               future: _load,
               builder: (context, snap) {
                 if (!snap.hasData) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const JayaloLoaderBlock();
                 }
                 final items = snap.data!;
                 if (items.isEmpty) {

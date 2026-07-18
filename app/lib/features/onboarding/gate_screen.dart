@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/session_state.dart';
+import '../shared/jayalo_loader.dart';
 
 /// Splash post-login: resuelve el rol una vez; el redirect del router hace el
 /// resto (spec §4). Con error de red: reintentar, nunca dejar pasar sin rol.
@@ -31,7 +32,7 @@ class _GateScreenState extends State<GateScreen> {
   Widget build(BuildContext context) => Scaffold(
         body: Center(
           child: _error == null
-              ? const CircularProgressIndicator()
+              ? const JayaloLoader()
               : Column(mainAxisSize: MainAxisSize.min, children: [
                   Text(_error!),
                   const SizedBox(height: 12),

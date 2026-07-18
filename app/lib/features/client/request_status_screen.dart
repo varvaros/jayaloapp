@@ -3,6 +3,7 @@ import '../../data/repos.dart';
 import '../../domain/phase.dart';
 import 'my_requests_screen.dart' show phaseBadge;
 import 'offer_actions.dart';
+import '../shared/jayalo_loader.dart';
 
 String fmtRD(num? v) => v == null
     ? ''
@@ -55,7 +56,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
     final req = _request;
     if (req == null) {
       return Scaffold(
-          appBar: AppBar(), body: const Center(child: CircularProgressIndicator()));
+          appBar: AppBar(), body: const JayaloLoaderBlock());
     }
     return Scaffold(
       appBar: AppBar(

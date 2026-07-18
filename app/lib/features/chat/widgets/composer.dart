@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../domain/chat.dart';
+import '../../shared/jayalo_loader.dart';
 
 enum PlusAction { sendAddress, improveOffer, sendContact, sendLocation, sendPhoto }
 
@@ -146,7 +147,7 @@ class _ChatComposerState extends State<ChatComposer> {
         IconButton.filled(
             onPressed: widget.sending ? null : _send,
             icon: widget.sending
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const JayaloSpinner(size: 16)
                 : const Icon(Icons.send)),
       ]),
     ));

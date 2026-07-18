@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-const _seed = Color(0xFF7C3AED); // violeta de marca Jayalo
+import 'core/brand.dart';
 
-ThemeData jayaloTheme(Brightness b) => ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: _seed, brightness: b),
-      visualDensity: VisualDensity.standard,
-    );
+/// Los colores salen de `core/brand.dart` (tokens portados de la web) para que
+/// app y jayalo.com se vean como la misma marca.
+ThemeData jayaloTheme(Brightness b) {
+  final cs = jayaloScheme(b);
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: cs,
+    scaffoldBackgroundColor: cs.surface,
+    visualDensity: VisualDensity.standard,
+  );
+}
 
 class JayaloApp extends StatelessWidget {
   const JayaloApp({super.key, required this.router});

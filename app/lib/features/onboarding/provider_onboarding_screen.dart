@@ -10,6 +10,7 @@ import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
+import '../shared/jayalo_loader.dart';
 
 /// Alta de proveedor (spec §7): 6 pasos que SOLO recolectan; la única
 /// escritura es la RPC atómica complete_provider_onboarding al final
@@ -303,10 +304,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
               ? FilledButton(
                   onPressed: (_stepValid(_step) && !_busy) ? _finish : null,
                   child: _busy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const JayaloSpinner(size: 18)
                       : const Text('Crear mi negocio'),
                 )
               : FilledButton(
@@ -425,7 +423,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       else if (_loadingRubros)
         const Padding(
           padding: EdgeInsets.all(12),
-          child: Center(child: CircularProgressIndicator()),
+          child: Center(child: JayaloSpinner(size: 24)),
         )
       else if (_rubrosError != null)
         Row(children: [
@@ -456,8 +454,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       OutlinedButton.icon(
         onPressed: _locating ? null : _useLocation,
         icon: _locating
-            ? const SizedBox(
-                width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            ? const JayaloSpinner(size: 16)
             : const Icon(Icons.my_location),
         label: const Text('Usar mi ubicación'),
       ),
@@ -523,7 +520,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         ),
       if (_uploading) const Padding(
         padding: EdgeInsets.all(12),
-        child: Center(child: CircularProgressIndicator()),
+        child: Center(child: JayaloSpinner(size: 24)),
       ),
       const SizedBox(height: 12),
       Row(children: [

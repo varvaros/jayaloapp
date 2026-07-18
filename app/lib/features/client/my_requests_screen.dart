@@ -4,6 +4,7 @@ import '../../data/repos.dart';
 import '../../domain/phase.dart';
 import '../shell/home_scroll.dart';
 import '../notifications/notification_bell.dart';
+import '../shared/jayalo_loader.dart';
 
 String timeAgo(DateTime d) {
   final diff = DateTime.now().difference(d);
@@ -67,7 +68,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           future: _load,
           builder: (context, snap) {
             if (!snap.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return const JayaloLoaderBlock();
             }
             final items = snap.data!;
             if (items.isEmpty) {

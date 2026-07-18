@@ -6,6 +6,7 @@ import '../../domain/pricing.dart';
 import '../../domain/recharge.dart';
 import '../client/request_status_screen.dart' show offerPriceLabel;
 import '../notifications/notification_bell.dart';
+import '../shared/jayalo_loader.dart';
 
 int estimatedUnlockCost(Map<String, dynamic> o) {
   final c = pointsForOffer(
@@ -78,7 +79,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
           title: const Text('Mis ofertas'),
           actions: const [NotificationBell()]),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const JayaloLoaderBlock()
           : RefreshIndicator(
               onRefresh: _refetch,
               child: ListView(padding: const EdgeInsets.all(16), children: [

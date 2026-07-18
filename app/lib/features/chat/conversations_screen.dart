@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/repos.dart';
 import '../../domain/chat_time.dart';
 import '../client/request_status_screen.dart' show fmtRD;
+import '../shared/jayalo_loader.dart';
 
 const _tabs = [
   ('abierto', 'Abierto'),
@@ -57,7 +58,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
               FilledButton(onPressed: _load, child: const Text('Reintentar')),
             ]))
           : all == null
-              ? const Center(child: CircularProgressIndicator())
+              ? const JayaloLoaderBlock()
               : RefreshIndicator(onRefresh: _load, child: _body(all)),
     );
   }

@@ -7,6 +7,7 @@ import '../../core/config.dart';
 import '../../data/repos.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/pricing.dart';
+import '../shared/jayalo_loader.dart';
 
 const _maxOfferPhotos = 5;
 
@@ -119,7 +120,7 @@ class _ProviderRequestDetailScreenState
     final req = _req;
     if (req == null) {
       return Scaffold(
-          appBar: AppBar(), body: const Center(child: CircularProgressIndicator()));
+          appBar: AppBar(), body: const JayaloLoaderBlock());
     }
     final bullets = List<String>.from(req['bullets'] as List? ?? const []);
     return Scaffold(

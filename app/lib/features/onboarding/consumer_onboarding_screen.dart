@@ -7,6 +7,7 @@ import '../../core/session_state.dart';
 import '../../data/repos.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
+import '../shared/jayalo_loader.dart';
 
 /// Alta de consumidor (spec §6): nombre precargado de las claims de Google,
 /// WhatsApp SIN OTP (decisión PO §10.1 — el OTP se dispara después, §6.1),
@@ -192,8 +193,7 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
             OutlinedButton.icon(
               onPressed: _locating ? null : _useLocation,
               icon: _locating
-                  ? const SizedBox(
-                      width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const JayaloSpinner(size: 16)
                   : const Icon(Icons.my_location),
               label: const Text('Usar mi ubicación'),
             )
@@ -236,8 +236,7 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
           FilledButton(
             onPressed: (_valid && !_busy) ? _submit : null,
             child: _busy
-                ? const SizedBox(
-                    width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const JayaloSpinner(size: 18)
                 : const Text('Crear mi cuenta'),
           ),
         ]),

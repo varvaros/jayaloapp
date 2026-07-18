@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../data/repos.dart';
+import '../../shared/jayalo_loader.dart';
 
 class RatingPanel extends StatefulWidget {
   const RatingPanel({super.key, required this.convId, required this.customerId,
@@ -129,7 +130,7 @@ class _RatingPanelState extends State<RatingPanel> {
               child: FilledButton(
                   onPressed: _submitting ? null : _submit,
                   child: _submitting
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const JayaloSpinner(size: 16)
                       : const Text('Enviar calificación'))),
         ])));
   }

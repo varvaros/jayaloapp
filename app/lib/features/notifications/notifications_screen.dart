@@ -5,31 +5,35 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/brand.dart';
 import '../../core/session_state.dart';
 import '../../data/notifications_repository.dart';
 import '../../domain/notifications.dart';
+import '../shared/jayalo_loader.dart';
 import 'notification_bell.dart';
 
-/// Colores por familia (spec §3): tinte de fondo + texto + icono, en light y
-/// dark. Ofertas usa el contenedor primario del seed #7C3AED; el resto son
-/// tonos fijos ajustados a contraste.
+/// Colores por familia (spec §3), tomados de los tokens `--status-*` de la web
+/// (ver `core/brand.dart`): un "mensaje nuevo" se pinta con el mismo verde que
+/// un contacto desbloqueado en jayalo.com, las ofertas con el violeta de
+/// "respondida", el wallet con el ámbar de "aceptada" y el sistema con el gris
+/// de "completada". El rosa de reseñas es el único derivado (la web no tiene
+/// token propio) y usa la misma receta.
 ({Color bg, Color fg, Color icon}) familyColors(
     BuildContext context, NotifFamily f) {
-  final cs = Theme.of(context).colorScheme;
   final dark = Theme.of(context).brightness == Brightness.dark;
-  return switch (f) {
-    NotifFamily.messages => dark
-        ? (bg: const Color(0xFF16302E), fg: const Color(0xFFB2DFDB), icon: const Color(0xFF4DB6AC))
-        : (bg: const Color(0xFFE0F2F1), fg: const Color(0xFF00504A), icon: const Color(0xFF00796B)),
-    NotifFamily.offers => (bg: cs.primaryContainer, fg: cs.onPrimaryContainer, icon: cs.primary),
-    NotifFamily.wallet => dark
-        ? (bg: const Color(0xFF3A2E12), fg: const Color(0xFFFFE082), icon: const Color(0xFFFFB300))
-        : (bg: const Color(0xFFFFF8E1), fg: const Color(0xFF6D4C00), icon: const Color(0xFFB28704)),
-    NotifFamily.reviews => dark
-        ? (bg: const Color(0xFF3A1F2B), fg: const Color(0xFFF8BBD0), icon: const Color(0xFFF06292))
-        : (bg: const Color(0xFFFCE4EC), fg: const Color(0xFF880E4F), icon: const Color(0xFFC2185B)),
-    NotifFamily.system => (bg: cs.surfaceContainerHighest, fg: cs.onSurface, icon: cs.onSurfaceVariant),
+  final tone = switch (f) {
+    NotifFamily.messages =>
+      dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight,
+    NotifFamily.offers =>
+      dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight,
+    NotifFamily.wallet =>
+      dark ? JayaloStatus.acceptedDark : JayaloStatus.acceptedLight,
+    NotifFamily.reviews =>
+      dark ? JayaloStatus.reviewDark : JayaloStatus.reviewLight,
+    NotifFamily.system =>
+      dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
   };
+  return (bg: tone.bg, fg: tone.ink, icon: tone.ink);
 }
 
 class NotificationsScreen extends StatefulWidget {
@@ -302,7 +306,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   }
 
   Widget _body(BuildContext context) {
-    if (_loading) return const _Skeletons();
+    if (_loading) return const JayaloLoaderBlock();
     if (_error) return _ErrorRetry(onRetry: _loadFirst);
     // El vacío también entra al RefreshIndicator: sin datos igual se puede
     // deslizar para reintentar (spec: no dejar el estado vacío sin salida).
@@ -359,7 +363,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
             padding: const EdgeInsets.all(16),
             child: Center(
               child: _loadingMore
-                  ? const CircularProgressIndicator()
+                  ? const JayaloSpinner(size: 24)
                   : OutlinedButton(
                       onPressed: _loadMore, child: const Text('Cargar más')),
             ),
@@ -506,37 +510,15 @@ class _NotifCard extends StatelessWidget {
   }
 }
 
-class _Skeletons extends StatelessWidget {
-  const _Skeletons();
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      children: [
-        for (var i = 0; i < 6; i++)
-          Container(
-            height: 84,
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest.withValues(alpha: .6),
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 class _Empty extends StatelessWidget {
   const _Empty();
 
   @override
-  Widget build(BuildContext context) => ListView(children: const [
-        SizedBox(height: 120),
-        Icon(Icons.notifications_none, size: 56),
-        Padding(
+  Widget build(BuildContext context) => ListView(children: [
+        const SizedBox(height: 100),
+        // La mascota mirando abajo-izquierda, igual que el vacío de la web.
+        const Center(child: JayaloMascot(size: 76)),
+        const Padding(
           padding: EdgeInsets.all(24),
           child: Text(
             'Aún no tienes notificaciones.\n'

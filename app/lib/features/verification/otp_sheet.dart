@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../../data/repos.dart';
+import '../shared/jayalo_loader.dart';
 
 /// Hoja compartida de verificación por OTP (spec §6.2). Envía el código al
 /// abrir; copy SIEMPRE dice SMS (el canal real es app_settings.otp_channel,
@@ -153,8 +154,7 @@ class _OtpSheetState extends State<_OtpSheet> {
           FilledButton(
             onPressed: canVerify ? _verify : null,
             child: _verifying
-                ? const SizedBox(
-                    width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const JayaloSpinner(size: 18)
                 : const Text('Verificar'),
           ),
           TextButton(

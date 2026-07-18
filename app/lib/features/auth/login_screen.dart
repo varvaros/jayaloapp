@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/config.dart';
 import '../../core/turnstile.dart';
+import '../shared/jayalo_loader.dart';
 
 Future<void> signInWithGoogleNative(BuildContext context) async {
   final google = GoogleSignIn(serverClientId: AppConfig.googleWebClientId);
@@ -79,10 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
               FilledButton.icon(
                 onPressed: _busy ? null : _go,
                 icon: _busy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const JayaloSpinner(size: 18)
                     : const Icon(Icons.login),
                 label: const Text('Continuar con Google'),
               ),
