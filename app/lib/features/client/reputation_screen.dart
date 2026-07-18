@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/repos.dart';
+import '../shell/floating_nav_bar.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
@@ -87,7 +88,7 @@ class _ReputationViewState extends State<ReputationView> {
 
     return ListView(
       controller: _scrollController,
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: EdgeInsets.only(bottom: 24 + navBarReservedSpace(context)),
       children: [
         const SectionHeader(text: 'CÓMO TE VEN'),
         JayaloCard(

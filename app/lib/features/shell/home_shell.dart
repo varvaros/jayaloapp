@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../core/motion.dart';
 import '../../core/session_state.dart';
+import 'floating_nav_bar.dart';
+import 'nav_destinations.dart';
 
 class HomeShell extends StatelessWidget {
   const HomeShell({super.key, required this.child});
@@ -9,37 +12,13 @@ class HomeShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // El gate garantiza que aquí el rol ya está resuelto (spec §4);
-    // no hace falta re-consultar profiles como antes.
+    // El gate garantiza que aquí el rol ya está resuelto (spec §4).
     // El ATRÁS del sistema lo maneja BackGuard DENTRO de cada ruta del shell
     // (un PopScope aquí no funciona con predictive back; ver back_guard.dart).
-    final provider = roleStore.value == RoleState.provider;
+    final dests = destinationsFor(roleStore.value);
     final loc = GoRouterState.of(context).matchedLocation;
-    final tabs = provider
-        ? const [
-            ('/provider', Icons.inbox_outlined, 'Solicitudes'),
-            ('/provider/offers', Icons.local_offer_outlined, 'Mis ofertas'),
-            ('/messages', Icons.chat_bubble_outline, 'Mensajes'),
-            ('/settings', Icons.settings_outlined, 'Ajustes'),
-          ]
-        : const [
-            ('/client', Icons.receipt_long_outlined, 'Mis solicitudes'),
-            ('/client/create', Icons.add_circle_outline, 'Crear'),
-            ('/messages', Icons.chat_bubble_outline, 'Mensajes'),
-            ('/settings', Icons.settings_outlined, 'Ajustes'),
-          ];
-    // Match más específico primero (evita que '/client' capture '/client/create').
-    var idx = 0;
-    var bestLen = -1;
-    for (var i = 0; i < tabs.length; i++) {
-      final p = tabs[i].$1;
-      if (loc == p || loc.startsWith('$p/')) {
-        if (p.length > bestLen) {
-          bestLen = p.length;
-          idx = i;
-        }
-      }
-    }
+    final idx = activeIndex(dests, loc);
+
     // Cambiar de pestaña reemplaza la única página del Navigator anidado (no
     // la empuja encima), y Flutter no anima ese reemplazo por defecto —
     // `pageTransitionsTheme` (doctrina de movimiento, `app.dart`) solo cubre
@@ -49,33 +28,29 @@ class HomeShell extends StatelessWidget {
     // "fade through" (fundido + escala sutil) — el patrón de Material para
     // navegación entre pares, distinto al deslizado jerárquico de un push.
     return Scaffold(
+      // La barra FLOTA: el cuerpo se extiende por debajo de ella. Cada
+      // pantalla reserva `kNavBarReservedSpace` al final de su scroll.
+      extendBody: true,
       body: AnimatedSwitcher(
         duration:
             JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base,
-        // Mismo lenguaje vertical que las transiciones de pantalla (§1.3bis):
-        // la pestaña entrante sube a su sitio y la saliente se guarda hacia
-        // arriba, con easeInOutCubic. Más corto que un push (base vs page)
-        // porque cambiar de pestaña no es entrar "más adentro".
         switchInCurve: JayaloMotion.emphasized,
         switchOutCurve: JayaloMotion.emphasized,
         transitionBuilder: (child, animation) => FadeTransition(
           opacity: animation,
           child: SlideTransition(
-            position: Tween<Offset>(
-                    begin: const Offset(0, .04), end: Offset.zero)
-                .animate(animation),
+            position:
+                Tween<Offset>(begin: const Offset(0, .04), end: Offset.zero)
+                    .animate(animation),
             child: child,
           ),
         ),
-        child: KeyedSubtree(key: ValueKey(tabs[idx].$1), child: child),
+        child: KeyedSubtree(key: ValueKey(dests[idx].route), child: child),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: idx,
-        onDestinationSelected: (i) => context.go(tabs[i].$1),
-        destinations: [
-          for (final t in tabs)
-            NavigationDestination(icon: Icon(t.$2), label: t.$3),
-        ],
+      bottomNavigationBar: FloatingNavBar(
+        destinations: dests,
+        currentIndex: idx,
+        onSelected: (i) => context.go(dests[i].route),
       ),
     );
   }

@@ -6,6 +6,7 @@ import '../../domain/money.dart';
 import '../../domain/phase.dart';
 import 'my_requests_screen.dart' show phaseChip;
 import 'offer_actions.dart';
+import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 
@@ -80,7 +81,8 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
           final hasAccepted = offers
               .any((o) => o['status'] == 'accepted' || o['status'] == 'completed');
           return ListView(
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              padding: EdgeInsets.only(
+                  top: 12, bottom: 12 + navBarReservedSpace(context)),
               children: [
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 350),

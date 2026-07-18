@@ -7,6 +7,7 @@ import '../../core/config.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
 import '../../push/push_service.dart';
+import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../verification/otp_sheet.dart';
 
@@ -81,7 +82,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final isProvider = roleStore.value == RoleState.provider;
     return Scaffold(
       appBar: AppBar(title: const Text('Ajustes')),
-      body: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
+      body: ListView(
+          padding: EdgeInsets.only(
+              top: 8, bottom: 8 + navBarReservedSpace(context)),
+          children: [
         const SectionHeader(text: 'Tu cuenta'),
         _SettingsRow(icon: Icons.person_outline, title: email),
         if (_verified == false)

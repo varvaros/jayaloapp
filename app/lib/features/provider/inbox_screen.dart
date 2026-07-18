@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/repos.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
+import '../shell/floating_nav_bar.dart';
 import '../shell/home_scroll.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
@@ -61,7 +62,8 @@ class _ProviderInboxScreenState extends State<ProviderInboxScreen> {
                 }
                 return ListView.builder(
                   controller: homeScrollController,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: EdgeInsets.only(
+                      top: 8, bottom: 8 + navBarReservedSpace(context)),
                   itemCount: items.length,
                   itemBuilder: (_, i) {
                     final r = items[i];

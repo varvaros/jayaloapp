@@ -9,6 +9,7 @@ import '../../core/turnstile.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_turns.dart';
 import '../../domain/image_pick.dart';
+import '../shell/floating_nav_bar.dart';
 import '../verification/verify_banner.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
@@ -313,7 +314,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 )
               : ListView.builder(
                   controller: _scroll,
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.fromLTRB(
+                      16, 16, 16, 16 + navBarReservedSpace(context)),
                   itemCount: _bubbles.length,
                   itemBuilder: (_, i) {
                     final b = _bubbles[i];
@@ -355,8 +357,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         if (_photos.isNotEmpty) _photoStrip(),
         if (_ready == null)
           SafeArea(
+            // '/client/create' es una pestaña del shell: la barra flotante
+            // sigue visible aquí (ver home_shell.dart), así que este composer
+            // fijo —no parte del ListView de arriba— necesita SU PROPIO
+            // colchón para no quedar debajo de ella. `SafeArea` ya reserva el
+            // inset del sistema; lo que falta es el alto propio de la barra
+            // (`kNavBarReservedSpace`, no la función, para no duplicar el
+            // inset que `SafeArea` ya sumó).
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              padding: const EdgeInsets.fromLTRB(
+                  16, 4, 16, 12 + kNavBarReservedSpace),
               child: TextField(
                 controller: _input,
                 enabled: !_busy,

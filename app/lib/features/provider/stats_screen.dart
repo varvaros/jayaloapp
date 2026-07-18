@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/repos.dart';
 import '../../domain/money.dart';
 import '../client/reputation_screen.dart' show MetricTile;
+import '../shell/floating_nav_bar.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
@@ -108,7 +109,7 @@ class _StatsViewState extends State<StatsView> {
       // si hay más de una posición adjunta — y el AnimatedSwitcher del shell
       // mantiene dos pestañas montadas durante los 250 ms del cambio.
       controller: _scroll,
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: EdgeInsets.only(bottom: 24 + navBarReservedSpace(context)),
       children: [
         const SectionHeader(text: 'CÓMO TE CALIFICAN'),
         JayaloCard(

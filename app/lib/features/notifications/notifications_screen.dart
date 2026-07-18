@@ -11,6 +11,7 @@ import '../../data/notifications_repository.dart';
 import '../../domain/notifications.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
+import '../shell/floating_nav_bar.dart';
 import 'notification_bell.dart';
 
 /// Colores por familia (spec §3), tomados de los tokens `--status-*` de la web
@@ -341,6 +342,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     }
     final footerCount = (_hasMore ? 1 : 0) + 1; // "Cargar más" + espaciador
     return ListView.builder(
+      padding: EdgeInsets.only(bottom: navBarReservedSpace(context)),
       itemCount: rows.length + footerCount,
       itemBuilder: (context, i) {
         if (i < rows.length) {
@@ -517,19 +519,22 @@ class _Empty extends StatelessWidget {
   const _Empty();
 
   @override
-  Widget build(BuildContext context) => ListView(children: [
-        const SizedBox(height: 100),
-        // La mascota mirando abajo-izquierda, igual que el vacío de la web.
-        const Center(child: JayaloMascot(size: 76)),
-        const Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'Aún no tienes notificaciones.\n'
-            'Aquí verás tus ofertas, mensajes,\nreseñas y avisos de tu cuenta.',
-            textAlign: TextAlign.center,
+  Widget build(BuildContext context) => ListView(
+        padding: EdgeInsets.only(bottom: navBarReservedSpace(context)),
+        children: [
+          const SizedBox(height: 100),
+          // La mascota mirando abajo-izquierda, igual que el vacío de la web.
+          const Center(child: JayaloMascot(size: 76)),
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Aún no tienes notificaciones.\n'
+              'Aquí verás tus ofertas, mensajes,\nreseñas y avisos de tu cuenta.',
+              textAlign: TextAlign.center,
+            ),
           ),
-        ),
-      ]);
+        ],
+      );
 }
 
 class _ErrorRetry extends StatelessWidget {

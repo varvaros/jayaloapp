@@ -15,6 +15,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/brand.dart';
 import '../../core/motion.dart';
 import '../../domain/phase.dart';
+import '../shell/floating_nav_bar.dart';
 import 'jayalo_loader.dart';
 
 /// Tono de estado por fase de solicitud — el mismo mapa que usa la web con
@@ -183,6 +184,11 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListView(
         controller: controller,
+        // Caso especial (spec navbar-flotante §Detalle): este ListView es
+        // interno del widget y las 11 pantallas del shell que lo usan para
+        // su estado vacío no pueden pasarle su propio padding — se reserva
+        // aquí, una sola vez, para todas.
+        padding: EdgeInsets.only(bottom: navBarReservedSpace(context)),
         children: [
           const SizedBox(height: 100),
           const Center(child: JayaloMascot(size: 76)),

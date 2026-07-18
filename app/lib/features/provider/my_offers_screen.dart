@@ -7,6 +7,7 @@ import '../../domain/pricing.dart';
 import '../../domain/recharge.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
 import '../client/request_status_screen.dart' show offerPriceLabel;
+import '../shell/floating_nav_bar.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
@@ -90,7 +91,8 @@ class _MyOffersScreenState extends State<MyOffersScreen>
           : RefreshIndicator(
               onRefresh: _refetch,
               child: ListView(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: EdgeInsets.only(
+                      top: 12, bottom: 12 + navBarReservedSpace(context)),
                   children: [
                 _WalletCard(
                     balance: _balance, tone: _amber, onRecharge: _openWallet),

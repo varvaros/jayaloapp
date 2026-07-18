@@ -8,6 +8,7 @@ import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/pricing.dart';
+import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 
@@ -127,7 +128,10 @@ class _ProviderRequestDetailScreenState
     final bullets = List<String>.from(req['bullets'] as List? ?? const []);
     return Scaffold(
       appBar: AppBar(title: const Text('Detalle de solicitud')),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
+      body: ListView(
+          padding: EdgeInsets.fromLTRB(
+              16, 16, 16, 16 + navBarReservedSpace(context)),
+          children: [
         Text(req['title'] as String, style: Theme.of(context).textTheme.titleLarge),
         if (req['is_wholesale'] == true)
           Align(

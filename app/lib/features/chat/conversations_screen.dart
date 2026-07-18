@@ -4,6 +4,7 @@ import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/chat_time.dart';
 import '../../domain/money.dart';
+import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 
@@ -118,7 +119,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                         : 'Sin conversaciones no concretadas.',
               )
             : ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 4),
+                padding: EdgeInsets.only(
+                    top: 4, bottom: 4 + navBarReservedSpace(context)),
                 itemCount: filtered.length,
                 itemBuilder: (context, i) =>
                     _ConversationCard(c: filtered[i], onOpen: _open)
