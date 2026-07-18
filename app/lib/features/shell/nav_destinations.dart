@@ -84,13 +84,19 @@ List<NavDestination> destinationsFor(RoleState role) =>
 bool showsNavBar(String location) =>
     location == '/messages' || !location.startsWith('/messages/');
 
-/// Índice del destino activo para una ubicación del router.
+/// Índice del destino activo para una ubicación del router, o `-1` si
+/// ninguno coincide (p. ej. `/notifications`: está dentro del shell —
+/// `showsNavBar` la deja mostrar la barra— pero no es ninguna de sus 5
+/// pestañas). Encender el índice 0 en ese caso mentía: la barra marcaba
+/// "Mis solicitudes" como activa estando en Notificaciones. Quien pinta la
+/// barra ([FloatingNavBar]) debe tratar `-1` como "ningún destino
+/// seleccionado", no como "el primero".
 ///
 /// Gana el prefijo MÁS LARGO: '/provider/stats' empieza por '/provider' (el
 /// botón central del proveedor), así que si ganara el primero que coincide,
 /// estar en Estadísticas encendería el botón del medio.
 int activeIndex(List<NavDestination> dests, String location) {
-  var best = 0;
+  var best = -1;
   var bestLen = -1;
   for (var i = 0; i < dests.length; i++) {
     final p = dests[i].route;

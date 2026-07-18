@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../data/repos.dart';
 import '../../domain/money.dart';
-import '../client/reputation_screen.dart' show MetricTile;
 import '../shell/floating_nav_bar.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';

@@ -75,8 +75,8 @@ void main() {
       expect(activeIndex(cliente, '/messages/abc-123'), 3);
     });
 
-    test('una ruta fuera de la barra no marca nada raro: cae en 0', () {
-      expect(activeIndex(cliente, '/notifications'), 0);
+    test('una ruta fuera de la barra no enciende ninguna pestaña: da -1', () {
+      expect(activeIndex(cliente, '/notifications'), -1);
     });
   });
 

@@ -164,6 +164,42 @@ class SectionHeader extends StatelessWidget {
       );
 }
 
+/// Cifra grande + etiqueta. La reusan Reputación y Estadísticas — movida
+/// aquí desde `reputation_screen.dart` (I3): una pantalla de proveedor
+/// (`stats_screen.dart`) no debe importar una de cliente
+/// (`reputation_screen.dart`), y este archivo es el sitio único de los
+/// widgets compartidos entre pantallas.
+class MetricTile extends StatelessWidget {
+  const MetricTile({
+    super.key,
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        Icon(icon, color: cs.primary, size: 22),
+        const SizedBox(height: 6),
+        Text(value,
+            style: TextStyle(
+                fontSize: 24, fontWeight: FontWeight.w700, color: cs.onSurface)),
+        const SizedBox(height: 2),
+        Text(label,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+      ],
+    );
+  }
+}
+
 /// Estado vacío con la mascota "buscando algo que no encontró". Va dentro de
 /// un ListView para que el pull-to-refresh funcione también en vacío; en las
 /// pestañas raíz pásale el `homeScrollController` como [controller].

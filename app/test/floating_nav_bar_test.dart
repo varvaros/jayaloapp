@@ -116,6 +116,36 @@ void main() {
   });
 
   testWidgets(
+      'con currentIndex -1 (I2: ninguna pestaña coincide con la ruta, p. ej. '
+      '/notifications) no queda nada teñido de primary ni ninguna etiqueta '
+      'visible', (tester) async {
+    await tester.pumpWidget(host(-1));
+    await tester.pumpAndSettle();
+
+    // Ninguno de los 5 destinos muestra su etiqueta: si alguno estuviera
+    // "activo" por error, su texto aparecería (regla del PO: el texto solo
+    // se ve en el destino activo).
+    for (final d in dests) {
+      expect(find.text(d.label), findsNothing, reason: d.label);
+    }
+
+    // Ningún ícono queda teñido de primary — ni los laterales (_SideItem)
+    // ni el círculo central (_CenterButton, que usa cs.primary siempre como
+    // fondo del círculo, pero cuyo texto de abajo solo aparece si `active`).
+    final cs = Theme.of(tester.element(find.byType(FloatingNavBar))).colorScheme;
+    final iconos = tester.widgetList<Icon>(find.descendant(
+        of: find.byType(FloatingNavBar), matching: find.byType(Icon)));
+    for (final icono in iconos) {
+      // El ícono del círculo central es cs.onPrimary (sobre fondo primary),
+      // no cs.primary: no cuenta como "teñido de primary" en el sentido de
+      // la regla de la barra lateral.
+      expect(icono.color, isNot(cs.primary),
+          reason: 'ningún ícono debe quedar teñido de primary sin una '
+              'pestaña activa');
+    }
+  });
+
+  testWidgets(
       'kNavBarReservedSpace cubre el alto real que ocupa la barra al renderizarse',
       (tester) async {
     await tester.pumpWidget(host(0));

@@ -51,7 +51,12 @@ class HomeShell extends StatelessWidget {
             child: child,
           ),
         ),
-        child: KeyedSubtree(key: ValueKey(dests[idx].route), child: child),
+        // `idx` puede ser -1 (I2: ninguna pestaña coincide, p. ej.
+        // `/notifications`) — `dests[idx]` reventaría con RangeError. Ahí
+        // basta con la propia ubicación como key: sigue siendo estable y
+        // distinta de cualquier pestaña real.
+        child: KeyedSubtree(
+            key: ValueKey(idx >= 0 ? dests[idx].route : loc), child: child),
       ),
       bottomNavigationBar: showNavBar
           ? FloatingNavBar(

@@ -143,35 +143,3 @@ String _humanMinutes(int m) {
   final dias = (horas / 24).round();
   return dias == 1 ? 'un día' : '$dias días';
 }
-
-/// Cifra grande + etiqueta. La reusan Reputación y Estadísticas.
-class MetricTile extends StatelessWidget {
-  const MetricTile({
-    super.key,
-    required this.icon,
-    required this.value,
-    required this.label,
-  });
-
-  final IconData icon;
-  final String value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      children: [
-        Icon(icon, color: cs.primary, size: 22),
-        const SizedBox(height: 6),
-        Text(value,
-            style: TextStyle(
-                fontSize: 24, fontWeight: FontWeight.w700, color: cs.onSurface)),
-        const SizedBox(height: 2),
-        Text(label,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-      ],
-    );
-  }
-}

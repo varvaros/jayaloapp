@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/client/reputation_screen.dart';
+// MetricTile vive en brand_kit.dart (I3): reputation_screen.dart ya no lo
+// define, solo lo usa.
+import 'package:jayalo_app/features/shared/brand_kit.dart';
 
 /// El contrato de la pantalla de reputación. El umbral de 5 muestras para el
 /// tiempo de respuesta es la regla de la web (`src/lib/responseTime.ts`): con
