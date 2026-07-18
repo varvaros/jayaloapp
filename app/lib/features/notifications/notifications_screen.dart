@@ -9,6 +9,7 @@ import '../../core/brand.dart';
 import '../../core/session_state.dart';
 import '../../data/notifications_repository.dart';
 import '../../domain/notifications.dart';
+import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 import 'notification_bell.dart';
 
@@ -306,7 +307,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   }
 
   Widget _body(BuildContext context) {
-    if (_loading) return const JayaloLoaderBlock();
+    // Skeletons con forma de tarjeta (spec §Estados; único sitio con skeleton
+    // por decisión PO — el resto de la app carga con la mascota).
+    if (_loading) return const SkeletonList(count: 7);
     if (_error) return _ErrorRetry(onRetry: _loadFirst);
     // El vacío también entra al RefreshIndicator: sin datos igual se puede
     // deslizar para reintentar (spec: no dejar el estado vacío sin salida).
