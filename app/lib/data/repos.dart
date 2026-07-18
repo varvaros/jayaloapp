@@ -627,8 +627,14 @@ Future<String?> myBusinessName() async {
 
 // ── Métricas: reputación del cliente y estadísticas del proveedor ───────────
 
-/// Reputación del usuario actual como CLIENTE. `null` si la RPC no devuelve
-/// fila (usuario recién creado sin actividad).
+/// Reputación del usuario actual como CLIENTE.
+///
+/// La RPC `get_customer_reputation` SIEMPRE devuelve exactamente una fila
+/// (select de subconsultas escalares sin FROM ni GROUP BY). Para un usuario
+/// sin actividad, devuelve ceros o NULL en cada campo, nunca cero filas.
+/// El `rows.isEmpty ? null` es solo defensivo por si la RPC cambiara de forma
+/// en el futuro. Quien consuma esto debe decidir "sin actividad" mirando los
+/// CEROS de los campos, no el null.
 ///
 /// Campos: avg_rating, reviews_count, completed_purchases, requests_count,
 /// median_response_minutes, response_samples.
@@ -642,6 +648,12 @@ Future<Map<String, dynamic>?> customerReputation() async {
 /// Estadísticas del usuario actual como PROVEEDOR: fusiona las dos RPCs en un
 /// solo mapa porque la pantalla las muestra juntas y ninguna tiene sentido
 /// sola. Las claves ausentes quedan en 0 (proveedor sin actividad todavía).
+///
+/// Las RPCs `get_provider_stats` y `get_provider_reviews_summary` SIEMPRE
+/// devuelven exactamente una fila cada una (select de subconsultas escalares
+/// con COALESCE a 0, sin FROM ni GROUP BY). Para un proveedor sin actividad,
+/// devuelven ceros en los campos. El `isEmpty` es solo defensivo por si esas
+/// RPCs cambiaran de forma en el futuro.
 ///
 /// Campos: clients_count, completed_count, points_invested, revenue_total,
 /// avg_rating, reviews_count.
