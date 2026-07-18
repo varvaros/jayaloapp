@@ -50,6 +50,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   RealtimeChannel? _channel;
   // Id de la tarjeta recién llegada por realtime (dispara su animación).
   String? _justArrivedId;
+  // Ids que YA jugaron la animación de llegada: evita que se repita cuando
+  // _justArrivedId se limpia (spec: la tarjeta no debe re-animar al toque).
+  final Set<String> _arrivedIds = {};
 
   /// La píldora y "marcar todas" se alimentan del store COMPARTIDO (verdad
   /// del servidor tras [_loadFirst], optimista en tap/marcar-todas): el conteo
@@ -79,13 +82,14 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   }
 
   /// Realtime SOLO en foreground (spec §1, patrón del chat): al background se
-  /// suelta el socket; al volver se re-carga la página 1 (cubre el gap) y se
+  /// suelta el socket; al volver se re-carga la página 1 EN SILENCIO (cubre
+  /// el gap sin flash de esqueleto ni perder las páginas ya cargadas) y se
   /// re-suscribe.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) _unsubscribe();
     if (state == AppLifecycleState.resumed) {
-      _loadFirst();
+      _loadFirst(silent: true);
       _subscribe();
     }
   }
@@ -99,8 +103,18 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       setState(() {
         _items.insert(0, n);
         _justArrivedId = n.id;
+        _arrivedIds.add(n.id);
       });
       notifCountStore.add(1);
+      // La animación de llegada dura ~1s (slide+fade+shimmer); pasado ese
+      // tiempo se limpia _justArrivedId para que una segunda llegada no
+      // reanime esta tarjeta. _arrivedIds recuerda que ya animó para que
+      // _buildCard NO la vuelva a envolver en la cascada de entrada.
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted && _justArrivedId == n.id) {
+          setState(() => _justArrivedId = null);
+        }
+      });
     });
   }
 
@@ -110,26 +124,52 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     if (ch != null) unsubscribeNotifications(ch);
   }
 
-  Future<void> _loadFirst() async {
-    setState(() {
-      _loading = true;
-      _error = false;
-    });
+  /// [silent]: usado en el resume desde background (spec §1). No debe verse
+  /// como una carga: sin esqueleto y sin vaciar `_items` (perdería las
+  /// páginas ya traídas con "Cargar más"). En vez de reemplazar la lista,
+  /// fusiona la página 0 fresca por id: actualiza `readAt` de lo que ya
+  /// estaba y antepone lo nuevo, dejando `_page`/`_hasMore` intactos.
+  Future<void> _loadFirst({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = false;
+      });
+    }
     try {
       final rows = await notificationsPage(0);
       if (!mounted) return;
+      final fresh = rows.map(AppNotification.fromMap).toList();
       setState(() {
-        _items
-          ..clear()
-          ..addAll(rows.map(AppNotification.fromMap));
-        _page = 0;
-        _hasMore = rows.length == notifPageSize;
-        _loading = false;
+        if (silent) {
+          final byId = {for (final n in _items) n.id: n};
+          final newOnes = <AppNotification>[];
+          for (final n in fresh) {
+            final existing = byId[n.id];
+            if (existing != null) {
+              existing.readAt = n.readAt;
+            } else {
+              newOnes.add(n);
+            }
+          }
+          _items.insertAll(0, newOnes);
+        } else {
+          _items
+            ..clear()
+            ..addAll(fresh);
+          _page = 0;
+          _hasMore = rows.length == notifPageSize;
+          _loading = false;
+        }
       });
       // Revalida el badge compartido con la verdad recién cargada.
       notifCountStore.refresh();
     } catch (_) {
       if (!mounted) return;
+      // Resume silencioso: si falla, no se muestra la pantalla de error
+      // sobre contenido válido — simplemente se reintenta en el próximo
+      // resume/pull-to-refresh (best-effort, igual que el badge).
+      if (silent) return;
       setState(() {
         _loading = false;
         _error = true;
@@ -145,7 +185,13 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       if (!mounted) return;
       setState(() {
         _page += 1;
-        _items.addAll(rows.map(AppNotification.fromMap));
+        // Dedupe: el offset de `range` puede correrse si un INSERT realtime
+        // llegó entre páginas, repitiendo una fila ya presente (mismo
+        // ValueKey dos veces = crash de ListView en debug).
+        final existing = _items.map((x) => x.id).toSet();
+        _items.addAll(rows
+            .map(AppNotification.fromMap)
+            .where((n) => !existing.contains(n.id)));
         _hasMore = rows.length == notifPageSize;
         _loadingMore = false;
       });
@@ -161,16 +207,41 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     markNotificationRead(n.id).catchError((_) {});
   }
 
+  // Raíces de pestaña del shell: empujarlas con push() apilaría un duplicado
+  // del home encima del que ya vive en el ShellRoute y confunde a BackGuard
+  // (ver gotcha PopScope/predictive-back). context.go() reemplaza en vez de
+  // apilar; el resto de rutas (detalle) sí usa push() para poder volver.
+  static const _tabRoots = {
+    '/client',
+    '/provider',
+    '/provider/offers',
+    '/messages',
+  };
+
   void _open(AppNotification n) {
     // Optimista: si el update falla igual se navega (spec §3).
     _markReadOptimistic(n);
-    context.push(mapLinkToRoute(n.link,
-        provider: roleStore.value == RoleState.provider));
+    final route = mapLinkToRoute(n.link,
+        provider: roleStore.value == RoleState.provider);
+    if (_tabRoots.contains(route)) {
+      context.go(route);
+    } else {
+      context.push(route);
+    }
   }
 
   void _markAll() {
     if (_unread == 0) return;
-    markAllNotificationsRead().catchError((_) {});
+    markAllNotificationsRead().catchError((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('No se pudieron marcar. Intenta de nuevo.')),
+      );
+      // Reconcilia el badge con el servidor: el zero() optimista de abajo
+      // pudo quedar desalineado si el update realmente falló.
+      notifCountStore.refresh();
+    });
     notifCountStore.zero();
     // Cascada solo sobre lo cargado; las páginas no cargadas ya quedaron
     // marcadas por el update de arriba.
@@ -231,42 +302,69 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   Widget _body(BuildContext context) {
     if (_loading) return const _Skeletons();
     if (_error) return _ErrorRetry(onRetry: _loadFirst);
-    if (_items.isEmpty) return const _Empty();
-    final cs = Theme.of(context).colorScheme;
-    final groups = groupByDay(_items);
-    final children = <Widget>[];
-    var cardIndex = 0;
-    for (final g in groups) {
-      children.add(Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
-        child: Text(
-          g.label,
-          style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: .4,
-              color: cs.onSurfaceVariant),
-        ),
-      ));
-      for (final n in g.items) {
-        children.add(_buildCard(n, cardIndex++));
-      }
-    }
-    if (_hasMore) {
-      children.add(Padding(
-        padding: const EdgeInsets.all(16),
-        child: Center(
-          child: _loadingMore
-              ? const CircularProgressIndicator()
-              : OutlinedButton(
-                  onPressed: _loadMore, child: const Text('Cargar más')),
-        ),
-      ));
-    }
-    children.add(const SizedBox(height: 24));
+    // El vacío también entra al RefreshIndicator: sin datos igual se puede
+    // deslizar para reintentar (spec: no dejar el estado vacío sin salida).
     return RefreshIndicator(
       onRefresh: _loadFirst,
-      child: ListView(children: children),
+      child: _items.isEmpty ? const _Empty() : _list(context),
+    );
+  }
+
+  /// Aplana los grupos por día en una sola lista de filas (String = título de
+  /// día, AppNotification = tarjeta) y la renderiza con ListView.builder:
+  /// con 120+ tarjetas tras varios "Cargar más", construir todo el árbol de
+  /// golpe (ListView(children:)) es el costo que se evita.
+  Widget _list(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final groups = groupByDay(_items);
+    final rows = <Object>[];
+    // Índice de tarjeta por fila (-1 en los encabezados): la cascada de
+    // entrada solo cuenta tarjetas, nunca los títulos de día.
+    final cardIndexOf = <int>[];
+    var cardIndex = 0;
+    for (final g in groups) {
+      rows.add(g.label);
+      cardIndexOf.add(-1);
+      for (final n in g.items) {
+        rows.add(n);
+        cardIndexOf.add(cardIndex++);
+      }
+    }
+    final footerCount = (_hasMore ? 1 : 0) + 1; // "Cargar más" + espaciador
+    return ListView.builder(
+      itemCount: rows.length + footerCount,
+      itemBuilder: (context, i) {
+        if (i < rows.length) {
+          final row = rows[i];
+          if (row is String) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+              child: Text(
+                row,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: .4,
+                    color: cs.onSurfaceVariant),
+              ),
+            );
+          }
+          return _buildCard(row as AppNotification, cardIndexOf[i]);
+        }
+        final footerIndex = i - rows.length;
+        if (_hasMore && footerIndex == 0) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Center(
+              child: _loadingMore
+                  ? const CircularProgressIndicator()
+                  : OutlinedButton(
+                      onPressed: _loadMore, child: const Text('Cargar más')),
+            ),
+          );
+        }
+        return const SizedBox(height: 24);
+      },
     );
   }
 
@@ -299,6 +397,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           .fadeIn(duration: 250.ms)
           .then()
           .shimmer(duration: 700.ms, color: fam.icon.withValues(alpha: .35));
+    } else if (_arrivedIds.contains(n.id)) {
+      // Ya jugó la animación de llegada: al limpiarse _justArrivedId esta
+      // tarjeta pasaría de key 'new-' a 'in-' y replay-earía la cascada de
+      // entrada. Se devuelve sin envoltorio de Animate para que no reanime.
     } else {
       // Cascada de entrada: fade + slide 12px hacia arriba, ~40ms de stagger
       // (tope en los primeros ~14 items para no eternizar listas largas).

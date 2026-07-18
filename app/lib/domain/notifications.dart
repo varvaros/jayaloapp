@@ -135,14 +135,14 @@ List<({String label, List<AppNotification> items})> groupByDay(
 /// escribe el backend, verificados en migraciones de jayalo-main (spec §4).
 /// `provider` = rol activo, para el fallback de links desconocidos.
 String mapLinkToRoute(String link, {required bool provider}) {
-  final msgQuery = RegExp(r'^/messages\?c=([0-9a-f-]+)').firstMatch(link);
+  final msgQuery = RegExp(r'^/messages\?c=([0-9a-fA-F-]+)').firstMatch(link);
   if (msgQuery != null) return '/messages/${msgQuery.group(1)}';
-  final msgPath = RegExp(r'^/messages/([0-9a-f-]+)').firstMatch(link);
+  final msgPath = RegExp(r'^/messages/([0-9a-fA-F-]+)').firstMatch(link);
   if (msgPath != null) return '/messages/${msgPath.group(1)}';
   if (link == '/messages') return '/messages';
-  final req = RegExp(r'^/requests/([0-9a-f-]+)').firstMatch(link);
+  final req = RegExp(r'^/requests/([0-9a-fA-F-]+)').firstMatch(link);
   if (req != null) return '/client/request/${req.group(1)}';
-  final provReq = RegExp(r'^/provider/requests/([0-9a-f-]+)').firstMatch(link);
+  final provReq = RegExp(r'^/provider/requests/([0-9a-fA-F-]+)').firstMatch(link);
   if (provReq != null) return '/provider/request/${provReq.group(1)}';
   if (link == '/provider/offers' || link == '/provider?view=offers') {
     return '/provider/offers';

@@ -153,6 +153,9 @@ void main() {
     test('solicitud del cliente', () {
       expect(mapLinkToRoute('/requests/deadbeef-1', provider: false), '/client/request/deadbeef-1');
     });
+    test('UUID en mayúsculas también matchea (hex case-insensitive)', () {
+      expect(mapLinkToRoute('/requests/DEADBEEF-1', provider: false), '/client/request/DEADBEEF-1');
+    });
     test('BUG (a): detalle de solicitud del proveedor va al detalle nativo', () {
       expect(mapLinkToRoute('/provider/requests/deadbeef-2', provider: true),
           '/provider/request/deadbeef-2');

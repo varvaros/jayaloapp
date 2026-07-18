@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/notifications_repository.dart';
+import '../../data/repos.dart' show supa;
 import '../../domain/notifications.dart';
 
 /// Conteo de no-leídas COMPARTIDO entre las 4 campanas (un solo estado, no un
@@ -11,6 +13,14 @@ import '../../domain/notifications.dart';
 /// de notificaciones. SIN socket persistente.
 class NotifCountStore extends ChangeNotifier {
   int count = 0;
+
+  NotifCountStore() {
+    // Al cerrar sesión el badge no debe arrastrar el conteo del usuario
+    // anterior (se vería en la pantalla de login o en el siguiente login).
+    supa.auth.onAuthStateChange.listen((e) {
+      if (e.event == AuthChangeEvent.signedOut) zero();
+    });
+  }
 
   Future<void> refresh() async {
     try {

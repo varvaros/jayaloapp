@@ -18,6 +18,9 @@ Future<List<Map<String, dynamic>>> notificationsPage(int page) async {
       .select(notifCols)
       .eq('user_id', uid)
       .order('created_at', ascending: false)
+      // Desempate estable: dos filas con el mismo created_at no deben
+      // reordenarse entre páginas (offset pagination).
+      .order('id', ascending: false)
       .range(page * notifPageSize, page * notifPageSize + notifPageSize - 1));
 }
 

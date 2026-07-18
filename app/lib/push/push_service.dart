@@ -54,6 +54,12 @@ Future<void> initPush(GoRouter router) async {
     }
   });
 
+  // Los taps en caliente (onMessageOpenedApp) rutean bien por rol porque
+  // roleStore ya está resuelto cuando el usuario toca la notificación. Los
+  // taps en frío (getInitialMessage) siguen perdiendo el deep link: initPush
+  // corre ANTES de resolver el rol (roleState.unknown → cae a provider:false)
+  // y además el redirect de /gate descarta el destino al arrancar. Pendiente:
+  // guardar el link y navegar recién cuando el rol se resuelva.
   void goFrom(RemoteMessage m) {
     final link = m.data['link'] as String? ?? '';
     router.go(mapLinkToRoute(link,
