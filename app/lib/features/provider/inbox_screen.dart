@@ -4,6 +4,7 @@ import '../../data/repos.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
 import '../shell/home_scroll.dart';
 import '../notifications/notification_bell.dart';
+import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 
 class ProviderInboxScreen extends StatefulWidget {
@@ -51,37 +52,26 @@ class _ProviderInboxScreenState extends State<ProviderInboxScreen> {
                 }
                 final items = snap.data!;
                 if (items.isEmpty) {
-                  return ListView(
-                      controller: homeScrollController,
-                      children: const [
-                    SizedBox(height: 120),
-                    Icon(Icons.inbox_outlined, size: 56),
-                    Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Text(
-                            'Aquí verás las solicitudes que coinciden con tu negocio.',
-                            textAlign: TextAlign.center)),
-                  ]);
+                  return EmptyState(
+                    controller: homeScrollController,
+                    message:
+                        'Aquí verás las solicitudes que coinciden con tu negocio.\n'
+                        'Te avisaremos cuando llegue una nueva.',
+                  );
                 }
                 return ListView.builder(
                   controller: homeScrollController,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: items.length,
                   itemBuilder: (_, i) {
                     final r = items[i];
-                    return Card(
-                      margin:
-                          const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      child: ListTile(
-                        title: Text(r['title'] as String? ?? '',
-                            maxLines: 2, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(
-                            '${r['description'] ?? ''}\n${timeAgo(DateTime.parse(r['created_at'] as String))}',
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis),
-                        isThreeLine: true,
-                        onTap: () => context.go('/provider/request/${r['id']}'),
-                      ),
-                    );
+                    return _InboxCard(
+                      title: r['title'] as String? ?? '',
+                      description: r['description'] as String? ?? '',
+                      kind: r['kind'] as String?,
+                      createdAt: DateTime.parse(r['created_at'] as String),
+                      onTap: () => context.go('/provider/request/${r['id']}'),
+                    ).cascadeIn(i);
                   },
                 );
               },
@@ -89,6 +79,77 @@ class _ProviderInboxScreenState extends State<ProviderInboxScreen> {
           ),
         ),
       ]),
+    );
+  }
+}
+
+/// Variante "I2 · Con ícono de tipo" (elegida por el PO): tarjeta neutra con
+/// el ícono de producto/servicio en contenedor redondeado, como una
+/// notificación. El acento usa el primario del tema (violeta claro / azul
+/// oscuro).
+class _InboxCard extends StatelessWidget {
+  const _InboxCard({
+    required this.title,
+    required this.description,
+    required this.kind,
+    required this.createdAt,
+    required this.onTap,
+  });
+
+  final String title;
+  final String description;
+  final String? kind;
+  final DateTime createdAt;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return JayaloCard(
+      onTap: onTap,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+                kind == 'producto'
+                    ? Icons.inventory_2_outlined
+                    : Icons.handyman_outlined,
+                size: 20,
+                color: cs.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                if (description.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 13, color: cs.onSurfaceVariant)),
+                ],
+                const SizedBox(height: 4),
+                Text(timeAgo(createdAt),
+                    style:
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
