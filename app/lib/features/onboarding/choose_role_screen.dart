@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../shared/brand_kit.dart';
+
 /// Selector de rol. Regla dura (lección choose-role.tsx:67-72 de la web):
 /// elegir NO escribe account_type — solo el cierre de cada flujo lo persiste.
 /// Quien abandona vuelve aquí sin residuo en la BD.
@@ -10,29 +12,30 @@ class ChooseRoleScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    Widget card(IconData icon, String title, String body, String cta, String route) => Card(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => context.go(route),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                      color: cs.primaryContainer, borderRadius: BorderRadius.circular(12)),
-                  child: Icon(icon, size: 28, color: cs.onPrimaryContainer),
-                ),
-                const SizedBox(height: 12),
-                Text(title, style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 8),
-                Text(body),
-                const SizedBox(height: 12),
-                Text('$cta →',
-                    style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600)),
-              ]),
+    Widget card(IconData icon, String title, String body, String cta, String route) =>
+        JayaloCard(
+          margin: EdgeInsets.zero,
+          padding: const EdgeInsets.all(20),
+          onTap: () => context.go(route),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                  color: cs.primaryContainer, borderRadius: BorderRadius.circular(12)),
+              child: Icon(icon, size: 28, color: cs.onPrimaryContainer),
             ),
-          ),
+            const SizedBox(height: 12),
+            Text(title,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(body),
+            const SizedBox(height: 12),
+            Text('$cta →',
+                style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600)),
+          ]),
         );
     return Scaffold(
       body: SafeArea(
