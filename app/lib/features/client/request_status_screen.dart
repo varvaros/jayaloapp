@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/phase.dart';
-import 'my_requests_screen.dart' show phaseBadge;
 import 'offer_actions.dart';
+import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 
 String fmtRD(num? v) => v == null
@@ -30,6 +31,15 @@ const _phaseCopy = {
   RequestPhase.completed: 'Califica al proveedor para ayudar a la comunidad.',
 };
 
+/// Etiquetas cortas del "camino de píldoras" (variante D2 elegida por el PO).
+const _phaseShort = {
+  RequestPhase.waiting: 'Publicada',
+  RequestPhase.withOffers: 'Con ofertas',
+  RequestPhase.accepted: 'Aceptada',
+  RequestPhase.unlocked: 'Desbloqueado',
+  RequestPhase.completed: 'Completada',
+};
+
 class RequestStatusScreen extends StatefulWidget {
   const RequestStatusScreen({super.key, required this.requestId});
   final String requestId;
@@ -55,8 +65,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
   Widget build(BuildContext context) {
     final req = _request;
     if (req == null) {
-      return Scaffold(
-          appBar: AppBar(), body: const JayaloLoaderBlock());
+      return Scaffold(appBar: AppBar(), body: const JayaloLoaderBlock());
     }
     return Scaffold(
       appBar: AppBar(
@@ -69,55 +78,57 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
           final phase = phaseForRequest(
               requestStatus: req['status'] as String,
               offers: offers.map(offerLite).toList());
-          final (color, label) = phaseBadge(context, phase);
           final hasAccepted = offers
               .any((o) => o['status'] == 'accepted' || o['status'] == 'completed');
-          return ListView(padding: const EdgeInsets.all(16), children: [
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 350),
-              child: Card(
-                key: ValueKey(phase),
-                color: color.withValues(alpha: .08),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child:
-                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(label,
-                        style: Theme.of(context)
-                            .textTheme
-                            .headlineSmall
-                            ?.copyWith(color: color, fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 6),
-                    Text(_phaseCopy[phase]!),
-                    const SizedBox(height: 16),
-                    _PhaseStepper(phase: phase, color: color),
-                  ]),
+          return ListView(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 350),
+                  child: _PhasePath(key: ValueKey(phase), phase: phase),
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text('Ofertas (${offers.length})',
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            if (offers.isEmpty)
-              const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                      'Todavía no hay ofertas. Te avisaremos con una notificación.')),
-            for (final o in offers)
-              Card(
-                child: ListTile(
-                  title: Text(offerPriceLabel(o),
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: Text(o['message'] as String? ?? '',
-                      maxLines: 2, overflow: TextOverflow.ellipsis),
-                  trailing: _offerStatusChip(context, o, hasAccepted),
-                  onTap: () => showOfferSheet(context, req, o,
-                      hasAcceptedElsewhere:
-                          hasAccepted && o['status'] == 'pending'),
-                ),
-              ),
-          ]);
+                SectionHeader(text: 'Ofertas (${offers.length})'),
+                if (offers.isEmpty)
+                  const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                          'Todavía no hay ofertas. Te avisaremos con una notificación.')),
+                for (final o in offers)
+                  JayaloCard(
+                    onTap: () => showOfferSheet(context, req, o,
+                        hasAcceptedElsewhere:
+                            hasAccepted && o['status'] == 'pending'),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(offerPriceLabel(o),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700)),
+                              if ((o['message'] as String?)?.isNotEmpty ==
+                                  true) ...[
+                                const SizedBox(height: 2),
+                                Text(o['message'] as String,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant)),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _offerStatusChip(context, o, hasAccepted),
+                      ],
+                    ),
+                  ),
+              ]);
         },
       ),
     );
@@ -125,37 +136,91 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
 
   Widget _offerStatusChip(
       BuildContext context, Map<String, dynamic> o, bool hasAccepted) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final st = o['status'] as String;
-    final txt = switch (st) {
-      'accepted' => o['unlocked_at'] != null ? 'Desbloqueada' : 'Aceptada',
-      'completed' => 'Completada',
-      'rejected' => 'Rechazada',
-      _ => hasAccepted ? 'Otra aceptada' : 'Pendiente',
+    final (txt, tone) = switch (st) {
+      'accepted' when o['unlocked_at'] != null => (
+          'Desbloqueada',
+          dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight
+        ),
+      'accepted' => (
+          'Aceptada',
+          dark ? JayaloStatus.acceptedDark : JayaloStatus.acceptedLight
+        ),
+      'completed' => (
+          'Completada',
+          dark ? JayaloStatus.completedDark : JayaloStatus.completedLight
+        ),
+      'rejected' => (
+          'Rechazada',
+          dark ? JayaloStatus.completedDark : JayaloStatus.completedLight
+        ),
+      _ => hasAccepted
+          ? (
+              'Otra aceptada',
+              dark ? JayaloStatus.completedDark : JayaloStatus.completedLight
+            )
+          : ('Pendiente', dark ? JayaloStatus.pendingDark : JayaloStatus.pendingLight),
     };
-    return Chip(label: Text(txt, style: const TextStyle(fontSize: 11)));
+    return StatusChip(label: txt, tone: tone);
   }
 }
 
-class _PhaseStepper extends StatelessWidget {
-  const _PhaseStepper({required this.phase, required this.color});
+/// D2 · Camino de píldoras: las fases pasadas en gris con check, la actual con
+/// el color de su tono, las futuras huecas. Debajo, el copy de la fase.
+class _PhasePath extends StatelessWidget {
+  const _PhasePath({super.key, required this.phase});
   final RequestPhase phase;
-  final Color color;
+
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final doneTone =
+        dark ? JayaloStatus.completedDark : JayaloStatus.completedLight;
     final idx = RequestPhase.values.indexOf(phase);
-    final muted = Theme.of(context).colorScheme.surfaceContainerHighest;
-    return Row(children: [
-      for (var i = 0; i < RequestPhase.values.length; i++) ...[
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 350),
-          width: 14,
-          height: 14,
-          decoration: BoxDecoration(
-              shape: BoxShape.circle, color: i <= idx ? color : muted),
-        ),
-        if (i < RequestPhase.values.length - 1)
-          Expanded(child: Container(height: 3, color: i < idx ? color : muted)),
-      ],
-    ]);
+    return JayaloCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Tu solicitud va así:',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (var i = 0; i < RequestPhase.values.length; i++)
+                if (i < idx)
+                  StatusChip(
+                      label: _phaseShort[RequestPhase.values[i]]!,
+                      tone: doneTone,
+                      icon: Icons.check)
+                else if (i == idx)
+                  StatusChip(
+                      label: _phaseShort[RequestPhase.values[i]]!,
+                      tone: toneFor(context, phase))
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: cs.outlineVariant),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(_phaseShort[RequestPhase.values[i]]!,
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurfaceVariant)),
+                  ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(_phaseCopy[phase]!),
+        ],
+      ),
+    );
   }
 }
