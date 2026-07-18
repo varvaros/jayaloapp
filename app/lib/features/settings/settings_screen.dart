@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
 import '../../push/push_service.dart';
+import '../shared/brand_kit.dart';
 import '../verification/otp_sheet.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -72,43 +74,116 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final green = dark ? JayaloColors.dSuccess : JayaloColors.success;
     final email = Supabase.instance.client.auth.currentUser?.email ?? '';
     final isProvider = roleStore.value == RoleState.provider;
     return Scaffold(
       appBar: AppBar(title: const Text('Ajustes')),
-      body: ListView(children: [
-        ListTile(leading: const Icon(Icons.person_outline), title: Text(email)),
+      body: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
+        const SectionHeader(text: 'Tu cuenta'),
+        _SettingsRow(icon: Icons.person_outline, title: email),
         if (_verified == false)
-          ListTile(
-            leading: const Icon(Icons.verified_outlined),
-            title: const Text('Confirmar mi cuenta'),
-            subtitle: const Text('Te enviamos un código por mensaje de texto (SMS)'),
+          _SettingsRow(
+            icon: Icons.verified_outlined,
+            title: 'Confirmar mi cuenta',
+            subtitle: 'Te enviamos un código por mensaje de texto (SMS)',
             onTap: _verifyPersonal,
           ),
         if (_verified == true)
-          const ListTile(
-            leading: Icon(Icons.verified, color: Colors.green),
-            title: Text('WhatsApp confirmado ✓'),
+          _SettingsRow(
+            icon: Icons.verified,
+            iconColor: green,
+            title: 'WhatsApp confirmado ✓',
           ),
         if (isProvider)
-          ListTile(
-            leading: const Icon(Icons.storefront_outlined),
-            title: const Text('Sello de WhatsApp del negocio'),
-            subtitle: const Text('Confirma el número que ven tus clientes'),
+          _SettingsRow(
+            icon: Icons.storefront_outlined,
+            title: 'Sello de WhatsApp del negocio',
+            subtitle: 'Confirma el número que ven tus clientes',
             onTap: _verifyBusiness,
           ),
-        ListTile(
-          leading: const Icon(Icons.description_outlined),
-          title: const Text('Términos y privacidad'),
+        const SectionHeader(text: 'Información'),
+        _SettingsRow(
+          icon: Icons.description_outlined,
+          title: 'Términos y privacidad',
           onTap: () => launchUrl(Uri.parse('https://jayalo.com/terminos'),
               mode: LaunchMode.externalApplication),
         ),
-        ListTile(
-          leading: const Icon(Icons.logout),
-          title: const Text('Cerrar sesión'),
+        const SectionHeader(text: 'Sesión'),
+        _SettingsRow(
+          icon: Icons.logout,
+          iconColor: cs.error,
+          titleColor: cs.error,
+          title: 'Cerrar sesión',
           onTap: _signOut,
         ),
       ]),
+    );
+  }
+}
+
+/// Fila de ajustes con la anatomía del kit: ícono en contenedor 40×40 al 14%,
+/// título y subtítulo opcionales, todo dentro de una tarjeta neutra.
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.onTap,
+    this.iconColor,
+    this.titleColor,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final VoidCallback? onTap;
+  final Color? iconColor;
+  final Color? titleColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final ic = iconColor ?? cs.primary;
+    return JayaloCard(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: ic.withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 20, color: ic),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        color: titleColor ?? cs.onSurface)),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(subtitle!,
+                      style: TextStyle(
+                          fontSize: 12, color: cs.onSurfaceVariant)),
+                ],
+              ],
+            ),
+          ),
+          if (onTap != null)
+            Icon(Icons.chevron_right, size: 20, color: cs.outline),
+        ],
+      ),
     );
   }
 }
