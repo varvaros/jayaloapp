@@ -66,6 +66,9 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // La mascota da la bienvenida — misma cara que el loader y la web.
+              const Center(child: JayaloMascot(size: 96)),
+              const SizedBox(height: 16),
               Text('Jayalo',
                   textAlign: TextAlign.center,
                   style: Theme.of(context)
