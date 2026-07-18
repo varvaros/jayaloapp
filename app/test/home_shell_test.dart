@@ -20,8 +20,10 @@ void main() {
             switchOutCurve: Curves.easeIn,
             transitionBuilder: (child, animation) => FadeTransition(
               opacity: animation,
-              child: ScaleTransition(
-                scale: Tween<double>(begin: .98, end: 1).animate(animation),
+              child: SlideTransition(
+                position: Tween<Offset>(
+                        begin: const Offset(0, .04), end: Offset.zero)
+                    .animate(animation),
                 child: child,
               ),
             ),

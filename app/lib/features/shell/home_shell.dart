@@ -52,12 +52,17 @@ class HomeShell extends StatelessWidget {
       body: AnimatedSwitcher(
         duration:
             JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base,
-        switchInCurve: JayaloMotion.enter,
-        switchOutCurve: JayaloMotion.exit,
+        // Mismo lenguaje vertical que las transiciones de pantalla (§1.3bis):
+        // la pestaña entrante sube a su sitio y la saliente se guarda hacia
+        // arriba, con easeInOutCubic. Más corto que un push (base vs page)
+        // porque cambiar de pestaña no es entrar "más adentro".
+        switchInCurve: JayaloMotion.emphasized,
+        switchOutCurve: JayaloMotion.emphasized,
         transitionBuilder: (child, animation) => FadeTransition(
           opacity: animation,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: JayaloMotion.pressedScale, end: 1)
+          child: SlideTransition(
+            position: Tween<Offset>(
+                    begin: const Offset(0, .04), end: Offset.zero)
                 .animate(animation),
             child: child,
           ),
