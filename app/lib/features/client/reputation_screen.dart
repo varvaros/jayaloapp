@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../data/repos.dart';
 import '../shell/floating_nav_bar.dart';
-import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
-import '../shared/profile_avatar_button.dart';
+import '../shared/violet_header.dart';
 
 /// Umbral de la web (`src/lib/responseTime.ts`): con menos de 5 respuestas
 /// medidas la mediana no representa nada y se omite por completo.
@@ -26,21 +25,28 @@ class _ReputationScreenState extends State<ReputationScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-            title: const Text('Mi reputación'),
-            actions: const [NotificationBell(), ProfileAvatarButton()]),
-        body: FutureBuilder<Map<String, dynamic>?>(
-          future: _load,
-          builder: (context, snap) {
-            if (snap.hasError) {
-              return ErrorRetry(onRetry: () async => _refetch());
-            }
-            if (!snap.hasData && snap.connectionState != ConnectionState.done) {
-              return const SkeletonList();
-            }
-            return ReputationView(data: snap.data ?? const {});
-          },
-        ),
+        body: Column(children: [
+          const VioletHeader(
+            leading: HeaderAvatar(),
+            title: 'Mi reputación',
+            actions: [HeaderBell()],
+          ),
+          Expanded(
+            child: FutureBuilder<Map<String, dynamic>?>(
+              future: _load,
+              builder: (context, snap) {
+                if (snap.hasError) {
+                  return ErrorRetry(onRetry: () async => _refetch());
+                }
+                if (!snap.hasData &&
+                    snap.connectionState != ConnectionState.done) {
+                  return const SkeletonList();
+                }
+                return ReputationView(data: snap.data ?? const {});
+              },
+            ),
+          ),
+        ]),
       );
 }
 
