@@ -67,7 +67,7 @@ abstract final class JayaloMotion {
   /// sube o baja los segundos y ya. Referencia: el default de Android
   /// equivale a ~1.0 s aquí. PO 2026-07-19 (5ª pasada, pidiendo el
   /// equivalente de un `decelerationRate` cercano a 1): 2 s → 4 s.
-  static const scrollBrake = Duration(milliseconds: 2000);
+  static const scrollBrake = Duration(milliseconds: 4000);
 
   /// El fling con el que se calibra [scrollBrake] (px/s). Un envión normal
   /// del pulgar ronda esta cifra; flings más suaves frenan antes y más

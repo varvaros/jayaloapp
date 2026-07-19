@@ -21,23 +21,28 @@ ScrollMetrics _metrics() => FixedScrollMetrics(
 
 void main() {
   group('frenado del scroll', () {
-    test('un fling típico (3000 px/s) tarda ~2 s en detenerse, no ~1 s como '
-        'el default de Android', () {
+    test('la palanca manda: un fling típico se detiene a los segundos que '
+        'diga JayaloMotion.scrollBrake (hoy 4 s), no en ~1 s como el default',
+        () {
       final sim = const JayaloScrollPhysics()
-          .createBallisticSimulation(_metrics(), 3000);
+          .createBallisticSimulation(_metrics(), JayaloMotion.flingReference);
       expect(sim, isNotNull);
 
-      // El umbral es 1.5 s A PROPÓSITO, y está MEDIDO, no supuesto: con la
-      // fricción por defecto (0.015) este mismo fling se detiene a los
-      // 1.03 s y con la nuestra a los 2.08 s. Un umbral de 1.0 s NO
-      // discriminaría (el default tampoco ha terminado ahí) y el test sería
-      // teatro: pasaría igual si alguien revirtiera el token.
-      expect(sim!.isDone(1.5), isFalse,
-          reason: 'a 1.5 s todavía debe estar planeando — con la fricción por '
-              'defecto ya se habría detenido (1.03 s), así que este expect es '
-              'el que separa un frenado largo de uno normal');
-      expect(sim.isDone(2.5), isTrue,
-          reason: 'pasados ~2.1 s el frenado ya terminó');
+      final objetivo = JayaloMotion.scrollBrake.inMilliseconds / 1000;
+      // Se comprueba que la duración REAL cae junto al objetivo pedido (±15%),
+      // que es lo que hace útil la palanca: cambiar `scrollBrake` a N segundos
+      // debe producir un frenado de N segundos. Un test que solo mirara
+      // "más lento que el default" no cazaría un error en la fórmula de
+      // `frictionForBrake`.
+      expect(sim!.isDone(objetivo * 0.85), isFalse,
+          reason: 'antes del objetivo todavía debe estar planeando');
+      expect(sim.isDone(objetivo * 1.15), isTrue,
+          reason: 'poco después del objetivo el frenado ya terminó');
+
+      // Y que de verdad es MUCHO más lento que Android (1.03 s medido).
+      expect(objetivo, greaterThan(1.5),
+          reason: 'si alguien deja la palanca por debajo del default, el '
+              'frenado largo dejó de existir');
     });
 
     test('la fricción es la del token, no la de Flutter', () {
@@ -45,6 +50,25 @@ void main() {
       // arriba también caería, pero este dice POR QUÉ.
       expect(JayaloMotion.scrollFriction, lessThan(0.015),
           reason: 'menos fricción que el default = planea más tiempo');
+    });
+
+    test('frictionForBrake acierta para varios objetivos, no solo para el '
+        'valor que hoy tiene la palanca', () {
+      // La fórmula se despejó a mano; conviene comprobarla en varios puntos
+      // contra la simulación REAL de Flutter (si una versión futura cambia
+      // sus constantes, esto lo caza antes que los ojos del PO).
+      for (final segundos in [1.0, 2.0, 4.0, 6.0]) {
+        final target = Duration(milliseconds: (segundos * 1000).round());
+        final sim = ClampingScrollSimulation(
+          position: 0,
+          velocity: 3000,
+          friction: frictionForBrake(target),
+        );
+        expect(sim.isDone(segundos * 0.9), isFalse,
+            reason: 'pedido $segundos s: no debería haber parado aún');
+        expect(sim.isDone(segundos * 1.1), isTrue,
+            reason: 'pedido $segundos s: ya debería haber parado');
+      }
     });
 
     testWidgets(
@@ -73,8 +97,8 @@ void main() {
       // por tanto la física RESUELTA, y no por su tipo sino por lo que
       // produce: la simulación real de esta lista real.
       final state = tester.state<ScrollableState>(find.byType(Scrollable));
-      final sim =
-          state.resolvedPhysics!.createBallisticSimulation(state.position, 3000);
+      final sim = state.resolvedPhysics!
+          .createBallisticSimulation(state.position, JayaloMotion.flingReference);
 
       expect(sim, isNotNull,
           reason: 'un fling de 3000 px/s sobre una lista de 50 filas debe '
@@ -82,7 +106,8 @@ void main() {
       expect(sim!.isDone(1.5), isFalse,
           reason: 'la lista real hereda el frenado largo (con el default ya '
               'habría parado a los 1.03 s)');
-      expect(sim.isDone(2.5), isTrue);
+      expect(sim.isDone(JayaloMotion.scrollBrake.inMilliseconds / 1000 * 1.15),
+          isTrue);
     });
 
     test('fuera de rango devuelve el muelle del borde, no un fling frenado',
