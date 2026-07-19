@@ -6,7 +6,34 @@
 /// idénticos en toda la app.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
+/// Fricción que hace que un fling de [velocity] px/s tarde [target] en
+/// detenerse del todo.
+///
+/// Flutter NO tiene la prop `decelerationRate` de React Native (allí es un
+/// float de 0 a 1 donde acercarse a 1 frena más lento; valores ≥1 no son
+/// válidos porque implicarían que nunca se detiene). El equivalente aquí es
+/// la fricción de `ClampingScrollSimulation`, pero como número suelto no
+/// dice nada — así que se despeja al revés: se pide la DURACIÓN del frenado
+/// y de ahí sale la fricción.
+///
+/// Se invierte la fórmula de `ClampingScrollSimulation._flingDuration`:
+///   t = dr·inf · (v / (friction·coef/inf))^(1/(dr-1))
+/// despejando:
+///   friction = inf/coef · v / (t/(dr·inf))^(dr-1)
+double frictionForBrake(Duration target, {double velocity = 3000}) {
+  const inflexion = 0.35;
+  // 0.84·g expresado en píxeles lógicos/s² (mismo valor que usa Flutter).
+  const coef = 9.80665 * 39.37 * 160.0 * 0.84;
+  final decelRate = math.log(0.78) / math.log(0.9);
+  final t = target.inMicroseconds / Duration.microsecondsPerSecond;
+  final referenceVelocity =
+      velocity / math.pow(t / (decelRate * inflexion), decelRate - 1);
+  return referenceVelocity * inflexion / coef;
+}
 
 abstract final class JayaloMotion {
   /// Feedback táctil inmediato (escala al presionar, cambios de estado
@@ -20,10 +47,10 @@ abstract final class JayaloMotion {
   /// Transiciones de pantalla y desvanecidos de color de tarjeta.
   static const page = Duration(milliseconds: 300);
 
-  /// Subida del modal de crear-solicitud. 3ª pasada PO: 300→600 ms ("cuando
-  /// esté llegando a su tope reduce su velocidad"). 4ª pasada, viéndolo en
-  /// device: "todavía se siente muy rápida, agrégale 300ms más" → 900 ms.
-  static const modalRise = Duration(milliseconds: 900);
+  /// Subida del modal de crear-solicitud. Historial de decisiones del PO
+  /// viéndola en device: 300 → 600 ("reduce la velocidad al llegar al tope")
+  /// → 900 ("todavía muy rápida, +300ms") → 2000 ("pongámosle 2 segundos").
+  static const modalRise = Duration(milliseconds: 2000);
 
   /// Deslizado de pantalla entre secciones (PO 2026-07-19: "con un frenado
   /// de 2 segundos"): junto con [brake], casi todo el recorrido sucede al
@@ -34,17 +61,22 @@ abstract final class JayaloMotion {
   /// despacio, la mayor parte de la duración es deceleración.
   static const brake = Curves.easeOutQuint;
 
-  /// Fricción del fling de scroll (PO 2026-07-19, 4ª pasada: "el scroll de la
-  /// pantalla ponle 2 segundos de frenado"). Android/Flutter usan 0.015 por
-  /// defecto, que para un fling típico (~3000 px/s) frena en ~1.0 s.
+  /// 👉 LA PALANCA DEL SCROLL: cuánto tarda en detenerse un fling típico.
   ///
-  /// La duración del fling sale de `ClampingScrollSimulation._flingDuration`:
-  ///   t = 0.8256 · (v / (friction · 51890.6 / 0.35))^0.7359
-  /// Duplicar t exige dividir la fricción por 2^(1/0.7359) ≈ 2.57, de ahí
-  /// 0.015 / 2.57 ≈ 0.0058 → ~2.07 s de frenado para ese mismo fling. Menos
-  /// fricción = el dedo suelta y el contenido sigue planeando más tiempo,
-  /// que es justo la sensación pedida.
-  static const scrollFriction = 0.0058;
+  /// Este es el número a tocar para que el scroll frene más o menos rápido —
+  /// sube o baja los segundos y ya. Referencia: el default de Android
+  /// equivale a ~1.0 s aquí. PO 2026-07-19 (5ª pasada, pidiendo el
+  /// equivalente de un `decelerationRate` cercano a 1): 2 s → 4 s.
+  static const scrollBrake = Duration(milliseconds: 2000);
+
+  /// El fling con el que se calibra [scrollBrake] (px/s). Un envión normal
+  /// del pulgar ronda esta cifra; flings más suaves frenan antes y más
+  /// bruscos después, proporcionalmente.
+  static const flingReference = 3000.0;
+
+  /// Fricción derivada de [scrollBrake] — no se escribe a mano.
+  static final double scrollFriction =
+      frictionForBrake(scrollBrake, velocity: flingReference);
 
   /// Subida del modal: arranque suave y frenada MUY marcada al llegar al
   /// tope (la variante enfatizada de Material de easeInOutCubic).
