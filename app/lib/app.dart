@@ -9,11 +9,13 @@ import 'core/motion.dart';
 /// genérico de Android por defecto. Un solo builder aquí cubre las ~15 rutas
 /// de `core/router.dart` sin tocarlas una por una.
 ///
-/// Eje VERTICAL (2ª directriz del PO): la sección entrante SUBE desde abajo
-/// (8% del alto) con fade in, y la saliente se GUARDA hacia arriba (4%)
-/// atenuándose. Curva `easeInOutCubic` en ambas: el movimiento arranca y
-/// termina suave, sin tirones — es lo que da la sensación de que la sección
-/// "se acomoda" en vez de aparecer de golpe.
+/// Eje HORIZONTAL (3ª directriz del PO, revisión visual en device
+/// 2026-07-19: "el deslizamiento de las secciones que sea a la derecha";
+/// sustituye al eje vertical del 07-18): la sección entrante LLEGA desde la
+/// derecha (8% del ancho) con fade in, y la saliente se guarda hacia la
+/// izquierda (4%) atenuándose. Al volver atrás, la reversa deshace el
+/// gesto — la de arriba se va por la derecha. Curva `easeInOutCubic` en
+/// ambas: el movimiento arranca y termina suave, sin tirones.
 ///
 /// `secondaryAnimation` (la saliente) solo corre al EMPUJAR una ruta encima;
 /// al volver, la de abajo baja de vuelta a su sitio.
@@ -42,15 +44,15 @@ class _JayaloPageTransitionsBuilder extends PageTransitionsBuilder {
         curve: JayaloMotion.emphasized,
         reverseCurve: JayaloMotion.emphasized);
     return SlideTransition(
-      // Sube desde abajo hasta su sitio.
-      position: Tween<Offset>(begin: const Offset(0, .08), end: Offset.zero)
+      // Llega desde la derecha hasta su sitio.
+      position: Tween<Offset>(begin: const Offset(.08, 0), end: Offset.zero)
           .animate(incoming),
       child: FadeTransition(
         opacity: incoming,
         child: SlideTransition(
-          // La anterior se guarda hacia arriba mientras se atenúa.
+          // La anterior se guarda hacia la izquierda mientras se atenúa.
           position: Tween<Offset>(
-                  begin: Offset.zero, end: const Offset(0, -.04))
+                  begin: Offset.zero, end: const Offset(-.04, 0))
               .animate(outgoing),
           child: FadeTransition(
             opacity: Tween<double>(begin: 1, end: .4).animate(outgoing),
