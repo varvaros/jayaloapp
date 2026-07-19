@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,6 +10,7 @@ import '../../data/repos.dart';
 import '../../push/push_service.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../shared/violet_header.dart';
 import '../verification/otp_sheet.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -81,12 +83,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final email = Supabase.instance.client.auth.currentUser?.email ?? '';
     final isProvider = roleStore.value == RoleState.provider;
     return Scaffold(
-      appBar: AppBar(title: const Text('Ajustes')),
-      body: ListView(
-          padding: EdgeInsets.only(
-              top: 8, bottom: 8 + navBarReservedSpace(context)),
-          children: [
-        const SectionHeader(text: 'Tu cuenta'),
+      body: Column(children: [
+        VioletHeader(
+          leading: HeaderCircleButton(
+            icon: Icons.arrow_back_ios_new,
+            tooltip: 'Atrás',
+            onTap: () => context.pop(),
+          ),
+          title: 'Ajustes',
+          titleAlign: HeaderTitleAlign.center,
+        ),
+        Expanded(
+          child: ListView(
+              padding: EdgeInsets.only(
+                  top: 8, bottom: 8 + navBarReservedSpace(context)),
+              children: [
+            const SectionHeader(text: 'Tu cuenta'),
         _SettingsRow(icon: Icons.person_outline, title: email),
         if (_verified == false)
           _SettingsRow(
@@ -122,6 +134,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           titleColor: cs.error,
           title: 'Cerrar sesión',
           onTap: _signOut,
+        ),
+          ]),
         ),
       ]),
     );
