@@ -13,6 +13,19 @@ import 'nav_destinations.dart';
 const _pillHeight = 64.0;
 const _centerSize = 56.0;
 
+/// Cuánto sube el botón central por encima del centro vertical de su propio
+/// diámetro respecto al borde superior de la píldora — la misma cifra usada
+/// por el `Positioned(bottom: ...)` de [_CenterButton] más abajo (repetida
+/// ahí porque ese cálculo se expresa "desde abajo" del stack, no "desde
+/// arriba" de la píldora; los dos deben moverse juntos si cambia el diseño).
+const _centerButtonLift = 4.0;
+
+/// Margen entre el aro de la muesca y el borde real del botón (spec §3):
+/// dibuja un halo visible del color de la píldora alrededor del círculo, en
+/// vez de que la muesca calce exactamente con su silueta.
+const _notchMargin = 6.0;
+const _notchRadius = _centerSize / 2 + _notchMargin;
+
 /// Alto propio de la barra SIN el inset de zona segura del sistema (el
 /// `SafeArea(top: false)` interno se lo suma aparte).
 ///
@@ -82,42 +95,42 @@ class FloatingNavBar extends StatelessWidget {
             alignment: Alignment.bottomCenter,
             clipBehavior: Clip.none,
             children: [
-              Container(
+              SizedBox(
                 height: _pillHeight,
-                decoration: BoxDecoration(
-                  // Iteración 2 (spec §2): la píldora se tiñe de violeta
-                  // claro (`accent`) / azul oscuro (`dAccent`) — antes era
-                  // igual al fondo de la app y "no se percibía" (feedback
-                  // del PO en device). `primaryContainer` ya está clavado a
-                  // esos tokens en `jayaloScheme` (core/brand.dart).
-                  color: cs.primaryContainer,
-                  borderRadius: BorderRadius.circular(_pillHeight / 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: cs.shadow.withValues(alpha: .10),
-                      blurRadius: 20,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    for (var i = 0; i < destinations.length; i++)
-                      Expanded(
-                        child: destinations[i].isCenter
-                            // Hueco: el círculo se dibuja encima, en el Stack.
-                            ? const SizedBox.shrink()
-                            : _SideItem(
-                                destination: destinations[i],
-                                active: i == currentIndex,
-                                onTap: () => onSelected(i),
-                              ),
-                      ),
-                  ],
+                child: CustomPaint(
+                  // Iteración 2 (spec §3): la píldora deja de ser un
+                  // `Container` con `BoxDecoration` — ahora se dibuja con un
+                  // `CustomPaint` cuyo path incluye la muesca cóncava que
+                  // abraza al botón central (referencia conceptual:
+                  // `CircularNotchedRectangle` de Material, usada tal cual
+                  // dentro de `buildPillNotchPath`). El color sigue viniendo
+                  // de los mismos tokens que la iteración 1 (spec §2): nada
+                  // de eso cambió, solo CÓMO se pinta.
+                  painter: PillNotchPainter(
+                    color: cs.primaryContainer,
+                    shadowColor: cs.shadow.withValues(alpha: .10),
+                    notchCenterY: _centerButtonLift,
+                    notchRadius: _notchRadius,
+                  ),
+                  child: Row(
+                    children: [
+                      for (var i = 0; i < destinations.length; i++)
+                        Expanded(
+                          child: destinations[i].isCenter
+                              // Hueco: el círculo se dibuja encima, en el Stack.
+                              ? const SizedBox.shrink()
+                              : _SideItem(
+                                  destination: destinations[i],
+                                  active: i == currentIndex,
+                                  onTap: () => onSelected(i),
+                                ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
               Positioned(
-                bottom: _pillHeight - _centerSize / 2 - 4,
+                bottom: _pillHeight - _centerSize / 2 - _centerButtonLift,
                 child: _CenterButton(
                   destination: destinations[kCenterIndex],
                   active: currentIndex == kCenterIndex,
@@ -130,6 +143,91 @@ class FloatingNavBar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Camino de la píldora con la muesca cóncava que abraza al botón central
+/// (spec §3, iteración 2).
+///
+/// Se construye en dos pasos, ambos con API pública de `dart:ui`/Material:
+/// 1. Un estadio (rectángulo con las puntas totalmente redondeadas, radio =
+///    alto/2) — la misma silueta que antes dibujaba el `BoxDecoration`.
+/// 2. `CircularNotchedRectangle` (la clase que usa `BottomAppBar` para
+///    tallarle sitio a un `FloatingActionButton`) tallando un mordisco
+///    alrededor de un círculo "invitado" centrado en `notchCenterX`.
+///
+/// Se intersectan ambos paths: el resultado es el estadio con la muesca
+/// tallada donde se superponen (el centro superior), sin tocar sus puntas
+/// redondeadas (la muesca no llega tan lejos). No hace falta reimplementar
+/// a mano la curva de Bézier de la muesca — es exactamente la fórmula que ya
+/// usa Material para el mismo propósito.
+Path buildPillNotchPath({
+  required Size size,
+  required double notchCenterX,
+  required double notchCenterY,
+  required double notchRadius,
+}) {
+  final host = Offset.zero & size;
+  final stadium = Path()
+    ..addRRect(RRect.fromRectAndRadius(host, Radius.circular(size.height / 2)));
+
+  if (notchRadius <= 0) return stadium;
+
+  final guest = Rect.fromCircle(
+    center: Offset(notchCenterX, notchCenterY),
+    radius: notchRadius,
+  );
+  final notched = const CircularNotchedRectangle().getOuterPath(host, guest);
+  return Path.combine(PathOperation.intersect, stadium, notched);
+}
+
+/// Pinta la píldora (fondo + sombra) siguiendo el path con la muesca —
+/// sustituye al `Container`/`BoxDecoration` de la iteración 1. La sombra usa
+/// la MISMA receta que antes (blur 20, offset (0,6), alpha .10 sobre
+/// `cs.shadow`) pero trazando el path con la muesca en vez de un rectángulo,
+/// tal como pide el spec §3 ("La sombra debe seguir el path de la muesca, no
+/// un rectángulo").
+class PillNotchPainter extends CustomPainter {
+  const PillNotchPainter({
+    required this.color,
+    required this.shadowColor,
+    required this.notchCenterY,
+    required this.notchRadius,
+  });
+
+  final Color color;
+  final Color shadowColor;
+  final double notchCenterY;
+  final double notchRadius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = buildPillNotchPath(
+      size: size,
+      notchCenterX: size.width / 2,
+      notchCenterY: notchCenterY,
+      notchRadius: notchRadius,
+    );
+
+    canvas.save();
+    canvas.translate(0, 6);
+    canvas.drawPath(
+      path,
+      // Misma receta que la BoxShadow de la iteración 1 (blur 20, alpha
+      // .10): `BoxShadow.toPaint()` ya sabe convertir blurRadius a la sigma
+      // del MaskFilter, no hay que reimplementar esa conversión a mano.
+      BoxShadow(color: shadowColor, blurRadius: 20).toPaint(),
+    );
+    canvas.restore();
+
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(covariant PillNotchPainter oldDelegate) =>
+      color != oldDelegate.color ||
+      shadowColor != oldDelegate.shadowColor ||
+      notchCenterY != oldDelegate.notchCenterY ||
+      notchRadius != oldDelegate.notchRadius;
 }
 
 /// Icono lateral. El texto aparece SOLO cuando está activo (decisión PO): la

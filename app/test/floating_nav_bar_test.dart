@@ -187,16 +187,27 @@ void main() {
   });
 
   group('color (iteración 2 — tinte violeta, spec §2)', () {
+    // Iteración 2 (spec §3): la píldora dejó de ser un `Container` con
+    // `BoxDecoration` — ahora es un `CustomPaint` (`PillNotchPainter`) para
+    // poder tallar la muesca cóncava. El punto de verdad del color pasa a
+    // ser el campo `color` del painter, no `BoxDecoration.color`; la
+    // aserción es la misma (debe seguir viniendo de `cs.primaryContainer`),
+    // solo cambia DÓNDE se lee.
+    PillNotchPainter pillPainter(WidgetTester tester) => tester
+        .widgetList<CustomPaint>(find.descendant(
+            of: find.byType(FloatingNavBar), matching: find.byType(CustomPaint)))
+        .map((w) => w.painter)
+        .whereType<PillNotchPainter>()
+        .single;
+
     testWidgets('la píldora se tiñe con primaryContainer en claro',
         (tester) async {
       await tester.pumpWidget(hostBrightness(0, Brightness.light));
       await tester.pumpAndSettle();
       final cs =
           Theme.of(tester.element(find.byType(FloatingNavBar))).colorScheme;
-      final pill = tester.widget<Container>(find.descendant(
-          of: find.byType(FloatingNavBar), matching: find.byType(Container)));
-      final deco = pill.decoration as BoxDecoration;
-      expect(deco.color, cs.primaryContainer);
+      final painter = pillPainter(tester);
+      expect(painter.color, cs.primaryContainer);
       expect(cs.primaryContainer, JayaloColors.accent,
           reason: 'primaryContainer debe seguir siendo el token accent del '
               'spec §2 en claro');
@@ -208,10 +219,8 @@ void main() {
       await tester.pumpAndSettle();
       final cs =
           Theme.of(tester.element(find.byType(FloatingNavBar))).colorScheme;
-      final pill = tester.widget<Container>(find.descendant(
-          of: find.byType(FloatingNavBar), matching: find.byType(Container)));
-      final deco = pill.decoration as BoxDecoration;
-      expect(deco.color, cs.primaryContainer);
+      final painter = pillPainter(tester);
+      expect(painter.color, cs.primaryContainer);
       expect(cs.primaryContainer, JayaloColors.dAccent,
           reason: 'primaryContainer debe seguir siendo el token dAccent del '
               'spec §2 en oscuro');
@@ -309,6 +318,91 @@ void main() {
       final ratio = _contrastRatio(cs.onSurfaceVariant, cs.primaryContainer);
       expect(ratio, greaterThanOrEqualTo(3.0),
           reason: 'ratio real: $ratio — ver cálculo en task-1-report.md');
+    });
+  });
+
+  group('muesca cóncava (iteración 2 — spec §3)', () {
+    // Geometría pura: no hace falta montar ningún widget. Parámetros propios
+    // (no los de la barra real) elegidos para que los puntos "de al lado"
+    // queden lejos de la muesca Y lejos de las esquinas totalmente
+    // redondeadas del estadio (que también recortan el interior cerca de
+    // y=0 en los extremos).
+    const size = Size(400, 60);
+    const centerX = 200.0; // size.width / 2
+    const sideOffset = 120.0; // 80 y 320: lejos de la muesca y de las puntas
+    const shallowY = 2.0; // muy cerca del borde superior
+
+    test(
+        'con radio de muesca > 0, el centro del borde superior queda FUERA '
+        'del path mientras los puntos equivalentes de los lados quedan '
+        'DENTRO (concavidad real, no una píldora recta)', () {
+      final path = buildPillNotchPath(
+        size: size,
+        notchCenterX: centerX,
+        notchCenterY: 0,
+        notchRadius: 24,
+      );
+
+      expect(path.contains(const Offset(centerX, shallowY)), isFalse,
+          reason: 'el centro del borde superior debe estar mordido por la '
+              'muesca que abraza al botón');
+      expect(
+          path.contains(const Offset(centerX - sideOffset, shallowY)), isTrue,
+          reason: 'a los lados, lejos de la muesca, el borde debe seguir '
+              'lleno (sin curvatura)');
+      expect(
+          path.contains(const Offset(centerX + sideOffset, shallowY)), isTrue,
+          reason: 'a los lados, lejos de la muesca, el borde debe seguir '
+              'lleno (sin curvatura)');
+    });
+
+    test(
+        'sin muesca (radio 0) los tres puntos del borde superior quedan '
+        'DENTRO — confirma que la exclusión de arriba la causa la muesca y '
+        'no otra cosa (p. ej. redondeo de las puntas)', () {
+      final path = buildPillNotchPath(
+        size: size,
+        notchCenterX: centerX,
+        notchCenterY: 0,
+        notchRadius: 0,
+      );
+
+      expect(path.contains(const Offset(centerX, shallowY)), isTrue);
+      expect(
+          path.contains(const Offset(centerX - sideOffset, shallowY)), isTrue);
+      expect(
+          path.contains(const Offset(centerX + sideOffset, shallowY)), isTrue);
+    });
+
+    testWidgets(
+        'la barra real (host de destinos del proveedor) también dibuja su '
+        'píldora con un CustomPaint (PillNotchPainter), no un Container '
+        'rectangular', (tester) async {
+      await tester.pumpWidget(hostBrightness(0, Brightness.light));
+      await tester.pumpAndSettle();
+      final painters = tester
+          .widgetList<CustomPaint>(find.descendant(
+              of: find.byType(FloatingNavBar),
+              matching: find.byType(CustomPaint)))
+          .map((w) => w.painter)
+          .whereType<PillNotchPainter>();
+      expect(painters, hasLength(1));
+    });
+
+    testWidgets(
+        'en un ancho de teléfono angosto real (390dp) la barra se renderiza '
+        'sin excepciones — la muesca usa raíces cuadradas (misma fórmula que '
+        'CircularNotchedRectangle) y un ancho angosto es el caso donde esas '
+        'cuentas podrían romperse', (tester) async {
+      addTearDown(tester.view.reset);
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+
+      await tester.pumpWidget(hostBrightness(0, Brightness.light));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(FloatingNavBar), findsOneWidget);
     });
   });
 }
