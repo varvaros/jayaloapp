@@ -14,6 +14,7 @@ import '../features/onboarding/consumer_onboarding_screen.dart';
 import '../features/onboarding/gate_screen.dart';
 import '../features/onboarding/provider_onboarding_screen.dart';
 import '../features/provider/inbox_screen.dart';
+import '../features/provider/my_business_screen.dart';
 import '../features/provider/my_offers_screen.dart';
 import '../features/provider/request_detail_screen.dart';
 import '../features/provider/stats_screen.dart';
@@ -83,6 +84,13 @@ GoRouter buildRouter() => GoRouter(
             GoRoute(
                 path: '/provider/stats',
                 builder: (_, _) => const BackGuard(child: StatsScreen())),
+            // Task 4 (2026-07-18): la pantalla ya existe; el cableado de la
+            // pestaña en la barra flotante es una tarea posterior — hoy se
+            // llega navegando a esta ruta directamente.
+            GoRoute(
+                path: '/provider/business',
+                builder: (_, _) =>
+                    const BackGuard(child: MyBusinessScreen())),
             GoRoute(
                 path: '/settings',
                 builder: (_, _) => const BackGuard(child: SettingsScreen())),

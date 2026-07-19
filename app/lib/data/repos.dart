@@ -685,6 +685,48 @@ Future<({int productos, int servicios})> providerCatalogCounts() async {
   );
 }
 
+/// Solo `completed_count` de `get_provider_stats`, para "Mi negocio" (Task 4):
+/// esa pantalla no necesita reseñas ni el resto de KPIs de Estadísticas, así
+/// que no vale la pena traer las dos RPCs que fusiona `providerStats()`.
+Future<int> providerCompletedCount() async {
+  final uid = supa.auth.currentUser!.id;
+  final rows = List<Map<String, dynamic>>.from(
+      await supa.rpc('get_provider_stats', params: {'_user_id': uid}));
+  return (rows.isEmpty ? 0 : (rows.first['completed_count'] as num?)?.toInt())
+      ?? 0;
+}
+
+/// Cabecera del negocio para "Mi negocio" (Task 4): nombre, logo y si el
+/// sello de WhatsApp del NEGOCIO está confirmado (fila de
+/// `account_verifications` con `business_id` = este negocio — espejo de
+/// `whatsappVerified()`, que lee la fila PERSONAL con `business_id` NULL).
+/// `null` si el proveedor todavía no tiene negocio creado (no debería pasar
+/// en esta pantalla, pero la ruta no lo garantiza).
+Future<({String id, String name, String? logoUrl, bool verified})?>
+    myBusinessProfile() async {
+  final uid = supa.auth.currentUser!.id;
+  final biz = await supa
+      .from('provider_businesses')
+      .select('id,name,logo_url')
+      .eq('user_id', uid)
+      .limit(1)
+      .maybeSingle();
+  if (biz == null) return null;
+  final id = biz['id'] as String;
+  final verifiedRow = await supa
+      .from('account_verifications')
+      .select('whatsapp_verified_at')
+      .eq('business_id', id)
+      .maybeSingle();
+  final logo = biz['logo_url'] as String?;
+  return (
+    id: id,
+    name: (biz['name'] as String?) ?? '',
+    logoUrl: (logo != null && logo.isNotEmpty) ? logo : null,
+    verified: verifiedRow?['whatsapp_verified_at'] != null,
+  );
+}
+
 /// TODAS las solicitudes abiertas, de cualquier rubro, excluyendo las propias.
 ///
 /// Decisión PO 2026-07-17: esta vista existe para que el marketplace no se vea
