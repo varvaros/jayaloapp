@@ -756,3 +756,39 @@ Future<List<Map<String, dynamic>>> allOpenRequests({String? kind}) async {
   return List<Map<String, dynamic>>.from(
       await q.order('created_at', ascending: false).limit(100));
 }
+
+// ── Catálogo (Task 6): listado de productos/servicios publicados ───────────
+
+const catalogProductCols = 'id,user_id,business_id,name,description,price,'
+    'price_min,price_max,image_urls,category_id,rubro,kind';
+
+/// Quita `%`/`,` de un término de búsqueda antes de meterlo en un patrón
+/// `ilike`/`or` de PostgREST — mismo saneo que `requests/index.tsx` de la web
+/// (`term.replace(/[%,]/g, " ")`): sin esto, un usuario que escribe una coma
+/// rompe el separador de `.or(...)` y un `%` cambia el propio patrón ilike.
+String sanitizeCatalogSearchTerm(String term) =>
+    term.replaceAll(RegExp(r'[%,]'), ' ');
+
+/// Paridad con `productHitsQ` de la web (`requests/index.tsx`): catálogo
+/// público de productos/servicios de CUALQUIER proveedor, sin paginación por
+/// cursor (la web tampoco la tiene en esta vista — `limit(60)` alcanza).
+///
+/// Decisión de alcance (Task 6, v1 móvil): solo `kind` (el toggle
+/// Producto/Servicio, que la web SIEMPRE aplica) + búsqueda por texto. Los
+/// filtros de categoría/rubro de la web quedan para una iteración futura —
+/// el listado ya es útil sin ellos y evita traer todo `kCategories` a esta
+/// pantalla.
+Future<List<Map<String, dynamic>>> catalogProducts(
+    {required String kind, String? search}) async {
+  var q = supa
+      .from('provider_products')
+      .select(catalogProductCols)
+      .eq('kind', kind);
+  final term = search?.trim();
+  if (term != null && term.isNotEmpty) {
+    final safe = sanitizeCatalogSearchTerm(term);
+    q = q.or('name.ilike.%$safe%,description.ilike.%$safe%,rubro.ilike.%$safe%');
+  }
+  return List<Map<String, dynamic>>.from(
+      await q.order('created_at', ascending: false).limit(60));
+}

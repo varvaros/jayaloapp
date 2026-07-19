@@ -1,0 +1,192 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:jayalo_app/app.dart';
+import 'package:jayalo_app/features/client/catalog_screen.dart';
+
+/// `/catalog` (Task 6, listado): el toggle Producto/Servicio decide el
+/// `kind` que se le pide a `fetch` (paridad con `productHitsQ` de la web,
+/// que SIEMPRE filtra por `kind`), las tarjetas muestran nombre/precio
+/// (fijo y rango, `catalogPriceLabel`), y hay estado vacío con guía y
+/// estado de error con reintento. `fetch` se inyecta (mismo patrón que
+/// `ProviderInboxView`) para probar el widget sin tocar la red.
+void main() {
+  Widget host(Widget child) => MaterialApp(
+        theme: jayaloTheme(Brightness.light),
+        home: child,
+      );
+
+  Future<List<Map<String, dynamic>>> vacio(
+          {required String kind, String? search}) async =>
+      [];
+
+  final fixedItem = {
+    'id': 'p1',
+    'user_id': 'u1',
+    'business_id': 'b1',
+    'name': 'Taladro inalámbrico',
+    'description': '',
+    'price': 1500,
+    'price_min': null,
+    'price_max': null,
+    'image_urls': <String>[],
+    'category_id': 'ferreteria',
+    'rubro': 'Herramientas',
+    'kind': 'producto',
+  };
+
+  final rangeItem = {
+    'id': 'p2',
+    'user_id': 'u2',
+    'business_id': 'b2',
+    'name': 'Instalación eléctrica',
+    'description': '',
+    'price': null,
+    'price_min': 1000,
+    'price_max': 2500,
+    'image_urls': <String>[],
+    'category_id': 'electricidad',
+    'rubro': 'Electricistas',
+    'kind': 'servicio',
+  };
+
+  testWidgets('arranca en Producto y le pide a fetch kind=producto',
+      (tester) async {
+    final calls = <String>[];
+    Future<List<Map<String, dynamic>>> recorder(
+        {required String kind, String? search}) async {
+      calls.add(kind);
+      return [];
+    }
+
+    await tester.pumpWidget(
+        host(CatalogView(fetch: recorder, actions: const [])));
+    await tester.pumpAndSettle();
+
+    expect(calls, ['producto']);
+    final toggle =
+        tester.widget<SegmentedButton<String>>(find.byType(SegmentedButton<String>));
+    expect(toggle.selected, {'producto'});
+  });
+
+  testWidgets('tocar "Servicio" vuelve a pedir el catálogo con kind=servicio',
+      (tester) async {
+    final calls = <String>[];
+    Future<List<Map<String, dynamic>>> recorder(
+        {required String kind, String? search}) async {
+      calls.add(kind);
+      return [];
+    }
+
+    await tester.pumpWidget(
+        host(CatalogView(fetch: recorder, actions: const [])));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Servicio'));
+    await tester.pumpAndSettle();
+
+    expect(calls, ['producto', 'servicio']);
+  });
+
+  testWidgets('la tarjeta muestra nombre y precio fijo', (tester) async {
+    await tester.pumpWidget(host(CatalogView(
+      fetch: ({required kind, search}) async => [fixedItem],
+      actions: const [],
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Taladro inalámbrico'), findsOneWidget);
+    expect(find.text('RD\$1,500'), findsOneWidget);
+  });
+
+  testWidgets('la tarjeta muestra el rango de precio cuando no hay precio fijo',
+      (tester) async {
+    await tester.pumpWidget(host(CatalogView(
+      fetch: ({required kind, search}) async => [rangeItem],
+      actions: const [],
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Instalación eléctrica'), findsOneWidget);
+    expect(find.text('RD\$1,000 - RD\$2,500'), findsOneWidget);
+  });
+
+  testWidgets('estado vacío muestra una guía, no una rejilla en blanco',
+      (tester) async {
+    await tester
+        .pumpWidget(host(CatalogView(fetch: vacio, actions: const [])));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Aún no hay artículos'), findsOneWidget);
+  });
+
+  testWidgets('estado de error muestra Reintentar y reintentar vuelve a pedir',
+      (tester) async {
+    var attempts = 0;
+    Future<List<Map<String, dynamic>>> fallando(
+        {required String kind, String? search}) async {
+      attempts++;
+      // El `await` real importa: sin él la excepción "completa" el Future
+      // antes de que el próximo frame re-adjunte el listener del
+      // FutureBuilder (el `setState` de `_refetch` no reconstruye
+      // sincrónicamente), y el test framework lo reporta como no
+      // manejado aunque la UI sí lo capture bien vía `snapshot.hasError`.
+      // Cualquier llamada de red real (como `catalogProducts`) ya tiene
+      // ese respiro asíncrono de por sí.
+      await Future<void>.delayed(Duration.zero);
+      throw Exception('caído');
+    }
+
+    await tester.pumpWidget(
+        host(CatalogView(fetch: fallando, actions: const [])));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reintentar'), findsOneWidget);
+    expect(attempts, 1);
+
+    await tester.tap(find.text('Reintentar'));
+    await tester.pumpAndSettle();
+
+    expect(attempts, 2);
+  });
+
+  testWidgets('escribir y enviar la búsqueda se la pasa a fetch',
+      (tester) async {
+    final searches = <String?>[];
+    Future<List<Map<String, dynamic>>> recorder(
+        {required String kind, String? search}) async {
+      searches.add(search);
+      return [];
+    }
+
+    await tester.pumpWidget(
+        host(CatalogView(fetch: recorder, actions: const [])));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'taladro');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+
+    expect(searches.last, 'taladro');
+  });
+
+  testWidgets(
+      'la rejilla de 2 columnas no desborda en un ancho de teléfono típico',
+      (tester) async {
+    addTearDown(tester.view.reset);
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+
+    final longName = {
+      ...fixedItem,
+      'id': 'p3',
+      'name': 'Set de destornilladores de precisión de 32 piezas',
+    };
+    await tester.pumpWidget(host(CatalogView(
+      fetch: ({required kind, search}) async => [longName, rangeItem],
+      actions: const [],
+    )));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
+}

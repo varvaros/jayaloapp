@@ -27,4 +27,43 @@ void main() {
   test('los decimales se redondean, no se truncan a la baja', () {
     expect(fmtRD(1999.6), 'RD\$2,000');
   });
+
+  group('catalogPriceLabel', () {
+    test('precio fijo se muestra directo', () {
+      expect(
+        catalogPriceLabel(price: 1500, priceMin: null, priceMax: null),
+        'RD\$1,500',
+      );
+    });
+
+    test('precio fijo gana sobre el rango si ambos vienen', () {
+      // Caso defensivo: la web nunca manda los dos a la vez, pero si pasara
+      // el precio fijo es la fuente de verdad (mismo orden que la web).
+      expect(
+        catalogPriceLabel(price: 500, priceMin: 100, priceMax: 900),
+        'RD\$500',
+      );
+    });
+
+    test('rango completo muestra "min - max"', () {
+      expect(
+        catalogPriceLabel(price: null, priceMin: 1000, priceMax: 2500),
+        'RD\$1,000 - RD\$2,500',
+      );
+    });
+
+    test('solo price_min muestra "desde"', () {
+      expect(
+        catalogPriceLabel(price: null, priceMin: 800, priceMax: null),
+        'desde RD\$800',
+      );
+    });
+
+    test('sin ningún precio invita a consultar, nunca queda vacío', () {
+      expect(
+        catalogPriceLabel(price: null, priceMin: null, priceMax: null),
+        'Consultar precio',
+      );
+    });
+  });
 }

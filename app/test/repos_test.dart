@@ -48,4 +48,15 @@ void main() {
       },
     );
   });
+
+  group('sanitizeCatalogSearchTerm', () {
+    test('reemplaza % y , por espacio (paridad con la web)', () {
+      expect(sanitizeCatalogSearchTerm('50%, taladro'), '50   taladro');
+    });
+
+    test('un término sin caracteres especiales queda igual', () {
+      expect(sanitizeCatalogSearchTerm('taladro inalámbrico'),
+          'taladro inalámbrico');
+    });
+  });
 }

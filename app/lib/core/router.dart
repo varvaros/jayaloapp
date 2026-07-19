@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../features/auth/login_screen.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/chat/conversations_screen.dart';
+import '../features/client/catalog_screen.dart';
 import '../features/client/create_request_screen.dart';
 import '../features/client/my_requests_screen.dart';
 import '../features/client/reputation_screen.dart';
@@ -70,6 +71,13 @@ GoRouter buildRouter() => GoRouter(
                 builder: (_, s) => BackGuard(
                     child:
                         RequestStatusScreen(requestId: s.pathParameters['id']!))),
+            // Task 6 (2026-07-18): solo el listado. El cableado de la
+            // pestaña en la barra flotante es una tarea posterior — hoy se
+            // llega navegando a esta ruta directamente (mismo patrón que
+            // `/provider/business`).
+            GoRoute(
+                path: '/catalog',
+                builder: (_, _) => const BackGuard(child: CatalogScreen())),
             GoRoute(
                 path: '/provider',
                 builder: (_, _) => const BackGuard(child: ProviderInboxScreen())),
