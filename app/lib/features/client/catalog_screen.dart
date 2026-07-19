@@ -5,9 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/repos.dart';
 import '../../domain/money.dart';
-import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
-import '../shared/profile_avatar_button.dart';
+import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
 
 /// Signature de la fuente de datos del catálogo (paridad `productHitsQ` de la
@@ -37,7 +36,7 @@ class CatalogView extends StatefulWidget {
   const CatalogView({
     super.key,
     required this.fetch,
-    this.actions = const [NotificationBell(), ProfileAvatarButton()],
+    this.actions = const [HeaderBell()],
   });
 
   final CatalogFetch fetch;
@@ -94,40 +93,26 @@ class _CatalogViewState extends State<CatalogView> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar:
-            AppBar(title: const Text('Catálogo'), actions: widget.actions),
         body: Column(children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'producto', label: Text('Producto')),
-                ButtonSegment(value: 'servicio', label: Text('Servicio')),
-              ],
-              selected: {_kind},
-              onSelectionChanged: (s) {
-                setState(() => _kind = s.first);
+          // Header violeta: segmento Producto/Servicio a la izquierda, título
+          // "Catálogo" a la derecha, campana, y el buscador (funcional) debajo.
+          VioletHeader(
+            leading: HeaderSegmented(
+              options: const ['Producto', 'Servicio'],
+              index: _kind == 'producto' ? 0 : 1,
+              onChanged: (i) {
+                setState(() => _kind = i == 0 ? 'producto' : 'servicio');
                 _refetch();
               },
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: TextField(
+            title: 'Catálogo',
+            titleAlign: HeaderTitleAlign.end,
+            actions: widget.actions,
+            below: _HeaderSearchField(
               controller: _searchCtrl,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _applySearch(),
-              decoration: filledField(context, 'Buscar en el catálogo',
-                      hint: 'Ej. taladro, instalación eléctrica…')
-                  .copyWith(
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchCtrl.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: _clearSearch,
-                      ),
-              ),
+              hint: 'Buscar en el catálogo',
+              onSubmitted: _applySearch,
+              onClear: _clearSearch,
             ),
           ),
           Expanded(
@@ -182,6 +167,62 @@ class _CatalogViewState extends State<CatalogView> {
       );
 }
 
+/// Buscador funcional del catálogo, vestido de píldora blanca para el header
+/// violeta (a diferencia del buscador del home, este SÍ filtra).
+class _HeaderSearchField extends StatelessWidget {
+  const _HeaderSearchField({
+    required this.controller,
+    required this.hint,
+    required this.onSubmitted,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final VoidCallback onSubmitted;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+          color: Colors.white, borderRadius: BorderRadius.circular(999)),
+      padding: const EdgeInsets.only(left: 16, right: 6),
+      child: Row(children: [
+        Icon(Icons.search, size: 18, color: cs.onSurfaceVariant),
+        const SizedBox(width: 10),
+        Expanded(
+          child: TextField(
+            controller: controller,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => onSubmitted(),
+            style: TextStyle(fontSize: 14, color: cs.onSurface),
+            decoration: InputDecoration(
+              isCollapsed: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              hintText: hint,
+              hintStyle: TextStyle(fontSize: 13.5, color: cs.onSurfaceVariant),
+              filled: false,
+              border: InputBorder.none,
+            ),
+          ),
+        ),
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: controller,
+          builder: (_, value, _) => value.text.isEmpty
+              ? const SizedBox(width: 8)
+              : IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.close, size: 18, color: cs.onSurfaceVariant),
+                  onPressed: onClear,
+                ),
+        ),
+      ]),
+    );
+  }
+}
+
 /// Tarjeta del catálogo: foto (con placeholder/error, nunca ícono roto),
 /// nombre y precio (`catalogPriceLabel`, fijo o rango — paridad
 /// `ProductHitCard.tsx`). Task 7 (2026-07-19): ya navega al detalle
@@ -213,7 +254,7 @@ class _CatalogCard extends StatelessWidget {
             aspectRatio: 1,
             child: ClipRRect(
               borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(16)),
+                  const BorderRadius.vertical(top: Radius.circular(kCardRadius)),
               child: img == null
                   ? _imagePlaceholder(cs)
                   : Image.network(
@@ -237,7 +278,7 @@ class _CatalogCard extends StatelessWidget {
                 Text(priceLabel,
                     style: TextStyle(
                         fontSize: 13,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                         color: cs.primary)),
               ],
             ),

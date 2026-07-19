@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/client/catalog_screen.dart';
+import 'package:jayalo_app/features/shared/violet_header.dart';
 
 /// `/catalog` (Task 6, listado): el toggle Producto/Servicio decide el
 /// `kind` que se le pide a `fetch` (paridad con `productHitsQ` de la web,
@@ -64,8 +65,8 @@ void main() {
 
     expect(calls, ['producto']);
     final toggle =
-        tester.widget<SegmentedButton<String>>(find.byType(SegmentedButton<String>));
-    expect(toggle.selected, {'producto'});
+        tester.widget<HeaderSegmented>(find.byType(HeaderSegmented));
+    expect(toggle.index, 0);
   });
 
   testWidgets('tocar "Servicio" vuelve a pedir el catálogo con kind=servicio',
