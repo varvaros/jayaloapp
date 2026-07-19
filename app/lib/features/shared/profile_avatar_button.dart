@@ -25,34 +25,69 @@ import '../../data/repos.dart' show myProfile;
 /// `roleStore.invalidate()`, que ya es el punto de verdad de "se cerró
 /// sesión" en esta app.
 class ProfileStore extends ChangeNotifier {
+  /// [loader] es inyectable para poder contar/controlar la consulta desde un
+  /// test (ver `profile_avatar_button_test.dart`); en la app real siempre es
+  /// `myProfile`.
+  ProfileStore({this.loader = myProfile});
+
+  final Future<Map<String, dynamic>?> Function() loader;
+
   String? avatarUrl;
   String? firstName;
   bool _loaded = false;
+
+  /// Fetch en vuelo compartido: si dos pantallas se montan casi a la vez (p.
+  /// ej. el `AnimatedSwitcher` de `home_shell.dart`, que mantiene la pantalla
+  /// saliente montada junto a la entrante durante toda la transición) ambas
+  /// llaman a `refresh()` antes de que la primera consulta a `profiles`
+  /// resuelva. Sin esto cada una dispararía su propia consulta real —
+  /// benigno en resultado (misma fila) pero duplicado innecesario. Guardar el
+  /// `Future` en curso y devolvérselo a quien llegue mientras tanto colapsa
+  /// N montajes concurrentes en 1 sola consulta.
+  Future<void>? _inFlight;
+
+  /// Se incrementa en `clear()` para invalidar cualquier fetch en vuelo: si
+  /// el usuario cierra sesión mientras una consulta del usuario anterior
+  /// sigue viajando, esa respuesta no debe "resucitar" datos viejos al
+  /// aplicarse después del `clear()`.
+  int _generation = 0;
 
   /// [force] para refrescar tras editar el perfil — no hay pantalla de
   /// edición en la app todavía, así que hoy nunca se pasa `true`; queda listo
   /// para cuando exista. Best-effort: sin red, el avatar cae al ícono/inicial
   /// genérico y se reintenta sola la próxima vez que se monte una pantalla
   /// raíz (nunca queda pegado a un error).
-  Future<void> refresh({bool force = false}) async {
-    if (_loaded && !force) return;
+  Future<void> refresh({bool force = false}) {
+    if (_loaded && !force) return Future.value();
+    return _inFlight ??= _fetch(_generation);
+  }
+
+  Future<void> _fetch(int generation) async {
     try {
-      final p = await myProfile();
+      final p = await loader();
+      if (generation != _generation) return; // invalidado por un clear() de por medio
       avatarUrl = p?['avatar_url'] as String?;
       firstName = p?['first_name'] as String?;
       _loaded = true;
       notifyListeners();
     } catch (_) {
       // Best-effort: no rompe la pantalla que lo hospeda.
+    } finally {
+      if (generation == _generation) _inFlight = null;
     }
   }
 
   /// Al cerrar sesión el avatar no debe arrastrar la foto/nombre del usuario
-  /// anterior (se vería en el siguiente login, en el mismo teléfono).
+  /// anterior (se vería en el siguiente login, en el mismo teléfono). También
+  /// invalida cualquier fetch en vuelo (ver `_generation`) para que esa
+  /// respuesta, si llega tarde, no vuelva a poblar datos del usuario que ya
+  /// cerró sesión.
   void clear() {
     avatarUrl = null;
     firstName = null;
     _loaded = false;
+    _generation++;
+    _inFlight = null;
     notifyListeners();
   }
 
@@ -70,17 +105,25 @@ final profileStore = ProfileStore();
 /// lectores de pantalla al envolver algo en `Semantics(excludeSemantics:
 /// true)` sin `onTap`; usar el widget estándar evita repetir esa clase de bug.
 class ProfileAvatarButton extends StatefulWidget {
-  const ProfileAvatarButton({super.key});
+  /// [store] es inyectable solo para test (montar 2+ instancias sobre el
+  /// mismo store y contar consultas reales); en la app real siempre usa el
+  /// singleton `profileStore`.
+  const ProfileAvatarButton({super.key, this.store});
+
+  final ProfileStore? store;
 
   @override
   State<ProfileAvatarButton> createState() => _ProfileAvatarButtonState();
 }
 
 class _ProfileAvatarButtonState extends State<ProfileAvatarButton> {
+  late final ProfileStore _store;
+
   @override
   void initState() {
     super.initState();
-    profileStore.refresh();
+    _store = widget.store ?? profileStore;
+    _store.refresh();
   }
 
   /// El rol se lee al momento del toque (no en `build`): siempre refleja el
@@ -111,16 +154,16 @@ class _ProfileAvatarButtonState extends State<ProfileAvatarButton> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: profileStore,
+        listenable: _store,
         builder: (context, _) {
-          final url = profileStore.avatarUrl;
+          final url = _store.avatarUrl;
           return IconButton(
             tooltip: 'Tu perfil',
             onPressed: _openMenu,
             icon: CircleAvatar(
               radius: 16,
               backgroundImage: url != null ? NetworkImage(url) : null,
-              child: url == null ? Text(profileStore.initial) : null,
+              child: url == null ? Text(_store.initial) : null,
             ),
           );
         },

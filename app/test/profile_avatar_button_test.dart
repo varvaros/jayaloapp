@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -154,5 +156,67 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+  });
+
+  // ── Regresión: TOCTOU en ProfileStore.refresh() ─────────────────────────
+  //
+  // `home_shell.dart` usa un `AnimatedSwitcher` que mantiene la pantalla
+  // saliente montada junto a la entrante durante todo el cambio de pestaña,
+  // así que hay una ventana real donde 2 `ProfileAvatarButton` corren su
+  // `initState` (y por tanto `refresh()`) antes de que la PRIMERA consulta a
+  // `profiles` resuelva. El store debe compartir ese fetch en vuelo, no
+  // duplicarlo.
+  testWidgets(
+      '2 montajes concurrentes (simulando el AnimatedSwitcher) disparan UNA sola consulta',
+      (tester) async {
+    var callCount = 0;
+    final completer = Completer<Map<String, dynamic>?>();
+    final store = ProfileStore(loader: () {
+      callCount++;
+      return completer.future;
+    });
+
+    // Ambos botones se montan en el MISMO pump, como los 2 hijos vivos del
+    // AnimatedSwitcher durante la transición — ninguno espera al otro.
+    await tester.pumpWidget(MaterialApp.router(
+      theme: jayaloTheme(Brightness.light),
+      routerConfig: routerWithHome(Row(children: [
+        ProfileAvatarButton(store: store),
+        ProfileAvatarButton(store: store),
+      ])),
+    ));
+
+    expect(callCount, 1,
+        reason: 'los 2 montajes concurrentes deben compartir el fetch en '
+            'vuelo; con el guard síncrono viejo cada uno dispara su propia '
+            'consulta real antes de que la primera resuelva');
+
+    completer.complete({'avatar_url': null, 'first_name': 'Ana'});
+    await tester.pumpAndSettle();
+
+    expect(callCount, 1,
+        reason: 'tras resolver, ningún montaje adicional debe repetir la '
+            'consulta (ya quedó cacheada)');
+  });
+
+  testWidgets(
+      'clear() durante un fetch en vuelo no deja datos del usuario anterior '
+      'al llegar la respuesta tarde',
+      (tester) async {
+    final completer = Completer<Map<String, dynamic>?>();
+    final store = ProfileStore(loader: () => completer.future);
+
+    await tester.pumpWidget(MaterialApp.router(
+      theme: jayaloTheme(Brightness.light),
+      routerConfig: routerWithHome(ProfileAvatarButton(store: store)),
+    ));
+
+    store.clear(); // cierre de sesión mientras la consulta viaja
+    completer.complete({'avatar_url': null, 'first_name': 'Usuario Anterior'});
+    await tester.pumpAndSettle();
+
+    expect(store.firstName, isNull,
+        reason: 'la respuesta tardía del usuario anterior no debe '
+            'resucitar datos tras el clear()');
   });
 }
