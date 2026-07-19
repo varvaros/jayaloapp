@@ -104,9 +104,22 @@ filtrarlos y pintarlos con su acción de desbloqueo.
 5. Proveedor: Mi negocio a la barra; Estadísticas y Ajustes al avatar.
 6. Avatar de perfil en el AppBar junto a la campana, con el menú dentro.
 
-## 9. Preguntas abiertas para la próxima sesión
+## 9. Preguntas abiertas — CERRADAS (2026-07-18)
 
-1. ¿Qué llena el 4º lateral del proveedor, o queda asimétrica?
-2. Contenido de "Mi negocio" v1 (¿la propuesta del §6 vale?).
-3. ¿Cómo registra el interés la web exactamente (server fn → ¿RPC nueva para la app?)? —
-   verificación técnica, no decisión de producto.
+1. **4º lateral del proveedor** → el PO reordenó la barra entera:
+   `Solicitudes · Mis ofertas | ＋ Crear solicitud | Mensajes · Mi negocio`.
+   - "Solicitudes" (`/provider`) va **primera**: *"la primera ventana de interés es las
+     solicitudes sin responder que tenga de su rubro"*. Coincide con el landing del proveedor.
+   - El centro deja de ser 🔍 "Ver solicitudes" y pasa a **＋ "Crear solicitud"**
+     (`/client/create`): *"habíamos olvidado que un proveedor también puede solicitar"*.
+     Verificado que `redirectTarget` no restringe rutas por rol.
+2. **"Mi negocio" v1** → *"productos, servicios y trabajos realizados (los tenemos en
+   estadísticas actualmente, lo movemos aquí)"*. Es un MOVIMIENTO desde `/provider/stats`, no
+   una copia. La propuesta del §6 (saldo/recarga/contacto) queda descartada para v1.
+3. **Registro del interés** → verificado en el código de la web: **hace falta backend nuevo**.
+   La web usa la server function `createProductInterest` con service_role (deriva
+   provider/business/nombre del producto). Además se halló una **vulnerabilidad viva**: el flujo
+   de paquetes de `provider/business.$id.tsx` inserta DIRECTO desde el cliente y la política de
+   INSERT solo valida `customer_id`, así que se pueden forjar intereses a nombre de un proveedor
+   ajeno. Plan autorizado: RPC `create_product_interest` + `REVOKE INSERT` + migrar el flujo de
+   paquetes de la web. Detalle en la Task 5 del plan.
