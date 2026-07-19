@@ -63,7 +63,7 @@ void main() {
 
   testWidgets(
       'al cambiar de pestaña con go() el cuerpo entra con fundido: sigue a '
-      'medias a los 100ms de 250ms, no aparece ya completo en el mismo frame',
+      'medias a los 100ms de 150ms, no aparece ya completo en el mismo frame',
       (tester) async {
     await tester.pumpWidget(host());
     await tester.pumpAndSettle();
@@ -80,7 +80,7 @@ void main() {
     final opacityAt100ms = bodyOpacity(tester);
     expect(opacityAt100ms, greaterThan(0));
     expect(opacityAt100ms, lessThan(1),
-        reason: 'a 100ms de 250ms (JayaloMotion.base) el cuerpo debe seguir '
+        reason: 'a 100ms de 150ms (JayaloMotion.fast) el cuerpo debe seguir '
             'entrando — opacidad real: $opacityAt100ms. Si ya es 1, el '
             'cambio de pestaña volvió a ser un salto instantáneo');
 

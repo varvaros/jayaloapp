@@ -6,14 +6,6 @@ import '../../core/session_state.dart';
 import 'floating_nav_bar.dart';
 import 'nav_destinations.dart';
 
-/// Desplazamiento vertical del `body` al entrar (spec de movimiento, punto 1
-/// del cierre de rama): arranca `_bodyEnterSlide` px por debajo de su
-/// posición final y sube mientras se desvanece — el mismo lenguaje visual
-/// que ya usa la barra flotante al aparecer (`SizeTransition` + fundido más
-/// abajo), solo que aquí es una traslación pequeña porque no hay ningún alto
-/// de layout que reservar.
-const _bodyEnterSlide = 16.0;
-
 class HomeShell extends StatelessWidget {
   const HomeShell({super.key, required this.child});
   final Widget child;
@@ -81,8 +73,16 @@ class HomeShell extends StatelessWidget {
       // de backlog del PO, no se hace aquí.
       //
       // Lo que SÍ repone el movimiento sin ese riesgo (doctrina PO: nada de
-      // swaps instantáneos): fundido + deslizado SOLO DE ENTRADA, con UN
-      // ÚNICO subárbol vivo a la vez. La key es `matchedLocation`, no
+      // swaps instantáneos): un fundido SOLO DE ENTRADA, con UN ÚNICO
+      // subárbol vivo a la vez. Es deliberadamente CORTO (`fast`, 150 ms) y
+      // SIN deslizado propio: las pantallas de pestaña traen su propia
+      // entrada (`cascadeIn`: fundido + slide 10% por tarjeta), y las dos
+      // capas se MULTIPLICAN — con ambos a 250 ms la opacidad efectiva medía
+      // 0.027 a los 100 ms y la rampa percibida se alargaba a ~300 ms (el
+      // punto estético abierto del cierre de la iteración 2, confirmado por
+      // el PO en device: "se siente lenta"). El shell solo tapa el primer
+      // frame del swap; el movimiento visible es del cascade. La key es
+      // `matchedLocation`, no
       // `loc`/`uri.path` de arriba — es justo la "ubicación pegajosa" que el
       // propio C2 documentó: se congela durante un `push` (entrar a un chat,
       // abrir Estadísticas o Notificaciones) y solo se mueve cuando cambia la
@@ -97,14 +97,11 @@ class HomeShell extends StatelessWidget {
         key: ValueKey(GoRouterState.of(context).matchedLocation),
         tween: Tween(begin: 0, end: 1),
         duration:
-            JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base,
+            JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.fast,
         curve: JayaloMotion.enter,
         builder: (context, t, bodyChild) => Opacity(
           opacity: t,
-          child: Transform.translate(
-            offset: Offset(0, (1 - t) * _bodyEnterSlide),
-            child: bodyChild,
-          ),
+          child: bodyChild,
         ),
         child: child,
       ),
