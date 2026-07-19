@@ -29,15 +29,20 @@ class NavDestination {
   final bool isCenter;
 }
 
+// Mapa de la iteración 2 (decisión del PO, orden vinculante — tabla en
+// `docs/superpowers/plans/2026-07-18-navbar-iteracion-2.md` §0.1). Los dos
+// roles ahora COMPARTEN el centro (`/client/create`): un proveedor también
+// puede solicitar. `/settings` y `/provider/stats` salieron del mapa — sus
+// rutas siguen vivas, se llega por el menú del avatar en el AppBar.
 const _cliente = [
   NavDestination(
       route: '/client',
       icon: Icons.receipt_long_outlined,
       label: 'Mis solicitudes'),
   NavDestination(
-      route: '/client/reputation',
-      icon: Icons.workspace_premium_outlined,
-      label: 'Reputación'),
+      route: '/catalog',
+      icon: Icons.storefront_outlined,
+      label: 'Catálogo'),
   NavDestination(
       route: '/client/create',
       icon: Icons.add,
@@ -46,27 +51,36 @@ const _cliente = [
   NavDestination(
       route: '/messages', icon: Icons.chat_bubble_outline, label: 'Mensajes'),
   NavDestination(
-      route: '/settings', icon: Icons.settings_outlined, label: 'Ajustes'),
+      route: '/client/reputation',
+      icon: Icons.workspace_premium_outlined,
+      label: 'Reputación'),
 ];
 
 const _proveedor = [
+  // Puesto 0, razón del PO: "la primera ventana de interés es las
+  // solicitudes sin responder que tenga de su rubro". Coincide con su
+  // pantalla de aterrizaje (`redirectTarget` → `/provider`).
+  NavDestination(
+      route: '/provider',
+      icon: Icons.inbox_outlined,
+      label: 'Solicitudes'),
   NavDestination(
       route: '/provider/offers',
       icon: Icons.local_offer_outlined,
       label: 'Mis ofertas'),
+  // Mismo centro que el cliente: "habíamos olvidado que un proveedor
+  // también puede solicitar". Ya no es 🔍 "Ver solicitudes".
   NavDestination(
-      route: '/provider/stats',
-      icon: Icons.insights_outlined,
-      label: 'Estadísticas'),
-  NavDestination(
-      route: '/provider',
-      icon: Icons.search,
-      label: 'Ver solicitudes',
+      route: '/client/create',
+      icon: Icons.add,
+      label: 'Crear solicitud',
       isCenter: true),
   NavDestination(
       route: '/messages', icon: Icons.chat_bubble_outline, label: 'Mensajes'),
   NavDestination(
-      route: '/settings', icon: Icons.settings_outlined, label: 'Ajustes'),
+      route: '/provider/business',
+      icon: Icons.store_outlined,
+      label: 'Mi negocio'),
 ];
 
 /// El gate garantiza que dentro del shell el rol ya está resuelto; el fallback
@@ -84,6 +98,16 @@ List<NavDestination> destinationsFor(RoleState role) =>
 bool showsNavBar(String location) =>
     location == '/messages' || !location.startsWith('/messages/');
 
+/// Rutas que siguen vivas dentro del shell (se llega por el menú del avatar)
+/// pero que la iteración 2 sacó del mapa de la barra. Sin esta lista,
+/// `/provider/stats` heredaría el puesto 0 ("Solicitudes") solo porque su
+/// URL empieza por `/provider` — un accidente de nomenclatura, no una
+/// relación real de bandeja→detalle como la de `/provider/request/:id`.
+/// `activeIndex` debe tratarlas como "ninguna pestaña" (-1), igual que
+/// `/notifications` o `/settings` (estas dos ya dan -1 solas: ningún
+/// destino restante comparte su prefijo).
+const _excludedFromNav = {'/provider/stats'};
+
 /// Índice del destino activo para una ubicación del router, o `-1` si
 /// ninguno coincide (p. ej. `/notifications`: está dentro del shell —
 /// `showsNavBar` la deja mostrar la barra— pero no es ninguna de sus 5
@@ -92,10 +116,15 @@ bool showsNavBar(String location) =>
 /// barra ([FloatingNavBar]) debe tratar `-1` como "ningún destino
 /// seleccionado", no como "el primero".
 ///
-/// Gana el prefijo MÁS LARGO: '/provider/stats' empieza por '/provider' (el
-/// botón central del proveedor), así que si ganara el primero que coincide,
-/// estar en Estadísticas encendería el botón del medio.
+/// Gana el prefijo MÁS LARGO. Dos casos por los que importa:
+/// - '/provider' (puesto 0, "Solicitudes") es prefijo de '/provider/offers'
+///   y '/provider/business' — sin la regla del más largo, esas rutas
+///   encenderían el puesto 0 en vez del suyo propio.
+/// - '/client' (puesto 0 del cliente) es prefijo de '/client/create' (el
+///   centro, compartido con el proveedor) — sin la regla del más largo,
+///   crear una solicitud encendería "Mis solicitudes" en vez del centro.
 int activeIndex(List<NavDestination> dests, String location) {
+  if (_excludedFromNav.contains(location)) return -1;
   var best = -1;
   var bestLen = -1;
   for (var i = 0; i < dests.length; i++) {

@@ -59,10 +59,10 @@ void main() {
   testWidgets('solo el destino activo muestra su texto', (tester) async {
     await tester.pumpWidget(host(0));
     await tester.pumpAndSettle();
-    expect(find.text('Mis ofertas'), findsOneWidget);
-    expect(find.text('Estadísticas'), findsNothing);
+    expect(find.text('Solicitudes'), findsOneWidget);
+    expect(find.text('Mis ofertas'), findsNothing);
     expect(find.text('Mensajes'), findsNothing);
-    expect(find.text('Ajustes'), findsNothing);
+    expect(find.text('Mi negocio'), findsNothing);
   });
 
   testWidgets('el texto se mueve al cambiar de destino', (tester) async {
@@ -70,7 +70,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pumpWidget(host(3));
     await tester.pumpAndSettle();
-    expect(find.text('Mis ofertas'), findsNothing);
+    expect(find.text('Solicitudes'), findsNothing);
     expect(find.text('Mensajes'), findsOneWidget);
   });
 
@@ -78,7 +78,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(host(kCenterIndex));
     await tester.pumpAndSettle();
-    expect(find.text('Ver solicitudes'), findsOneWidget);
+    expect(find.text('Crear solicitud'), findsOneWidget);
   });
 
   testWidgets('todos los destinos se anuncian a un lector de pantalla',
@@ -96,7 +96,7 @@ void main() {
     final tocados = <int>[];
     await tester.pumpWidget(host(0, onSelected: tocados.add));
     await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('Ajustes'));
+    await tester.tap(find.bySemanticsLabel('Mi negocio'));
     await tester.pumpAndSettle();
     expect(tocados, [4]);
   });
@@ -106,7 +106,7 @@ void main() {
     final tocados = <int>[];
     await tester.pumpWidget(host(0, onSelected: tocados.add));
     await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('Ver solicitudes'));
+    await tester.tap(find.bySemanticsLabel('Crear solicitud'));
     await tester.pumpAndSettle();
     expect(tocados, [kCenterIndex]);
   });
@@ -129,16 +129,18 @@ void main() {
     await tester.pumpWidget(host(0));
     await tester.pumpAndSettle();
 
-    final lateral =
-        tester.getSemantics(find.bySemanticsLabel('Ajustes')).getSemanticsData();
+    final lateral = tester
+        .getSemantics(find.bySemanticsLabel('Mi negocio'))
+        .getSemanticsData();
     expect(lateral.hasAction(SemanticsAction.tap), isTrue,
-        reason: 'Ajustes debe exponer la acción de tap, no solo el label');
+        reason: 'Mi negocio debe exponer la acción de tap, no solo el label');
 
     final centro = tester
-        .getSemantics(find.bySemanticsLabel('Ver solicitudes'))
+        .getSemantics(find.bySemanticsLabel('Crear solicitud'))
         .getSemanticsData();
     expect(centro.hasAction(SemanticsAction.tap), isTrue,
-        reason: 'Ver solicitudes debe exponer la acción de tap, no solo el label');
+        reason:
+            'Crear solicitud debe exponer la acción de tap, no solo el label');
 
     handle.dispose();
   });
@@ -234,7 +236,7 @@ void main() {
         await tester.pumpAndSettle();
         final cs = Theme.of(tester.element(find.byType(FloatingNavBar)))
             .colorScheme;
-        final icon = iconFor(tester, 'Mis ofertas');
+        final icon = iconFor(tester, 'Solicitudes');
         expect(icon.color, cs.onPrimaryContainer,
             reason: 'brillo: $brightness');
       }
@@ -248,7 +250,7 @@ void main() {
       await tester.pumpAndSettle();
       final cs =
           Theme.of(tester.element(find.byType(FloatingNavBar))).colorScheme;
-      final icon = iconFor(tester, 'Estadísticas'); // índice 1, inactivo
+      final icon = iconFor(tester, 'Mis ofertas'); // índice 1, inactivo
       expect(icon.color, isNot(cs.onPrimaryContainer));
       expect((icon.color as Color).withValues(alpha: 1.0), cs.onPrimaryContainer,
           reason: 'el inactivo debe ser el MISMO tono que el activo, solo '
@@ -263,7 +265,7 @@ void main() {
       await tester.pumpAndSettle();
       final cs =
           Theme.of(tester.element(find.byType(FloatingNavBar))).colorScheme;
-      final icon = iconFor(tester, 'Estadísticas'); // índice 1, inactivo
+      final icon = iconFor(tester, 'Mis ofertas'); // índice 1, inactivo
       expect(icon.color, cs.onSurfaceVariant);
       expect(cs.onSurfaceVariant, JayaloColors.dMutedFg);
     });
@@ -278,7 +280,7 @@ void main() {
             .colorScheme;
         final circle = tester
             .widgetList<Material>(find.descendant(
-                of: find.bySemanticsLabel('Ver solicitudes'),
+                of: find.bySemanticsLabel('Crear solicitud'),
                 matching: find.byType(Material)))
             .firstWhere((m) => m.shape is CircleBorder);
         final expected =
@@ -294,7 +296,7 @@ void main() {
         await tester.pumpAndSettle();
         final cs = Theme.of(tester.element(find.byType(FloatingNavBar)))
             .colorScheme;
-        final icon = iconFor(tester, 'Ver solicitudes');
+        final icon = iconFor(tester, 'Crear solicitud');
         expect(icon.color, cs.onPrimary, reason: 'brillo: $brightness');
       }
     });
