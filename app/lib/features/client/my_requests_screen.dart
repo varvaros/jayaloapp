@@ -66,7 +66,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-          title: const Text('Mis solicitudes'),
+          title: const Text('Solicitudes'),
           actions: const [NotificationBell(), ProfileAvatarButton()]),
       body: RefreshIndicator(
         // onRefresh espera Future<void>; bloque de setState para no devolver Future.

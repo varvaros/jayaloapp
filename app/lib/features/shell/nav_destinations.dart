@@ -35,10 +35,12 @@ class NavDestination {
 // puede solicitar. `/settings` y `/provider/stats` salieron del mapa — sus
 // rutas siguen vivas, se llega por el menú del avatar en el AppBar.
 const _cliente = [
+  // "Solicitudes" a secas (PO 2026-07-19; antes "Mis solicitudes" — largo
+  // para la barra).
   NavDestination(
       route: '/client',
       icon: Icons.receipt_long_outlined,
-      label: 'Mis solicitudes'),
+      label: 'Solicitudes'),
   NavDestination(
       route: '/catalog',
       icon: Icons.storefront_outlined,
@@ -112,7 +114,7 @@ const _excludedFromNav = {'/provider/stats'};
 /// ninguno coincide (p. ej. `/notifications`: está dentro del shell —
 /// `showsNavBar` la deja mostrar la barra— pero no es ninguna de sus 5
 /// pestañas). Encender el índice 0 en ese caso mentía: la barra marcaba
-/// "Mis solicitudes" como activa estando en Notificaciones. Quien pinta la
+/// "Solicitudes" como activa estando en Notificaciones. Quien pinta la
 /// barra ([FloatingNavBar]) debe tratar `-1` como "ningún destino
 /// seleccionado", no como "el primero".
 ///
@@ -122,7 +124,7 @@ const _excludedFromNav = {'/provider/stats'};
 ///   encenderían el puesto 0 en vez del suyo propio.
 /// - '/client' (puesto 0 del cliente) es prefijo de '/client/create' (el
 ///   centro, compartido con el proveedor) — sin la regla del más largo,
-///   crear una solicitud encendería "Mis solicitudes" en vez del centro.
+///   crear una solicitud encendería "Solicitudes" (cliente) en vez del centro.
 int activeIndex(List<NavDestination> dests, String location) {
   if (_excludedFromNav.contains(location)) return -1;
   var best = -1;
