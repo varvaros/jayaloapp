@@ -154,6 +154,13 @@ class JayaloApp extends StatelessWidget {
         title: 'Jayalo',
         theme: jayaloTheme(Brightness.light),
         darkTheme: jayaloTheme(Brightness.dark),
+        // FIJADO A CLARO (decisión PO 2026-07-19): el rediseño cálido (arena,
+        // headers violeta) es solo para modo claro; el oscuro cálido (violeta)
+        // sigue pendiente de diseño. Hasta entonces la app se ve SIEMPRE en el
+        // tema claro, sin importar el modo del sistema — así el rediseño se ve
+        // en todos los teléfonos. Quitar este `themeMode` reactiva el tema
+        // oscuro azul viejo.
+        themeMode: ThemeMode.light,
         scrollBehavior: const JayaloScrollBehavior(),
         routerConfig: router,
       );
