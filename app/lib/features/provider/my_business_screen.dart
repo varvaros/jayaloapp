@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../shell/floating_nav_bar.dart';
-import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
-import '../shared/profile_avatar_button.dart';
+import '../shared/violet_header.dart';
 
 /// Tipo de la cabecera del negocio (espejo del record que devuelve
 /// `myBusinessProfile()` en `repos.dart`).
@@ -52,24 +51,31 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-            title: const Text('Mi negocio'),
-            actions: const [NotificationBell(), ProfileAvatarButton()]),
-        body: FutureBuilder<(BusinessProfile?, ({int productos, int servicios}), int)>(
-          future: _load,
-          builder: (context, snap) {
-            if (snap.hasError) {
-              return ErrorRetry(onRetry: () async => _refetch());
-            }
-            if (!snap.hasData) return const SkeletonList();
-            final (business, catalogo, completados) = snap.data!;
-            return MyBusinessView(
-                business: business,
-                productos: catalogo.productos,
-                servicios: catalogo.servicios,
-                completados: completados);
-          },
-        ),
+        body: Column(children: [
+          const VioletHeader(
+            leading: HeaderAvatar(),
+            title: 'Mi negocio',
+            actions: [HeaderBell()],
+          ),
+          Expanded(
+            child: FutureBuilder<
+                (BusinessProfile?, ({int productos, int servicios}), int)>(
+              future: _load,
+              builder: (context, snap) {
+                if (snap.hasError) {
+                  return ErrorRetry(onRetry: () async => _refetch());
+                }
+                if (!snap.hasData) return const SkeletonList();
+                final (business, catalogo, completados) = snap.data!;
+                return MyBusinessView(
+                    business: business,
+                    productos: catalogo.productos,
+                    servicios: catalogo.servicios,
+                    completados: completados);
+              },
+            ),
+          ),
+        ]),
       );
 }
 
@@ -216,8 +222,10 @@ class _BusinessHeaderCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(business.name.isEmpty ? 'Tu negocio' : business.name,
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w700)),
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: jayaloHead(context))),
               if (business.verified) ...[
                 const SizedBox(height: 6),
                 StatusChip(
