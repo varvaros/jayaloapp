@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/core/motion.dart';
@@ -45,6 +45,44 @@ void main() {
       // arriba también caería, pero este dice POR QUÉ.
       expect(JayaloMotion.scrollFriction, lessThan(0.015),
           reason: 'menos fricción que el default = planea más tiempo');
+    });
+
+    testWidgets(
+        'la física llega de verdad a una lista real de la app (el token no '
+        'sirve de nada si el scrollBehavior no está cableado)', (tester) async {
+      // No basta con probar la simulación aislada: lo que puede romperse en
+      // silencio es el CABLEADO (que MaterialApp deje de pasar el
+      // scrollBehavior). Se monta un scrollable normal bajo el mismo
+      // behavior de la app y se pregunta qué física resolvió.
+      await tester.pumpWidget(MaterialApp(
+        scrollBehavior: const JayaloScrollBehavior(),
+        home: ListView.builder(
+          itemCount: 50,
+          itemBuilder: (_, i) => SizedBox(height: 100, child: Text('$i')),
+        ),
+      ));
+
+      // OJO con lo que se mide: un `ListView` vertical sin controller trae
+      // `AlwaysScrollableScrollPhysics` PROPIA (ver el initializer de
+      // `ScrollView`), así que mirar `Scrollable.physics` haría creer que el
+      // behavior global no pinta nada. No es así: `ScrollableState`
+      // (scrollable.dart) compone `physicsDelWidget.applyTo(physicsDelBehavior)`
+      // — la del widget queda ENCIMA y la nuestra como padre, y
+      // `AlwaysScrollableScrollPhysics` no redefine `createBallisticSimulation`,
+      // así que el fling termina en la nuestra. Lo que hay que comprobar es
+      // por tanto la física RESUELTA, y no por su tipo sino por lo que
+      // produce: la simulación real de esta lista real.
+      final state = tester.state<ScrollableState>(find.byType(Scrollable));
+      final sim =
+          state.resolvedPhysics!.createBallisticSimulation(state.position, 3000);
+
+      expect(sim, isNotNull,
+          reason: 'un fling de 3000 px/s sobre una lista de 50 filas debe '
+              'producir simulación');
+      expect(sim!.isDone(1.5), isFalse,
+          reason: 'la lista real hereda el frenado largo (con el default ya '
+              'habría parado a los 1.03 s)');
+      expect(sim.isDone(2.5), isTrue);
     });
 
     test('fuera de rango devuelve el muelle del borde, no un fling frenado',
