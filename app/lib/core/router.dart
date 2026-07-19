@@ -24,6 +24,7 @@ import '../features/settings/settings_screen.dart';
 import '../features/shared/profile_avatar_button.dart';
 import '../features/shell/back_guard.dart';
 import '../features/shell/home_shell.dart';
+import 'motion.dart';
 import 'session_state.dart';
 
 GoRouter buildRouter() => GoRouter(
@@ -61,9 +62,45 @@ GoRouter buildRouter() => GoRouter(
             GoRoute(
                 path: '/client',
                 builder: (_, _) => const BackGuard(child: MyRequestsScreen())),
+            // La ventana de crear solicitud se presenta como MODAL (PO
+            // 2026-07-19, revisión visual en device): una ventana por encima
+            // de las demás, con esquinas superiores redondeadas, que sube
+            // desde abajo con ease-in-out (arranca suave y FRENA antes de
+            // llegar a su tope — easeInOutCubic, `emphasized`). `opaque:
+            // false` deja viva la pantalla de abajo: se asoma por el recorte
+            // de las esquinas y por el scrim durante la subida, que es lo que
+            // vende el "por encima de las demás". Para que de verdad se
+            // apile (y esta transición corra), el botón central navega con
+            // `push`, no `go` — ver `home_shell.dart`.
             GoRoute(
                 path: '/client/create',
-                builder: (_, _) => const BackGuard(child: CreateRequestScreen())),
+                pageBuilder: (context, state) => CustomTransitionPage(
+                      key: state.pageKey,
+                      opaque: false,
+                      barrierColor: Colors.black38,
+                      transitionDuration: JayaloMotion.reduced(context)
+                          ? Duration.zero
+                          : JayaloMotion.page,
+                      reverseTransitionDuration:
+                          JayaloMotion.reduced(context)
+                              ? Duration.zero
+                              : JayaloMotion.page,
+                      transitionsBuilder: (context, animation, _, child) =>
+                          SlideTransition(
+                        position: Tween<Offset>(
+                                begin: const Offset(0, 1), end: Offset.zero)
+                            .animate(CurvedAnimation(
+                                parent: animation,
+                                curve: JayaloMotion.emphasized,
+                                reverseCurve: JayaloMotion.emphasized)),
+                        child: child,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(24)),
+                        child: const BackGuard(child: CreateRequestScreen()),
+                      ),
+                    )),
             GoRoute(
                 path: '/client/reputation',
                 builder: (_, _) => const BackGuard(child: ReputationScreen())),

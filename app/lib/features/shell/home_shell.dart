@@ -140,7 +140,22 @@ class HomeShell extends StatelessWidget {
                 key: const ValueKey('nav-bar-visible'),
                 destinations: dests,
                 currentIndex: idx,
-                onSelected: (i) => context.go(dests[i].route),
+                // El centro (crear solicitud) se APILA con `push`: así corre
+                // la transición modal de su CustomTransitionPage (sube por
+                // encima de la pestaña actual, que queda viva debajo) y el
+                // ATRÁS la cierra volviendo a donde estaba. Un `go` la
+                // trataría como pestaña más (swap sin animación de ruta —
+                // el gotcha del ShellRoute). El guard evita apilar dos
+                // copias si se toca ＋ estando ya en la ventana. Las
+                // pestañas normales siguen con `go` (reemplazo, no pila).
+                onSelected: (i) {
+                  final d = dests[i];
+                  if (d.isCenter) {
+                    if (loc != d.route) context.push(d.route);
+                  } else {
+                    context.go(d.route);
+                  }
+                },
               )
             : const SizedBox.shrink(key: ValueKey('nav-bar-hidden')),
       ),
