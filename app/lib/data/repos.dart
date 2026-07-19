@@ -113,22 +113,24 @@ Future<void> submitReview(
 
 // ── Proveedor: bandeja, ofertas, wallet y desbloqueo ────────────────────────
 
-/// Filas que `get_provider_inbox_unified` no debe perder camino a la
-/// pantalla: incluye 'marketplace' (solicitudes) y 'store' (intereses de
-/// producto). Bug arreglado 2026-07-19 — `providerInbox()` descartaba las de
-/// 'store' aquí mismo, así que el proveedor nunca veía quién tocó "Me
-/// interesa" en su catálogo. Extraída como función pura (identidad) para
-/// blindar la ausencia de filtro con un test que no necesita red.
-List<Map<String, dynamic>> keepAllInboxSources(
-        List<Map<String, dynamic>> rows) =>
-    rows;
+/// Llamada real a `get_provider_inbox_unified` — inyectable en `providerInbox`
+/// (mismo patrón que `ProfileStore.loader` en `profile_avatar_button.dart`)
+/// para que un test pueda alimentar filas falsas sin red.
+Future<dynamic> _fetchProviderInboxRows(String? kind) => supa.rpc(
+    'get_provider_inbox_unified',
+    params: {'p_limit': 100, 'p_offset': 0, 'p_kind': kind});
 
-Future<List<Map<String, dynamic>>> providerInbox({String? kind}) async {
-  final rows = List<Map<String, dynamic>>.from(await supa.rpc(
-      'get_provider_inbox_unified',
-      params: {'p_limit': 100, 'p_offset': 0, 'p_kind': kind}));
-  return keepAllInboxSources(rows);
-}
+/// Bug arreglado 2026-07-19 — `providerInbox()` descartaba las filas
+/// `source == 'store'` (intereses de producto) que la RPC YA devuelve junto a
+/// 'marketplace' (solicitudes), así que el proveedor nunca veía quién tocó
+/// "Me interesa" en su catálogo. NO debe volver a filtrar por `source` aquí
+/// ni en quien lo llame — `repos_test.dart` inyecta [fetcher] con filas
+/// mezcladas de ambos orígenes y revienta si el filtro reaparece.
+Future<List<Map<String, dynamic>>> providerInbox({
+  String? kind,
+  Future<dynamic> Function(String?) fetcher = _fetchProviderInboxRows,
+}) async =>
+    List<Map<String, dynamic>>.from(await fetcher(kind));
 
 Future<Map<String, dynamic>?> requestById(String id) async => await supa
     .from('customer_requests')

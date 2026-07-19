@@ -61,24 +61,40 @@ void main() {
     });
   });
 
-  group('keepAllInboxSources', () {
+  group('providerInbox', () {
     // Bug arreglado 2026-07-19 (Task 9): `providerInbox()` descartaba las
     // filas `source == 'store'` que `get_provider_inbox_unified` YA
     // devuelve — el proveedor nunca veía quién tocó "Me interesa" en su
-    // catálogo. Este test blinda la ausencia de filtro sin necesitar red
-    // (providerInbox llama a `supa.rpc` directo).
-    test('no descarta las filas source == "store"', () {
-      final rows = [
+    // catálogo. `fetcher` es inyectable (mismo patrón que `ProfileStore.loader`
+    // en `profile_avatar_button.dart`) para ejercitar el código real que llama
+    // a la RPC sin red. Si alguien reintroduce un filtro por `source` — inline
+    // o encadenado tras la llamada — este test debe fallar.
+    test('devuelve filas de "marketplace" y "store" sin filtrar', () async {
+      final fakeRows = [
         {'source': 'marketplace', 'id': '1'},
         {'source': 'store', 'id': '2'},
       ];
-      expect(keepAllInboxSources(rows), hasLength(2));
-      expect(keepAllInboxSources(rows).map((r) => r['source']),
+      final result = await providerInbox(fetcher: (_) async => fakeRows);
+      expect(result, hasLength(2));
+      expect(result.map((r) => r['source']),
           containsAll(['marketplace', 'store']));
     });
 
-    test('lista vacía se queda vacía', () {
-      expect(keepAllInboxSources(const []), isEmpty);
+    test('lista vacía se queda vacía', () async {
+      final result = await providerInbox(fetcher: (_) async => const []);
+      expect(result, isEmpty);
+    });
+
+    test('pasa el `kind` recibido al fetcher', () async {
+      String? seen;
+      await providerInbox(
+        kind: 'producto',
+        fetcher: (k) async {
+          seen = k;
+          return const [];
+        },
+      );
+      expect(seen, 'producto');
     });
   });
 
