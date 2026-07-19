@@ -58,13 +58,45 @@ class HomeShell extends StatelessWidget {
         child: KeyedSubtree(
             key: ValueKey(idx >= 0 ? dests[idx].route : loc), child: child),
       ),
-      bottomNavigationBar: showNavBar
-          ? FloatingNavBar(
-              destinations: dests,
-              currentIndex: idx,
-              onSelected: (i) => context.go(dests[i].route),
-            )
-          : null,
+      // M2 (revisión final de rama): antes era `showNavBar ? FloatingNavBar(
+      // ...) : null` — un swap instantáneo, contra la doctrina de movimiento
+      // (transiciones premium, deslizado + ease-out). `SizeTransition` (no
+      // `AnimatedSlide`/`Offset`) porque esta barra es la que RESERVA su
+      // propio espacio de layout: una traslación con `SlideTransition` solo
+      // mueve el render, no el alto que el `Scaffold` reserva para ella —
+      // el hueco muerto seguiría ahí hasta que el widget saliente se
+      // desmontara de golpe al final (el mismo pop que se busca arreglar,
+      // solo que retrasado). `SizeTransition` anima el alto reservado EN SÍ,
+      // en sincronía con el desvanecido — así el chat recupera el espacio
+      // del campo de escribir gradualmente, nunca de un salto ni con hueco
+      // muerto. `axisAlignment: 1` la ancla abajo: crece hacia arriba desde
+      // el borde inferior al aparecer, se hunde hacia ese mismo borde al
+      // ocultarse — nunca cambia `kNavBarReservedSpace` ni el alto real
+      // renderizado en reposo (`nav_bar_reserved_space_test.dart` sigue
+      // midiendo el `FloatingNavBar` real, sin tocar).
+      bottomNavigationBar: AnimatedSwitcher(
+        duration:
+            JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base,
+        switchInCurve: JayaloMotion.enter,
+        switchOutCurve: JayaloMotion.exit,
+        transitionBuilder: (child, animation) => SizeTransition(
+          sizeFactor: animation,
+          // Bottom-anchorada (el eje horizontal no importa: no se anima el
+          // ancho, solo el alto). Reemplaza al `axisAlignment: 1` deprecado
+          // — misma alineación efectiva (`AlignmentDirectional(-1.0, 1.0)`
+          // con eje vertical), solo que expresado con la API nueva.
+          alignment: Alignment.bottomCenter,
+          child: FadeTransition(opacity: animation, child: child),
+        ),
+        child: showNavBar
+            ? FloatingNavBar(
+                key: const ValueKey('nav-bar-visible'),
+                destinations: dests,
+                currentIndex: idx,
+                onSelected: (i) => context.go(dests[i].route),
+              )
+            : const SizedBox.shrink(key: ValueKey('nav-bar-hidden')),
+      ),
     );
   }
 }

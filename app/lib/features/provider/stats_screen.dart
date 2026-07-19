@@ -3,10 +3,8 @@ import 'package:flutter/material.dart';
 import '../../data/repos.dart';
 import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
-import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
-import '../shared/profile_avatar_button.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -24,9 +22,19 @@ class _StatsScreenState extends State<StatsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-            title: const Text('Mis estadísticas'),
-            actions: const [NotificationBell(), ProfileAvatarButton()]),
+        // M1 (revisión final de rama): esta pantalla SALIÓ del mapa de la
+        // barra (Task 8, vive en `_excludedFromNav`) y se llega por
+        // `context.push` desde el menú del avatar — es un detalle/menú, no
+        // una pestaña raíz, así que no lleva campana/avatar (mismo patrón
+        // que `/catalog/:id` y `/client/request/:id`). Verificado que sigue
+        // teniendo salida: el `AppBar` sin `leading` explícito muestra la
+        // flecha automática de Flutter (hay una ruta debajo en el Navigator
+        // anidado del shell tras el push) y, tanto esa flecha como el
+        // atrás del sistema, quedan interceptados por `BackGuard` — que para
+        // esta ubicación (≠ `homePath`) resuelve `BackAction.goHome` y saca
+        // al proveedor a `/provider`. Es la MISMA mecánica que ya usan todas
+        // las demás pantallas de detalle del shell.
+        appBar: AppBar(title: const Text('Mis estadísticas')),
         body: FutureBuilder<Map<String, dynamic>>(
           future: _load,
           builder: (context, snap) {

@@ -5,8 +5,10 @@ import '../../data/repos.dart';
 import '../../domain/chat_time.dart';
 import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
+import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
+import '../shared/profile_avatar_button.dart';
 
 const _tabs = [
   ('abierto', 'Abierto'),
@@ -23,7 +25,18 @@ Color _statusColor(BuildContext c, String s) => switch (s) {
     };
 
 class ConversationsScreen extends StatefulWidget {
-  const ConversationsScreen({super.key});
+  /// [actions] es inyectable (mismo patrón que `CatalogView`/
+  /// `ProviderInboxView`) para poder probar el contrato del AppBar sin
+  /// montar `NotificationBell`/`ProfileAvatarButton` de verdad — ambos
+  /// tocan Supabase en su `initState`/constructor y esta app no inicializa
+  /// Supabase en los tests de widgets.
+  const ConversationsScreen({
+    super.key,
+    this.actions = const [NotificationBell(), ProfileAvatarButton()],
+  });
+
+  final List<Widget> actions;
+
   @override
   State<ConversationsScreen> createState() => _ConversationsScreenState();
 }
@@ -54,7 +67,14 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   Widget build(BuildContext context) {
     final all = _all;
     return Scaffold(
-      appBar: AppBar(title: const Text('Mensajes')),
+      appBar: AppBar(
+          title: const Text('Mensajes'),
+          // I1 (revisión final de rama): Mensajes es el puesto 3 en ambas
+          // barras (spec navbar-iteración 2) pero es la ÚNICA pestaña raíz
+          // que se había quedado sin campana/avatar — sin esto, un usuario
+          // parado aquí no tenía ninguna vía a Ajustes sin cambiar de
+          // pestaña primero (ver docstring de `profile_avatar_button.dart`).
+          actions: widget.actions),
       body: _error
           ? ErrorRetry(
               onRetry: _load, message: 'No pudimos cargar tus mensajes')
