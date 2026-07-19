@@ -22,6 +22,16 @@ import 'core/motion.dart';
 class _JayaloPageTransitionsBuilder extends PageTransitionsBuilder {
   const _JayaloPageTransitionsBuilder();
 
+  // PO 2026-07-19 (3ª pasada): "el deslizamiento de la pantalla debe ser con
+  // un frenado de 2 segundos". Con la curva `brake` (easeOutQuint) casi todo
+  // el recorrido sucede en los primeros ~400ms — lo que se percibe rápido —
+  // y el resto de los 2s es la frenada: el último tramo aterriza despacio.
+  // `MaterialRouteTransitionMixin.transitionDuration` lee este getter del
+  // builder del theme (verificado en el código de Flutter 3.44), así que
+  // esto aplica a TODAS las rutas MaterialPage sin tocarlas una a una.
+  @override
+  Duration get transitionDuration => JayaloMotion.screenSlide;
+
   @override
   Widget buildTransitions<T>(
     PageRoute<T> route,
@@ -33,16 +43,16 @@ class _JayaloPageTransitionsBuilder extends PageTransitionsBuilder {
     // Accesibilidad: con "reducir animaciones" la pantalla cambia sin
     // movimiento (el sistema ya acorta la ruta; no se pelea con él).
     if (JayaloMotion.reduced(context)) return child;
-    // easeInOutCubic en las dos direcciones: entra y sale con la misma
-    // suavidad, sin arranque brusco.
+    // Curva `brake` en las dos direcciones: el movimiento visible es
+    // inmediato y la mayor parte de la duración es la frenada final.
     final incoming = CurvedAnimation(
         parent: animation,
-        curve: JayaloMotion.emphasized,
-        reverseCurve: JayaloMotion.emphasized);
+        curve: JayaloMotion.brake,
+        reverseCurve: JayaloMotion.brake);
     final outgoing = CurvedAnimation(
         parent: secondaryAnimation,
-        curve: JayaloMotion.emphasized,
-        reverseCurve: JayaloMotion.emphasized);
+        curve: JayaloMotion.brake,
+        reverseCurve: JayaloMotion.brake);
     return SlideTransition(
       // Llega desde la derecha hasta su sitio.
       position: Tween<Offset>(begin: const Offset(.08, 0), end: Offset.zero)
