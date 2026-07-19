@@ -1,0 +1,1441 @@
+<title>Jayalo · Diseños de la app</title>
+<style>
+  /* ── Tokens del lienzo ────────────────────────────────────────────────── */
+  :root{
+    --paper:#ECE8E0; --paper-deep:#E2DDD2;
+    --ink:#4A4438; --ink-soft:#7C7567; --chip-bg:#FFFFFF;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{--paper:#14151B;--paper-deep:#0D0E13;--ink:#E8E6EF;--ink-soft:#9B97A6;--chip-bg:#1D1E26;}
+  }
+  :root[data-theme="dark"]{--paper:#14151B;--paper-deep:#0D0E13;--ink:#E8E6EF;--ink-soft:#9B97A6;--chip-bg:#1D1E26;}
+  :root[data-theme="light"]{--paper:#ECE8E0;--paper-deep:#E2DDD2;--ink:#4A4438;--ink-soft:#7C7567;--chip-bg:#FFFFFF;}
+
+  body{
+    background:
+      radial-gradient(1100px 560px at 72% -12%, var(--paper-deep), transparent 62%),
+      var(--paper);
+    color:var(--ink);
+    font-family:"Nunito","Poppins","Segoe UI",system-ui,sans-serif;
+    margin:0; padding:48px 20px 80px;
+  }
+  .wrap{max-width:1080px;margin:0 auto;}
+
+  h1{font-size:clamp(24px,4vw,34px);line-height:1.15;margin:0 0 12px;text-wrap:balance;font-weight:600;letter-spacing:-.01em;}
+  .intro{max-width:58ch;color:var(--ink-soft);font-size:15px;line-height:1.65;margin:0 0 20px;font-weight:400;}
+  .intro b{color:var(--ink);font-weight:600;}
+
+  .tanda{margin-top:44px;}
+  .tanda-head{display:flex;align-items:center;gap:12px;margin:0 0 22px;}
+  .tanda-head h2{font-size:20px;font-weight:600;margin:0;}
+  .tag{font-size:11.5px;font-weight:600;border-radius:999px;padding:5px 13px;letter-spacing:.03em;}
+  .tag.ok{background:#D9F4E4;color:#0A6A4C;}
+  .tag.new{background:#EFEBFC;color:#4B3B94;}
+
+  .stage{display:flex;gap:36px;flex-wrap:wrap;justify-content:center;align-items:flex-start;}
+  .shot{display:flex;flex-direction:column;align-items:center;gap:14px;}
+  .shot-label{font-size:13px;font-weight:600;color:var(--ink-soft);}
+
+  .phone{
+    width:352px;border-radius:50px;padding:11px;background:#FDFCF9;
+    box-shadow:0 30px 70px rgba(70,55,30,.16), 0 2px 0 rgba(255,255,255,.65) inset;
+  }
+  .screen{
+    border-radius:40px;overflow:hidden;position:relative;height:712px;
+    display:flex;flex-direction:column;background:var(--bg);color:var(--fg);
+    font-family:"Nunito","Poppins","Segoe UI",system-ui,sans-serif;
+  }
+
+  /* ── Tokens del diseño aprobado (Tanda 1) ─────────────────────────────── */
+  .warm{
+    --bg:#F8F4EC; --card:#FFFFFF;
+    --fg:#4A4458; --head:#3E3560; --mut:#847D8F;
+    --pri:#7147F2; --acc:#F1EAFE; --accfg:#4B3B94; --field:#FFFFFF;
+    --shadow:0 8px 26px rgba(93,72,38,.09);
+  }
+
+  .statusbar{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:18px 28px 6px;font-size:13px;font-weight:600;color:var(--fg);
+    font-variant-numeric:tabular-nums;
+  }
+  .statusbar svg{display:block;}
+
+  /* ── HEADER VIOLETA — firma de marca: envuelve buscador y campana ─────── */
+  .vhead{
+    background:var(--pri);color:#FFFFFF;
+    border-radius:40px 40px 30px 30px;padding-bottom:20px;flex:none;
+  }
+  .vhead .statusbar{color:#FFFFFF;}
+  .vrow{display:flex;align-items:center;justify-content:space-between;padding:10px 22px 0;gap:12px;}
+  .vrow .vtitle{
+    flex:1;font-size:16px;font-weight:600;color:#FFFFFF;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  /* OJO: no reusar la clase `.center` aquí — es la del botón central de la
+     navbar y le pega su borde/sombra al título. */
+  .vrow .vtitle.vmid{text-align:center;}
+  .vavatar{
+    width:42px;height:42px;border-radius:50%;flex:none;display:grid;place-items:center;
+    background:#FFFFFF;color:var(--accfg);font-weight:600;font-size:16px;
+  }
+  .vbell{
+    position:relative;width:42px;height:42px;border-radius:50%;flex:none;
+    background:rgba(255,255,255,.2);color:#FFFFFF;display:grid;place-items:center;
+  }
+  .vghost{width:42px;flex:none;}
+  /* subtítulo bajo el título del header (contexto del pedido en el chat) */
+  .vsub{font-size:10.5px;font-weight:400;color:#E7DBFF;display:block;margin-top:1px;}
+  .vpill{
+    background:#FFFFFF;color:var(--pri);border-radius:999px;
+    font-size:10.5px;font-weight:600;padding:4px 10px;flex:none;
+  }
+  .vbell .n{
+    position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;border-radius:9px;
+    background:#FFFFFF;color:var(--pri);font-size:10px;font-weight:600;
+    display:grid;place-items:center;padding:0 4px;
+  }
+  .vhead .wordmark{color:#FFFFFF;flex:1;text-align:center;}
+  .vhello{padding:14px 24px 0;}
+  .vhello h2{font-size:25px;margin:0 0 3px;font-weight:600;letter-spacing:-.01em;color:#FFFFFF;}
+  .vhello p{margin:0;font-size:13px;color:#E7DBFF;line-height:1.5;font-weight:400;}
+  .vsearch{
+    margin:16px 22px 0;display:flex;align-items:center;gap:10px;
+    background:#FFFFFF;border-radius:999px;padding:7px 7px 7px 18px;
+  }
+  .vsearch svg{color:var(--mut);flex:none;}
+  .vsearch span{flex:1;font-size:13.5px;color:var(--mut);font-weight:400;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .vsearch .filter{
+    background:var(--head);color:#FDFCF9;border-radius:999px;height:36px;padding:0 13px;
+    display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;
+    white-space:nowrap;flex:none;
+  }
+  /* segmentos dentro del header violeta */
+  .vseg{display:flex;background:rgba(255,255,255,.18);border-radius:999px;padding:3px;}
+  .vseg span{font-size:10.5px;font-weight:500;padding:4px 11px;border-radius:999px;
+    color:#E7DBFF;white-space:nowrap;}
+  .vseg .on{background:#FFFFFF;color:var(--accfg);font-weight:600;}
+
+  /* cabecera del home */
+  .apphead{display:flex;align-items:center;justify-content:space-between;padding:12px 24px 0;}
+  .avatar{
+    width:42px;height:42px;border-radius:50%;
+    background:linear-gradient(135deg,#EFE7FF,#DCCEFF);color:var(--accfg);
+    display:grid;place-items:center;font-weight:600;font-size:16px;
+    box-shadow:0 4px 12px rgba(75,59,148,.16);
+  }
+  .wordmark{font-weight:500;font-size:14px;letter-spacing:.22em;text-transform:uppercase;color:var(--head);}
+  .roundbtn{
+    position:relative;width:42px;height:42px;border-radius:50%;
+    background:var(--card);display:grid;place-items:center;color:var(--fg);
+    box-shadow:var(--shadow);flex:none;
+  }
+  .roundbtn .n{
+    position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;border-radius:9px;
+    background:var(--pri);color:#fff;font-size:10px;font-weight:600;
+    display:grid;place-items:center;padding:0 4px;
+  }
+
+  /* cabecera de pantalla interna: atrás + título centrado */
+  .pagehead{display:flex;align-items:center;gap:12px;padding:12px 24px 0;}
+  .pagehead .title{
+    flex:1;text-align:center;font-size:15.5px;font-weight:600;color:var(--head);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .pagehead .ghost{width:42px;flex:none;}
+
+  .hello{padding:15px 26px 0;}
+  .hello h2{font-size:26px;margin:0 0 4px;font-weight:600;letter-spacing:-.01em;color:var(--head);}
+  .hello p{margin:0;font-size:13.5px;color:var(--mut);line-height:1.5;font-weight:400;}
+
+  .search{
+    margin:14px 24px 0;display:flex;align-items:center;gap:10px;
+    background:var(--field);border-radius:999px;padding:7px 7px 7px 18px;box-shadow:var(--shadow);
+  }
+  .search svg{color:var(--mut);flex:none;}
+  .search span{flex:1;font-size:13.5px;color:var(--mut);font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .search .filter{
+    background:var(--head);color:#FDFCF9;border-radius:999px;height:36px;padding:0 13px;
+    display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;white-space:nowrap;flex:none;
+  }
+
+  .secrow{display:flex;align-items:baseline;justify-content:space-between;padding:15px 26px 8px;}
+  .secrow h3{margin:0;font-size:15px;font-weight:600;color:var(--head);}
+  .secrow small{font-size:12px;color:var(--mut);font-weight:500;}
+
+  .cards{padding:2px 20px 0;display:flex;flex-direction:column;gap:10px;overflow:hidden;flex:1;
+    mask-image:linear-gradient(to bottom, #000 76%, transparent 99%);
+    -webkit-mask-image:linear-gradient(to bottom, #000 76%, transparent 99%);}
+  .rcard{
+    border-radius:24px;padding:13px;display:flex;gap:13px;align-items:center;
+    background:var(--card);box-shadow:var(--shadow);
+  }
+  .rcard.lila   {background:#EFEBFC;}
+  .rcard.naranja{background:#FBE9CD;}
+  .rcard.verde  {background:#D9F4E4;}
+
+  .thumb{
+    width:54px;height:54px;border-radius:17px;display:grid;place-items:center;
+    font-size:23px;flex:none;background:rgba(255,255,255,.8);
+  }
+  .rcard.quiet .thumb{background:#F4EFE6;}
+  .rbody{flex:1;min-width:0;}
+  .rbody h4{margin:0 0 2px;font-size:14px;font-weight:600;line-height:1.3;color:var(--fg);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .rbody time{font-size:11.5px;color:var(--mut);font-weight:400;}
+  .pill{
+    margin-top:7px;display:inline-flex;align-items:center;
+    font-size:11px;font-weight:500;border-radius:999px;padding:4px 11px;letter-spacing:.01em;
+  }
+  .pill.lila   {background:#FFFFFFD9;color:#4B3B94;}
+  .pill.naranja{background:#FFFFFFD9;color:#8F4700;}
+  .pill.verde  {background:#FFFFFFD9;color:#0A6A4C;}
+  .pill.arena  {background:#F5EDDD;color:#6E5B37;}
+  .pill.gris   {background:#EFECE5;color:#6E6960;}
+  .chev{color:var(--mut);flex:none;font-size:17px;padding-right:4px;}
+
+  /* ── Crear solicitud (chat IA) ────────────────────────────────────────── */
+  .segrow{display:flex;align-items:center;gap:9px;padding:14px 24px 0;}
+  .seg{
+    display:flex;background:#F1ECE1;border-radius:999px;padding:3px;
+  }
+  .seg span{font-size:12.5px;font-weight:500;padding:7px 16px;border-radius:999px;color:var(--mut);white-space:nowrap;}
+  /* filtros compactos (feedback PO: "Para ti/Todas mucho más pequeño") */
+  .seg.sm span{font-size:10.5px;padding:4px 10px;}
+  .seg .on{background:var(--card);color:var(--head);box-shadow:0 3px 10px rgba(93,72,38,.12);font-weight:600;}
+  .mayoreo{
+    font-size:12px;font-weight:500;color:var(--accfg);background:var(--acc);
+    border-radius:999px;padding:8px 14px;
+  }
+
+  .chat{padding:16px 22px 0;display:flex;flex-direction:column;gap:9px;flex:1;overflow:hidden;}
+  .bub{max-width:82%;border-radius:20px;padding:10px 15px;font-size:13.5px;line-height:1.5;font-weight:400;}
+  .bub.user{align-self:flex-end;background:var(--acc);color:#3F3363;border-bottom-right-radius:8px;}
+  .bub.ai{align-self:flex-start;background:var(--card);color:var(--fg);box-shadow:var(--shadow);border-bottom-left-radius:8px;}
+
+  /* chips de opciones de la IA — así se responde de verdad (un atributo por turno) */
+  .optchips{display:flex;flex-wrap:wrap;gap:7px;margin:2px 0 2px 2px;max-width:92%;}
+  .optchips span{
+    font-size:12px;font-weight:500;border-radius:999px;padding:7px 14px;
+    background:var(--card);color:var(--fg);box-shadow:var(--shadow);
+  }
+  .optchips .sel{background:var(--acc);color:var(--accfg);font-weight:600;}
+
+  .ready{
+    margin-top:4px;background:var(--card);border-radius:24px;padding:17px 18px;box-shadow:var(--shadow);
+  }
+  .ready h4{margin:0 0 9px;font-size:14.5px;font-weight:600;color:var(--head);line-height:1.35;}
+  .ready ul{margin:0 0 12px;padding-left:18px;color:var(--fg);font-size:12.5px;line-height:1.7;font-weight:400;}
+  .ready .row{display:flex;align-items:center;gap:14px;}
+  .btn-pri{
+    background:var(--pri);color:#fff;border-radius:999px;padding:11px 22px;
+    font-size:13px;font-weight:600;box-shadow:0 8px 20px rgba(113,71,242,.32);
+  }
+  .btn-text{color:var(--accfg);font-size:13px;font-weight:500;}
+
+  /* ── Detalle de solicitud ─────────────────────────────────────────────── */
+  .hero{
+    margin:14px 20px 0;border-radius:26px;padding:17px 18px;background:#EFEBFC;
+  }
+  .hero .top{display:flex;gap:12px;align-items:center;margin-bottom:9px;}
+  .hero .hicon{
+    width:42px;height:42px;border-radius:14px;background:rgba(75,59,148,.13);
+    display:grid;place-items:center;color:#4B3B94;flex:none;
+  }
+  .hero .htxt{flex:1;min-width:0;}
+  .hero h4{margin:0;font-size:16.5px;font-weight:600;color:#4B3B94;}
+  .hero .meta{font-size:11px;color:#4B3B94;opacity:.68;font-weight:400;margin-top:2px;}
+  .hero p{margin:0 0 12px;font-size:12.5px;color:#544685;line-height:1.55;font-weight:400;}
+  .dots{display:flex;gap:6px;align-items:center;}
+  .dots i{width:7px;height:7px;border-radius:50%;background:rgba(75,59,148,.22);}
+  .dots i.on{width:22px;border-radius:5px;background:#4B3B94;}
+
+  .ocard{
+    border-radius:24px;padding:15px 16px;background:var(--card);box-shadow:var(--shadow);
+    display:flex;gap:10px;align-items:flex-start;
+  }
+  .obody{flex:1;min-width:0;}
+  .obody .price{font-size:15px;font-weight:600;color:var(--head);font-variant-numeric:tabular-nums;}
+  .obody p{margin:3px 0 0;font-size:12.5px;color:var(--mut);line-height:1.5;font-weight:400;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .opill{flex:none;font-size:11px;font-weight:500;border-radius:999px;padding:5px 12px;background:#F5EDDD;color:#6E5B37;}
+  .othumb{
+    width:46px;height:46px;border-radius:14px;flex:none;font-size:20px;
+    background:#F4EFE6;display:grid;place-items:center;
+  }
+
+  /* ── Lado proveedor ───────────────────────────────────────────────────── */
+  .kicon{
+    width:42px;height:42px;border-radius:14px;flex:none;
+    background:var(--acc);color:var(--accfg);display:grid;place-items:center;
+  }
+  .idesc{margin:1px 0 2px;font-size:12px;color:var(--mut);line-height:1.45;font-weight:400;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+
+  .icard{
+    border-radius:24px;padding:13px 14px;display:flex;flex-direction:column;gap:8px;
+    background:#FBE9CD;box-shadow:var(--shadow);
+  }
+  .irow{display:flex;gap:11px;align-items:center;}
+  .ithumb{
+    width:40px;height:40px;border-radius:13px;flex:none;font-size:18px;
+    background:rgba(255,255,255,.72);display:grid;place-items:center;
+  }
+  .ibody{flex:1;min-width:0;}
+  .icard .ieyebrow{font-size:10.5px;font-weight:600;color:#8F4700;}
+  .ibody h4{margin:0;font-size:13.5px;font-weight:600;color:#6B3600;line-height:1.3;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .ibody p{margin:2px 0 2px;font-size:11.5px;color:#8F4700;opacity:.85;line-height:1.4;font-weight:400;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .ibody time{font-size:10.5px;color:#8F4700;opacity:.7;font-weight:400;}
+  .ibtn{
+    flex:none;background:#8F4700;color:#FBE9CD;border-radius:999px;
+    font-size:10.5px;font-weight:600;padding:8px 11px;text-align:center;line-height:1.25;
+    max-width:86px;
+  }
+
+  .shead{
+    font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--mut);padding:16px 28px 8px;
+  }
+  .mrow{padding:0 20px;}
+  .mrow + .mrow{padding-top:10px;}
+  .mcard{
+    background:var(--card);border-radius:24px;box-shadow:var(--shadow);
+    padding:16px 12px;display:flex;
+  }
+  .mtile{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;}
+  .mtile svg{color:var(--pri);}
+  .mtile .v{font-size:19px;font-weight:600;color:var(--head);font-variant-numeric:tabular-nums;}
+  .mtile .l{font-size:11px;color:var(--mut);font-weight:400;}
+
+  .bizcard{
+    margin:14px 20px 0;border-radius:24px;padding:15px 16px;background:var(--card);
+    box-shadow:var(--shadow);display:flex;gap:14px;align-items:center;
+  }
+  .bizlogo{
+    width:56px;height:56px;border-radius:50%;flex:none;
+    background:var(--acc);color:var(--accfg);display:grid;place-items:center;
+  }
+  .bizname h4{margin:0;font-size:16px;font-weight:600;color:var(--head);}
+  .bizname .pill{display:inline-flex;}
+
+  /* ── DETALLE DE SOLICITUD — estructura de la referencia "Details" ─────── */
+  /* La foto manda: sin header ni título encima, solo el atrás flotando. */
+  .dpanel{
+    position:relative;height:388px;flex:none;
+    background:#F0C48C;border-radius:40px 40px 30px 30px;
+  }
+  .dpanel .statusbar{color:#6B4514;}
+  .dback{
+    position:absolute;top:56px;left:20px;z-index:2;
+    width:42px;height:42px;border-radius:50%;background:#FFFDF9;color:#5B3A12;
+    display:grid;place-items:center;
+  }
+  /* la foto LLENA su área (en la app es object-fit: cover) */
+  .dphoto{
+    position:absolute;top:106px;left:22px;width:214px;height:250px;
+    display:grid;place-items:center;font-size:190px;line-height:1;overflow:hidden;
+  }
+  .dthumbs{
+    position:absolute;top:112px;right:0;width:76px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .dthumb{
+    height:76px;border-radius:16px 0 0 16px;background:#FFFDF9;
+    display:grid;place-items:center;font-size:52px;line-height:1;overflow:hidden;
+  }
+  .dthumb.off{opacity:.6;}
+
+  .dsheet{
+    position:relative;flex:1;margin-top:-26px;min-height:0;
+    background:var(--card);border-radius:32px 32px 40px 40px;padding:22px 22px 0;
+  }
+  .drow1{display:flex;align-items:flex-start;gap:12px;}
+  .drow1 h3{margin:0;flex:1;font-size:21px;font-weight:600;color:var(--head);line-height:1.22;}
+  .dphase{
+    flex:none;background:#EDEBFF;color:#4B3B94;border-radius:999px;
+    font-size:11.5px;font-weight:600;padding:7px 13px;white-space:nowrap;
+  }
+  .drow2{display:flex;align-items:center;justify-content:space-between;margin-top:14px;}
+  .dfrom{font-size:15px;color:var(--mut);font-weight:400;}
+  .dfrom b{color:var(--head);font-weight:600;font-variant-numeric:tabular-nums;}
+  .davatars{display:flex;}
+  .davatars i{
+    width:28px;height:28px;border-radius:50%;font-style:normal;
+    display:grid;place-items:center;font-size:11px;font-weight:600;
+    border:2px solid var(--card);margin-left:-8px;
+  }
+  .dlabel{font-size:12.5px;color:var(--mut);font-weight:500;margin:18px 0 10px;}
+  .dchips{display:flex;flex-wrap:wrap;gap:8px;}
+  .dchips span{
+    font-size:12px;font-weight:500;color:var(--fg);background:var(--bg);
+    border-radius:999px;padding:8px 14px;
+  }
+  .dchips span.on{background:var(--acc);color:var(--accfg);font-weight:600;}
+  .ddesc{
+    margin-top:16px;font-size:12.5px;color:var(--mut);line-height:1.55;font-weight:400;
+    max-height:34px;overflow:hidden;
+    mask-image:linear-gradient(to bottom,#000 40%,transparent);
+    -webkit-mask-image:linear-gradient(to bottom,#000 40%,transparent);
+  }
+  .dactions{
+    position:absolute;left:16px;right:16px;bottom:20px;display:flex;gap:10px;
+  }
+  .dghost{
+    flex:1;text-align:center;background:var(--bg);color:var(--head);
+    border-radius:999px;padding:14px 10px;font-size:13px;font-weight:500;
+  }
+  /* CTA del detalle = navegar a las ofertas (violeta sólido, NO hold: aceptar
+     vive junto a cada oferta en la hoja). */
+  .dcta{
+    flex:1.25;position:relative;text-align:center;background:var(--pri);color:#fff;
+    border-radius:999px;padding:14px 10px;font-size:13px;font-weight:600;
+    box-shadow:0 10px 22px rgba(113,71,242,.32);
+  }
+  .dcta .lbl{display:flex;align-items:center;justify-content:center;gap:6px;
+    white-space:nowrap;font-size:13px;}
+
+  /* ── HOJA DE OFERTAS (bottom sheet sobre el detalle) ──────────────────── */
+  .scrim{position:absolute;inset:0;background:rgba(30,20,60,.42);z-index:3;}
+  .osheet{
+    position:absolute;left:0;right:0;bottom:0;z-index:4;height:74%;
+    background:var(--bg);border-radius:30px 30px 40px 40px;
+    display:flex;flex-direction:column;padding:12px 18px 0;
+  }
+  .ohandle{width:42px;height:5px;border-radius:3px;background:#D8D0C2;margin:2px auto 12px;}
+  .osheet .oshead{display:flex;align-items:baseline;justify-content:space-between;padding:0 2px 12px;}
+  .osheet .oshead h3{margin:0;font-size:17px;font-weight:600;color:var(--head);}
+  .osheet .oshead small{font-size:12px;color:var(--mut);font-weight:500;}
+  .oflist{display:flex;flex-direction:column;gap:11px;overflow:hidden;flex:1;
+    mask-image:linear-gradient(to bottom,#000 82%,transparent 99%);
+    -webkit-mask-image:linear-gradient(to bottom,#000 82%,transparent 99%);}
+  .ofcard{background:var(--card);border-radius:22px;padding:15px 16px;box-shadow:var(--shadow);}
+  .ofcard .oftop{display:flex;align-items:center;justify-content:space-between;}
+  .ofcard .ofprice{font-size:17px;font-weight:600;color:var(--head);font-variant-numeric:tabular-nums;}
+  .ofcard .ofrank{font-size:10.5px;font-weight:600;color:#0A6A4C;background:#D9F4E4;
+    border-radius:999px;padding:4px 9px;}
+  .ofcard p{margin:6px 0 8px;font-size:12.5px;color:var(--mut);line-height:1.5;font-weight:400;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .ofmore{
+    display:inline-flex;align-items:center;gap:3px;margin-bottom:12px;
+    font-size:11.5px;font-weight:600;color:var(--accfg);
+  }
+  .ofmore svg{margin-top:1px;}
+  .ofhold{
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    background:#C9B6F7;color:#fff;border-radius:999px;padding:11px;font-size:12.5px;font-weight:600;
+    position:relative;overflow:hidden;
+  }
+  .ofhold .fill{position:absolute;inset:0;width:52%;background:var(--pri);border-radius:999px;}
+  .ofhold .lbl{position:relative;display:flex;align-items:center;gap:6px;}
+  .ofcard.quiet .ofhold{background:var(--bg);color:var(--head);}
+
+  /* ── CATÁLOGO — rejilla de tienda: foto arriba, datos abajo ───────────── */
+  .grid{
+    display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:max-content;
+    gap:11px;padding:12px 18px 0;flex:1;align-content:start;overflow:hidden;
+    mask-image:linear-gradient(to bottom,#000 78%,transparent 99%);
+    -webkit-mask-image:linear-gradient(to bottom,#000 78%,transparent 99%);
+  }
+  .pcard{background:var(--card);border-radius:20px;overflow:hidden;box-shadow:var(--shadow);}
+  .pimg{
+    aspect-ratio:1;display:grid;place-items:center;font-size:72px;line-height:1;
+    background:#F1ECE1;overflow:hidden;
+  }
+  .pinfo{padding:9px 11px 12px;}
+  .pinfo h5{
+    margin:0 0 4px;font-size:12.5px;font-weight:600;color:var(--fg);line-height:1.3;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+    min-height:32px;
+  }
+  .pinfo .pr{font-size:12.5px;font-weight:600;color:var(--pri);font-variant-numeric:tabular-nums;}
+
+  /* ── Chat y notificaciones ────────────────────────────────────────────── */
+  .cavatar{
+    width:46px;height:46px;border-radius:50%;flex:none;display:grid;place-items:center;
+    background:linear-gradient(135deg,#EFE7FF,#DCCEFF);color:var(--accfg);
+    font-weight:600;font-size:15px;
+  }
+  .ctime{font-size:10.5px;color:var(--mut);font-weight:400;flex:none;}
+  .cbadge{
+    min-width:20px;height:20px;border-radius:10px;background:var(--pri);color:#fff;
+    font-size:11px;font-weight:600;display:grid;place-items:center;padding:0 6px;flex:none;
+  }
+  /* LISTA DE CONVERSACIONES — tal cual la referencia: contenedor blanco a
+     sangre, filas PLANAS (sin radio, sin sombra, sin tarjeta) */
+  .convlist{
+    flex:1;background:#FFFFFF;border-radius:30px 30px 0 0;
+    margin-top:16px;padding:8px 0 0;overflow:hidden;
+  }
+  .convrow{display:flex;align-items:center;gap:13px;padding:12px 22px;}
+  .convrow + .convrow{border-top:1px solid #F4F1EA;}
+  .convrow .txt{flex:1;min-width:0;}
+  .convrow .txt b{display:block;font-size:14px;font-weight:600;color:var(--head);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .convrow .txt span{font-size:12px;color:var(--mut);font-weight:400;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;}
+  .convrow .side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none;}
+
+  /* CHAT — un solo fondo: el panel lila ES la pantalla (tal cual la
+     referencia). Nada de capa arena asomando por debajo. */
+  .chatpanel{
+    flex:1;background:#BFA9F5;border-radius:0 0 40px 40px;
+    display:flex;flex-direction:column;padding:18px 14px 14px;min-height:0;
+  }
+  .crow{display:flex;align-items:center;gap:7px;margin-bottom:9px;}
+  .crow.me{justify-content:flex-end;}
+  .mavatar{
+    width:32px;height:32px;border-radius:50%;flex:none;
+    background:#FFFFFF;color:#5B47A8;font-size:12px;font-weight:600;
+    display:grid;place-items:center;
+  }
+  .cbub{
+    max-width:62%;border-radius:14px;padding:9px 12px;
+    font-size:11.5px;line-height:1.4;font-weight:400;color:#4A4458;
+    background:#DCD0FA;
+  }
+  .cbub.them{background:#F2EDFE;}
+  .stamp{font-size:9px;color:#F0E9FF;flex:none;font-variant-numeric:tabular-nums;}
+  .composer2{margin-top:auto;display:flex;gap:9px;align-items:center;}
+  .cfield2{
+    flex:1;background:#FFFFFF;border-radius:14px;padding:11px 12px;
+    display:flex;gap:9px;align-items:center;min-width:0;
+  }
+  .cfield2 svg{color:#A99BD6;flex:none;}
+  .cfield2 span{flex:1;font-size:12px;color:#A99BD6;font-weight:400;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .csend{
+    width:42px;height:42px;border-radius:50%;flex:none;background:#FFFFFF;color:var(--pri);
+    display:grid;place-items:center;
+  }
+
+  .npill{
+    background:var(--pri);color:#fff;border-radius:999px;font-size:10.5px;font-weight:600;
+    padding:4px 10px;flex:none;
+  }
+  .ncard{
+    border-radius:24px;padding:13px;display:flex;gap:12px;align-items:flex-start;
+    box-shadow:var(--shadow);background:var(--card);
+  }
+  .nicon{
+    width:40px;height:40px;border-radius:13px;flex:none;display:grid;place-items:center;
+  }
+  .nbody{flex:1;min-width:0;}
+  .nbody h4{margin:0 0 1px;font-size:13.5px;font-weight:600;line-height:1.3;}
+  .nbody p{margin:0;font-size:12px;line-height:1.45;font-weight:400;opacity:.85;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .nbody time{font-size:10.5px;font-weight:400;opacity:.7;}
+  .ncard.verde{background:#D9F4E4;color:#005D3F;}
+  .ncard.verde .nicon{background:rgba(0,93,63,.13);color:#005D3F;}
+  .ncard.lila{background:#EFEBFC;color:#4B3B94;}
+  .ncard.lila .nicon{background:rgba(75,59,148,.13);color:#4B3B94;}
+  .ncard.ambar{background:#FBE9CD;color:#8F4700;}
+  .ncard.ambar .nicon{background:rgba(143,71,0,.13);color:#8F4700;}
+  .ncard.leida{background:var(--card);color:var(--mut);}
+  .ncard.leida .nicon{background:#F4EFE6;color:var(--mut);}
+  .ncard.leida h4{font-weight:500;}
+
+  /* ── Barra flotante — CERRADA, replicada tal cual ─────────────────────── */
+  .navwrap{position:absolute;left:0;right:0;bottom:14px;display:flex;justify-content:center;}
+  .navbar{
+    position:relative;display:flex;align-items:center;gap:4px;
+    background:var(--card);border:1px solid #EAE4D8;border-radius:999px;
+    padding:10px 18px;box-shadow:0 14px 34px rgba(70,55,30,.15);
+  }
+  .nitem{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:48px;
+    padding:0 3px;color:var(--mut);font-size:9.5px;font-weight:600;white-space:nowrap;}
+  .nitem.on{color:var(--pri);}
+  .nitem svg{display:block;}
+  .center{
+    width:56px;height:56px;border-radius:50%;margin:-30px 6px 0;
+    background:var(--pri);color:#fff;display:grid;place-items:center;
+    border:5px solid var(--bg);box-shadow:0 10px 24px rgba(113,71,242,.45);
+    font-size:26px;font-weight:600;line-height:0;
+  }
+
+  .decide{
+    margin:56px auto 0;max-width:620px;background:var(--chip-bg);
+    border-radius:24px;padding:26px 30px;box-shadow:0 10px 30px rgba(70,55,30,.08);
+  }
+  .decide h3{margin:0 0 12px;font-size:17px;font-weight:600;}
+  .decide ul{margin:0;padding-left:18px;color:var(--ink-soft);font-size:14px;line-height:1.7;}
+  .decide li b{color:var(--ink);font-weight:600;}
+  .foot{margin:28px auto 0;max-width:620px;font-size:12px;color:var(--ink-soft);line-height:1.6;}
+</style>
+
+<div class="wrap">
+  <h1>Jayalo — diseños de la app</h1>
+  <p class="intro">Lenguaje aprobado: paleta cálida arena, tipografía ligera (400–600),
+  tintas en <b>violeta oscuro y gris violáceo</b> — sin negro —, tarjetas sin borde que flotan por sombra,
+  y la barra flotante intacta. Las pantallas principales abren con un <b>header violeta</b> de esquinas
+  redondeadas que envuelve el buscador y la campana.</p>
+
+  <!-- ══ TANDA 1 · aprobada ══ -->
+  <section class="tanda">
+    <div class="tanda-head"><h2>Tanda 1 — Home del cliente</h2><span class="tag ok">Aprobada</span></div>
+    <div class="stage">
+      <div class="shot">
+        <div class="phone"><div class="screen warm">
+
+          <div class="vhead">
+            <div class="statusbar"><span>9:41</span>
+              <svg width="46" height="12" viewBox="0 0 46 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="1" width="3" height="11" rx="1"/><path d="M25 5a7 7 0 0 1 9 0l-1.6 1.9a4.5 4.5 0 0 0-5.8 0Z"/><circle cx="29.5" cy="9.5" r="1.6"/><rect x="37" y="3" width="8" height="7" rx="2" opacity=".9"/><rect x="45.4" y="5.2" width="1.4" height="2.6" rx=".7" opacity=".6"/></svg>
+            </div>
+
+            <div class="vrow">
+              <div class="vavatar">A</div>
+              <div class="wordmark">Jayalo</div>
+              <div class="vbell">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+                <span class="n">3</span>
+              </div>
+            </div>
+
+            <div class="vhello">
+              <h2>Hola, Andreína</h2>
+              <p>Tú pides y los proveedores te ofertan.</p>
+            </div>
+
+            <div class="vsearch">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>
+              <span>Buscar en Jayalo</span>
+              <span class="filter">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="7" cy="17" r="2.2"/></svg>
+                Filtrar
+              </span>
+            </div>
+          </div>
+
+          <div class="secrow"><h3>Tus solicitudes</h3><small>4 activas</small></div>
+
+          <div class="cards">
+            <div class="rcard quiet">
+              <div class="thumb">⚡</div>
+              <div class="rbody">
+                <h4>Reparación de inversor 24V</h4>
+                <time>hace 20 min</time><br>
+                <span class="pill arena">Esperando ofertas</span>
+              </div><span class="chev">›</span>
+            </div>
+            <div class="rcard lila">
+              <div class="thumb">🔌</div>
+              <div class="rbody">
+                <h4>Cargador UGREEN 65W</h4>
+                <time>hace 2 h</time><br>
+                <span class="pill lila">3 ofertas</span>
+              </div><span class="chev">›</span>
+            </div>
+            <div class="rcard naranja">
+              <div class="thumb">🎂</div>
+              <div class="rbody">
+                <h4>Bizcocho de cumpleaños, 20 personas</h4>
+                <time>ayer</time><br>
+                <span class="pill naranja">Aceptada</span>
+              </div><span class="chev">›</span>
+            </div>
+            <div class="rcard verde">
+              <div class="thumb">📱</div>
+              <div class="rbody">
+                <h4>iPhone 13 usado, buen estado</h4>
+                <time>hace 3 d</time><br>
+                <span class="pill verde">Desbloqueado</span>
+              </div><span class="chev">›</span>
+            </div>
+          </div>
+
+          <div class="navwrap"><div class="navbar">
+            <div class="nitem on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3h8l3 3v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6z"/><path d="M9 10h6M9 14h4"/></svg>Solicitudes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7l1.5-4h13L20 7M4 7h16M4 7v12a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7M9 20v-6h6v6"/></svg>Catálogo</div>
+            <div class="center">＋</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>Mensajes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="5"/><path d="M8.5 12.5 7 21l5-2.5L17 21l-1.5-8.5"/></svg>Reputación</div>
+          </div></div>
+
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ TANDA 2 · nueva ══ -->
+  <section class="tanda">
+    <div class="tanda-head"><h2>Tanda 2 — Crear solicitud y detalle con ofertas</h2><span class="tag ok">Aprobada</span></div>
+    <div class="stage">
+
+      <!-- Crear solicitud: chat con la IA -->
+      <div class="shot">
+        <div class="shot-label">Crear solicitud — la IA arma el pedido</div>
+        <div class="phone"><div class="screen warm">
+
+          <div class="vhead">
+            <div class="statusbar"><span>9:41</span>
+              <svg width="46" height="12" viewBox="0 0 46 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="1" width="3" height="11" rx="1"/><path d="M25 5a7 7 0 0 1 9 0l-1.6 1.9a4.5 4.5 0 0 0-5.8 0Z"/><circle cx="29.5" cy="9.5" r="1.6"/><rect x="37" y="3" width="8" height="7" rx="2" opacity=".9"/><rect x="45.4" y="5.2" width="1.4" height="2.6" rx=".7" opacity=".6"/></svg>
+            </div>
+
+            <div class="vrow">
+              <div class="vghost"></div>
+              <div class="vtitle vmid">Crear solicitud</div>
+              <div class="vbell">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+              </div>
+            </div>
+
+            <div class="vrow" style="padding-top:14px;gap:8px;">
+              <div class="vseg"><span class="on">Producto</span><span>Servicio</span></div>
+              <span class="vpill">Al por mayor</span>
+              <div style="flex:1;"></div>
+            </div>
+          </div>
+
+          <div class="chat">
+            <div class="bub user">Necesito un cargador de 65W para mi laptop Lenovo</div>
+            <div class="bub ai">¿Qué marca de cargador prefieres?</div>
+            <div class="optchips">
+              <span class="sel">UGREEN</span><span>Anker</span><span>Baseus</span>
+              <span>Otra marca</span><span>Cualquier marca / no tengo preferencia</span>
+            </div>
+            <div class="bub user">UGREEN</div>
+
+            <div class="ready">
+              <h4>Cargador UGREEN 65W</h4>
+              <ul>
+                <li>Marca: UGREEN</li>
+                <li>Potencia: 65W</li>
+                <li>Para laptop Lenovo</li>
+              </ul>
+              <div class="row">
+                <span class="btn-pri">Enviar solicitud</span>
+                <span class="btn-text">Corregir algo</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="navwrap"><div class="navbar">
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3h8l3 3v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6z"/><path d="M9 10h6M9 14h4"/></svg>Solicitudes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7l1.5-4h13L20 7M4 7h16M4 7v12a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7M9 20v-6h6v6"/></svg>Catálogo</div>
+            <div class="center">＋</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>Mensajes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="5"/><path d="M8.5 12.5 7 21l5-2.5L17 21l-1.5-8.5"/></svg>Reputación</div>
+          </div></div>
+
+        </div></div>
+      </div>
+
+      <!-- Detalle de solicitud con ofertas -->
+      <div class="shot">
+        <div class="shot-label">Detalle de solicitud — foto grande</div>
+        <div class="phone"><div class="screen warm">
+
+          <div class="dpanel">
+            <div class="statusbar"><span>9:41</span>
+              <svg width="46" height="12" viewBox="0 0 46 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="1" width="3" height="11" rx="1"/><path d="M25 5a7 7 0 0 1 9 0l-1.6 1.9a4.5 4.5 0 0 0-5.8 0Z"/><circle cx="29.5" cy="9.5" r="1.6"/><rect x="37" y="3" width="8" height="7" rx="2" opacity=".9"/><rect x="45.4" y="5.2" width="1.4" height="2.6" rx=".7" opacity=".6"/></svg>
+            </div>
+
+            <div class="dback">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </div>
+
+            <div class="dphoto">🔌</div>
+            <div class="dthumbs">
+              <div class="dthumb">🔌</div>
+              <div class="dthumb off">🔋</div>
+            </div>
+          </div>
+
+          <div class="dsheet">
+            <div class="drow1">
+              <h3>Cargador UGREEN 65W</h3>
+              <span class="dphase">Con ofertas</span>
+            </div>
+
+            <div class="drow2">
+              <span class="dfrom">Desde: <b>RD$ 1,500</b></span>
+              <div class="davatars">
+                <i style="background:#EFEBFC;color:#4B3B94;">R</i>
+                <i style="background:#D9F4E4;color:#005D3F;">E</i>
+                <i style="background:#FBE9CD;color:#8F4700;">T</i>
+              </div>
+            </div>
+
+            <div class="dlabel">Detalles</div>
+            <div class="dchips">
+              <span class="on">UGREEN</span>
+              <span>65W</span>
+              <span>USB-C</span>
+              <span>Lenovo</span>
+            </div>
+
+            <div class="dlabel" style="margin-bottom:0;">Descripción</div>
+            <div class="ddesc">Cargador rápido de 65W con conector USB-C, compatible con laptops Lenovo IdeaPad y ThinkPad. Publicada hoy a las 7:12 a. m.</div>
+
+            <div class="dactions">
+              <span class="dghost">Cancelar</span>
+              <span class="dcta"><span class="lbl">Ver 3 ofertas</span></span>
+            </div>
+          </div>
+
+        </div></div>
+      </div>
+
+      <!-- Hoja de ofertas (bottom sheet sobre el detalle) -->
+      <div class="shot">
+        <div class="shot-label">Ofertas — hoja que sube, aceptar por oferta</div>
+        <div class="phone"><div class="screen warm">
+
+          <div class="dpanel" style="height:100%;border-radius:40px;">
+            <div class="statusbar"><span>9:41</span>
+              <svg width="46" height="12" viewBox="0 0 46 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="1" width="3" height="11" rx="1"/><path d="M25 5a7 7 0 0 1 9 0l-1.6 1.9a4.5 4.5 0 0 0-5.8 0Z"/><circle cx="29.5" cy="9.5" r="1.6"/><rect x="37" y="3" width="8" height="7" rx="2" opacity=".9"/><rect x="45.4" y="5.2" width="1.4" height="2.6" rx=".7" opacity=".6"/></svg>
+            </div>
+            <div class="dphoto">🔌</div>
+          </div>
+
+          <div class="scrim"></div>
+
+          <div class="osheet">
+            <div class="ohandle"></div>
+            <div class="oshead"><h3>Ofertas</h3><small>Acepta la que más te convenga</small></div>
+
+            <div class="oflist">
+              <div class="ofcard">
+                <div class="oftop">
+                  <span class="ofprice">RD$ 1,500</span>
+                  <span class="ofrank">Más económica</span>
+                </div>
+                <p>Genérico certificado 65W, garantía de 3 meses. Envío incluido. Entrega en 24 h.</p>
+                <a class="ofmore">Ver detalles <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+                <div class="ofhold"><span class="fill"></span><span class="lbl">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11V6.5a1.5 1.5 0 0 1 3 0V11M12 11V9.5a1.5 1.5 0 0 1 3 0V11M15 11v-.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6v-2.5a1.5 1.5 0 0 1 3 0"/></svg>
+                  Mantén para aceptar</span></div>
+              </div>
+
+              <div class="ofcard quiet">
+                <div class="oftop"><span class="ofprice">RD$ 1,850</span></div>
+                <p>Original UGREEN, sellado en caja. Te lo entrego hoy mismo en Naco.</p>
+                <a class="ofmore">Ver detalles <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+                <div class="ofhold"><span class="lbl">Mantén para aceptar</span></div>
+              </div>
+
+              <div class="ofcard quiet">
+                <div class="oftop"><span class="ofprice">A evaluar</span></div>
+                <p>Tengo varios modelos disponibles, ¿lo necesitas urgente?</p>
+                <a class="ofmore">Ver detalles <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+                <div class="ofhold"><span class="lbl">Mantén para aceptar</span></div>
+              </div>
+            </div>
+          </div>
+
+        </div></div>
+      </div>
+
+    </div>
+
+    <div class="decide">
+      <h3>Cómo se ven las ofertas</h3>
+      <ul>
+        <li><b>Dos niveles, como una tienda.</b> El detalle de la solicitud es el "producto"; su botón <b>"Ver 3 ofertas"</b> (violeta, solo navega) sube una hoja con la lista.</li>
+        <li><b>El hold de aceptar vive en cada oferta</b>, no suelto en el detalle: así no hay duda de cuál aceptas. Precio grande, mensaje del proveedor debajo, y "Mantén para aceptar" propio.</li>
+        <li><b>"Ver detalles ›"</b> en cada oferta: el mensaje se corta a 2 líneas en la lista; el enlace abre la oferta completa (mensaje entero, condiciones) sin salir del flujo.</li>
+        <li><b>Las ofertas van anónimas</b> — solo precio y mensaje. La más barata se marca en verde ("Más económica") para orientar sin decidir por el cliente.</li>
+        <li>Al aceptar una, arranca el resto del flujo (el proveedor desbloquea el contacto por créditos). El cliente no paga nada aquí.</li>
+        <li>La hoja sube sobre el detalle atenuado — se siente ligera: sube, eliges, baja.</li>
+      </ul>
+    </div>
+
+    <div class="decide" style="margin-top:18px;">
+      <h3>Detalle de solicitud — rehecho con tu referencia</h3>
+      <ul>
+        <li><b>Misma estructura</b>: panel de color arriba con la foto grande y la tira de miniaturas pegada al borde derecho; hoja blanca abajo que sube por encima del panel.</li>
+        <li><b>Cada pieza traducida a lo nuestro</b> — el título grande lleva al lado el chip de fase (donde iba el − 01 +); <b>"Desde: RD$ 1,500"</b> es el precio más bajo ofertado (el "From: $199.00"); los círculos son los <b>proveedores que ofertaron</b> (donde iban los colores); los chips de <b>Detalles</b> son los bullets que armó la IA (donde iban las tallas).</li>
+        <li><b>La foto llena su área</b> (recorte tipo <i>cover</i>), igual que las miniaturas. Van dos porque una solicitud admite máximo 2 fotos, tal como está en la app.</li>
+        <li><b>El CTA cambia según quién mira y qué mira</b>:
+          <ul style="margin:6px 0 0;">
+            <li>Cliente en su solicitud → <b>Ver N ofertas</b> (abre la hoja de arriba; aceptar es por oferta, con hold)</li>
+            <li>Cliente en el producto de un proveedor → <b>Solicitar</b></li>
+            <li>Proveedor en una solicitud → <b>Hacer oferta</b></li>
+            <li>Proveedor en su oferta aceptada → <b>Desbloquear</b> (hold)</li>
+          </ul>
+        </li>
+        <li>El panel es ámbar cálido, no lila: así el detalle no se confunde con el chat.</li>
+        <li><b>Sin header ni título sobre la foto</b> — es la única pantalla que no lleva la cabecera violeta: solo el botón de atrás flotando. La foto manda.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ══ TANDA 3 · lado proveedor ══ -->
+  <section class="tanda">
+    <div class="tanda-head"><h2>Tanda 3 — Lado proveedor</h2><span class="tag ok">Aprobada</span></div>
+    <div class="stage">
+
+      <!-- Inbox del proveedor -->
+      <div class="shot">
+        <div class="shot-label">Solicitudes para ti — toggle e intereses</div>
+        <div class="phone"><div class="screen warm">
+
+          <div class="vhead">
+            <div class="statusbar"><span>9:41</span>
+              <svg width="46" height="12" viewBox="0 0 46 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="1" width="3" height="11" rx="1"/><path d="M25 5a7 7 0 0 1 9 0l-1.6 1.9a4.5 4.5 0 0 0-5.8 0Z"/><circle cx="29.5" cy="9.5" r="1.6"/><rect x="37" y="3" width="8" height="7" rx="2" opacity=".9"/><rect x="45.4" y="5.2" width="1.4" height="2.6" rx=".7" opacity=".6"/></svg>
+            </div>
+
+            <div class="vrow">
+              <div class="vtitle">Solicitudes para ti</div>
+              <div class="vbell">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+                <span class="n">2</span>
+              </div>
+            </div>
+
+            <div class="vrow" style="padding-top:14px;gap:8px;">
+              <div class="vseg"><span class="on">Para ti</span><span>Todas</span></div>
+              <div class="vseg"><span class="on">Todo</span><span>Productos</span><span>Servicios</span></div>
+            </div>
+          </div>
+
+          <div class="cards" style="padding-top:12px;">
+            <div class="icard">
+              <div class="ieyebrow">♥ Interesado en tu producto</div>
+              <div class="irow">
+                <div class="ithumb">🔋</div>
+                <div class="ibody">
+                  <h4>Inversor 24V 3.6kW</h4>
+                  <p>¿Está disponible? ¿Hacen delivery?</p>
+                  <time>hace 35 min</time>
+                </div>
+                <span class="ibtn">Conversar · 1 crédito</span>
+              </div>
+            </div>
+            <div class="rcard">
+              <div class="thumb" style="background:#F4EFE6;">🔌</div>
+              <div class="rbody">
+                <h4>Cargador UGREEN 65W</h4>
+                <p class="idesc">Marca: UGREEN · Potencia: 65W · Para laptop Lenovo</p>
+                <time>hace 2 h</time>
+              </div><span class="chev">›</span>
+            </div>
+            <div class="rcard">
+              <div class="thumb" style="background:#F4EFE6;">⚡</div>
+              <div class="rbody">
+                <h4>Reparación de inversor 24V</h4>
+                <p class="idesc">Diagnóstico preliminar: no enciende tras el apagón de anoche</p>
+                <time>hace 20 min</time>
+              </div><span class="chev">›</span>
+            </div>
+            <div class="rcard">
+              <div class="thumb" style="background:#F4EFE6;">🎂</div>
+              <div class="rbody">
+                <h4>Bizcocho de cumpleaños, 20 personas</h4>
+                <p class="idesc">Para el sábado · decoración de princesas</p>
+                <time>ayer</time>
+              </div><span class="chev">›</span>
+            </div>
+          </div>
+
+          <div class="navwrap"><div class="navbar">
+            <div class="nitem on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h5l2 3h4l2-3h5"/><path d="M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>Solicitudes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7-7V3.4h10.2l7 7a2 2 0 0 1-.2 3z"/><circle cx="7.5" cy="7.5" r="1"/></svg>Mis ofertas</div>
+            <div class="center">＋</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>Mensajes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7l1.5-4h13L20 7M4 7h16M4 7v12a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7M9 20v-6h6v6"/></svg>Mi negocio</div>
+          </div></div>
+
+        </div></div>
+      </div>
+
+      <!-- Mis estadísticas -->
+      <div class="shot">
+        <div class="shot-label">Mis estadísticas — desde el menú del avatar</div>
+        <div class="phone"><div class="screen warm">
+
+          <div class="vhead">
+            <div class="statusbar"><span>9:41</span>
+              <svg width="46" height="12" viewBox="0 0 46 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="1" width="3" height="11" rx="1"/><path d="M25 5a7 7 0 0 1 9 0l-1.6 1.9a4.5 4.5 0 0 0-5.8 0Z"/><circle cx="29.5" cy="9.5" r="1.6"/><rect x="37" y="3" width="8" height="7" rx="2" opacity=".9"/><rect x="45.4" y="5.2" width="1.4" height="2.6" rx=".7" opacity=".6"/></svg>
+            </div>
+
+            <div class="vrow">
+              <div class="vbell">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </div>
+              <div class="vtitle vmid">Mis estadísticas</div>
+              <div class="vghost"></div>
+            </div>
+          </div>
+
+          <div class="shead">Cómo te califican</div>
+          <div class="mrow">
+            <div class="mcard">
+              <div class="mtile">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3 6.6 7 .9-5.2 4.8 1.4 6.9L12 17.8 5.8 21.2l1.4-6.9L2 9.5l7-.9z"/></svg>
+                <span class="v">4.8</span><span class="l">calificación</span>
+              </div>
+              <div class="mtile">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 11a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/><path d="M8 10h8M8 13h5"/></svg>
+                <span class="v">12</span><span class="l">reseñas</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="shead">Tu negocio</div>
+          <div class="mrow">
+            <div class="mcard">
+              <div class="mtile">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 4.9"/></svg>
+                <span class="v">23</span><span class="l">clientes atendidos</span>
+              </div>
+              <div class="mtile">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="3"/><circle cx="12" cy="12" r="2.6"/><path d="M6 12h.01M18 12h.01"/></svg>
+                <span class="v">RD$ 86,400</span><span class="l">facturado</span>
+              </div>
+            </div>
+          </div>
+          <div class="mrow">
+            <div class="mcard">
+              <div class="mtile">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/></svg>
+                <span class="v">74</span><span class="l">créditos invertidos</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="navwrap"><div class="navbar">
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h5l2 3h4l2-3h5"/><path d="M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>Solicitudes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7-7V3.4h10.2l7 7a2 2 0 0 1-.2 3z"/><circle cx="7.5" cy="7.5" r="1"/></svg>Mis ofertas</div>
+            <div class="center">＋</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>Mensajes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7l1.5-4h13L20 7M4 7h16M4 7v12a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7M9 20v-6h6v6"/></svg>Mi negocio</div>
+          </div></div>
+
+        </div></div>
+      </div>
+
+      <!-- Mi negocio -->
+      <div class="shot">
+        <div class="shot-label">Mi negocio — perfil y catálogo</div>
+        <div class="phone"><div class="screen warm">
+
+          <div class="vhead">
+            <div class="statusbar"><span>9:41</span>
+              <svg width="46" height="12" viewBox="0 0 46 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="1" width="3" height="11" rx="1"/><path d="M25 5a7 7 0 0 1 9 0l-1.6 1.9a4.5 4.5 0 0 0-5.8 0Z"/><circle cx="29.5" cy="9.5" r="1.6"/><rect x="37" y="3" width="8" height="7" rx="2" opacity=".9"/><rect x="45.4" y="5.2" width="1.4" height="2.6" rx=".7" opacity=".6"/></svg>
+            </div>
+
+            <div class="vrow">
+              <div class="vtitle">Mi negocio</div>
+              <div class="vbell">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+                <span class="n">2</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bizcard">
+            <div class="bizlogo">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7l1.5-4h13L20 7M4 7h16M4 7v12a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7M9 20v-6h6v6"/></svg>
+            </div>
+            <div class="bizname">
+              <h4>El Corito</h4>
+              <span class="pill verde" style="margin-top:6px;">✓ Negocio verificado</span>
+            </div>
+          </div>
+
+          <div class="shead">Lo que ofreces</div>
+          <div class="mrow">
+            <div class="mcard">
+              <div class="mtile">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+                <span class="v">12</span><span class="l">productos</span>
+              </div>
+              <div class="mtile">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-2.4 2.6-2.6z"/></svg>
+                <span class="v">3</span><span class="l">servicios</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="shead">Trabajos realizados</div>
+          <div class="mrow">
+            <div class="mcard">
+              <div class="mtile">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.7 2.7L16 9.5"/></svg>
+                <span class="v">23</span><span class="l">trabajos realizados</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="navwrap"><div class="navbar">
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h5l2 3h4l2-3h5"/><path d="M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>Solicitudes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7-7V3.4h10.2l7 7a2 2 0 0 1-.2 3z"/><circle cx="7.5" cy="7.5" r="1"/></svg>Mis ofertas</div>
+            <div class="center">＋</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>Mensajes</div>
+            <div class="nitem on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7l1.5-4h13L20 7M4 7h16M4 7v12a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7M9 20v-6h6v6"/></svg>Mi negocio</div>
+          </div></div>
+
+        </div></div>
+      </div>
+
+    </div>
+
+    <div class="decide">
+      <h3>Qué mirar en la Tanda 3</h3>
+      <ul>
+        <li><b>El inbox conserva sus dos toggles reales</b>: "Para ti / Todas" (arranca en Para ti) y "Todo / Productos / Servicios", como píldoras deslizantes.</li>
+        <li><b>La tarjeta ámbar de interés</b> es el momento de dinero del proveedor: un comprador tocó "Me interesa" en su producto; el botón oscuro "Conversar · 1 crédito" es la acción de desbloqueo. Verde cuando ya está pagado.</li>
+        <li><b>Solicitudes y ofertas llevan su foto</b> como miniatura (aquí los emojis son marcadores de posición); el toggle "Para ti/Todas" y el filtro de tipo van compactos en una sola fila.</li>
+        <li><b>Estadísticas y Mi negocio</b> usan las métricas reales: calificación/reseñas, clientes, facturado RD$, créditos invertidos; catálogo (productos/servicios) y trabajos realizados viven en Mi negocio, como decidiste en la Task 4.</li>
+        <li>El botón central del proveedor también es <b>crear solicitud</b> ("un proveedor también compra") — la barra no cambia.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ══ CATÁLOGO ══ -->
+  <section class="tanda">
+    <div class="tanda-head"><h2>Catálogo — rejilla de tienda</h2><span class="tag new">Para revisar</span></div>
+    <div class="stage">
+      <div class="shot">
+        <div class="shot-label">Catálogo — foto arriba, datos abajo</div>
+        <div class="phone"><div class="screen warm">
+
+          <div class="vhead">
+            <div class="statusbar"><span>9:41</span>
+              <svg width="46" height="12" viewBox="0 0 46 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="1" width="3" height="11" rx="1"/><path d="M25 5a7 7 0 0 1 9 0l-1.6 1.9a4.5 4.5 0 0 0-5.8 0Z"/><circle cx="29.5" cy="9.5" r="1.6"/><rect x="37" y="3" width="8" height="7" rx="2" opacity=".9"/><rect x="45.4" y="5.2" width="1.4" height="2.6" rx=".7" opacity=".6"/></svg>
+            </div>
+
+            <div class="vrow">
+              <div class="vseg"><span class="on">Producto</span><span>Servicio</span></div>
+              <div class="vtitle" style="text-align:right;">Catálogo</div>
+              <div class="vbell">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+                <span class="n">2</span>
+              </div>
+            </div>
+
+            <div class="vsearch">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>
+              <span>Buscar en el catálogo</span>
+            </div>
+          </div>
+
+          <div class="grid">
+            <div class="pcard">
+              <div class="pimg">🔌</div>
+              <div class="pinfo"><h5>Cargador UGREEN 65W USB-C</h5><span class="pr">RD$ 1,850</span></div>
+            </div>
+            <div class="pcard">
+              <div class="pimg">🔋</div>
+              <div class="pinfo"><h5>Inversor 24V 3.6kW</h5><span class="pr">RD$ 42,000</span></div>
+            </div>
+            <div class="pcard">
+              <div class="pimg">🛠️</div>
+              <div class="pinfo"><h5>Taladro percutor 1/2"</h5><span class="pr">RD$ 6,500</span></div>
+            </div>
+            <div class="pcard">
+              <div class="pimg">❄️</div>
+              <div class="pinfo"><h5>Aire acondicionado 12,000 BTU</h5><span class="pr">RD$ 28,000 – 34,000</span></div>
+            </div>
+            <div class="pcard">
+              <div class="pimg">📷</div>
+              <div class="pinfo"><h5>Cámara de seguridad WiFi</h5><span class="pr">RD$ 3,200</span></div>
+            </div>
+            <div class="pcard">
+              <div class="pimg">🎂</div>
+              <div class="pinfo"><h5>Bizcocho por encargo</h5><span class="pr">RD$ 2,800 – 6,500</span></div>
+            </div>
+          </div>
+
+          <div class="navwrap"><div class="navbar">
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3h8l3 3v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6z"/><path d="M9 10h6M9 14h4"/></svg>Solicitudes</div>
+            <div class="nitem on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7l1.5-4h13L20 7M4 7h16M4 7v12a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7M9 20v-6h6v6"/></svg>Catálogo</div>
+            <div class="center">＋</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>Mensajes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="5"/><path d="M8.5 12.5 7 21l5-2.5L17 21l-1.5-8.5"/></svg>Reputación</div>
+          </div></div>
+
+        </div></div>
+      </div>
+    </div>
+
+    <div class="decide">
+      <h3>Qué cambia en el catálogo</h3>
+      <ul>
+        <li><b>Rejilla de dos columnas, como una tienda</b>: foto cuadrada arriba llenando el ancho de la tarjeta, y debajo el nombre y el precio en violeta. Es exactamente como ya está en la app — aquí solo se viste con la línea gráfica nueva.</li>
+        <li><b>Ya no se confunde con solicitudes</b>: aquellas son filas horizontales con miniatura al lado; el catálogo es una parrilla de fotos grandes. Se distinguen de un vistazo.</li>
+        <li>Conserva sus controles reales: el toggle <b>Producto / Servicio</b> (compacto) y el buscador del catálogo.</li>
+        <li>Los precios usan <b>fijo o rango</b> según lo que publicó el proveedor, igual que en la web.</li>
+        <li>Al tocar un artículo se abre su detalle — ahí el botón es <b>Solicitar</b>, según lo que acordamos.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ══ TANDA 4 · chat + notificaciones ══ -->
+  <section class="tanda">
+    <div class="tanda-head"><h2>Tanda 4 — Chat y notificaciones</h2><span class="tag new">Para revisar</span></div>
+    <div class="stage">
+
+      <!-- Mensajes: lista de conversaciones -->
+      <div class="shot">
+        <div class="shot-label">Mensajes — no leídas respiran lila</div>
+        <div class="phone"><div class="screen warm">
+
+          <div class="vhead">
+            <div class="statusbar"><span>9:41</span>
+              <svg width="46" height="12" viewBox="0 0 46 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="1" width="3" height="11" rx="1"/><path d="M25 5a7 7 0 0 1 9 0l-1.6 1.9a4.5 4.5 0 0 0-5.8 0Z"/><circle cx="29.5" cy="9.5" r="1.6"/><rect x="37" y="3" width="8" height="7" rx="2" opacity=".9"/><rect x="45.4" y="5.2" width="1.4" height="2.6" rx=".7" opacity=".6"/></svg>
+            </div>
+
+            <div class="vrow">
+              <div class="vtitle">Mensajes</div>
+              <div class="vbell">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+                <span class="n">2</span>
+              </div>
+            </div>
+
+            <div class="vsearch">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>
+              <span>Buscar conversación</span>
+            </div>
+          </div>
+
+          <div class="convlist" style="margin-top:0;">
+            <div class="convrow">
+              <div class="cavatar">R</div>
+              <div class="txt">
+                <b>Repuestos Genao</b>
+                <span>¿Puede pasar hoy a las 4?</span>
+              </div>
+              <div class="side"><span class="ctime">11.36</span><span class="cbadge">2</span></div>
+            </div>
+            <div class="convrow">
+              <div class="cavatar" style="background:linear-gradient(135deg,#D9F4E4,#B4EDD2);color:#005D3F;">E</div>
+              <div class="txt">
+                <b>El Corito</b>
+                <span>El precio acordado es RD$ 18,500</span>
+              </div>
+              <div class="side"><span class="ctime">ayer</span></div>
+            </div>
+            <div class="convrow">
+              <div class="cavatar" style="background:linear-gradient(135deg,#FBE9CD,#F4D9B2);color:#8F4700;">M</div>
+              <div class="txt">
+                <b>María</b>
+                <span>Gracias por su compra 🙌</span>
+              </div>
+              <div class="side"><span class="ctime">lun</span></div>
+            </div>
+            <div class="convrow">
+              <div class="cavatar" style="background:linear-gradient(135deg,#EFEBFC,#DCD8FA);color:#4B3B94;">F</div>
+              <div class="txt">
+                <b>Ferretería La Mejor</b>
+                <span>Tenemos el inversor que busca</span>
+              </div>
+              <div class="side"><span class="ctime">lun</span></div>
+            </div>
+            <div class="convrow">
+              <div class="cavatar" style="background:linear-gradient(135deg,#FFE4F2,#FFD0E8);color:#8D2661;">D</div>
+              <div class="txt">
+                <b>Dulces Anita</b>
+                <span>El bizcocho está listo para el sábado</span>
+              </div>
+              <div class="side"><span class="ctime">dom</span></div>
+            </div>
+            <div class="convrow">
+              <div class="cavatar" style="background:linear-gradient(135deg,#E8F0FF,#CFE0FF);color:#1F4B8F;">T</div>
+              <div class="txt">
+                <b>TecnoStore RD</b>
+                <span>Buenas, ¿sigue interesado?</span>
+              </div>
+              <div class="side"><span class="ctime">vie</span></div>
+            </div>
+          </div>
+
+          <div class="navwrap"><div class="navbar">
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3h8l3 3v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6z"/><path d="M9 10h6M9 14h4"/></svg>Solicitudes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7l1.5-4h13L20 7M4 7h16M4 7v12a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7M9 20v-6h6v6"/></svg>Catálogo</div>
+            <div class="center">＋</div>
+            <div class="nitem on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>Mensajes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="5"/><path d="M8.5 12.5 7 21l5-2.5L17 21l-1.5-8.5"/></svg>Reputación</div>
+          </div></div>
+
+        </div></div>
+      </div>
+
+      <!-- Chat abierto (sin barra flotante: se oculta en el chat) -->
+      <div class="shot">
+        <div class="shot-label">Chat — panel lila, estilo nuevo</div>
+        <div class="phone"><div class="screen warm">
+
+          <div class="vhead" style="border-radius:40px 40px 0 0;padding-bottom:14px;">
+            <div class="statusbar"><span>9:41</span>
+              <svg width="46" height="12" viewBox="0 0 46 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="1" width="3" height="11" rx="1"/><path d="M25 5a7 7 0 0 1 9 0l-1.6 1.9a4.5 4.5 0 0 0-5.8 0Z"/><circle cx="29.5" cy="9.5" r="1.6"/><rect x="37" y="3" width="8" height="7" rx="2" opacity=".9"/><rect x="45.4" y="5.2" width="1.4" height="2.6" rx=".7" opacity=".6"/></svg>
+            </div>
+
+            <div class="vrow">
+              <div class="vbell">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </div>
+              <div class="vtitle vmid">Repuestos Genao<span class="vsub">Cargador UGREEN 65W</span></div>
+              <div class="vbell">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="chatpanel">
+
+            <div class="crow me">
+              <span class="stamp">✓✓ 11.30</span>
+              <div class="cbub">Buenas, acepté su oferta por el cargador</div>
+              <div class="mavatar">A</div>
+            </div>
+            <div class="crow">
+              <div class="mavatar">R</div>
+              <div class="cbub them">¡Excelente! Le confirmo que está en existencia</div>
+              <span class="stamp">11.34</span>
+            </div>
+            <div class="crow">
+              <div class="mavatar" style="visibility:hidden;">R</div>
+              <div class="cbub them">Es el original UGREEN, sellado en caja</div>
+              <span class="stamp">11.36</span>
+            </div>
+            <div class="crow me">
+              <span class="stamp">✓✓ 11.38</span>
+              <div class="cbub">¿Me lo puedes entregar hoy en Naco?</div>
+              <div class="mavatar">A</div>
+            </div>
+            <div class="crow me">
+              <span class="stamp">✓✓ 11.38</span>
+              <div class="cbub">Trabajo cerca de la Lope de Vega</div>
+              <div class="mavatar" style="visibility:hidden;">A</div>
+            </div>
+            <div class="crow">
+              <div class="mavatar">R</div>
+              <div class="cbub them">Claro, ¿a las 4 pm le sirve?</div>
+              <span class="stamp">11.41</span>
+            </div>
+            <div class="crow">
+              <div class="mavatar" style="visibility:hidden;">R</div>
+              <div class="cbub them" style="padding:5px;">
+                <div style="width:104px;height:78px;border-radius:11px;background:#FFFFFF;display:grid;place-items:center;font-size:28px;">🔌</div>
+              </div>
+              <span class="stamp">11.41</span>
+            </div>
+            <div class="crow me">
+              <span class="stamp">✓✓ 11.42</span>
+              <div class="cbub">Perfecto, nos vemos ahí 👍</div>
+              <div class="mavatar">A</div>
+            </div>
+
+            <div class="composer2">
+              <div class="cfield2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                <span>Escribe un mensaje…</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 10h.01M15 10h.01"/></svg>
+              </div>
+              <div class="csend">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 14-7-4 7 4 7z"/></svg>
+              </div>
+            </div>
+          </div>
+
+        </div></div>
+      </div>
+
+      <!-- Notificaciones -->
+      <div class="shot">
+        <div class="shot-label">Notificaciones — familias de color</div>
+        <div class="phone"><div class="screen warm">
+
+          <div class="vhead">
+            <div class="statusbar"><span>9:41</span>
+              <svg width="46" height="12" viewBox="0 0 46 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="1" width="3" height="11" rx="1"/><path d="M25 5a7 7 0 0 1 9 0l-1.6 1.9a4.5 4.5 0 0 0-5.8 0Z"/><circle cx="29.5" cy="9.5" r="1.6"/><rect x="37" y="3" width="8" height="7" rx="2" opacity=".9"/><rect x="45.4" y="5.2" width="1.4" height="2.6" rx=".7" opacity=".6"/></svg>
+            </div>
+
+            <div class="vrow" style="gap:9px;">
+              <div class="vbell">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </div>
+              <div class="vtitle" style="flex:none;">Notificaciones</div>
+              <span class="vpill">3 nuevas</span>
+              <div style="flex:1;"></div>
+              <div class="vbell">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m2 13 4 4L15 8"/><path d="m9 13 4 4 9-9"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="cards" style="padding-top:14px;">
+            <div class="ncard verde">
+              <div class="nicon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>
+              </div>
+              <div class="nbody">
+                <h4>Nuevo mensaje</h4>
+                <p>Repuestos Genao: "¿Puede pasar hoy a las 4?"</p>
+                <time>hace 5 min</time>
+              </div>
+            </div>
+            <div class="ncard lila">
+              <div class="nicon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7-7V3.4h10.2l7 7a2 2 0 0 1-.2 3z"/><circle cx="7.5" cy="7.5" r="1"/></svg>
+              </div>
+              <div class="nbody">
+                <h4>Nueva oferta</h4>
+                <p>Tu solicitud "Cargador UGREEN 65W" recibió una oferta de RD$ 1,850</p>
+                <time>hace 2 h</time>
+              </div>
+            </div>
+            <div class="ncard ambar">
+              <div class="nicon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/></svg>
+              </div>
+              <div class="nbody">
+                <h4>Recarga acreditada</h4>
+                <p>Se sumaron 55 créditos a tu cuenta</p>
+                <time>ayer</time>
+              </div>
+            </div>
+            <div class="ncard leida">
+              <div class="nicon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3 2.5 5.5 6 .7-4.4 4.1 1.2 5.9L12 16.4l-5.3 2.8 1.2-5.9L3.5 9.2l6-.7z"/></svg>
+              </div>
+              <div class="nbody">
+                <h4>Reseña recibida</h4>
+                <p>Andreína te calificó con 5 estrellas</p>
+                <time>hace 3 d</time>
+              </div>
+            </div>
+            <div class="ncard leida">
+              <div class="nicon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 11v5"/></svg>
+              </div>
+              <div class="nbody">
+                <h4>Bienvenido a Jayalo</h4>
+                <p>Completa tu perfil para recibir mejores ofertas</p>
+                <time>hace 1 sem</time>
+              </div>
+            </div>
+          </div>
+
+          <div class="navwrap"><div class="navbar">
+            <div class="nitem on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3h8l3 3v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6z"/><path d="M9 10h6M9 14h4"/></svg>Solicitudes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7l1.5-4h13L20 7M4 7h16M4 7v12a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7M9 20v-6h6v6"/></svg>Catálogo</div>
+            <div class="center">＋</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>Mensajes</div>
+            <div class="nitem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="5"/><path d="M8.5 12.5 7 21l5-2.5L17 21l-1.5-8.5"/></svg>Reputación</div>
+          </div></div>
+
+        </div></div>
+      </div>
+
+    </div>
+
+    <div class="decide">
+      <h3>Qué mirar en la Tanda 4</h3>
+      <ul>
+        <li><b>Mensajes</b>: conversación con no-leídos respira lila (como una notificación sin leer) y lleva badge violeta; las leídas van en blanco. Buscador compacto arriba.</li>
+        <li><b>Chat — rediseñado tal cual la referencia</b>: el <b>lila es la pantalla</b>, no una capa encima del arena — un solo fondo. Nombre centrado en blanco arriba con el contexto del pedido debajo; burbujas pequeñas sin sombra, avatar redondo al costado y la hora afuera (✓✓ en las tuyas). Campo de escribir blanco rectangular dentro del panel y enviar en círculo blanco. <b>La barra flotante se oculta aquí</b>, tal como está cerrado en la app.</li>
+        <li><b>Ahora el chat es inconfundible</b>: al entrar sabes dónde estás por el color, sin leer nada. Falta darle identidad propia a notificaciones, conversaciones, solicitudes y ofertas — seguimos una por una.</li>
+        <li><b>Notificaciones</b>: tus 5 familias de color reales — mensajes verde, ofertas lila, wallet ámbar, reseñas rosa, sistema gris — con las leídas apagadas en blanco; píldora "3 nuevas" y "marcar todas" (✓✓) en la cabecera.</li>
+      </ul>
+    </div>
+  </section>
+
+  <p class="foot">Tipografías reales en la app: Nunito (texto); aquí aproximadas con las del sistema.
+  La barra flotante y su botón central se replican tal cual están cerrados.</p>
+</div>

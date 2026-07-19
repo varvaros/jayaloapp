@@ -21,6 +21,28 @@ import 'jayalo_loader.dart';
 /// Tono de estado por fase de solicitud — el mismo mapa que usa la web con
 /// sus `--status-*` (y que notificaciones usa por familia). Única fuente:
 /// nada de `Colors.amber`/`green` sueltos para pintar fases.
+/// Sombra cálida de las tarjetas que flotan (doctrina mockups: "elevación solo
+/// por sombra suave cálida", `0 8px 26px rgba(93,72,38,.09)`). En oscuro la
+/// receta cálida se apaga sobre fondo oscuro, así que se cae a una sombra
+/// neutra tenue del propio esquema.
+List<BoxShadow> jayaloCardShadow(BuildContext context) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return [
+    BoxShadow(
+      color: dark
+          ? Theme.of(context).colorScheme.shadow.withValues(alpha: .18)
+          : JayaloColors.warmShadow,
+      blurRadius: 26,
+      offset: const Offset(0, 8),
+    ),
+  ];
+}
+
+/// Radio de las tarjetas de la app (mockups aprobados usan 24 en las tarjetas
+/// de lista; se adopta 20 como el redondeo premium de la línea gráfica, un pelo
+/// más contenido que el del lienzo por el padding menor de la app).
+const double kCardRadius = 20;
+
 StatusTone toneFor(BuildContext context, RequestPhase phase) {
   final dark = Theme.of(context).brightness == Brightness.dark;
   return switch (phase) {
@@ -84,7 +106,7 @@ class _JayaloCardState extends State<JayaloCard> {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(kCardRadius),
             onTap: widget.onTap,
             // onHighlightChanged dispara al presionar/soltar/cancelar — es la
             // señal más temprana que da InkWell, sin retrasar el onTap.
@@ -96,7 +118,9 @@ class _JayaloCardState extends State<JayaloCard> {
               padding: widget.padding,
               decoration: BoxDecoration(
                 color: widget.tint ?? cs.surfaceContainerLowest,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(kCardRadius),
+                // Sin borde: la tarjeta flota solo por la sombra cálida.
+                boxShadow: jayaloCardShadow(context),
               ),
               child: widget.child,
             ),
@@ -137,7 +161,7 @@ class StatusChip extends StatelessWidget {
             Text(label,
                 style: TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     color: tone.ink)),
           ],
         ),
@@ -154,11 +178,13 @@ class SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
         child: Text(
-          text,
+          // Eyebrow en versalitas con tracking, como los `.shead` del mockup
+          // ("CÓMO TE CALIFICAN", "TU NEGOCIO").
+          text.toUpperCase(),
           style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: .4,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.4,
               color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       );
@@ -190,7 +216,10 @@ class MetricTile extends StatelessWidget {
         const SizedBox(height: 6),
         Text(value,
             style: TextStyle(
-                fontSize: 24, fontWeight: FontWeight.w700, color: cs.onSurface)),
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                color: jayaloHead(context),
+                fontFeatures: const [FontFeature.tabularFigures()])),
         const SizedBox(height: 2),
         Text(label,
             textAlign: TextAlign.center,
@@ -332,7 +361,8 @@ class SkeletonCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: cs.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(kCardRadius),
+          boxShadow: jayaloCardShadow(context),
         ),
         child: Row(children: [
           block(width: 40, height: 40, radius: 12),
@@ -431,7 +461,7 @@ class _HoldToConfirmButtonState extends State<HoldToConfirmButton>
             child: Text(widget.label,
                 style: TextStyle(
                     color: _c.value > .45 ? cs.onPrimary : cs.onSurface,
-                    fontWeight: FontWeight.w700)),
+                    fontWeight: FontWeight.w600)),
           ),
         ]),
       ),

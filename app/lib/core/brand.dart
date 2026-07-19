@@ -1,32 +1,50 @@
-/// Paleta de marca de Jayalo — PORTADA DE LA WEB, no inventada aquí.
+/// Paleta de marca de Jayalo.
 ///
-/// Los valores salen de `src/styles.css` de jayalo-main (`:root` y `.dark`),
-/// convertidos de oklch a sRGB. Si la web cambia un token, se cambia aquí
-/// también: son la misma marca. El violeta primario (`#7147F2`) es exactamente
-/// el relleno del isotipo `isojayalo.svg`.
+/// EL VIOLETA PRIMARIO (`#7147F2`) es la portada de la web — el relleno exacto
+/// del isotipo `isojayalo.svg` — y no se toca: app y web comparten la acción.
 ///
-/// OJO: en oscuro la web NO usa violeta como primario, se va a un azul
-/// (`#3E98FF`). Se respeta tal cual para que app y web se vean igual.
+/// El RESTO del tema CLARO ya NO es el gris frío de la web, sino la paleta
+/// cálida "arena" que el PO aprobó para la app (doctrina de los mockups,
+/// 2026-07-19: `docs/disenos/2026-07-19-mockups-app.html`, tokens `.warm`):
+/// fondo arena, tintas en gris violáceo/violeta oscuro (CERO negro), acento
+/// lila, sombra cálida. Es una divergencia deliberada de la web: la app tiene
+/// su propia calidez; el violeta de acción es lo único que se mantiene idéntico
+/// en las dos superficies.
+///
+/// OSCURO sigue como estaba (azul primario, como la web): el PO todavía no ha
+/// aprobado la pasada de modo oscuro cálido — hasta entonces no se inventa.
 library;
 
 import 'package:flutter/material.dart';
 
 abstract final class JayaloColors {
-  // ── Claro ────────────────────────────────────────────────────────────────
-  static const background = Color(0xFFF9FAFC);
-  static const foreground = Color(0xFF0E1624);
-  static const card = Color(0xFFFFFFFF);
-  static const primary = Color(0xFF7147F2);
+  // ── Claro · paleta cálida "arena" (mockups aprobados, tokens `.warm`) ──────
+  static const background = Color(0xFFF8F4EC); // --bg arena
+  static const foreground = Color(0xFF4A4458); // --fg gris violáceo (cuerpo)
+  static const head = Color(0xFF3E3560); //       --head violeta oscuro (títulos)
+  static const card = Color(0xFFFFFFFF); //       --card
+  static const primary = Color(0xFF7147F2); //    --pri (acción, = isotipo)
   static const primaryFg = Color(0xFFFCFCFC);
-  static const secondary = Color(0xFFF2F5FB);
-  static const muted = Color(0xFFF1F4F7);
-  static const mutedFg = Color(0xFF5D646F);
-  static const accent = Color(0xFFF0EAFF);
-  static const accentFg = Color(0xFF3C1590);
+  static const secondary = Color(0xFFF1ECE1); //  neutro cálido (segmentos)
+  static const muted = Color(0xFFF1ECE1);
+  static const mutedFg = Color(0xFF847D8F); //    --mut
+  // ⚠️ LA NAVBAR ESTÁ CERRADA (no se toca). Su píldora es `primaryContainer`
+  // (= accent) y sus ítems `onPrimaryContainer` (= accentFg). Por eso estos
+  // DOS tokens se dejan EXACTOS como estaban antes del rediseño cálido: así la
+  // barra flotante queda pixel-idéntica y su test de contraste WCAG 3:1 sigue
+  // pasando. El mockup pinta el acento en #F1EAFE/#4B3B94, imperceptiblemente
+  // distinto — no vale la pena mover la navbar por 1/255 de diferencia.
+  static const accent = Color(0xFFF0EAFF); //     lila de acento (= navbar)
+  static const accentFg = Color(0xFF3C1590); //   violeta oscuro de acento
   static const destructive = Color(0xFFEA2126);
   static const success = Color(0xFF00A159);
-  static const border = Color(0xFFE1E5EA);
-  static const input = Color(0xFFE8EBF1);
+  static const border = Color(0xFFE7E0D2); //     línea cálida discreta
+  static const input = Color(0xFFEFE9DE); //      relleno de campo cálido
+
+  /// Sombra cálida única de las tarjetas que flotan (`--shadow` del mockup:
+  /// `rgba(93,72,38,.09)`). La elevación de la app es SOLO esta sombra: nada
+  /// de bordes (doctrina "tarjetas sin borde").
+  static const warmShadow = Color(0x175D4826);
 
   // ── Oscuro ───────────────────────────────────────────────────────────────
   static const dBackground = Color(0xFF080D16);
@@ -48,6 +66,14 @@ abstract final class JayaloColors {
   /// misma en los dos temas.
   static const mascot = Color(0xFF6C3BF5);
 }
+
+/// Tinta de los títulos fuertes: el violeta oscuro cálido (`--head`) en claro;
+/// en oscuro cae al `onSurface` del esquema (el `head` claro sería invisible
+/// sobre fondo oscuro). Úsalo para h2/h3/precios; el cuerpo va en `onSurface`.
+Color jayaloHead(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+        ? Theme.of(context).colorScheme.onSurface
+        : JayaloColors.head;
 
 /// Par de colores de un "estado" de la web (`--status-*`): fondo teñido + tinta.
 typedef StatusTone = ({Color bg, Color ink});

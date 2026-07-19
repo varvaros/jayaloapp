@@ -100,6 +100,69 @@ class ProfileStore extends ChangeNotifier {
 
 final profileStore = ProfileStore();
 
+/// Abre el menú de perfil (Estadísticas para proveedor + Ajustes). Extraído a
+/// función suelta para que lo compartan el `ProfileAvatarButton` del AppBar y
+/// el avatar del header violeta (`violet_header.dart`) — un solo menú, un solo
+/// comportamiento.
+///
+/// El menú SALE DE LA DERECHA (PO 2026-07-19, revisión visual en device;
+/// antes era `showModalBottomSheet`, desde abajo): un panel lateral tipo
+/// end-drawer con esquinas izquierdas redondeadas que desliza desde el borde
+/// derecho — el mismo lado donde vive el avatar que lo abre. Con "reducir
+/// animaciones" aparece sin movimiento.
+///
+/// 2ª pasada del PO el mismo día: "debe ser suave y antes de llegar se vuelve
+/// más lento" — a 250 ms con easeOut la frenada no se alcanzaba a percibir.
+/// Ahora `page` (300 ms) con `emphasized` (easeInOutCubic): arranque suave,
+/// frenada visible antes de asentarse.
+Future<void> openProfileMenu(BuildContext context) async {
+  final isProvider = roleStore.value == RoleState.provider;
+  final route = await showGeneralDialog<String>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'Cerrar menú',
+    barrierColor: Colors.black38,
+    transitionDuration:
+        JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.page,
+    pageBuilder: (ctx, _, _) => Align(
+      alignment: Alignment.centerRight,
+      child: Material(
+        borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
+        clipBehavior: Clip.antiAlias,
+        child: SafeArea(
+          child: SizedBox(
+            width: 264,
+            height: double.infinity,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const SizedBox(height: 8),
+              if (isProvider)
+                ListTile(
+                  leading: const Icon(Icons.bar_chart_outlined),
+                  title: const Text('Estadísticas'),
+                  onTap: () => Navigator.pop(ctx, '/provider/stats'),
+                ),
+              ListTile(
+                leading: const Icon(Icons.settings_outlined),
+                title: const Text('Ajustes'),
+                onTap: () => Navigator.pop(ctx, '/settings'),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    ),
+    transitionBuilder: (ctx, anim, _, child) => SlideTransition(
+      position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+          .animate(CurvedAnimation(
+              parent: anim,
+              curve: JayaloMotion.emphasized,
+              reverseCurve: JayaloMotion.exit)),
+      child: child,
+    ),
+  );
+  if (route != null && context.mounted) context.push(route);
+}
+
 /// Botón circular del AppBar. `IconButton` de verdad (no un `Semantics`
 /// hecho a mano): así hereda gratis el área de toque mínima de 48×48 y el
 /// tooltip como nombre accesible — la iteración 1 dejó un botón invisible a
@@ -130,66 +193,7 @@ class _ProfileAvatarButtonState extends State<ProfileAvatarButton> {
   /// El rol se lee al momento del toque (no en `build`): siempre refleja el
   /// valor vigente de `roleStore` sin necesidad de escucharlo para redibujar
   /// el botón (el rol no cambia durante la sesión, spec §4).
-  ///
-  /// El menú SALE DE LA DERECHA (PO 2026-07-19, revisión visual en device;
-  /// antes era `showModalBottomSheet`, desde abajo): un panel lateral tipo
-  /// end-drawer con esquinas izquierdas redondeadas que desliza desde el
-  /// borde derecho — el mismo lado donde vive el avatar que lo abre. Con
-  /// "reducir animaciones" aparece sin movimiento.
-  ///
-  /// 2ª pasada del PO el mismo día: "debe ser suave y antes de llegar se
-  /// vuelve más lento" — a 250 ms con easeOut la frenada no se alcanzaba a
-  /// percibir. Ahora `page` (300 ms) con `emphasized` (easeInOutCubic):
-  /// arranque suave, frenada visible antes de asentarse.
-  Future<void> _openMenu() async {
-    final isProvider = roleStore.value == RoleState.provider;
-    final route = await showGeneralDialog<String>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Cerrar menú',
-      barrierColor: Colors.black38,
-      transitionDuration: JayaloMotion.reduced(context)
-          ? Duration.zero
-          : JayaloMotion.page,
-      pageBuilder: (ctx, _, _) => Align(
-        alignment: Alignment.centerRight,
-        child: Material(
-          borderRadius:
-              const BorderRadius.horizontal(left: Radius.circular(20)),
-          clipBehavior: Clip.antiAlias,
-          child: SafeArea(
-            child: SizedBox(
-              width: 264,
-              height: double.infinity,
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const SizedBox(height: 8),
-                if (isProvider)
-                  ListTile(
-                    leading: const Icon(Icons.bar_chart_outlined),
-                    title: const Text('Estadísticas'),
-                    onTap: () => Navigator.pop(ctx, '/provider/stats'),
-                  ),
-                ListTile(
-                  leading: const Icon(Icons.settings_outlined),
-                  title: const Text('Ajustes'),
-                  onTap: () => Navigator.pop(ctx, '/settings'),
-                ),
-              ]),
-            ),
-          ),
-        ),
-      ),
-      transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-        position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-            .animate(CurvedAnimation(
-                parent: anim,
-                curve: JayaloMotion.emphasized,
-                reverseCurve: JayaloMotion.exit)),
-        child: child,
-      ),
-    );
-    if (route != null && mounted) context.push(route);
-  }
+  Future<void> _openMenu() => openProfileMenu(context);
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(

@@ -1,0 +1,492 @@
+/// El header violeta — la firma de marca de la app (doctrina de los mockups
+/// 2026-07-19): las pantallas principales abren con un bloque violeta de
+/// esquinas inferiores redondeadas que envuelve el buscador y la campana.
+///
+/// Se usa como PRIMER hijo de un `Column`, con el cuerpo scrollable en un
+/// `Expanded` debajo — el header queda fijo y la lista corre por debajo de la
+/// barra flotante. Pinta violeta detrás de la barra de estado (usa el inset
+/// superior real) y NO lleva borde: la única pantalla sin este header es el
+/// detalle de solicitud (panel ámbar con la foto grande).
+library;
+
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../domain/notifications.dart' show badgeLabel;
+import '../notifications/notification_bell.dart' show notifCountStore;
+import 'profile_avatar_button.dart';
+
+/// Alineación del título dentro del header.
+enum HeaderTitleAlign { start, center, end }
+
+class VioletHeader extends StatelessWidget {
+  const VioletHeader({
+    super.key,
+    this.leading,
+    this.title,
+    this.titleAlign = HeaderTitleAlign.start,
+    this.subtitle,
+    this.onTitleTap,
+    this.actions = const [],
+    this.greeting,
+    this.below,
+    this.bottomRadius = 30,
+  });
+
+  /// Ranura izquierda: avatar, botón de atrás, o nada (se rellena con un hueco
+  /// del ancho de una acción para que el título centrado quede simétrico).
+  final Widget? leading;
+  final String? title;
+  final HeaderTitleAlign titleAlign;
+
+  /// Subtítulo bajo el título (contexto del pedido en el chat).
+  final String? subtitle;
+
+  /// Si se pasa, el bloque de título+subtítulo es tocable (chat: abre el
+  /// detalle del acuerdo).
+  final VoidCallback? onTitleTap;
+  final List<Widget> actions;
+
+  /// Bloque de saludo grande (home): "Hola, Andreína" + línea de apoyo.
+  final Widget? greeting;
+
+  /// Contenido bajo la fila principal: buscador o segmentos.
+  final Widget? below;
+
+  /// Las esquinas inferiores. El chat lo pone en 0 (el panel lila calza justo
+  /// debajo, sin redondeo intermedio).
+  final double bottomRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final topInset = MediaQuery.paddingOf(context).top;
+
+    final balanced = titleAlign == HeaderTitleAlign.center &&
+        (leading == null || actions.isEmpty);
+
+    Widget titleWidget() {
+      final t = Text(
+        title!,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: switch (titleAlign) {
+          HeaderTitleAlign.start => TextAlign.start,
+          HeaderTitleAlign.center => TextAlign.center,
+          HeaderTitleAlign.end => TextAlign.end,
+        },
+        style: const TextStyle(
+            fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
+      );
+      if (subtitle == null) return t;
+      return Column(
+        crossAxisAlignment: titleAlign == HeaderTitleAlign.center
+            ? CrossAxisAlignment.center
+            : CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          t,
+          const SizedBox(height: 1),
+          Text(subtitle!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: titleAlign == HeaderTitleAlign.center
+                  ? TextAlign.center
+                  : TextAlign.start,
+              style: TextStyle(
+                  fontSize: 10.5,
+                  color: Colors.white.withValues(alpha: .82))),
+        ],
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.primary,
+        borderRadius:
+            BorderRadius.vertical(bottom: Radius.circular(bottomRadius)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.only(top: topInset),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 46,
+                child: Row(
+                  children: [
+                    if (leading != null)
+                      leading!
+                    else if (balanced)
+                      const SizedBox(width: 42),
+                    if (title != null) ...[
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Align(
+                          alignment: switch (titleAlign) {
+                            HeaderTitleAlign.start => Alignment.centerLeft,
+                            HeaderTitleAlign.center => Alignment.center,
+                            HeaderTitleAlign.end => Alignment.centerRight,
+                          },
+                          child: onTitleTap == null
+                              ? titleWidget()
+                              : GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: onTitleTap,
+                                  child: titleWidget(),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ] else
+                      const Spacer(),
+                    ...actions,
+                    if (balanced && leading != null && actions.isEmpty)
+                      const SizedBox(width: 42),
+                  ],
+                ),
+              ),
+              ?greeting,
+              if (below != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: below!,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Saludo grande del home: "Hola, {nombre}" + línea de apoyo, en blanco.
+class HeaderGreeting extends StatelessWidget {
+  const HeaderGreeting({super.key, required this.title, this.subtitle});
+  final String title;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 8, left: 4, right: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 25,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -.2,
+                    color: Colors.white)),
+            if (subtitle != null) ...[
+              const SizedBox(height: 3),
+              Text(subtitle!,
+                  style: TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      color: Colors.white.withValues(alpha: .88))),
+            ],
+          ],
+        ),
+      );
+}
+
+/// Botón circular del header (atrás, menú, campana): círculo blanco
+/// translúcido con ícono blanco, 42×42. `badgeCount` pinta la píldora blanca
+/// con el conteo (campana).
+class HeaderCircleButton extends StatelessWidget {
+  const HeaderCircleButton({
+    super.key,
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+    this.badgeCount = 0,
+    this.solid = false,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+  final int badgeCount;
+
+  /// Círculo blanco pleno (avatar) en vez de translúcido.
+  final bool solid;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final btn = Semantics(
+      button: true,
+      label: tooltip,
+      child: Material(
+        color: solid ? Colors.white : Colors.white.withValues(alpha: .20),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 42,
+            height: 42,
+            child: Icon(icon,
+                size: 20, color: solid ? cs.onPrimaryContainer : Colors.white),
+          ),
+        ),
+      ),
+    );
+    if (badgeCount <= 0) return btn;
+    return Stack(clipBehavior: Clip.none, children: [
+      btn,
+      Positioned(
+        top: -3,
+        right: -3,
+        child: Container(
+          constraints: const BoxConstraints(minWidth: 17),
+          height: 17,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+              color: Colors.white, borderRadius: BorderRadius.circular(9)),
+          child: Text(badgeLabel(badgeCount),
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: cs.primary)),
+        ),
+      ),
+    ]);
+  }
+}
+
+/// Campana del header: mismo `notifCountStore` compartido que la del AppBar,
+/// vestida para el fondo violeta. Refresca al montar y al volver del fondo.
+class HeaderBell extends StatefulWidget {
+  const HeaderBell({super.key});
+  @override
+  State<HeaderBell> createState() => _HeaderBellState();
+}
+
+class _HeaderBellState extends State<HeaderBell> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    notifCountStore.refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) notifCountStore.refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: notifCountStore,
+        builder: (context, _) => HeaderCircleButton(
+          icon: Icons.notifications_outlined,
+          tooltip: 'Notificaciones',
+          badgeCount: notifCountStore.count,
+          onTap: () => context.push('/notifications'),
+        ),
+      );
+}
+
+/// Avatar del header: foto/inicial sobre círculo blanco; abre el mismo menú de
+/// perfil (Estadísticas/Ajustes) que el del AppBar.
+class HeaderAvatar extends StatefulWidget {
+  const HeaderAvatar({super.key});
+  @override
+  State<HeaderAvatar> createState() => _HeaderAvatarState();
+}
+
+class _HeaderAvatarState extends State<HeaderAvatar> {
+  @override
+  void initState() {
+    super.initState();
+    profileStore.refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ListenableBuilder(
+      listenable: profileStore,
+      builder: (context, _) {
+        final url = profileStore.avatarUrl;
+        return Semantics(
+          button: true,
+          label: 'Tu perfil',
+          child: Material(
+            color: Colors.white,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => openProfileMenu(context),
+              child: SizedBox(
+                width: 42,
+                height: 42,
+                child: url != null
+                    ? Image.network(url, fit: BoxFit.cover)
+                    : Center(
+                        child: Text(profileStore.initial,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onPrimaryContainer)),
+                      ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Buscador del header: píldora blanca con lupa + hint, y un botón "Filtrar"
+/// opcional en violeta oscuro. En Jayalo también se busca; el botón de crear
+/// solicitud vive SOLO en el centro de la navbar (doctrina), nunca aquí.
+class WarmSearchField extends StatelessWidget {
+  const WarmSearchField({
+    super.key,
+    required this.hint,
+    this.onTap,
+    this.onFilter,
+  });
+
+  final String hint;
+  final VoidCallback? onTap;
+  final VoidCallback? onFilter;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(999),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 7, 7, 7),
+          child: Row(children: [
+            Icon(Icons.search, size: 18, color: cs.onSurfaceVariant),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(hint,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13.5, color: cs.onSurfaceVariant)),
+            ),
+            if (onFilter != null)
+              Material(
+                color: cs.onPrimaryContainer,
+                borderRadius: BorderRadius.circular(999),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: onFilter,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.tune, size: 15, color: Colors.white),
+                      SizedBox(width: 6),
+                      Text('Filtrar',
+                          style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white)),
+                    ]),
+                  ),
+                ),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Segmentos deslizantes sobre el header violeta (`.vseg`): pista blanca
+/// translúcida, el activo va en blanco pleno con tinta violeta oscura. Para
+/// los toggles reales del inbox (Para ti/Todas, tipo) y de crear/catálogo.
+class HeaderSegmented extends StatelessWidget {
+  const HeaderSegmented({
+    super.key,
+    required this.options,
+    required this.index,
+    required this.onChanged,
+  });
+
+  final List<String> options;
+  final int index;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .18),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < options.length; i++)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onChanged(i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                  color: i == index ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  options[i],
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: i == index ? FontWeight.w600 : FontWeight.w500,
+                    color: i == index
+                        ? cs.onPrimaryContainer
+                        : Colors.white.withValues(alpha: .88),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Píldora blanca de énfasis en el header ("Al por mayor", "3 nuevas").
+class HeaderPill extends StatelessWidget {
+  const HeaderPill(this.label, {super.key});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+            color: Colors.white, borderRadius: BorderRadius.circular(999)),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.primary)),
+      );
+}
