@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/provider/inbox_screen.dart';
+import 'package:jayalo_app/features/shared/violet_header.dart';
 
 /// El toggle "Para ti / Todas" del inbox del proveedor. `fetch` se inyecta
 /// (ver doc de [ProviderInboxView]) para poder probar el widget sin red.
@@ -17,19 +18,21 @@ void main() {
 
   testWidgets('arranca en "Para ti", no en "Todas": no persiste entre sesiones',
       (tester) async {
-    await tester.pumpWidget(host(ProviderInboxView(fetch: vacio, actions: const [])));
+    await tester.pumpWidget(host(ProviderInboxView(fetch: vacio, leading: const SizedBox.shrink(), actions: const [])));
     await tester.pumpAndSettle();
 
     expect(find.text('Solicitudes para ti'), findsOneWidget);
     expect(find.text('Todas las solicitudes'), findsNothing);
-    final toggle =
-        tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>));
-    expect(toggle.selected, {false});
+    // El primer segmento del header (Para ti/Todas) arranca en índice 0.
+    final toggle = tester
+        .widgetList<HeaderSegmented>(find.byType(HeaderSegmented))
+        .first;
+    expect(toggle.index, 0);
   });
 
   testWidgets('el estado vacío de "Para ti" habla del rubro del proveedor',
       (tester) async {
-    await tester.pumpWidget(host(ProviderInboxView(fetch: vacio, actions: const [])));
+    await tester.pumpWidget(host(ProviderInboxView(fetch: vacio, leading: const SizedBox.shrink(), actions: const [])));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('coinciden con tu negocio'), findsOneWidget);
@@ -38,7 +41,7 @@ void main() {
   testWidgets(
       'tocar "Todas" cambia el título del AppBar y el mensaje del estado vacío',
       (tester) async {
-    await tester.pumpWidget(host(ProviderInboxView(fetch: vacio, actions: const [])));
+    await tester.pumpWidget(host(ProviderInboxView(fetch: vacio, leading: const SizedBox.shrink(), actions: const [])));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Todas'));
@@ -61,7 +64,7 @@ void main() {
       return [];
     }
 
-    await tester.pumpWidget(host(ProviderInboxView(fetch: recorder, actions: const [])));
+    await tester.pumpWidget(host(ProviderInboxView(fetch: recorder, leading: const SizedBox.shrink(), actions: const [])));
     await tester.pumpAndSettle();
     expect(calls, [false]);
 
@@ -92,7 +95,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(host(ProviderInboxView(
         fetch: fetchOnly(interestRow()),
-        actions: const [],
+        leading: const SizedBox.shrink(), actions: const [],
         balanceFetch: () async => 5)));
     await tester.pumpAndSettle();
 
@@ -104,7 +107,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(host(ProviderInboxView(
         fetch: fetchOnly(interestRow()),
-        actions: const [],
+        leading: const SizedBox.shrink(), actions: const [],
         balanceFetch: () async => 5)));
     await tester.pumpAndSettle();
 
@@ -115,7 +118,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(host(ProviderInboxView(
         fetch: fetchOnly(interestRow(unlocked: true)),
-        actions: const [],
+        leading: const SizedBox.shrink(), actions: const [],
         balanceFetch: () async => 5)));
     await tester.pumpAndSettle();
 
@@ -128,7 +131,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(host(ProviderInboxView(
         fetch: fetchOnly(interestRow()),
-        actions: const [],
+        leading: const SizedBox.shrink(), actions: const [],
         balanceFetch: () async => 0)));
     await tester.pumpAndSettle();
 
@@ -145,7 +148,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(host(ProviderInboxView(
         fetch: fetchOnly(interestRow()),
-        actions: const [],
+        leading: const SizedBox.shrink(), actions: const [],
         balanceFetch: () async => 5)));
     await tester.pumpAndSettle();
 
@@ -176,7 +179,7 @@ void main() {
                 interestRow(),
               ];
     await tester.pumpWidget(host(ProviderInboxView(
-        fetch: mixed, actions: const [], balanceFetch: () async => 0)));
+        fetch: mixed, leading: const SizedBox.shrink(), actions: const [], balanceFetch: () async => 0)));
     await tester.pumpAndSettle();
 
     expect(find.text('Necesito un plomero'), findsOneWidget);

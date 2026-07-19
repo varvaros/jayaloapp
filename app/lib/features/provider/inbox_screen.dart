@@ -9,9 +9,8 @@ import '../../domain/recharge.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
 import '../shell/floating_nav_bar.dart';
 import '../shell/home_scroll.dart';
-import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
-import '../shared/profile_avatar_button.dart';
+import '../shared/violet_header.dart';
 
 /// Signature de las fuentes de datos del inbox: `providerInbox` (Para ti,
 /// filtra por rubro del proveedor) y `allOpenRequests` (Todas, cualquier
@@ -51,11 +50,16 @@ class ProviderInboxView extends StatefulWidget {
   const ProviderInboxView({
     super.key,
     required this.fetch,
-    this.actions = const [NotificationBell(), ProfileAvatarButton()],
+    this.leading = const HeaderAvatar(),
+    this.actions = const [HeaderBell()],
     this.balanceFetch = walletBalance,
   });
 
   final InboxFetch fetch;
+
+  /// Inyectable (como [actions]): `HeaderAvatar` toca Supabase en su
+  /// `initState`, así que los tests pasan un widget inerte.
+  final Widget? leading;
   final List<Widget> actions;
   final BalanceFetch balanceFetch;
 
@@ -301,38 +305,34 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-          title:
-              Text(_todas ? 'Todas las solicitudes' : 'Solicitudes para ti'),
-          actions: widget.actions),
       body: Column(children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('Para ti')),
-              ButtonSegment(value: true, label: Text('Todas')),
-            ],
-            selected: {_todas},
-            onSelectionChanged: (s) {
-              _todas = s.first;
-              _refetch();
-            },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: SegmentedButton<String?>(
-            segments: const [
-              ButtonSegment(value: null, label: Text('Todo')),
-              ButtonSegment(value: 'producto', label: Text('Productos')),
-              ButtonSegment(value: 'servicio', label: Text('Servicios')),
-            ],
-            selected: {_kind},
-            onSelectionChanged: (s) {
-              _kind = s.first;
-              _refetch();
-            },
+        // Header violeta con los dos toggles reales del inbox (doctrina: van
+        // compactos, en una fila; las tarjetas son las protagonistas).
+        VioletHeader(
+          leading: widget.leading,
+          title: _todas ? 'Todas las solicitudes' : 'Solicitudes para ti',
+          actions: widget.actions,
+          below: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              HeaderSegmented(
+                options: const ['Para ti', 'Todas'],
+                index: _todas ? 1 : 0,
+                onChanged: (i) {
+                  _todas = i == 1;
+                  _refetch();
+                },
+              ),
+              const SizedBox(width: 8),
+              HeaderSegmented(
+                options: const ['Todo', 'Productos', 'Servicios'],
+                index: _kind == null ? 0 : (_kind == 'producto' ? 1 : 2),
+                onChanged: (i) {
+                  _kind = i == 0 ? null : (i == 1 ? 'producto' : 'servicio');
+                  _refetch();
+                },
+              ),
+            ]),
           ),
         ),
         Expanded(
@@ -439,7 +439,7 @@ class _InboxCard extends StatelessWidget {
                 Text(title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
                 if (description.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(description,
@@ -503,7 +503,7 @@ class _InterestCard extends StatelessWidget {
                     child: Text('Interesado en tu producto',
                         style: TextStyle(
                             fontSize: 11,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             color: tone.ink)),
                   ),
                 ]),
@@ -511,7 +511,7 @@ class _InterestCard extends StatelessWidget {
                 Text(title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontWeight: FontWeight.w700, color: tone.ink)),
+                    style: TextStyle(fontWeight: FontWeight.w600, color: tone.ink)),
                 if (message.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(message,
