@@ -203,6 +203,13 @@ class PillNotchPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final path = buildPillNotchPath(
       size: size,
+      // ⚠️ Asume que el botón central está centrado en el ancho de la barra:
+      // hoy es el índice del medio de 5 y su `Positioned` no lleva `left`/
+      // `right`, así que coincide. Si algún día el layout deja de ser
+      // simétrico, la muesca se pintaría aquí mientras el botón está en otro
+      // punto — un desfase visual SILENCIOSO (ningún test ni `analyze` lo
+      // detecta, porque nada ata este valor a la posición real del botón).
+      // En ese caso hay que pasar el centro real en vez de asumirlo.
       notchCenterX: size.width / 2,
       notchCenterY: notchCenterY,
       notchRadius: notchRadius,
