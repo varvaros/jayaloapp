@@ -143,11 +143,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Mis estadísticas'), findsOneWidget);
 
-    // `tester.pageBack()` busca la flecha automática del AppBar (tooltip
-    // 'Back', la que Flutter dibuja solo porque `Navigator.canPop()` es
-    // true tras el push) y la toca — el mismo camino que un dedo real, y
-    // también el que dispara el ATRÁS del sistema vía `BackGuard`.
-    await tester.pageBack();
+    // El header de detalle (violeta) trae su propio botón de atrás
+    // (`HeaderCircleButton` con la flecha) que hace `context.pop()` — la
+    // salida real de la pantalla, el mismo camino que un dedo real.
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new));
     await tester.pumpAndSettle();
 
     expect(find.text('bandeja de proveedor'), findsOneWidget,

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/repos.dart';
 import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../shared/violet_header.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -21,29 +23,34 @@ class _StatsScreenState extends State<StatsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        // M1 (revisión final de rama): esta pantalla SALIÓ del mapa de la
-        // barra (Task 8, vive en `_excludedFromNav`) y se llega por
-        // `context.push` desde el menú del avatar — es un detalle/menú, no
-        // una pestaña raíz, así que no lleva campana/avatar (mismo patrón
-        // que `/catalog/:id` y `/client/request/:id`). Verificado que sigue
-        // teniendo salida: el `AppBar` sin `leading` explícito muestra la
-        // flecha automática de Flutter (hay una ruta debajo en el Navigator
-        // anidado del shell tras el push) y, tanto esa flecha como el
-        // atrás del sistema, quedan interceptados por `BackGuard` — que para
-        // esta ubicación (≠ `homePath`) resuelve `BackAction.goHome` y saca
-        // al proveedor a `/provider`. Es la MISMA mecánica que ya usan todas
-        // las demás pantallas de detalle del shell.
-        appBar: AppBar(title: const Text('Mis estadísticas')),
-        body: FutureBuilder<Map<String, dynamic>>(
-          future: _load,
-          builder: (context, snap) {
-            if (snap.hasError) {
-              return ErrorRetry(onRetry: () async => _refetch());
-            }
-            if (!snap.hasData) return const SkeletonList();
-            return StatsView(data: snap.data!);
-          },
-        ),
+        // Pantalla de detalle: se llega por `context.push` desde el menú del
+        // avatar (Task 8, vive en `_excludedFromNav`), así que su header lleva
+        // atrás y título centrado — no campana/avatar. El atrás hace `pop`
+        // sobre el Navigator anidado del shell, devolviendo al proveedor a la
+        // pestaña que estaba debajo (misma salida que resolvía BackGuard).
+        body: Column(children: [
+          VioletHeader(
+            leading: HeaderCircleButton(
+              icon: Icons.arrow_back_ios_new,
+              tooltip: 'Atrás',
+              onTap: () => context.pop(),
+            ),
+            title: 'Mis estadísticas',
+            titleAlign: HeaderTitleAlign.center,
+          ),
+          Expanded(
+            child: FutureBuilder<Map<String, dynamic>>(
+              future: _load,
+              builder: (context, snap) {
+                if (snap.hasError) {
+                  return ErrorRetry(onRetry: () async => _refetch());
+                }
+                if (!snap.hasData) return const SkeletonList();
+                return StatsView(data: snap.data!);
+              },
+            ),
+          ),
+        ]),
       );
 }
 
