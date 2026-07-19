@@ -141,36 +141,54 @@ class _ProviderRequestDetailScreenState
     final topInset = MediaQuery.paddingOf(context).top;
     return Scaffold(
       body: Column(children: [
-        // Panel ámbar del detalle (doctrina: el detalle es cálido, no lila; la
-        // foto de la solicitud manda, con solo el atrás flotando).
+        // Panel ámbar del detalle (doctrina: el detalle es cálido, no lila).
+        // La FOTO LLENA todo el panel (cover) IGUAL que en el detalle del
+        // cliente (`request_status_screen._AmberPanel`) — el ámbar solo asoma
+        // si no hay foto (ícono de fase centrado). Sin cuadro interno.
         Container(
-          height: 210 + topInset,
+          height: 300 + topInset,
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: amberPanel,
             borderRadius:
                 const BorderRadius.vertical(bottom: Radius.circular(30)),
           ),
           child: Stack(children: [
-            Positioned(
-              top: topInset + 20,
-              left: 20,
-              right: 20,
-              bottom: 20,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: images.isEmpty
-                    ? Center(
-                        child: Icon(
-                            req['kind'] == 'servicio'
-                                ? Icons.handyman_outlined
-                                : Icons.inventory_2_outlined,
-                            size: 96,
-                            color: amberInk))
-                    : Image.network(images.first,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Container(color: amberPanel)),
-              ),
+            Positioned.fill(
+              child: images.isEmpty
+                  ? Center(
+                      child: Icon(
+                          req['kind'] == 'servicio'
+                              ? Icons.handyman_outlined
+                              : Icons.inventory_2_outlined,
+                          size: 120,
+                          color: amberInk))
+                  : Image.network(images.first,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Center(
+                          child: Icon(
+                              req['kind'] == 'servicio'
+                                  ? Icons.handyman_outlined
+                                  : Icons.inventory_2_outlined,
+                              size: 120,
+                              color: amberInk))),
             ),
+            // Miniatura de la 2ª foto pegada al borde derecho (máx. 2 visibles).
+            if (images.length > 1)
+              Positioned(
+                top: topInset + 30,
+                right: 0,
+                child: ClipRRect(
+                  borderRadius:
+                      const BorderRadius.horizontal(left: Radius.circular(16)),
+                  child: Image.network(images[1],
+                      width: 76,
+                      height: 76,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) =>
+                          Container(width: 76, height: 76, color: amberPanel)),
+                ),
+              ),
             SafeArea(child: _backFab(context)),
           ]),
         ),
