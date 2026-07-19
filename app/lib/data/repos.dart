@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/phase.dart';
+import '../domain/profile_address.dart';
 
 final supa = Supabase.instance.client;
 
@@ -792,3 +793,122 @@ Future<List<Map<String, dynamic>>> catalogProducts(
   return List<Map<String, dynamic>>.from(
       await q.order('created_at', ascending: false).limit(60));
 }
+
+// ── Catálogo (Task 7): detalle del producto + "Me interesa" ────────────────
+
+/// Columnas del detalle — paridad con el `select` de
+/// `src/routes/products.$productId.tsx` (web) + `condition`, que trae aparte
+/// `InterestConfirmDialog.tsx` para el chip Nuevo/Usado.
+const productDetailCols = 'id,user_id,business_id,name,description,color,'
+    'price,price_min,price_max,image_urls,category_id,rubro,condition,'
+    'offers_shipping,offers_installation,kind';
+
+Future<Map<String, dynamic>?> productDetail(String id) async => await supa
+    .from('provider_products')
+    .select(productDetailCols)
+    .eq('id', id)
+    .maybeSingle();
+
+/// Cabecera pública de un negocio (nombre/logo/sello) — mismo shape que
+/// `BusinessProfile` de `my_business_screen.dart`, redefinido aquí (capa de
+/// datos, sin importar entre features de cliente/proveedor).
+typedef BusinessLite = ({String id, String name, String? logoUrl, bool verified});
+
+BusinessLite? _mapBusinessLite(Map<String, dynamic>? b) {
+  if (b == null) return null;
+  final logo = b['logo_url'] as String?;
+  return (
+    id: b['id'] as String,
+    name: (b['name'] as String?) ?? '',
+    logoUrl: (logo != null && logo.isNotEmpty) ? logo : null,
+    verified: businessVerifiedFrom(b),
+  );
+}
+
+const _businessLiteCols = 'id,name,logo_url,business_verified_at';
+
+Future<BusinessLite?> businessLite(String businessId) async =>
+    _mapBusinessLite(await supa
+        .from('provider_businesses')
+        .select(_businessLiteCols)
+        .eq('id', businessId)
+        .maybeSingle());
+
+/// Fallback cuando el producto no tiene `business_id` (paridad web: busca el
+/// negocio del proveedor por `user_id`).
+Future<BusinessLite?> businessLiteByOwner(String userId) async =>
+    _mapBusinessLite(await supa
+        .from('provider_businesses')
+        .select(_businessLiteCols)
+        .eq('user_id', userId)
+        .limit(1)
+        .maybeSingle());
+
+/// Estado de interés del cliente actual sobre un producto: `exists` alimenta
+/// el estado idempotente "ya enviaste tu interés" (el SELECT sigue permitido
+/// tras la migración 20260718150000, que solo revocó INSERT/UPDATE de tabla);
+/// `unlocked` es el gate de identidad del negocio (paridad
+/// `products.$productId.tsx`: el negocio se muestra genérico hasta que algún
+/// proveedor pagó por desbloquear el interés de este cliente en este
+/// producto — nunca se revela gratis por adelantado).
+Future<({bool exists, bool unlocked})> productInterestStatus(
+    String productId) async {
+  final uid = supa.auth.currentUser?.id;
+  if (uid == null) return (exists: false, unlocked: false);
+  final row = await supa
+      .from('product_interests')
+      .select('id,unlocked_at')
+      .eq('product_id', productId)
+      .eq('customer_id', uid)
+      .limit(1)
+      .maybeSingle();
+  if (row == null) return (exists: false, unlocked: false);
+  return (exists: true, unlocked: row['unlocked_at'] != null);
+}
+
+/// Registra el interés vía la RPC SECURITY DEFINER `create_product_interest`
+/// (migración `20260718150000` de jayalo-main, AÚN NO aplicada a prod al
+/// escribir esto): deriva provider_user_id/business_id/product_name
+/// server-side (resuelve contra `provider_products` o `provider_packages`);
+/// el INSERT directo a `product_interests` está revocado. `already_exists`
+/// distingue el reintento idempotente sin round-trip extra.
+Future<({bool ok, bool alreadyExists, String? id})> sendProductInterest(
+    String productId, String message) async {
+  final res = await supa.rpc('create_product_interest', params: {
+    '_product_id': productId,
+    '_message': message,
+  }) as Map<String, dynamic>;
+  return (
+    ok: res['ok'] == true,
+    alreadyExists: res['already_exists'] == true,
+    id: res['id'] as String?,
+  );
+}
+
+/// Dirección compuesta del perfil del cliente — paridad con el `useEffect`
+/// de `InterestConfirmDialog.tsx`: `address` completo gana; si no existe se
+/// arma con `street street_number, sector, city` ([composeProfileAddress]).
+Future<String?> myDeliveryAddress() async {
+  final uid = supa.auth.currentUser?.id;
+  if (uid == null) return null;
+  final p = await supa
+      .from('profiles')
+      .select('address,street,street_number,sector,city')
+      .eq('user_id', uid)
+      .maybeSingle();
+  if (p == null) return null;
+  return composeProfileAddress(
+    address: p['address'] as String?,
+    street: p['street'] as String?,
+    streetNumber: p['street_number'] as String?,
+    sector: p['sector'] as String?,
+    city: p['city'] as String?,
+  );
+}
+
+/// Foto de referencia de un interés (solo servicio) →
+/// `{uid}/interest/<ts>-<rand>.<ext>`. Kind más cercano al
+/// `persistRequestImage(..., 'interest')` de la web (mismo bucket público
+/// `business-logos`, reusado por todas las fotos de marketplace de la app).
+Future<String> uploadInterestImage(String filePath) =>
+    _uploadMarketplaceImage(filePath, 'interest');

@@ -7,6 +7,7 @@ import '../features/chat/conversations_screen.dart';
 import '../features/client/catalog_screen.dart';
 import '../features/client/create_request_screen.dart';
 import '../features/client/my_requests_screen.dart';
+import '../features/client/product_detail_screen.dart';
 import '../features/client/reputation_screen.dart';
 import '../features/client/request_status_screen.dart';
 import '../features/notifications/notifications_screen.dart';
@@ -78,6 +79,14 @@ GoRouter buildRouter() => GoRouter(
             GoRoute(
                 path: '/catalog',
                 builder: (_, _) => const BackGuard(child: CatalogScreen())),
+            // Task 7 (2026-07-19): detalle del producto/servicio + "Me
+            // interesa". Modelo `/client/request/:id`: fetch propio por id,
+            // AppBar sin campana/avatar (pantalla de detalle, no pestaña raíz).
+            GoRoute(
+                path: '/catalog/:id',
+                builder: (_, s) => BackGuard(
+                    child: ProductDetailScreen(
+                        productId: s.pathParameters['id']!))),
             GoRoute(
                 path: '/provider',
                 builder: (_, _) => const BackGuard(child: ProviderInboxScreen())),

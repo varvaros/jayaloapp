@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/repos.dart';
 import '../../domain/money.dart';
@@ -184,8 +185,9 @@ class _CatalogViewState extends State<CatalogView> {
 
 /// Tarjeta del catálogo: foto (con placeholder/error, nunca ícono roto),
 /// nombre y precio (`catalogPriceLabel`, fijo o rango — paridad
-/// `ProductHitCard.tsx`). Sin `onTap`: el detalle del producto es la tarea
-/// siguiente (Task 6 es solo el listado), y sin él no hay a dónde navegar.
+/// `ProductHitCard.tsx`). Task 7 (2026-07-19): ya navega al detalle
+/// (`/catalog/:id`) — antes (Task 6) no tenía `onTap` porque el detalle no
+/// existía todavía.
 class _CatalogCard extends StatelessWidget {
   const _CatalogCard({required this.item});
   final Map<String, dynamic> item;
@@ -204,6 +206,7 @@ class _CatalogCard extends StatelessWidget {
     return JayaloCard(
       margin: EdgeInsets.zero,
       padding: EdgeInsets.zero,
+      onTap: () => context.push('/catalog/${item['id']}'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
