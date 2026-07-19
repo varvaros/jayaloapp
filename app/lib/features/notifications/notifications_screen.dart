@@ -437,11 +437,20 @@ class _NotifCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final fam = familyColors(context, familyFor(n.kind));
     final read = !n.unread;
-    // Leída: fondo neutro, textos apagados, icono gris (spec §3). El
-    // AnimatedContainer hace el desvanecido de color (~300ms) al marcar leída.
-    final bg = read ? cs.surfaceContainerHighest.withValues(alpha: .55) : fam.bg;
-    final fg = read ? cs.onSurfaceVariant : fam.fg;
-    final ic = read ? cs.outline : fam.icon;
+    // Leída: la tarjeta se vuelve una tarjeta CÁLIDA (misma superficie que las
+    // del home), NO un bloque gris — así la pantalla conserva el diseño aun con
+    // todo leído (era el reclamo del PO: "no tiene el nuevo diseño", porque al
+    // abrir con todo leído solo se veía gris). El icono mantiene SIEMPRE el
+    // color de su familia (spec §3) para dar variedad cálida; leído solo apaga
+    // fondos y baja el peso del texto. No-leída: lavado de color de la familia
+    // + punto. El AnimatedContainer desvanece el color (~300ms) al marcar leída.
+    final bg = read ? cs.surfaceContainerLowest : fam.bg;
+    final ic = fam.icon;
+    final titleColor = read ? jayaloHead(context) : fam.fg;
+    final bodyColor =
+        read ? cs.onSurfaceVariant : fam.fg.withValues(alpha: .85);
+    final metaColor =
+        (read ? cs.onSurfaceVariant : fam.fg).withValues(alpha: .65);
     final body = cleanBody(n.body);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -466,7 +475,7 @@ class _NotifCard extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: ic.withValues(alpha: .14),
+                    color: ic.withValues(alpha: read ? .12 : .18),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(iconFor(n.kind), size: 20, color: ic),
@@ -483,7 +492,7 @@ class _NotifCard extends StatelessWidget {
                         style: TextStyle(
                             fontWeight:
                                 read ? FontWeight.w500 : FontWeight.w600,
-                            color: fg),
+                            color: titleColor),
                       ),
                       if (body.isNotEmpty) ...[
                         const SizedBox(height: 2),
@@ -491,20 +500,29 @@ class _NotifCard extends StatelessWidget {
                           body,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 13,
-                              color: fg.withValues(alpha: .8)),
+                          style: TextStyle(fontSize: 13, color: bodyColor),
                         ),
                       ],
                       const SizedBox(height: 4),
                       Text(
                         relativeTimeEs(n.createdAt),
-                        style: TextStyle(
-                            fontSize: 11, color: fg.withValues(alpha: .65)),
+                        style: TextStyle(fontSize: 11, color: metaColor),
                       ),
                     ],
                   ),
                 ),
+                // Punto de no-leída: ahora que la tarjeta leída también es
+                // cálida, el punto es lo que separa de un vistazo lo nuevo.
+                if (!read) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    width: 9,
+                    height: 9,
+                    decoration:
+                        BoxDecoration(color: ic, shape: BoxShape.circle),
+                  ),
+                ],
               ],
             ),
           ),
