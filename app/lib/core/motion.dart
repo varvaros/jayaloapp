@@ -20,6 +20,24 @@ abstract final class JayaloMotion {
   /// Transiciones de pantalla y desvanecidos de color de tarjeta.
   static const page = Duration(milliseconds: 300);
 
+  /// Subida del modal de crear-solicitud (PO 2026-07-19, 3ª pasada: "más
+  /// lenta; si está a 300ms ponla a 600ms, y cuando esté llegando a su tope
+  /// reduce su velocidad").
+  static const modalRise = Duration(milliseconds: 600);
+
+  /// Deslizado de pantalla entre secciones (PO 2026-07-19: "con un frenado
+  /// de 2 segundos"): junto con [brake], casi todo el recorrido sucede al
+  /// principio y el resto es una frenada larga y suave.
+  static const screenSlide = Duration(milliseconds: 2000);
+
+  /// La curva de ese frenado largo: quinta potencia — sale rápido y aterriza
+  /// despacio, la mayor parte de la duración es deceleración.
+  static const brake = Curves.easeOutQuint;
+
+  /// Subida del modal: arranque suave y frenada MUY marcada al llegar al
+  /// tope (la variante enfatizada de Material de easeInOutCubic).
+  static const rise = Curves.easeInOutCubicEmphasized;
+
   /// Entrada: desacelera al llegar (el estándar de la app).
   static const enter = Curves.easeOutCubic;
 
