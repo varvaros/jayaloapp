@@ -97,23 +97,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Widget build(BuildContext context) => FutureBuilder<ProductDetailData?>(
         future: _load,
         builder: (context, snap) {
-          final body = switch (snap.connectionState) {
+          // Cargado: la vista trae su PROPIO panel ámbar con el atrás dentro
+          // (misma anatomía que el detalle de solicitud). Los demás estados
+          // (esqueleto/vacío/error) flotan el atrás sobre el contenido.
+          if (snap.connectionState == ConnectionState.done &&
+              !snap.hasError &&
+              snap.data != null) {
+            return Scaffold(
+              body: ProductDetailView(
+                  data: snap.data!, onInterestSent: _refetch),
+            );
+          }
+          final Widget content = switch (snap.connectionState) {
             ConnectionState.done => snap.hasError
                 ? ErrorRetry(onRetry: () async => _refetch())
-                : snap.data == null
-                    ? EmptyState(
-                        message: 'No encontramos este producto.\n\n'
-                            'Puede que ya no esté disponible.',
-                      )
-                    : ProductDetailView(
-                        data: snap.data!, onInterestSent: _refetch),
+                : EmptyState(
+                    message: 'No encontramos este producto.\n\n'
+                        'Puede que ya no esté disponible.',
+                  ),
             _ => const SkeletonList(),
           };
-          // Sin AppBar: la foto manda (misma doctrina que el detalle de
-          // solicitud). El atrás flota sobre la galería.
           return Scaffold(
             body: Stack(children: [
-              body,
+              content,
               SafeArea(child: productBackFab(context)),
             ]),
           );
@@ -192,7 +198,9 @@ class _ProductDetailViewState extends State<ProductDetailView> {
     final p = widget.data.product;
     final name = p['name'] as String? ?? '';
     final description = p['description'] as String?;
-    final images = (p['image_urls'] as List?)?.cast<String>() ?? const [];
+    final images = ((p['image_urls'] as List?)?.cast<String>() ?? const [])
+        .where((u) => u.isNotEmpty)
+        .toList();
     final priceLabel = catalogPriceLabel(
       price: p['price'] as num?,
       priceMin: p['price_min'] as num?,
@@ -205,21 +213,35 @@ class _ProductDetailViewState extends State<ProductDetailView> {
     final offersShipping = p['offers_shipping'] == true;
     final offersInstallation = p['offers_installation'] == true;
     final rubro = p['rubro'] as String?;
+    final isServicio = (p['kind'] as String?) == 'servicio';
 
-    return ListView(
-      controller: _scroll,
-      padding: EdgeInsets.only(bottom: 24 + navBarReservedSpace(context)),
-      children: [
-        _Gallery(
-          images: images,
-          activeIndex: _activeImg,
-          onSelect: (i) => setState(() => _activeImg = i),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    // Misma anatomía que el detalle de solicitud: panel ámbar con la foto que
+    // LLENA (cover) arriba y una hoja blanca redondeada abajo con los datos y
+    // el CTA "Solicitar". Con 2+ fotos, una tira de miniaturas cambia la que
+    // llena el panel (el detalle de solicitud no tiene varias, el producto sí).
+    return Column(children: [
+      _AmberPanel(
+          images: images, isServicio: isServicio, activeIndex: _activeImg),
+      Expanded(
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerLowest,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: ListView(
+            controller: _scroll,
+            padding: EdgeInsets.fromLTRB(
+                22, 22, 22, 24 + navBarReservedSpace(context)),
             children: [
+              if (images.length > 1) ...[
+                _ThumbStrip(
+                  images: images,
+                  activeIndex: _activeImg,
+                  onSelect: (i) => setState(() => _activeImg = i),
+                ),
+                const SizedBox(height: 16),
+              ],
               if (rubro != null && rubro.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -258,22 +280,21 @@ class _ProductDetailViewState extends State<ProductDetailView> {
                       label: 'Envío disponible'),
                 if (offersInstallation)
                   const _Tag(
-                      icon: Icons.build_outlined, label: 'Instalación incluida'),
+                      icon: Icons.build_outlined,
+                      label: 'Instalación incluida'),
               ]),
+              if (widget.data.business != null)
+                _BusinessCard(
+                        business: widget.data.business!,
+                        revealed: widget.data.businessRevealed)
+                    .cascadeIn(0),
+              const SizedBox(height: 20),
+              _CtaArea(data: widget.data, onOpenInterest: _openInterest),
             ],
           ),
         ),
-        if (widget.data.business != null)
-          _BusinessCard(
-                  business: widget.data.business!,
-                  revealed: widget.data.businessRevealed)
-              .cascadeIn(0),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-          child: _CtaArea(data: widget.data, onOpenInterest: _openInterest),
-        ),
-      ],
-    );
+      ),
+    ]);
   }
 
   Future<void> _openInterest() async {
@@ -288,9 +309,65 @@ class _ProductDetailViewState extends State<ProductDetailView> {
   }
 }
 
-class _Gallery extends StatelessWidget {
-  const _Gallery(
-      {required this.images, required this.activeIndex, required this.onSelect});
+/// Tono ámbar del panel del detalle (mismos valores que el detalle de
+/// solicitud, `request_status_screen._amber`: cálido, NO lila — así el
+/// detalle no se confunde con el chat).
+({Color panel, Color ink}) _amber(BuildContext context) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return dark
+      ? (panel: const Color(0xFF3A2C12), ink: const Color(0xFFF0C48C))
+      : (panel: const Color(0xFFF0C48C), ink: const Color(0xFF6B4514));
+}
+
+/// Panel ámbar con la foto activa (cover) llenándolo, igual que el detalle de
+/// solicitud. El ámbar solo asoma si el producto/servicio no tiene fotos
+/// (ícono según tipo). El atrás flota arriba a la izquierda.
+class _AmberPanel extends StatelessWidget {
+  const _AmberPanel(
+      {required this.images,
+      required this.isServicio,
+      required this.activeIndex});
+  final List<String> images;
+  final bool isServicio;
+  final int activeIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final am = _amber(context);
+    final topInset = MediaQuery.paddingOf(context).top;
+    final fallbackIcon =
+        isServicio ? Icons.handyman_outlined : Icons.inventory_2_outlined;
+    final main =
+        images.isEmpty ? null : images[activeIndex.clamp(0, images.length - 1)];
+    return Container(
+      height: 300 + topInset,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: am.panel,
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
+      ),
+      child: Stack(children: [
+        Positioned.fill(
+          child: main == null
+              ? Center(child: Icon(fallbackIcon, size: 120, color: am.ink))
+              : Image.network(main,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Center(
+                      child: Icon(fallbackIcon, size: 120, color: am.ink))),
+        ),
+        SafeArea(child: productBackFab(context)),
+      ]),
+    );
+  }
+}
+
+/// Tira de miniaturas para cambiar la foto que llena el panel ámbar (solo
+/// aparece con 2+ fotos).
+class _ThumbStrip extends StatelessWidget {
+  const _ThumbStrip(
+      {required this.images,
+      required this.activeIndex,
+      required this.onSelect});
   final List<String> images;
   final int activeIndex;
   final ValueChanged<int> onSelect;
@@ -300,48 +377,34 @@ class _Gallery extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     Widget placeholder() => Container(
         color: cs.surfaceContainerHighest,
-        child: Icon(Icons.image_outlined, size: 48, color: cs.onSurfaceVariant));
-    final main = images.isEmpty ? null : images[activeIndex.clamp(0, images.length - 1)];
-    return Column(children: [
-      AspectRatio(
-        aspectRatio: 1,
-        child: main == null
-            ? placeholder()
-            : Image.network(main,
-                fit: BoxFit.cover, errorBuilder: (_, _, _) => placeholder()),
-      ),
-      if (images.length > 1)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: SizedBox(
+        child: Icon(Icons.image_outlined, color: cs.onSurfaceVariant));
+    return SizedBox(
+      height: 56,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: images.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (_, i) => GestureDetector(
+          onTap: () => onSelect(i),
+          child: Container(
+            width: 56,
             height: 56,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: images.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (_, i) => GestureDetector(
-                onTap: () => onSelect(i),
-                child: Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                        color: i == activeIndex ? cs.primary : cs.outlineVariant,
-                        width: 2),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(images[i],
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => placeholder()),
-                  ),
-                ),
-              ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: i == activeIndex ? cs.primary : cs.outlineVariant,
+                  width: 2),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.network(images[i],
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => placeholder()),
             ),
           ),
         ),
-    ]);
+      ),
+    );
   }
 }
 
@@ -384,7 +447,7 @@ class _BusinessCard extends StatelessWidget {
     final tone = dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight;
     final logoUrl = revealed ? business.logoUrl : null;
     return JayaloCard(
-      margin: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      margin: const EdgeInsets.only(top: 20),
       child: Row(children: [
         CircleAvatar(
           radius: 24,
