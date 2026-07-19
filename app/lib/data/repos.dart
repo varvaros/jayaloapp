@@ -696,10 +696,28 @@ Future<int> providerCompletedCount() async {
       ?? 0;
 }
 
+/// SOLO `business_verified_at` (RNC del negocio, revisado por un admin)
+/// cuenta como "Negocio verificado" — espejo exacto de la web
+/// (`business.$id.tsx`, el chip violeta con `Building2` separado del chip
+/// verde de `whatsapp_verified_at`). Extraída como función pura para que un
+/// futuro regreso a `whatsapp_verified_at` (el bug original de este mismo
+/// campo) rompa un test sin necesitar mockear Supabase.
+bool businessVerifiedFrom(Map<String, dynamic> businessRow) =>
+    businessRow['business_verified_at'] != null;
+
 /// Cabecera del negocio para "Mi negocio" (Task 4): nombre, logo y si el
-/// sello de WhatsApp del NEGOCIO está confirmado (fila de
-/// `account_verifications` con `business_id` = este negocio — espejo de
-/// `whatsappVerified()`, que lee la fila PERSONAL con `business_id` NULL).
+/// sello de "Negocio verificado" está confirmado.
+///
+/// Fix (revisión de Task 4): antes este booleano leía
+/// `account_verifications.whatsapp_verified_at` por `business_id`, así que la
+/// cabecera mostraba "Negocio verificado" con solo el WhatsApp confirmado —
+/// una credencial distinta a la del RNC que la web exige para ese mismo
+/// texto. `business_verified_at` vive en la MISMA fila de
+/// `provider_businesses` que ya se trae para nombre/logo, así que además se
+/// ahorra el viaje a `account_verifications`. Decisión de alcance: el sello
+/// de WhatsApp del negocio NO se agrega aquí como chip aparte (sería una
+/// pieza de UI nueva, fuera del hallazgo puntual) — el proveedor ya lo ve en
+/// Ajustes ("Sello de WhatsApp del negocio").
 /// `null` si el proveedor todavía no tiene negocio creado (no debería pasar
 /// en esta pantalla, pero la ruta no lo garantiza).
 Future<({String id, String name, String? logoUrl, bool verified})?>
@@ -707,23 +725,17 @@ Future<({String id, String name, String? logoUrl, bool verified})?>
   final uid = supa.auth.currentUser!.id;
   final biz = await supa
       .from('provider_businesses')
-      .select('id,name,logo_url')
+      .select('id,name,logo_url,business_verified_at')
       .eq('user_id', uid)
       .limit(1)
       .maybeSingle();
   if (biz == null) return null;
-  final id = biz['id'] as String;
-  final verifiedRow = await supa
-      .from('account_verifications')
-      .select('whatsapp_verified_at')
-      .eq('business_id', id)
-      .maybeSingle();
   final logo = biz['logo_url'] as String?;
   return (
-    id: id,
+    id: biz['id'] as String,
     name: (biz['name'] as String?) ?? '',
     logoUrl: (logo != null && logo.isNotEmpty) ? logo : null,
-    verified: verifiedRow?['whatsapp_verified_at'] != null,
+    verified: businessVerifiedFrom(biz),
   );
 }
 
