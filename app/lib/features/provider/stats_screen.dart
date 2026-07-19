@@ -4,7 +4,6 @@ import '../../data/repos.dart';
 import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -41,7 +40,7 @@ class _StatsScreenState extends State<StatsScreen> {
             if (snap.hasError) {
               return ErrorRetry(onRetry: () async => _refetch());
             }
-            if (!snap.hasData) return const JayaloLoaderBlock();
+            if (!snap.hasData) return const SkeletonList();
             return StatsView(data: snap.data!);
           },
         ),

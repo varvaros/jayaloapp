@@ -5,7 +5,6 @@ import '../../data/repos.dart';
 import '../shell/floating_nav_bar.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 import '../shared/profile_avatar_button.dart';
 
 /// Tipo de la cabecera del negocio (espejo del record que devuelve
@@ -62,7 +61,7 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
             if (snap.hasError) {
               return ErrorRetry(onRetry: () async => _refetch());
             }
-            if (!snap.hasData) return const JayaloLoaderBlock();
+            if (!snap.hasData) return const SkeletonList();
             final (business, catalogo, completados) = snap.data!;
             return MyBusinessView(
                 business: business,

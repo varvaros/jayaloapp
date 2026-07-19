@@ -11,7 +11,6 @@ import '../shell/floating_nav_bar.dart';
 import '../shell/home_scroll.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 import '../shared/profile_avatar_button.dart';
 
 /// Signature de las fuentes de datos del inbox: `providerInbox` (Para ti,
@@ -343,7 +342,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
               future: _load,
               builder: (context, snap) {
                 if (!snap.hasData) {
-                  return const JayaloLoaderBlock();
+                  return const SkeletonList();
                 }
                 final items = snap.data!;
                 if (items.isEmpty) {

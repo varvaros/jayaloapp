@@ -56,6 +56,11 @@ void main() {
     // Supabase en los tests de widgets, cae a `_error = true`), pero eso no
     // impide que el primer frame ya tenga el `AppBar` armado.
     await tester.pump();
+    // El estado de carga ahora es `SkeletonList` (no la mascota): el brillo
+    // de flutter_animate agenda un Timer de duración cero en su initState —
+    // un pump CON duración lo consume; sin esto el test muere con "Pending
+    // timers" aunque todas las aserciones pasen.
+    await tester.pump(const Duration(milliseconds: 20));
 
     final appBar = find.byType(AppBar);
     expect(appBar, findsOneWidget);

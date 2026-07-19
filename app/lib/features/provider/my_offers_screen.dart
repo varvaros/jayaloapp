@@ -10,7 +10,6 @@ import '../client/request_status_screen.dart' show offerPriceLabel;
 import '../shell/floating_nav_bar.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 import '../shared/profile_avatar_button.dart';
 
 int estimatedUnlockCost(Map<String, dynamic> o) {
@@ -88,7 +87,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
           title: const Text('Mis ofertas'),
           actions: const [NotificationBell(), ProfileAvatarButton()]),
       body: _loading
-          ? const JayaloLoaderBlock()
+          ? const SkeletonList()
           : RefreshIndicator(
               onRefresh: _refetch,
               child: ListView(

@@ -4,7 +4,6 @@ import '../../data/repos.dart';
 import '../shell/floating_nav_bar.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 import '../shared/profile_avatar_button.dart';
 
 /// Umbral de la web (`src/lib/responseTime.ts`): con menos de 5 respuestas
@@ -37,7 +36,7 @@ class _ReputationScreenState extends State<ReputationScreen> {
               return ErrorRetry(onRetry: () async => _refetch());
             }
             if (!snap.hasData && snap.connectionState != ConnectionState.done) {
-              return const JayaloLoaderBlock();
+              return const SkeletonList();
             }
             return ReputationView(data: snap.data ?? const {});
           },

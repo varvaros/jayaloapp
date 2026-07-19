@@ -7,7 +7,6 @@ import '../../data/repos.dart';
 import '../../domain/money.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 import '../shared/profile_avatar_button.dart';
 import '../shell/floating_nav_bar.dart';
 
@@ -138,7 +137,7 @@ class _CatalogViewState extends State<CatalogView> {
                 future: _load,
                 builder: (context, snap) {
                   if (snap.connectionState != ConnectionState.done) {
-                    return const JayaloLoaderBlock();
+                    return const SkeletonList();
                   }
                   if (snap.hasError) {
                     return ErrorRetry(onRetry: () async => _refetch());

@@ -7,7 +7,6 @@ import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 import '../shared/profile_avatar_button.dart';
 
 const _tabs = [
@@ -79,7 +78,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           ? ErrorRetry(
               onRetry: _load, message: 'No pudimos cargar tus mensajes')
           : all == null
-              ? const JayaloLoaderBlock()
+              ? const SkeletonList()
               : RefreshIndicator(onRefresh: _load, child: _body(all)),
     );
   }

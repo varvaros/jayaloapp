@@ -8,7 +8,6 @@ import 'my_requests_screen.dart' show phaseChip;
 import 'offer_actions.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 
 String offerPriceLabel(Map<String, dynamic> o) {
   if (o['price'] != null) return fmtRD(o['price'] as num);
@@ -65,7 +64,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
   Widget build(BuildContext context) {
     final req = _request;
     if (req == null) {
-      return Scaffold(appBar: AppBar(), body: const JayaloLoaderBlock());
+      return Scaffold(appBar: AppBar(), body: const SkeletonList());
     }
     return Scaffold(
       appBar: AppBar(

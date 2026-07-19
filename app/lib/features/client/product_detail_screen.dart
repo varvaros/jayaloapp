@@ -111,7 +111,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         )
                       : ProductDetailView(
                           data: snap.data!, onInterestSent: _refetch),
-              _ => const JayaloLoaderBlock(),
+              _ => const SkeletonList(),
             },
           );
         },

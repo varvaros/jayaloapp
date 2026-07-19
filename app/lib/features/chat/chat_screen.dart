@@ -11,6 +11,7 @@ import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
 import 'widgets/bubbles.dart';
 import 'widgets/chat_dialogs.dart';
+import '../shared/brand_kit.dart';
 import 'widgets/composer.dart';
 import 'widgets/rating_form.dart';
 import '../shared/jayalo_loader.dart';
@@ -494,7 +495,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ])));
     }
     if (conv == null) {
-      return Scaffold(appBar: AppBar(), body: const JayaloLoaderBlock());
+      return Scaffold(appBar: AppBar(), body: const SkeletonList());
     }
     final ms = _session.messages;
     return Scaffold(

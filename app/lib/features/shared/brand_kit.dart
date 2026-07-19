@@ -306,9 +306,11 @@ extension CascadeIn on Widget {
 }
 
 /// Skeleton con la silueta de la tarjeta que respira (ícono 40×40 + dos
-/// líneas), con un brillo que recorre en loop. Decisión PO 2026-07-18: el
-/// skeleton se usa SOLO en /notifications (su spec original lo pedía); el
-/// resto de la app carga con la mascota [JayaloLoaderBlock].
+/// líneas), con un brillo que recorre en loop. Decisión PO 2026-07-19 (3ª
+/// pasada estética, REVIERTE la del 07-18 "solo /notifications"): los
+/// skeletons son el estado de carga de TODAS las pantallas con datos — la
+/// mascota [JayaloLoaderBlock] hacía sentir la carga lenta. La mascota
+/// sigue viva como identidad en los demás usos de [JayaloLoader].
 class SkeletonCard extends StatelessWidget {
   const SkeletonCard({super.key});
 
