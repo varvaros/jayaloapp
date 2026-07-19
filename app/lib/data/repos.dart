@@ -113,11 +113,21 @@ Future<void> submitReview(
 
 // ── Proveedor: bandeja, ofertas, wallet y desbloqueo ────────────────────────
 
+/// Filas que `get_provider_inbox_unified` no debe perder camino a la
+/// pantalla: incluye 'marketplace' (solicitudes) y 'store' (intereses de
+/// producto). Bug arreglado 2026-07-19 — `providerInbox()` descartaba las de
+/// 'store' aquí mismo, así que el proveedor nunca veía quién tocó "Me
+/// interesa" en su catálogo. Extraída como función pura (identidad) para
+/// blindar la ausencia de filtro con un test que no necesita red.
+List<Map<String, dynamic>> keepAllInboxSources(
+        List<Map<String, dynamic>> rows) =>
+    rows;
+
 Future<List<Map<String, dynamic>>> providerInbox({String? kind}) async {
   final rows = List<Map<String, dynamic>>.from(await supa.rpc(
       'get_provider_inbox_unified',
       params: {'p_limit': 100, 'p_offset': 0, 'p_kind': kind}));
-  return rows.where((r) => r['source'] == 'marketplace').toList();
+  return keepAllInboxSources(rows);
 }
 
 Future<Map<String, dynamic>?> requestById(String id) async => await supa
@@ -207,6 +217,51 @@ Future<({String? firstName, String? phone})> unlockedContact(String offerId) asy
       await supa.rpc('get_unlocked_offer_contact', params: {'_offer_id': offerId}));
   final r = rows.isEmpty ? const <String, dynamic>{} : rows.first;
   return (firstName: r['first_name'] as String?, phone: r['phone'] as String?);
+}
+
+// ── Proveedor: intereses de producto (Task 9) ───────────────────────────────
+// Mismo molde que unlockOffer/unlockedContact de arriba — solo cambia la RPC.
+
+/// RPC atómica; el `_cost` enviado se IGNORA server-side (el costo real lo
+/// calcula la RPC, siempre `productInterestUnlockCost`). `already == true`
+/// es un ÉXITO idempotente (el contacto ya estaba pagado), no un error —
+/// quien llame debe seguir tratando `ok == true` como el único gate.
+Future<({bool ok, bool already, int charged, int? newBalance})>
+    unlockProductInterest(String interestId, int estimatedCost) async {
+  final res = await supa.rpc('try_unlock_product_interest',
+      params: {'_interest_id': interestId, '_cost': estimatedCost}) as Map<String, dynamic>;
+  return (
+    ok: res['ok'] == true,
+    already: res['already_unlocked'] == true,
+    charged: (res['charged'] as num?)?.toInt() ?? 0,
+    newBalance: (res['new_balance'] as num?)?.toInt(),
+  );
+}
+
+Future<({String? firstName, String? phone})> productInterestContact(
+    String interestId) async {
+  final rows = List<Map<String, dynamic>>.from(await supa.rpc(
+      'get_unlocked_product_interest_contact',
+      params: {'_interest_id': interestId}));
+  final r = rows.isEmpty ? const <String, dynamic>{} : rows.first;
+  return (firstName: r['first_name'] as String?, phone: r['phone'] as String?);
+}
+
+/// Abre (o crea) la conversación ligada a un interés de producto — paridad
+/// con la web (`ProviderInterestsSection.tsx`): `_kind: 'product_interest'`,
+/// `_source_id` = id del INTERÉS (no del producto). El RPC puede devolver el
+/// id envuelto en una fila (`rpc` de PostgREST) o el escalar directo, según
+/// cómo lo declare Postgres — se cubren ambos.
+Future<String?> getOrCreateConversation(
+    {required String kind, required String sourceId}) async {
+  final res = await supa.rpc('get_or_create_conversation',
+      params: {'_kind': kind, '_source_id': sourceId});
+  if (res is List) {
+    if (res.isEmpty) return null;
+    final first = res.first;
+    return first is Map ? first.values.first as String? : first as String?;
+  }
+  return res as String?;
 }
 
 Future<void> markPurchaseCompleted(String offerId) async {

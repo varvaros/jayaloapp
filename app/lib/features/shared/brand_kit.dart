@@ -370,3 +370,69 @@ class SkeletonList extends StatelessWidget {
         children: [for (var i = 0; i < count; i++) const SkeletonCard()],
       );
 }
+
+/// Confirmación deliberada de un cobro: mantener presionado (equivalente
+/// nativo del hold-to-confirm de la web). Extraída de `my_offers_screen.dart`
+/// (Task 9) para reusarla también en el desbloqueo de intereses de producto
+/// — mismo gesto de dinero, dos pantallas.
+class HoldToConfirmButton extends StatefulWidget {
+  const HoldToConfirmButton(
+      {super.key, required this.onConfirmed, this.label = 'Mantén presionado para desbloquear'});
+
+  final Future<void> Function() onConfirmed;
+  final String label;
+
+  @override
+  State<HoldToConfirmButton> createState() => _HoldToConfirmButtonState();
+}
+
+class _HoldToConfirmButtonState extends State<HoldToConfirmButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: JayaloMotion.holdConfirm)
+        ..addStatusListener((s) {
+          if (s == AnimationStatus.completed) widget.onConfirmed();
+        });
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTapDown: (_) => _c.forward(),
+      onTapUp: (_) => _c.reverse(),
+      onTapCancel: () => _c.reverse(),
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (_, _) => Stack(alignment: Alignment.center, children: [
+          Container(
+            height: 52,
+            decoration: BoxDecoration(
+                color: cs.primary.withValues(alpha: .25),
+                borderRadius: BorderRadius.circular(26)),
+          ),
+          FractionallySizedBox(
+            widthFactor: _c.value.clamp(0.001, 1),
+            alignment: Alignment.centerLeft,
+            child: Container(
+              height: 52,
+              decoration: BoxDecoration(
+                  color: cs.primary, borderRadius: BorderRadius.circular(26)),
+            ),
+          ),
+          IgnorePointer(
+            child: Text(widget.label,
+                style: TextStyle(
+                    color: _c.value > .45 ? cs.onPrimary : cs.onSurface,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ]),
+      ),
+    );
+  }
+}

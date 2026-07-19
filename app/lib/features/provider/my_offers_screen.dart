@@ -307,7 +307,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                   child: const Text('Saldo insuficiente — Recargar'),
                 )
               else
-                _HoldToUnlockButton(onConfirmed: () async {
+                HoldToConfirmButton(onConfirmed: () async {
                   Navigator.pop(ctx);
                   final res = await unlockOffer(o['id'] as String, cost);
                   if (!mounted) return;
@@ -457,66 +457,6 @@ class _WalletCard extends StatelessWidget {
             child: const Text('Recargar'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Confirmación deliberada: mantener presionado ~1s (equivalente nativo del
-/// hold-to-confirm de la web para acciones de dinero).
-class _HoldToUnlockButton extends StatefulWidget {
-  const _HoldToUnlockButton({required this.onConfirmed});
-  final Future<void> Function() onConfirmed;
-  @override
-  State<_HoldToUnlockButton> createState() => _HoldToUnlockButtonState();
-}
-
-class _HoldToUnlockButtonState extends State<_HoldToUnlockButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 900))
-    ..addStatusListener((s) {
-      if (s == AnimationStatus.completed) widget.onConfirmed();
-    });
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTapDown: (_) => _c.forward(),
-      onTapUp: (_) => _c.reverse(),
-      onTapCancel: () => _c.reverse(),
-      child: AnimatedBuilder(
-        animation: _c,
-        builder: (_, _) => Stack(alignment: Alignment.center, children: [
-          Container(
-            height: 52,
-            decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: .25),
-                borderRadius: BorderRadius.circular(26)),
-          ),
-          FractionallySizedBox(
-            widthFactor: _c.value.clamp(0.001, 1),
-            alignment: Alignment.centerLeft,
-            child: Container(
-              height: 52,
-              decoration: BoxDecoration(
-                  color: cs.primary, borderRadius: BorderRadius.circular(26)),
-            ),
-          ),
-          IgnorePointer(
-            child: Text('Mantén presionado para desbloquear',
-                style: TextStyle(
-                    color: _c.value > .45 ? cs.onPrimary : cs.onSurface,
-                    fontWeight: FontWeight.w700)),
-          ),
-        ]),
       ),
     );
   }

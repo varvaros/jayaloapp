@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../core/brand.dart';
+import '../../core/config.dart';
 import '../../data/repos.dart';
+import '../../domain/pricing.dart';
+import '../../domain/recharge.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
 import '../shell/floating_nav_bar.dart';
 import '../shell/home_scroll.dart';
@@ -15,6 +20,11 @@ import '../shared/profile_avatar_button.dart';
 /// probar sin red.
 typedef InboxFetch = Future<List<Map<String, dynamic>>> Function(
     {String? kind, required bool todas});
+
+/// Saldo del proveedor, inyectado (Task 9) por la misma razón que [InboxFetch]:
+/// las tarjetas de interés necesitan saber si alcanza para desbloquear sin
+/// tocar red en los tests de widget.
+typedef BalanceFetch = Future<int?> Function();
 
 class ProviderInboxScreen extends StatelessWidget {
   const ProviderInboxScreen({super.key});
@@ -43,10 +53,12 @@ class ProviderInboxView extends StatefulWidget {
     super.key,
     required this.fetch,
     this.actions = const [NotificationBell(), ProfileAvatarButton()],
+    this.balanceFetch = walletBalance,
   });
 
   final InboxFetch fetch;
   final List<Widget> actions;
+  final BalanceFetch balanceFetch;
 
   @override
   State<ProviderInboxView> createState() => _ProviderInboxViewState();
@@ -60,8 +72,31 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   /// es la vista con solicitudes relevantes para ofertar.
   bool _todas = false;
 
+  /// Saldo para el desbloqueo de intereses de producto (Task 9). `null` =
+  /// aún no cargó — tratado como "sin saldo" por `shouldOfferRecharge`.
+  int? _balance;
+
   late Future<List<Map<String, dynamic>>> _load =
       widget.fetch(kind: _kind, todas: _todas);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBalance();
+  }
+
+  Future<void> _loadBalance() async {
+    int? b;
+    try {
+      b = await widget.balanceFetch();
+    } catch (_) {
+      return; // best-effort: sin saldo confirmado, shouldOfferRecharge trata null como "sin saldo"
+    }
+    if (!mounted) return;
+    setState(() {
+      _balance = b;
+    });
+  }
 
   // Bloque, no expresión: `setState(() => _load = future)` hace que la
   // closure DEVUELVA ese future (una asignación se evalúa al valor asignado)
@@ -74,6 +109,194 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     setState(() {
       _load = next;
     });
+    _loadBalance();
+  }
+
+  void _snack(String msg) => ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
+
+  /// ADR-0031: el pago SIEMPRE ocurre fuera de la app (navegador del
+  /// sistema). Mismo patrón que `MyOffersScreen._openWallet`.
+  Future<void> _openWallet() async {
+    Uri target = Uri.parse(AppConfig.walletUrl);
+    try {
+      target = Uri.parse(await createWalletLoginLink());
+    } catch (_) {}
+    var ok = false;
+    try {
+      ok = await launchUrl(target, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+    if (!ok && mounted) {
+      _snack('No se pudo abrir el navegador. Visita jayalo.com para recargar.');
+    }
+  }
+
+  Future<void> _onInterestAction(Map<String, dynamic> row) async {
+    if (row['unlocked'] == true) {
+      await _showInterestContactSheet(row);
+      return;
+    }
+    if (shouldOfferRecharge(balance: _balance, cost: productInterestUnlockCost)) {
+      _offerRechargeSheet();
+      return;
+    }
+    _showUnlockSheet(row);
+  }
+
+  /// Saldo insuficiente: SIEMPRE ofrecer recargar, nunca lanzar a un cobro
+  /// que va a fallar (regla del proyecto).
+  void _offerRechargeSheet() {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Saldo insuficiente', style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              const Text(
+                  'Necesitas al menos 1 crédito para conversar con este comprador. '
+                  'Recarga para continuar — no se te cobrará nada ahora.'),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _openWallet();
+                },
+                child: const Text('Recargar'),
+              ),
+            ]),
+      ),
+    );
+  }
+
+  void _showUnlockSheet(Map<String, dynamic> row) {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Conversar con el comprador',
+                  style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text('Costo: $productInterestUnlockCost crédito · Tu saldo: ${_balance ?? 0}'),
+              const SizedBox(height: 16),
+              HoldToConfirmButton(onConfirmed: () async {
+                Navigator.pop(ctx);
+                await _unlockInterest(row);
+              }),
+            ]),
+      ),
+    );
+  }
+
+  Future<void> _unlockInterest(Map<String, dynamic> row) async {
+    final id = row['id'] as String;
+    ({bool ok, bool already, int charged, int? newBalance}) res;
+    try {
+      res = await unlockProductInterest(id, productInterestUnlockCost);
+    } catch (_) {
+      if (mounted) _snack('No se pudo desbloquear. Intenta de nuevo.');
+      return;
+    }
+    if (!res.ok) {
+      if (mounted) _snack('No se pudo desbloquear. Intenta de nuevo.');
+      return;
+    }
+    // `already` es un ÉXITO idempotente (ya pagado antes), no un error —
+    // solo se avisa, nunca se bloquea el acceso al contacto.
+    if (mounted) {
+      if (res.newBalance != null) setState(() => _balance = res.newBalance);
+      if (res.already) _snack('Ya tenías este contacto desbloqueado.');
+    }
+    _refetch();
+    await _showInterestContactSheet(row);
+  }
+
+  Future<void> _showInterestContactSheet(Map<String, dynamic> row) async {
+    final id = row['id'] as String;
+    ({String? firstName, String? phone}) contact;
+    try {
+      contact = await productInterestContact(id);
+    } catch (_) {
+      if (!mounted) return;
+      showModalBottomSheet(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('No pudimos cargar el contacto',
+                    style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                const Text('Tu desbloqueo está guardado — no se te volverá a cobrar. '
+                    'Revisa tu conexión e intenta de nuevo.'),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showInterestContactSheet(row);
+                  },
+                  child: const Text('Reintentar'),
+                ),
+              ]),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('✅ Contacto desbloqueado', style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(contact.phone != null
+                  ? '${contact.firstName ?? 'Cliente'} · ${contact.phone}'
+                  : 'Este cliente todavía no tiene WhatsApp verificado; '
+                      'conversa con él por el chat de Jayalo.'),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _openInterestChat(row, peerName: contact.firstName);
+                },
+                icon: const Icon(Icons.chat),
+                label: const Text('Abrir chat'),
+              ),
+            ]),
+      ),
+    );
+  }
+
+  Future<void> _openInterestChat(Map<String, dynamic> row, {String? peerName}) async {
+    String? convId;
+    try {
+      convId = await getOrCreateConversation(
+          kind: 'product_interest', sourceId: row['id'] as String);
+    } catch (_) {}
+    if (!mounted) return;
+    if (convId == null) {
+      _snack('No se pudo abrir el chat. Intenta de nuevo.');
+      return;
+    }
+    await context.push('/messages/$convId', extra: {'peer_name': peerName});
+    if (mounted) _refetch();
   }
 
   @override
@@ -140,6 +363,16 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                   itemCount: items.length,
                   itemBuilder: (_, i) {
                     final r = items[i];
+                    // Los intereses de producto ('store') son otra cosa que
+                    // una solicitud del marketplace: un comprador interesado
+                    // en TU producto, no una solicitud abierta — tarjeta y
+                    // acción propias (Task 9).
+                    if (r['source'] == 'store') {
+                      return _InterestCard(
+                        row: r,
+                        onAction: () => _onInterestAction(r),
+                      ).cascadeIn(i);
+                    }
                     return _InboxCard(
                       title: r['title'] as String? ?? '',
                       description: r['description'] as String? ?? '',
@@ -224,6 +457,113 @@ class _InboxCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Tarjeta de un interés de producto (Task 9): un comprador tocó "Me
+/// interesa" en TU producto — otra cosa que una solicitud del marketplace,
+/// así que se tiñe distinto (ámbar mientras hay dinero esperando desbloqueo,
+/// verde cuando ya se desbloqueó — mismo lenguaje de color que
+/// `MyOffersScreen`) y lleva su propia acción: "Conversar · N crédito(s)" o
+/// "Abrir chat" si ya se pagó.
+class _InterestCard extends StatelessWidget {
+  const _InterestCard({required this.row, required this.onAction});
+
+  final Map<String, dynamic> row;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final unlocked = row['unlocked'] == true;
+    final tone = unlocked
+        ? (dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight)
+        : (dark ? JayaloStatus.acceptedDark : JayaloStatus.acceptedLight);
+    final title = (row['title'] as String?) ?? 'Producto';
+    final message = (row['description'] as String?) ?? '';
+    final imageUrl = row['image_url'] as String?;
+    final createdAt = DateTime.parse(row['created_at'] as String);
+    return JayaloCard(
+      tint: tone.bg,
+      onTap: onAction,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _thumb(imageUrl, tone),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Icon(Icons.favorite, size: 13, color: tone.ink),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text('Interesado en tu producto',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: tone.ink)),
+                  ),
+                ]),
+                const SizedBox(height: 2),
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontWeight: FontWeight.w700, color: tone.ink)),
+                if (message.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(message,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: tone.ink.withValues(alpha: .8))),
+                ],
+                const SizedBox(height: 4),
+                Text(timeAgo(createdAt),
+                    style: TextStyle(fontSize: 11, color: tone.ink.withValues(alpha: .7))),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: onAction,
+            style: FilledButton.styleFrom(
+                backgroundColor: tone.ink, foregroundColor: tone.bg),
+            child: Text(unlocked
+                ? 'Abrir chat'
+                : 'Conversar · $productInterestUnlockCost crédito'
+                    '${productInterestUnlockCost == 1 ? '' : 's'}'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Miniatura con placeholder/error builder (nunca un ícono roto si la
+  /// URL falla o el producto no tiene fotos).
+  Widget _thumb(String? url, StatusTone tone) {
+    const box = 44.0;
+    Widget placeholder() => Container(
+          width: box,
+          height: box,
+          decoration: BoxDecoration(
+              color: tone.ink.withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(12)),
+          child: Icon(Icons.inventory_2_outlined, size: 20, color: tone.ink),
+        );
+    if (url == null || url.isEmpty) return placeholder();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.network(
+        url,
+        width: box,
+        height: box,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, progress) =>
+            progress == null ? child : placeholder(),
+        errorBuilder: (context, error, stack) => placeholder(),
       ),
     );
   }

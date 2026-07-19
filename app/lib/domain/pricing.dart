@@ -27,6 +27,15 @@ PricingTier tierForPrice(double priceRD) => pricingTiers.firstWhere(
 int _pointsForPrice(double? priceRD) =>
     (priceRD == null || priceRD <= 0) ? 0 : tierForPrice(priceRD).points;
 
+/// Costo fijo de desbloquear un interés de producto (Task 9) — paridad con
+/// `PRODUCT_INTEREST_COST` de la web (`ProviderInterestsSection.tsx`). A
+/// diferencia de `pointsForOffer` (variable según el precio de la oferta),
+/// el interés no lleva precio adjunto — es un contacto de comprador — así
+/// que el costo mostrado SIEMPRE es 1. El cobro real lo calcula
+/// `try_unlock_product_interest` server-side; esta constante es solo para
+/// mostrar el costo en la UI (misma regla que `pointsForOffer`).
+const productInterestUnlockCost = 1;
+
 /// SOLO para mostrar el costo en la UI. El cobro real lo calcula la RPC
 /// `try_unlock_offer` server-side (regla de seguridad del proyecto).
 int pointsForOffer({

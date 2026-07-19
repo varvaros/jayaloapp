@@ -32,6 +32,11 @@ abstract final class JayaloMotion {
   /// Escala de una superficie mientras está presionada.
   static const pressedScale = .98;
 
+  /// Mantener presionado para confirmar un cobro (equivalente nativo del
+  /// hold-to-confirm de la web). Deliberadamente más largo que `fast`/`base`:
+  /// es una confirmación de dinero, no feedback táctil.
+  static const holdConfirm = Duration(milliseconds: 900);
+
   /// Accesibilidad: con "reducir animaciones" del sistema el movimiento se
   /// apaga (mismo criterio que JayaloLoader).
   static bool reduced(BuildContext context) =>

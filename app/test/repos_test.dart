@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/data/repos.dart';
+import 'package:jayalo_app/domain/pricing.dart';
 
 /// Blinda el hallazgo de revisión de Task 4: "Negocio verificado" debe salir
 /// SOLO de `provider_businesses.business_verified_at` (el RNC, revisado por
@@ -57,6 +58,33 @@ void main() {
     test('un término sin caracteres especiales queda igual', () {
       expect(sanitizeCatalogSearchTerm('taladro inalámbrico'),
           'taladro inalámbrico');
+    });
+  });
+
+  group('keepAllInboxSources', () {
+    // Bug arreglado 2026-07-19 (Task 9): `providerInbox()` descartaba las
+    // filas `source == 'store'` que `get_provider_inbox_unified` YA
+    // devuelve — el proveedor nunca veía quién tocó "Me interesa" en su
+    // catálogo. Este test blinda la ausencia de filtro sin necesitar red
+    // (providerInbox llama a `supa.rpc` directo).
+    test('no descarta las filas source == "store"', () {
+      final rows = [
+        {'source': 'marketplace', 'id': '1'},
+        {'source': 'store', 'id': '2'},
+      ];
+      expect(keepAllInboxSources(rows), hasLength(2));
+      expect(keepAllInboxSources(rows).map((r) => r['source']),
+          containsAll(['marketplace', 'store']));
+    });
+
+    test('lista vacía se queda vacía', () {
+      expect(keepAllInboxSources(const []), isEmpty);
+    });
+  });
+
+  group('productInterestUnlockCost', () {
+    test('es 1 — paridad con PRODUCT_INTEREST_COST de la web', () {
+      expect(productInterestUnlockCost, 1);
     });
   });
 }

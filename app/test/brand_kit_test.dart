@@ -180,6 +180,42 @@ void main() {
     });
   });
 
+  group('HoldToConfirmButton', () {
+    testWidgets('mantener presionado el tiempo completo confirma',
+        (tester) async {
+      var confirmed = 0;
+      await tester.pumpWidget(host(HoldToConfirmButton(
+          onConfirmed: () async {
+            confirmed++;
+          },
+          label: 'Mantén presionado')));
+
+      final gesture =
+          await tester.startGesture(tester.getCenter(find.byType(HoldToConfirmButton)));
+      // Pump vacío: el down debe resolver la arena de gestos (onTapDown)
+      // ANTES de saltar el reloj — un solo pump largo no lo dispara.
+      await tester.pump();
+      await tester.pump(JayaloMotion.holdConfirm + const Duration(milliseconds: 50));
+      expect(confirmed, 1);
+      await gesture.up();
+    });
+
+    testWidgets('soltar antes de tiempo no confirma', (tester) async {
+      var confirmed = 0;
+      await tester.pumpWidget(host(HoldToConfirmButton(onConfirmed: () async {
+        confirmed++;
+      })));
+
+      final gesture =
+          await tester.startGesture(tester.getCenter(find.byType(HoldToConfirmButton)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(confirmed, 0);
+    });
+  });
+
   group('ErrorRetry', () {
     testWidgets('muestra mensaje y reintentar llama al callback',
         (tester) async {
