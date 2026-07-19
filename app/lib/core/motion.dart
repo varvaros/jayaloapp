@@ -23,7 +23,7 @@ abstract final class JayaloMotion {
   /// Subida del modal de crear-solicitud. 3ª pasada PO: 300→600 ms ("cuando
   /// esté llegando a su tope reduce su velocidad"). 4ª pasada, viéndolo en
   /// device: "todavía se siente muy rápida, agrégale 300ms más" → 900 ms.
-  static const modalRise = Duration(milliseconds: 600);
+  static const modalRise = Duration(milliseconds: 900);
 
   /// Deslizado de pantalla entre secciones (PO 2026-07-19: "con un frenado
   /// de 2 segundos"): junto con [brake], casi todo el recorrido sucede al
