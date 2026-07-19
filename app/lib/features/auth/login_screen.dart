@@ -5,6 +5,7 @@ import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/turnstile.dart';
 import '../shared/jayalo_loader.dart';
+import 'drifting_iso_pattern.dart';
 
 Future<void> signInWithGoogleNative(BuildContext context) async {
   final google = GoogleSignIn(serverClientId: AppConfig.googleWebClientId);
@@ -33,9 +34,10 @@ Future<void> signInWithGoogleNative(BuildContext context) async {
   }
 }
 
-// Lavanda del fondo de la imagen (fallback del Scaffold) y tinta oscura del
-// titular. El texto va en la tipografía de la app, sin negritas (w600 máximo,
-// como los títulos de la app).
+// Lavanda del hero y tinta oscura del titular. El texto va en la tipografía de
+// la app, sin negritas (w500, como una app a mitad de rediseño cálido). El
+// acento es el violeta FIJO de marca (no `cs.primary`, que en modo oscuro se
+// iría al azul) — la bienvenida es siempre este hero claro.
 const _welcomeBg = Color(0xFFEDE9FA);
 const _welcomeInk = Color(0xFF2A2350);
 
@@ -64,22 +66,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // La bienvenida es SIEMPRE el hero lavanda claro — su acento es el violeta
-    // fijo de marca, no `cs.primary` (que en modo oscuro del sistema se va al
-    // azul del tema oscuro). Por eso se usa `JayaloColors.primary` directo.
     return Scaffold(
       backgroundColor: _welcomeBg,
       body: Stack(
         children: [
-          // Fondo: la imagen del PO (mascota 3D + patrón de isotipos, sin
-          // texto). El texto lo pone Flutter encima, en la tipografía de la app.
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/welcome.png',
-              fit: BoxFit.cover,
-              alignment: Alignment.center,
-            ),
-          ),
+          // Patrón animado de isotipos tenues que deriva despacio.
+          const Positioned.fill(child: DriftingIsoPattern(bg: _welcomeBg)),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(28, 14, 28, 22),
@@ -99,9 +91,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               color: _welcomeInk)),
                     ],
                   ),
-                  const SizedBox(height: 26),
-                  // Titular — tipografía de la app, peso semibold (nunca bold),
-                  // "idea" en el violeta de acción.
+                  const SizedBox(height: 24),
+                  // Titular — tipografía de la app, peso medio (nunca bold),
+                  // "idea" en el violeta fijo de marca.
                   Text.rich(
                     TextSpan(children: const [
                       TextSpan(text: 'Todo empieza\ncon una '),
@@ -129,8 +121,36 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontWeight: FontWeight.w400,
                         color: _welcomeInk.withValues(alpha: .64)),
                   ),
-                  // La mascota del fondo se ve en este espacio.
-                  const Spacer(),
+                  // La mascota 3D (recorte transparente) flotando en el centro.
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Image.asset('assets/images/mascot.png', width: 230),
+                            const SizedBox(height: 12),
+                            Container(
+                              width: 150,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(999),
+                                boxShadow: [
+                                  BoxShadow(
+                                      color: JayaloColors.primary
+                                          .withValues(alpha: .16),
+                                      blurRadius: 34,
+                                      spreadRadius: 2),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
