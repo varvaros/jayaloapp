@@ -11,6 +11,7 @@ import '../../data/notifications_repository.dart';
 import '../../domain/notifications.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
+import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
 import 'notification_bell.dart';
 
@@ -264,46 +265,43 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notificaciones'),
-        actions: [
-          // Sin píldora ni "marcar todas" sobre el esqueleto o el error: en
-          // esos estados el conteo no corresponde a lo que se ve.
-          if (!_loading && !_error) ...[
-            // Píldora "N nuevas": se encoge hasta desaparecer al llegar a 0.
-            AnimatedScale(
-              scale: _unread > 0 ? 1 : 0,
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOutBack,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: cs.primaryContainer,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(
-                  '$_unread nueva${_unread == 1 ? '' : 's'}',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: cs.onPrimaryContainer),
-                ),
-              ),
+      body: Column(
+        children: [
+          VioletHeader(
+            leading: HeaderCircleButton(
+              icon: Icons.arrow_back_ios_new,
+              tooltip: 'Atrás',
+              onTap: () => context.pop(),
             ),
-            if (_unread > 0)
-              IconButton(
-                tooltip: 'Marcar todas como leídas',
-                icon: const Icon(Icons.done_all),
-                onPressed: _markAll,
-              ),
-          ],
-          const SizedBox(width: 4),
+            title: 'Notificaciones',
+            actions: [
+              // Sin píldora ni "marcar todas" sobre el esqueleto o el error: en
+              // esos estados el conteo no corresponde a lo que se ve.
+              if (!_loading && !_error) ...[
+                // Píldora blanca "N nuevas": se encoge hasta desaparecer en 0.
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: AnimatedScale(
+                    scale: _unread > 0 ? 1 : 0,
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOutBack,
+                    child: HeaderPill(
+                        '$_unread nueva${_unread == 1 ? '' : 's'}'),
+                  ),
+                ),
+                if (_unread > 0)
+                  HeaderCircleButton(
+                    icon: Icons.done_all,
+                    tooltip: 'Marcar todas como leídas',
+                    onTap: _markAll,
+                  ),
+              ],
+            ],
+          ),
+          Expanded(child: _body(context)),
         ],
       ),
-      body: _body(context),
     );
   }
 
@@ -351,11 +349,11 @@ class _NotificationsScreenState extends State<NotificationsScreen>
             return Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
               child: Text(
-                row,
+                row.toUpperCase(),
                 style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: .4,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.4,
                     color: cs.onSurfaceVariant),
               ),
             );
@@ -450,7 +448,7 @@ class _NotifCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(kCardRadius),
           onTap: onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
@@ -458,7 +456,8 @@ class _NotifCard extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: bg,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(kCardRadius),
+              boxShadow: jayaloCardShadow(context),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -483,7 +482,7 @@ class _NotifCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                             fontWeight:
-                                read ? FontWeight.w500 : FontWeight.w700,
+                                read ? FontWeight.w500 : FontWeight.w600,
                             color: fg),
                       ),
                       if (body.isNotEmpty) ...[
