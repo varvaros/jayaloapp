@@ -303,8 +303,13 @@ class _SideItem extends StatelessWidget {
   }
 }
 
-/// El círculo elevado. Lleva su texto debajo de la píldora cuando está activo,
-/// para no meter texto dentro del círculo.
+/// El círculo elevado. Cuando está activo agrega su etiqueta justo debajo del
+/// círculo — dentro del área de la píldora, no debajo de ella — sin mover el
+/// círculo ni un píxel: la etiqueta se posiciona con un `Stack` +
+/// `Positioned` que no participa en el tamaño del widget (a diferencia de un
+/// `Column`, que habría empujado el círculo hacia arriba al aparecer el
+/// texto, desalineándolo de la muesca fija tallada en la píldora — ese fue
+/// C1).
 class _CenterButton extends StatelessWidget {
   const _CenterButton({
     required this.destination,
@@ -333,8 +338,14 @@ class _CenterButton extends StatelessWidget {
       selected: active,
       excludeSemantics: true,
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      // Stack en vez de Column: el círculo (`Material`, único hijo NO
+      // posicionado) es el que fija el tamaño del widget. La etiqueta va en
+      // un `Positioned` — no cuenta para el tamaño ni empuja al círculo — así
+      // que su centro queda idéntico esté activo o no (regresión C1: ver
+      // test "el círculo central no se sale de la muesca al activarse").
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.topCenter,
         children: [
           Material(
             color: circleColor,
@@ -352,8 +363,8 @@ class _CenterButton extends StatelessWidget {
             ),
           ),
           if (active)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
+            Positioned(
+              top: _centerSize + 2,
               child: Text(
                 destination.label,
                 maxLines: 1,

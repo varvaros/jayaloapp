@@ -407,4 +407,44 @@ void main() {
       expect(find.byType(FloatingNavBar), findsOneWidget);
     });
   });
+
+  group('C1: el círculo central no se sale de la muesca al activarse', () {
+    // La muesca se talla en un punto FIJO (`notchCenterY`, ver
+    // `PillNotchPainter`). Si el círculo se mueve al aparecer la etiqueta de
+    // estado activo, la muesca deja de coincidir con la silueta real del
+    // botón y aparece un hueco visible en el centro de la píldora.
+    double circleCenterOffsetFromPillTop(WidgetTester tester) {
+      final pillTop = tester
+          .getTopLeft(find.byWidgetPredicate(
+              (w) => w is CustomPaint && w.painter is PillNotchPainter))
+          .dy;
+      final circleCenterY = tester
+          .getRect(find.descendant(
+              of: find.bySemanticsLabel('Crear solicitud'),
+              matching: find.byType(Material)))
+          .center
+          .dy;
+      return circleCenterY - pillTop;
+    }
+
+    testWidgets(
+        'el centro del círculo respecto al borde superior de la píldora es '
+        'el mismo con currentIndex=0 (inactivo, sin etiqueta) que con '
+        'currentIndex=kCenterIndex (activo, con etiqueta) — si la etiqueta '
+        'empuja el círculo hacia arriba, la muesca (tallada en un punto '
+        'fijo) deja un hueco visible detrás del botón', (tester) async {
+      await tester.pumpWidget(host(0));
+      await tester.pumpAndSettle();
+      final inactiveOffset = circleCenterOffsetFromPillTop(tester);
+
+      await tester.pumpWidget(host(kCenterIndex));
+      await tester.pumpAndSettle();
+      final activeOffset = circleCenterOffsetFromPillTop(tester);
+
+      expect(activeOffset, closeTo(inactiveOffset, 0.5),
+          reason: 'inactivo: $inactiveOffset px, activo: $activeOffset px — '
+              'deben coincidir para que el círculo quede siempre dentro de '
+              'la muesca (tallada en un notchCenterY fijo)');
+    });
+  });
 }
