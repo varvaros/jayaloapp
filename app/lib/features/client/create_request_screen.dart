@@ -11,10 +11,9 @@ import '../../domain/ai_turns.dart';
 import '../../domain/image_pick.dart';
 import '../shell/floating_nav_bar.dart';
 import '../verification/verify_banner.dart';
-import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
-import '../shared/profile_avatar_button.dart';
+import '../shared/violet_header.dart';
 
 const _maxRequestPhotos = 2;
 
@@ -40,6 +39,43 @@ class _Bubble {
   final bool isUser;
   final String text;
   final AiTurn? turn;
+}
+
+/// Píldora "Al por mayor" para el header violeta: blanca plena con check al
+/// activarse, translúcida al apagarse.
+class _WholesaleToggle extends StatelessWidget {
+  const _WholesaleToggle({required this.selected, required this.onTap});
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.white.withValues(alpha: .18),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (selected) ...[
+            Icon(Icons.check, size: 14, color: cs.primary),
+            const SizedBox(width: 4),
+          ],
+          Text('Al por mayor',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                  color: selected ? cs.primary : Colors.white)),
+        ]),
+      ),
+    );
+  }
 }
 
 class _CreateRequestScreenState extends State<CreateRequestScreen> {
@@ -265,35 +301,41 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     final cs = Theme.of(context).colorScheme;
     final started = _messages.isNotEmpty;
     return Scaffold(
-      appBar: AppBar(
-          title: const Text('Crear solicitud'),
-          actions: const [NotificationBell(), ProfileAvatarButton()]),
       body: Column(children: [
+        // Header violeta: "Crear solicitud" centrado, y antes de empezar el
+        // toggle Producto/Servicio + la píldora "Al por mayor" (doctrina: el
+        // header envuelve los controles de la pantalla).
+        VioletHeader(
+          leading: HeaderCircleButton(
+            icon: Icons.arrow_back_ios_new,
+            tooltip: 'Atrás',
+            onTap: () => context.pop(),
+          ),
+          title: 'Crear solicitud',
+          titleAlign: HeaderTitleAlign.center,
+          actions: const [HeaderBell()],
+          below: started
+              ? null
+              : Row(children: [
+                  HeaderSegmented(
+                    options: const ['Producto', 'Servicio'],
+                    index: _kind == 'producto' ? 0 : 1,
+                    onChanged: (i) => setState(() {
+                      _kind = i == 0 ? 'producto' : 'servicio';
+                      if (_kind == 'servicio') _wholesale = false;
+                    }),
+                  ),
+                  if (_kind == 'producto') ...[
+                    const SizedBox(width: 8),
+                    _WholesaleToggle(
+                      selected: _wholesale,
+                      onTap: () => setState(() => _wholesale = !_wholesale),
+                    ),
+                  ],
+                ]),
+        ),
         // Nudge de verificación (spec §6.1) — cerrable, nunca bloquea el envío.
         const VerifyWhatsappBanner(),
-        if (!started)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Row(children: [
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'producto', label: Text('Producto')),
-                  ButtonSegment(value: 'servicio', label: Text('Servicio')),
-                ],
-                selected: {_kind},
-                onSelectionChanged: (s) => setState(() {
-                  _kind = s.first;
-                  if (_kind == 'servicio') _wholesale = false;
-                }),
-              ),
-              const SizedBox(width: 8),
-              if (_kind == 'producto')
-                FilterChip(
-                    label: const Text('Al por mayor'),
-                    selected: _wholesale,
-                    onSelected: (v) => setState(() => _wholesale = v)),
-            ]),
-          ),
         Expanded(
           child: _bubbles.isEmpty
               ? Center(
@@ -465,8 +507,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(r.title,
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w700)),
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: jayaloHead(context))),
                     const SizedBox(height: 8),
                     for (final b in r.bullets) Text('• $b'),
                     if (r.wholesale || _wholesale)
