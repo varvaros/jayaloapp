@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/turnstile.dart';
 import '../shared/jayalo_loader.dart';
@@ -63,7 +64,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    // La bienvenida es SIEMPRE el hero lavanda claro — su acento es el violeta
+    // fijo de marca, no `cs.primary` (que en modo oscuro del sistema se va al
+    // azul del tema oscuro). Por eso se usa `JayaloColors.primary` directo.
     return Scaffold(
       backgroundColor: _welcomeBg,
       body: Stack(
@@ -100,17 +103,18 @@ class _LoginScreenState extends State<LoginScreen> {
                   // Titular — tipografía de la app, peso semibold (nunca bold),
                   // "idea" en el violeta de acción.
                   Text.rich(
-                    TextSpan(children: [
-                      const TextSpan(text: 'Todo empieza\ncon una '),
+                    TextSpan(children: const [
+                      TextSpan(text: 'Todo empieza\ncon una '),
                       TextSpan(
-                          text: 'idea', style: TextStyle(color: cs.primary)),
-                      const TextSpan(text: '.'),
+                          text: 'idea',
+                          style: TextStyle(color: JayaloColors.primary)),
+                      TextSpan(text: '.'),
                     ]),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 33,
                         height: 1.12,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w500,
                         letterSpacing: -.2,
                         color: _welcomeInk),
                   ),
@@ -133,12 +137,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       onPressed: _busy ? null : _go,
                       style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(54),
-                        backgroundColor: cs.primary,
-                        foregroundColor: cs.onPrimary,
+                        backgroundColor: JayaloColors.primary,
+                        foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(999)),
                         textStyle: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w600),
+                            fontSize: 15, fontWeight: FontWeight.w500),
                       ),
                       icon: _busy
                           ? const JayaloSpinner(size: 18, color: Colors.white)
