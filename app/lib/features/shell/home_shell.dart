@@ -16,18 +16,26 @@ class HomeShell extends StatelessWidget {
     // El ATRÁS del sistema lo maneja BackGuard DENTRO de cada ruta del shell
     // (un PopScope aquí no funciona con predictive back; ver back_guard.dart).
     final dests = destinationsFor(roleStore.value);
-    final loc = GoRouterState.of(context).matchedLocation;
+    // C2 (revisión final de rama, iteración 2): `GoRouterState.of(context)`
+    // AQUÍ (dentro del builder del propio ShellRoute) expone el estado del
+    // "top route" de la rama — `matchedLocation`/`topRoute` solo se mueven
+    // cuando ese top route CAMBIA (`go` a otra ruta de nivel superior). Un
+    // `push` (entrar al chat desde `conversations_screen.dart`, "Abrir chat"
+    // de `inbox_screen.dart`, o abrir notificaciones) apila una página encima
+    // SIN cambiar cuál es el top route, así que `matchedLocation` se quedaba
+    // congelado en la pestaña de abajo — la barra flotante seguía viva
+    // encima del chat tapando el campo de escribir, y `/provider/stats`/
+    // `/notifications` heredaban la pestaña de abajo en vez de dar -1
+    // (dejando `_excludedFromNav` como código muerto). `uri` sí seguía la
+    // ubicación efectiva (incluye lo apilado por push) — se usa `.path`, NUNCA
+    // `.toString()`: este proyecto tiene enlaces con query (`/messages?c=<id>`
+    // desde las notificaciones de mensaje) y tanto `showsNavBar` como
+    // `activeIndex` comparan por igualdad/prefijo — una query pegada rompería
+    // ambas comparaciones en silencio.
+    final loc = GoRouterState.of(context).uri.path;
     final idx = activeIndex(dests, loc);
     final showNavBar = showsNavBar(loc);
 
-    // Cambiar de pestaña reemplaza la única página del Navigator anidado (no
-    // la empuja encima), y Flutter no anima ese reemplazo por defecto —
-    // `pageTransitionsTheme` (doctrina de movimiento, `app.dart`) solo cubre
-    // pushes reales, como entrar al detalle de una solicitud, que sigue
-    // dentro de la MISMA pestaña (`idx` no cambia, la key tampoco: no hay
-    // doble transición). Aquí se anima el cambio de pestaña aparte, con
-    // "fade through" (fundido + escala sutil) — el patrón de Material para
-    // navegación entre pares, distinto al deslizado jerárquico de un push.
     return Scaffold(
       // La barra FLOTA: el cuerpo se extiende por debajo de ella. Cada
       // pantalla reserva `kNavBarReservedSpace` al final de su scroll. Dentro
@@ -37,27 +45,24 @@ class HomeShell extends StatelessWidget {
       // donde debe, sin el hueco que dejaría el espacio reservado para una
       // barra que ya no está.
       extendBody: showNavBar,
-      body: AnimatedSwitcher(
-        duration:
-            JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base,
-        switchInCurve: JayaloMotion.emphasized,
-        switchOutCurve: JayaloMotion.emphasized,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position:
-                Tween<Offset>(begin: const Offset(0, .04), end: Offset.zero)
-                    .animate(animation),
-            child: child,
-          ),
-        ),
-        // `idx` puede ser -1 (I2: ninguna pestaña coincide, p. ej.
-        // `/notifications`) — `dests[idx]` reventaría con RangeError. Ahí
-        // basta con la propia ubicación como key: sigue siendo estable y
-        // distinta de cualquier pestaña real.
-        child: KeyedSubtree(
-            key: ValueKey(idx >= 0 ? dests[idx].route : loc), child: child),
-      ),
+      // NO envolver `child` en un `AnimatedSwitcher`/`KeyedSubtree` cuyo key
+      // dependa de `idx`/`loc` (así estaba antes, para un "fade through" al
+      // cambiar de pestaña). Se retiró al escribir la cobertura de C2: `child`
+      // es el Navigator anidado que arma el propio `ShellRoute`, con un
+      // `GlobalKey` ESTABLE por diseño de go_router (necesario para conservar
+      // su estado entre navegaciones dentro de la misma rama) — y
+      // `AnimatedSwitcher` mantiene montadas simultáneamente la rama saliente
+      // y la entrante mientras cruza-desvanece. Con un key que cambia en
+      // cualquier transición de pestaña real (probado con un `go()` liso
+      // entre dos pestañas normales, sin tocar `push` ni `-1`: `/provider` →
+      // `/provider/offers`), las dos ramas embeben el MISMO `child` con el
+      // MISMO `GlobalKey` a la vez → "Duplicate GlobalKey detected in widget
+      // tree" — un cuelgue real en modo debug para CUALQUIER cambio de
+      // pestaña, nunca antes ejercitado por un test con un `GoRouter` de
+      // verdad (los tests existentes o fijan `initialLocation` sin navegar en
+      // vivo, o navegan sin cambiar de pestaña). El "fade through" nunca
+      // llegó a funcionar; quitarlo no regresiona nada que estuviera vivo.
+      body: child,
       // M2 (revisión final de rama): antes era `showNavBar ? FloatingNavBar(
       // ...) : null` — un swap instantáneo, contra la doctrina de movimiento
       // (transiciones premium, deslizado + ease-out). `SizeTransition` (no
