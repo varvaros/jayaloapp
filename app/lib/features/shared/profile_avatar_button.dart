@@ -136,6 +136,11 @@ class _ProfileAvatarButtonState extends State<ProfileAvatarButton> {
   /// end-drawer con esquinas izquierdas redondeadas que desliza desde el
   /// borde derecho — el mismo lado donde vive el avatar que lo abre. Con
   /// "reducir animaciones" aparece sin movimiento.
+  ///
+  /// 2ª pasada del PO el mismo día: "debe ser suave y antes de llegar se
+  /// vuelve más lento" — a 250 ms con easeOut la frenada no se alcanzaba a
+  /// percibir. Ahora `page` (300 ms) con `emphasized` (easeInOutCubic):
+  /// arranque suave, frenada visible antes de asentarse.
   Future<void> _openMenu() async {
     final isProvider = roleStore.value == RoleState.provider;
     final route = await showGeneralDialog<String>(
@@ -145,7 +150,7 @@ class _ProfileAvatarButtonState extends State<ProfileAvatarButton> {
       barrierColor: Colors.black38,
       transitionDuration: JayaloMotion.reduced(context)
           ? Duration.zero
-          : JayaloMotion.base,
+          : JayaloMotion.page,
       pageBuilder: (ctx, _, _) => Align(
         alignment: Alignment.centerRight,
         child: Material(
@@ -178,7 +183,7 @@ class _ProfileAvatarButtonState extends State<ProfileAvatarButton> {
         position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
             .animate(CurvedAnimation(
                 parent: anim,
-                curve: JayaloMotion.enter,
+                curve: JayaloMotion.emphasized,
                 reverseCurve: JayaloMotion.exit)),
         child: child,
       ),
