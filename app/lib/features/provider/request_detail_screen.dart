@@ -122,32 +122,109 @@ class _ProviderRequestDetailScreenState
     final req = _req;
     if (req == null) {
       return Scaffold(
-          appBar: AppBar(), body: const SkeletonList());
+        body: Stack(children: [
+          const Padding(
+              padding: EdgeInsets.only(top: 80), child: SkeletonList()),
+          SafeArea(child: _backFab(context)),
+        ]),
+      );
     }
+    final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final amberPanel = dark ? const Color(0xFF3A2C12) : const Color(0xFFF0C48C);
+    final amberInk = dark ? const Color(0xFFF0C48C) : const Color(0xFF6B4514);
     final bullets = List<String>.from(req['bullets'] as List? ?? const []);
+    final images =
+        ((req['image_urls'] as List?)?.cast<String>() ?? const <String>[])
+            .where((u) => u.isNotEmpty)
+            .toList();
+    final topInset = MediaQuery.paddingOf(context).top;
     return Scaffold(
-      appBar: AppBar(title: const Text('Detalle de solicitud')),
-      body: ListView(
-          padding: EdgeInsets.fromLTRB(
-              16, 16, 16, 16 + navBarReservedSpace(context)),
-          children: [
-        Text(req['title'] as String, style: Theme.of(context).textTheme.titleLarge),
-        if (req['is_wholesale'] == true)
-          Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: StatusChip(
-                    label: 'Al por mayor',
-                    icon: Icons.storefront_outlined,
-                    tone: Theme.of(context).brightness == Brightness.dark
-                        ? JayaloStatus.respondedDark
-                        : JayaloStatus.respondedLight),
-              )),
-        const SizedBox(height: 8),
-        for (final b in bullets) Text('• $b'),
-        const Divider(height: 32),
-        if (_businessId == null)
+      body: Column(children: [
+        // Panel ámbar del detalle (doctrina: el detalle es cálido, no lila; la
+        // foto de la solicitud manda, con solo el atrás flotando).
+        Container(
+          height: 210 + topInset,
+          decoration: BoxDecoration(
+            color: amberPanel,
+            borderRadius:
+                const BorderRadius.vertical(bottom: Radius.circular(30)),
+          ),
+          child: Stack(children: [
+            Positioned(
+              top: topInset + 20,
+              left: 20,
+              right: 20,
+              bottom: 20,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: images.isEmpty
+                    ? Center(
+                        child: Icon(
+                            req['kind'] == 'servicio'
+                                ? Icons.handyman_outlined
+                                : Icons.inventory_2_outlined,
+                            size: 96,
+                            color: amberInk))
+                    : Image.network(images.first,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Container(color: amberPanel)),
+              ),
+            ),
+            SafeArea(child: _backFab(context)),
+          ]),
+        ),
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerLowest,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: ListView(
+                padding: EdgeInsets.fromLTRB(
+                    22, 22, 22, 16 + navBarReservedSpace(context)),
+                children: [
+                  Text(req['title'] as String,
+                      style: TextStyle(
+                          fontSize: 21,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                          color: jayaloHead(context))),
+                  if (req['is_wholesale'] == true)
+                    Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: StatusChip(
+                              label: 'Al por mayor',
+                              icon: Icons.storefront_outlined,
+                              tone: dark
+                                  ? JayaloStatus.respondedDark
+                                  : JayaloStatus.respondedLight),
+                        )),
+                  if (bullets.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text('Detalles',
+                        style: TextStyle(
+                            fontSize: 12.5, color: cs.onSurfaceVariant)),
+                    const SizedBox(height: 10),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      for (final b in bullets)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                              color: cs.surface,
+                              borderRadius: BorderRadius.circular(999)),
+                          child: Text(b,
+                              style: TextStyle(
+                                  fontSize: 12, color: cs.onSurface)),
+                        ),
+                    ]),
+                  ],
+                  const Divider(height: 32),
+                  if (_businessId == null)
           FilledButton(
             onPressed: () => launchUrl(Uri.parse('${AppConfig.siteUrl}/provider'),
                 mode: LaunchMode.externalApplication),
@@ -255,7 +332,34 @@ class _ProviderRequestDetailScreenState
               onPressed: _busy ? null : _submit,
               child: const Text('Enviar oferta (gratis)')),
         ],
-      ]),
-    );
+              ]),
+            ),
+          ),
+        ]),
+      );
   }
+
+  /// Atrás flotante sobre el panel ámbar (mismo gesto que el detalle del
+  /// cliente: en el detalle no hay header violeta, solo el atrás).
+  Widget _backFab(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 8, left: 16),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            color: Theme.of(context).colorScheme.surfaceContainerLowest,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            elevation: 1,
+            child: InkWell(
+              onTap: () => context.pop(),
+              child: SizedBox(
+                width: 42,
+                height: 42,
+                child: Icon(Icons.arrow_back_ios_new,
+                    size: 18, color: jayaloHead(context)),
+              ),
+            ),
+          ),
+        ),
+      );
 }
