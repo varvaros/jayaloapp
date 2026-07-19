@@ -106,17 +106,13 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-        child: SegmentedButton<String>(
-          segments: [
+        child: PillSegmented(
+          options: [
             for (final (v, label) in _tabs)
-              ButtonSegment(
-                  value: v,
-                  label: Text(counts[v] == null ? label : '$label ${counts[v]}',
-                      style: const TextStyle(fontSize: 12))),
+              counts[v] == null ? label : '$label ${counts[v]}',
           ],
-          selected: {_tab},
-          onSelectionChanged: (s) => setState(() => _tab = s.first),
-          showSelectedIcon: false,
+          index: _tabs.indexWhere((t) => t.$1 == _tab),
+          onChanged: (i) => setState(() => _tab = _tabs[i].$1),
         ),
       ),
       Padding(

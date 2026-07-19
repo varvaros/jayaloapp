@@ -468,3 +468,77 @@ class _HoldToConfirmButtonState extends State<HoldToConfirmButton>
     );
   }
 }
+
+/// Segmentado CÁLIDO a ancho completo (estilo `.seg` del mockup): pista arena
+/// (`#F1ECE1`), segmento activo = tarjeta blanca con sombra suave, texto activo
+/// en el tinta de la marca. Es la versión "sobre el cuerpo cálido" del
+/// [HeaderSegmented] (que vive sobre el violeta): se usa para pestañas que
+/// están BAJO el header (p. ej. Abierto/Completado/No concretado en Mensajes),
+/// donde el `SegmentedButton` de Material se veía frío y ajeno a la línea.
+class PillSegmented extends StatelessWidget {
+  const PillSegmented({
+    super.key,
+    required this.options,
+    required this.index,
+    required this.onChanged,
+  });
+
+  final List<String> options;
+  final int index;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    // Pista arena en claro; en oscuro cae a la superficie más contenida del
+    // esquema para no clavar un beige que no pega sobre fondo oscuro.
+    final track = dark
+        ? Theme.of(context).colorScheme.surfaceContainerHighest
+        : const Color(0xFFF1ECE1);
+    final activeBg = dark
+        ? Theme.of(context).colorScheme.surfaceContainerLowest
+        : Colors.white;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: track,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < options.length; i++)
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onChanged(i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: i == index ? activeBg : Colors.transparent,
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: i == index ? jayaloCardShadow(context) : null,
+                  ),
+                  child: Text(
+                    options[i],
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight:
+                          i == index ? FontWeight.w600 : FontWeight.w500,
+                      color: i == index
+                          ? jayaloHead(context)
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
