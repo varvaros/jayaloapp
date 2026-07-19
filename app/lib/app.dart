@@ -74,6 +74,50 @@ class _JayaloPageTransitionsBuilder extends PageTransitionsBuilder {
   }
 }
 
+/// Física de scroll con frenado largo (PO 2026-07-19, 4ª pasada: "el scroll
+/// de la pantalla ponle 2 segundos de frenado").
+///
+/// Solo cambia la FRICCIÓN del fling; el arrastre con el dedo, el rebote y el
+/// clamp de los bordes siguen siendo los de Material/Android. Se reusa la
+/// simulación de Flutter (`ClampingScrollSimulation`) en vez de escribir una
+/// propia: la única diferencia con el default es el parámetro `friction`
+/// ([JayaloMotion.scrollFriction], que documenta la aritmética de la
+/// duración). Cuando la posición está FUERA de rango, `super` devuelve un
+/// `ScrollSpringSimulation` (el muelle que devuelve el contenido al borde) —
+/// ese caso se deja intacto: no es un fling, es una corrección de límite.
+class JayaloScrollPhysics extends ClampingScrollPhysics {
+  const JayaloScrollPhysics({super.parent});
+
+  @override
+  JayaloScrollPhysics applyTo(ScrollPhysics? ancestor) =>
+      JayaloScrollPhysics(parent: buildParent(ancestor));
+
+  @override
+  Simulation? createBallisticSimulation(
+      ScrollMetrics position, double velocity) {
+    final sim = super.createBallisticSimulation(position, velocity);
+    if (sim is! ClampingScrollSimulation) return sim;
+    return ClampingScrollSimulation(
+      position: sim.position,
+      velocity: sim.velocity,
+      friction: JayaloMotion.scrollFriction,
+      tolerance: toleranceFor(position),
+    );
+  }
+}
+
+/// Aplica [JayaloScrollPhysics] a TODA la app de una vez (listas, sheets,
+/// scrollables anidados) sin tocar pantalla por pantalla. Un widget que pase
+/// su propia `physics` explícita sigue mandando — p. ej. el
+/// `NeverScrollableScrollPhysics` de `SkeletonList`.
+class JayaloScrollBehavior extends MaterialScrollBehavior {
+  const JayaloScrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) =>
+      const JayaloScrollPhysics();
+}
+
 /// Los colores salen de `core/brand.dart` (tokens portados de la web) para que
 /// app y jayalo.com se vean como la misma marca.
 ThemeData jayaloTheme(Brightness b) {
@@ -110,6 +154,7 @@ class JayaloApp extends StatelessWidget {
         title: 'Jayalo',
         theme: jayaloTheme(Brightness.light),
         darkTheme: jayaloTheme(Brightness.dark),
+        scrollBehavior: const JayaloScrollBehavior(),
         routerConfig: router,
       );
 }
