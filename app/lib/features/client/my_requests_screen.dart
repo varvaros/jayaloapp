@@ -1,12 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/phase.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shell/home_scroll.dart';
-import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/profile_avatar_button.dart';
+import '../shared/violet_header.dart';
+
+/// Aviso temporal mientras el buscador/filtro del header no está cableado.
+///
+/// ⚠️ HUECO DE LÓGICA DOCUMENTADO (no es un bug): el diseño aprobado pone un
+/// buscador con "Filtrar" en el home, pero buscar/filtrar solicitudes propias
+/// es funcionalidad NUEVA que hoy no existe en el backend ni en el estado de la
+/// pantalla. Decisión pendiente del PO: implementarlo o retirarlo del diseño
+/// (ver memoria `jayalo-mockups-app-handoff`). Se dibuja la barra (estética
+/// primero) y se avisa al tocar, sin fingir resultados.
+void _searchSoon(BuildContext context) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(const SnackBar(
+        content: Text('Buscar y filtrar: próximamente.')));
+}
 
 String timeAgo(DateTime d) {
   final diff = DateTime.now().difference(d);
@@ -64,53 +80,120 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-          title: const Text('Solicitudes'),
-          actions: const [NotificationBell(), ProfileAvatarButton()]),
-      body: RefreshIndicator(
-        // onRefresh espera Future<void>; bloque de setState para no devolver Future.
-        onRefresh: () async {
-          setState(() {
-            _load = _fetch();
-          });
-        },
-        child: FutureBuilder(
-          future: _load,
-          builder: (context, snap) {
-            if (!snap.hasData) {
-              return const SkeletonList();
-            }
-            final items = snap.data!;
-            if (items.isEmpty) {
-              return EmptyState(
-                controller: homeScrollController,
-                message: 'Aún no has pedido nada.\n'
-                    'Cuéntanos qué buscas y los proveedores te harán ofertas.',
-                ctaLabel: 'Crear solicitud',
-                // push, no go: crear-solicitud es MODAL (sube por encima con
-                // su CustomTransitionPage); un go la trataría como pestaña
-                // más — swap instantáneo sin la subida (gotcha ShellRoute).
-                onCta: () => context.push('/client/create'),
-              );
-            }
-            return ListView.builder(
-              controller: homeScrollController,
-              padding: EdgeInsets.only(
-                  top: 8, bottom: 8 + navBarReservedSpace(context)),
-              itemCount: items.length,
-              itemBuilder: (_, i) {
-                final (r, phase, offerCount) = items[i];
-                return _RequestCard(
-                  title: r['title'] as String,
-                  createdAt: DateTime.parse(r['created_at'] as String),
-                  phase: phase,
-                  offerCount: offerCount,
-                  onTap: () => context.go('/client/request/${r['id']}'),
-                ).cascadeIn(i);
+      body: Column(
+        children: [
+          // Header violeta: avatar → menú de perfil, "Jayalo" centrado, campana,
+          // saludo grande y el buscador (envuelto por el header, doctrina).
+          VioletHeader(
+            leading: const HeaderAvatar(),
+            title: 'Jayalo',
+            titleAlign: HeaderTitleAlign.center,
+            actions: const [HeaderBell()],
+            greeting: ListenableBuilder(
+              listenable: profileStore,
+              builder: (context, _) => HeaderGreeting(
+                title: profileStore.firstName != null
+                    ? 'Hola, ${profileStore.firstName}'
+                    : 'Hola',
+                subtitle: 'Tú pides y los proveedores te ofertan.',
+              ),
+            ),
+            below: WarmSearchField(
+              hint: 'Buscar en Jayalo',
+              onTap: () => _searchSoon(context),
+              onFilter: () => _searchSoon(context),
+            ),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              // onRefresh espera Future<void>; setState para no devolver Future.
+              onRefresh: () async {
+                setState(() {
+                  _load = _fetch();
+                });
               },
-            );
-          },
-        ),
+              child: FutureBuilder(
+                future: _load,
+                builder: (context, snap) {
+                  if (!snap.hasData) {
+                    return const SkeletonList();
+                  }
+                  final items = snap.data!;
+                  if (items.isEmpty) {
+                    return EmptyState(
+                      controller: homeScrollController,
+                      message: 'Aún no has pedido nada.\n'
+                          'Cuéntanos qué buscas y los proveedores te harán ofertas.',
+                      ctaLabel: 'Crear solicitud',
+                      // push, no go: crear-solicitud es MODAL (sube por encima
+                      // con su CustomTransitionPage); un go la trataría como
+                      // pestaña más — swap instantáneo (gotcha ShellRoute).
+                      onCta: () => context.push('/client/create'),
+                    );
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _SecRow(count: items.length),
+                      Expanded(
+                        child: ListView.builder(
+                          controller: homeScrollController,
+                          padding: EdgeInsets.only(
+                              top: 2, bottom: 8 + navBarReservedSpace(context)),
+                          itemCount: items.length,
+                          itemBuilder: (_, i) {
+                            final (r, phase, offerCount) = items[i];
+                            return _RequestCard(
+                              title: r['title'] as String,
+                              createdAt:
+                                  DateTime.parse(r['created_at'] as String),
+                              phase: phase,
+                              offerCount: offerCount,
+                              onTap: () =>
+                                  context.go('/client/request/${r['id']}'),
+                            ).cascadeIn(i);
+                          },
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fila "Tus solicitudes · N activas" (el `.secrow` del mockup): título fuerte
+/// a la izquierda, conteo tenue a la derecha.
+class _SecRow extends StatelessWidget {
+  const _SecRow({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 26, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Text('Tus solicitudes',
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: jayaloHead(context))),
+          const Spacer(),
+          Text('$count activa${count == 1 ? '' : 's'}',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurfaceVariant)),
+        ],
       ),
     );
   }
@@ -175,7 +258,7 @@ class _RequestCard extends StatelessWidget {
                   title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontWeight: FontWeight.w700, color: fg),
+                  style: TextStyle(fontWeight: FontWeight.w600, color: fg),
                 ),
                 const SizedBox(height: 4),
                 Text(
