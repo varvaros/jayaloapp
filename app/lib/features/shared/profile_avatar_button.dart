@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/motion.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart' show myProfile;
 
@@ -129,24 +130,57 @@ class _ProfileAvatarButtonState extends State<ProfileAvatarButton> {
   /// El rol se lee al momento del toque (no en `build`): siempre refleja el
   /// valor vigente de `roleStore` sin necesidad de escucharlo para redibujar
   /// el botón (el rol no cambia durante la sesión, spec §4).
+  ///
+  /// El menú SALE DE LA DERECHA (PO 2026-07-19, revisión visual en device;
+  /// antes era `showModalBottomSheet`, desde abajo): un panel lateral tipo
+  /// end-drawer con esquinas izquierdas redondeadas que desliza desde el
+  /// borde derecho — el mismo lado donde vive el avatar que lo abre. Con
+  /// "reducir animaciones" aparece sin movimiento.
   Future<void> _openMenu() async {
     final isProvider = roleStore.value == RoleState.provider;
-    final route = await showModalBottomSheet<String>(
+    final route = await showGeneralDialog<String>(
       context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (isProvider)
-            ListTile(
-              leading: const Icon(Icons.bar_chart_outlined),
-              title: const Text('Estadísticas'),
-              onTap: () => Navigator.pop(ctx, '/provider/stats'),
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar menú',
+      barrierColor: Colors.black38,
+      transitionDuration: JayaloMotion.reduced(context)
+          ? Duration.zero
+          : JayaloMotion.base,
+      pageBuilder: (ctx, _, _) => Align(
+        alignment: Alignment.centerRight,
+        child: Material(
+          borderRadius:
+              const BorderRadius.horizontal(left: Radius.circular(20)),
+          clipBehavior: Clip.antiAlias,
+          child: SafeArea(
+            child: SizedBox(
+              width: 264,
+              height: double.infinity,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const SizedBox(height: 8),
+                if (isProvider)
+                  ListTile(
+                    leading: const Icon(Icons.bar_chart_outlined),
+                    title: const Text('Estadísticas'),
+                    onTap: () => Navigator.pop(ctx, '/provider/stats'),
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.settings_outlined),
+                  title: const Text('Ajustes'),
+                  onTap: () => Navigator.pop(ctx, '/settings'),
+                ),
+              ]),
             ),
-          ListTile(
-            leading: const Icon(Icons.settings_outlined),
-            title: const Text('Ajustes'),
-            onTap: () => Navigator.pop(ctx, '/settings'),
           ),
-        ]),
+        ),
+      ),
+      transitionBuilder: (ctx, anim, _, child) => SlideTransition(
+        position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+            .animate(CurvedAnimation(
+                parent: anim,
+                curve: JayaloMotion.enter,
+                reverseCurve: JayaloMotion.exit)),
+        child: child,
       ),
     );
     if (route != null && mounted) context.push(route);
