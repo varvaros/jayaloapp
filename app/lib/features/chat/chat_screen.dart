@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -15,6 +16,7 @@ import '../shared/brand_kit.dart';
 import 'widgets/composer.dart';
 import 'widgets/rating_form.dart';
 import '../shared/jayalo_loader.dart';
+import '../shared/violet_header.dart';
 
 const _pageSize = 50;
 
@@ -486,105 +488,116 @@ class _ChatScreenState extends State<ChatScreen> {
     final conv = _conv;
     if (_error) {
       return Scaffold(
-          appBar: AppBar(),
-          body: Center(
+          body: Column(children: [
+        VioletHeader(
+          leading: HeaderCircleButton(
+              icon: Icons.arrow_back_ios_new,
+              tooltip: 'Atrás',
+              onTap: () => context.pop()),
+        ),
+        Expanded(
+          child: Center(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('No pudimos cargar esta conversación.'),
             const SizedBox(height: 8),
             FilledButton(onPressed: _load, child: const Text('Reintentar')),
-          ])));
+          ])),
+        ),
+      ]));
     }
     if (conv == null) {
-      return Scaffold(appBar: AppBar(), body: const SkeletonList());
+      return Scaffold(
+          body: Column(children: [
+        VioletHeader(
+          leading: HeaderCircleButton(
+              icon: Icons.arrow_back_ios_new,
+              tooltip: 'Atrás',
+              onTap: () => context.pop()),
+        ),
+        const Expanded(child: SkeletonList()),
+      ]));
     }
     final ms = _session.messages;
+    final pal = chatPalette(context);
     return Scaffold(
-      appBar: _buildHeader(conv),
       body: Column(children: [
+        _buildHeader(conv),
+        // El panel lila ES la pantalla del chat (doctrina: un solo fondo lila,
+        // inconfundible). La lista y el composer viven dentro.
         Expanded(
-          child: ListView.builder(
-            controller: _scroll,
-            reverse: true,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            itemCount: ms.length + (_loadingOlder ? 1 : 0),
-            itemBuilder: (context, j) {
-              if (j >= ms.length) {
-                return const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Center(child: JayaloSpinner(size: 18)));
-              }
-              final i = ms.length - 1 - j;
-              final m = ms[i];
-              final own = m.senderId == _uid;
-              final bubble = buildBubble(context, m,
-                  own: own,
-                  groupEnd: isGroupEnd(ms, i),
-                  peerAvatarUrl: _peerAvatarUrl,
-                  onImageTap: _openLightbox,
-                  onQuickAnswer: _answerQuick,
-                  canAnswerQuick: _isOpen);
-              if (!needsDaySep(ms, i)) return bubble;
-              return Column(children: [
-                Center(
-                    child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(999)),
-                  child: Text(formatDayLabel(m.createdAt),
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
-                )),
-                bubble,
-              ]);
-            },
+          child: Container(
+            color: pal.panel,
+            child: Column(children: [
+              Expanded(
+                child: ListView.builder(
+                  controller: _scroll,
+                  reverse: true,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  itemCount: ms.length + (_loadingOlder ? 1 : 0),
+                  itemBuilder: (context, j) {
+                    if (j >= ms.length) {
+                      return const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Center(child: JayaloSpinner(size: 18)));
+                    }
+                    final i = ms.length - 1 - j;
+                    final m = ms[i];
+                    final own = m.senderId == _uid;
+                    final bubble = buildBubble(context, m,
+                        own: own,
+                        groupEnd: isGroupEnd(ms, i),
+                        peerAvatarUrl: _peerAvatarUrl,
+                        onImageTap: _openLightbox,
+                        onQuickAnswer: _answerQuick,
+                        canAnswerQuick: _isOpen);
+                    if (!needsDaySep(ms, i)) return bubble;
+                    return Column(children: [
+                      Center(
+                          child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                            color: pal.sys,
+                            borderRadius: BorderRadius.circular(999)),
+                        child: Text(formatDayLabel(m.createdAt),
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: pal.ink.withValues(alpha: .9))),
+                      )),
+                      bubble,
+                    ]);
+                  },
+                ),
+              ),
+              _buildBottom(conv),
+            ]),
           ),
         ),
-        _buildBottom(conv),
       ]),
     );
   }
 
-  PreferredSizeWidget _buildHeader(Map<String, dynamic> conv) {
-    final price = conv['agreed_price'] != null
-        ? 'Precio acordado: ${fmtRD(conv['agreed_price'] as num)}'
-        : conv['agreed_hourly_rate'] != null
-            ? 'Tarifa acordada: ${fmtRD(conv['agreed_hourly_rate'] as num)}/h'
-            : 'Acuerdo sin precio fijo';
-    return AppBar(
-      titleSpacing: 0,
-      title: GestureDetector(
-        onTap: () => showAgreementDetails(context, conv, peerName: _peerName, isProvider: _isProvider),
-        child: ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: conv['product_image_url'] != null
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: Image.network(conv['product_image_url'] as String,
-                      width: 40, height: 40, fit: BoxFit.cover))
-              : const CircleAvatar(child: Icon(Icons.check, size: 16)),
-          title: Text(conv['product_name'] as String? ?? 'Acuerdo',
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15)),
-          subtitle: Text(price, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12)),
-        ),
-      ),
+  /// Header violeta del chat: atrás + nombre del peer (con el pedido de
+  /// subtítulo) centrado + menú. Sin redondeo inferior: el panel lila calza
+  /// justo debajo. Tocar el título abre el detalle del acuerdo.
+  Widget _buildHeader(Map<String, dynamic> conv) {
+    return VioletHeader(
+      bottomRadius: 0,
+      leading: HeaderCircleButton(
+          icon: Icons.arrow_back_ios_new,
+          tooltip: 'Atrás',
+          onTap: () => context.pop()),
+      title: _peerName ?? (conv['product_name'] as String? ?? 'Acuerdo'),
+      subtitle: conv['product_name'] as String?,
+      titleAlign: HeaderTitleAlign.center,
+      onTitleTap: () => showAgreementDetails(context, conv,
+          peerName: _peerName, isProvider: _isProvider),
       actions: [
-        Container(
-          margin: const EdgeInsets.only(right: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(999)),
-          child: Text(
-              conv['status'] == 'abierto'
-                  ? 'Abierto'
-                  : conv['status'] == 'cerrado'
-                      ? 'Completado'
-                      : 'No concretado',
-              style: const TextStyle(fontSize: 11)),
-        ),
         PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, color: Colors.white),
           onSelected: (v) async {
             switch (v) {
               case 'complete':
