@@ -7,6 +7,7 @@ import '../shell/home_scroll.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
+import '../shared/profile_avatar_button.dart';
 
 String timeAgo(DateTime d) {
   final diff = DateTime.now().difference(d);
@@ -66,7 +67,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     return Scaffold(
       appBar: AppBar(
           title: const Text('Mis solicitudes'),
-          actions: const [NotificationBell()]),
+          actions: const [NotificationBell(), ProfileAvatarButton()]),
       body: RefreshIndicator(
         // onRefresh espera Future<void>; bloque de setState para no devolver Future.
         onRefresh: () async {

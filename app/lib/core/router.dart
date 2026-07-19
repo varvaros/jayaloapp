@@ -18,6 +18,7 @@ import '../features/provider/my_offers_screen.dart';
 import '../features/provider/request_detail_screen.dart';
 import '../features/provider/stats_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/shared/profile_avatar_button.dart';
 import '../features/shell/back_guard.dart';
 import '../features/shell/home_shell.dart';
 import 'session_state.dart';
@@ -30,6 +31,9 @@ GoRouter buildRouter() => GoRouter(
         // Al cerrar sesión, el rol cacheado deja de valer.
         if (!loggedIn && roleStore.value != RoleState.unknown) {
           roleStore.invalidate();
+          // El avatar no debe arrastrar la foto/nombre del usuario anterior
+          // al siguiente login (mismo teléfono, otra cuenta).
+          profileStore.clear();
         }
         return redirectTarget(
             loggedIn: loggedIn,

@@ -5,6 +5,7 @@ import '../shell/floating_nav_bar.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
+import '../shared/profile_avatar_button.dart';
 
 /// Umbral de la web (`src/lib/responseTime.ts`): con menos de 5 respuestas
 /// medidas la mediana no representa nada y se omite por completo.
@@ -28,7 +29,7 @@ class _ReputationScreenState extends State<ReputationScreen> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
             title: const Text('Mi reputación'),
-            actions: const [NotificationBell()]),
+            actions: const [NotificationBell(), ProfileAvatarButton()]),
         body: FutureBuilder<Map<String, dynamic>?>(
           future: _load,
           builder: (context, snap) {

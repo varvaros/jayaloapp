@@ -6,6 +6,7 @@ import '../shell/floating_nav_bar.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
+import '../shared/profile_avatar_button.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -35,7 +36,7 @@ class _StatsScreenState extends State<StatsScreen> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
             title: const Text('Mis estadísticas'),
-            actions: const [NotificationBell()]),
+            actions: const [NotificationBell(), ProfileAvatarButton()]),
         body: FutureBuilder<
             (Map<String, dynamic>, ({int productos, int servicios}))>(
           future: _load,

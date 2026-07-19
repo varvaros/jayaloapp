@@ -234,7 +234,7 @@ Future<Map<String, dynamic>?> myProfile() async {
   if (uid == null) return null;
   return await supa
       .from('profiles')
-      .select('account_type,first_name,last_name,phone')
+      .select('account_type,first_name,last_name,phone,avatar_url')
       .eq('user_id', uid)
       .maybeSingle();
 }

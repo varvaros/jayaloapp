@@ -14,6 +14,7 @@ import '../verification/verify_banner.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
+import '../shared/profile_avatar_button.dart';
 
 const _maxRequestPhotos = 2;
 
@@ -266,7 +267,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     return Scaffold(
       appBar: AppBar(
           title: const Text('Crear solicitud'),
-          actions: const [NotificationBell()]),
+          actions: const [NotificationBell(), ProfileAvatarButton()]),
       body: Column(children: [
         // Nudge de verificación (spec §6.1) — cerrable, nunca bloquea el envío.
         const VerifyWhatsappBanner(),

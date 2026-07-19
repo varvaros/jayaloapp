@@ -11,6 +11,7 @@ import '../shell/floating_nav_bar.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
+import '../shared/profile_avatar_button.dart';
 
 int estimatedUnlockCost(Map<String, dynamic> o) {
   final c = pointsForOffer(
@@ -85,7 +86,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     return Scaffold(
       appBar: AppBar(
           title: const Text('Mis ofertas'),
-          actions: const [NotificationBell()]),
+          actions: const [NotificationBell(), ProfileAvatarButton()]),
       body: _loading
           ? const JayaloLoaderBlock()
           : RefreshIndicator(

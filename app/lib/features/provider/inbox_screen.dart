@@ -7,6 +7,7 @@ import '../shell/home_scroll.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
+import '../shared/profile_avatar_button.dart';
 
 /// Signature de las fuentes de datos del inbox: `providerInbox` (Para ti,
 /// filtra por rubro del proveedor) y `allOpenRequests` (Todas, cualquier
@@ -33,14 +34,15 @@ class ProviderInboxScreen extends StatelessWidget {
 /// junto al de carga (mismo espíritu que separar ReputationView/StatsView de
 /// sus pantallas, extendido aquí: `fetch` se inyecta para poder montar este
 /// widget en tests sin tocar la red). `actions` también es inyectable: por
-/// defecto es la campana real, pero [NotificationBell] toca `supa` en su
-/// `initState` (vía `notifCountStore`), que revienta si Supabase no está
+/// defecto son la campana y el avatar reales, pero [NotificationBell] y
+/// [ProfileAvatarButton] tocan `supa` en su `initState` (vía
+/// `notifCountStore`/`profileStore`), que revienta si Supabase no está
 /// inicializado — en los tests se pasa una lista vacía.
 class ProviderInboxView extends StatefulWidget {
   const ProviderInboxView({
     super.key,
     required this.fetch,
-    this.actions = const [NotificationBell()],
+    this.actions = const [NotificationBell(), ProfileAvatarButton()],
   });
 
   final InboxFetch fetch;

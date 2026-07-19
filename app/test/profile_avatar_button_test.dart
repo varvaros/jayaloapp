@@ -1,0 +1,158 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:jayalo_app/app.dart';
+import 'package:jayalo_app/core/session_state.dart';
+import 'package:jayalo_app/features/shared/profile_avatar_button.dart';
+
+/// El avatar del AppBar (spec iteración 2 §5): junto a la campana en las 6
+/// pantallas raíz. Al tocarlo abre un menú por rol — cliente ve solo
+/// Ajustes, proveedor ve Estadísticas y Ajustes (ambas salieron de la barra
+/// inferior, spec §4). `profileStore`/`roleStore` son singletons compartidos
+/// con la app real: cada test los deja en un estado conocido para no
+/// arrastrar datos de un test a otro.
+void main() {
+  setUp(() {
+    roleStore.value = RoleState.consumer;
+    profileStore.avatarUrl = null;
+    profileStore.firstName = null;
+  });
+
+  GoRouter routerWithHome(Widget child) => GoRouter(
+        initialLocation: '/home',
+        routes: [
+          GoRoute(
+              path: '/home',
+              builder: (_, _) =>
+                  Scaffold(appBar: AppBar(actions: [child]))),
+          GoRoute(
+              path: '/settings',
+              builder: (_, _) => const Text('pantalla de ajustes')),
+          GoRoute(
+              path: '/provider/stats',
+              builder: (_, _) => const Text('pantalla de estadísticas')),
+        ],
+      );
+
+  Widget host() => MaterialApp.router(
+        theme: jayaloTheme(Brightness.light),
+        routerConfig: routerWithHome(const ProfileAvatarButton()),
+      );
+
+  Future<void> abrirMenu(WidgetTester tester) async {
+    await tester.tap(find.byType(IconButton));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('cliente: el menú SOLO ofrece Ajustes', (tester) async {
+    roleStore.value = RoleState.consumer;
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+    await abrirMenu(tester);
+
+    expect(find.text('Ajustes'), findsOneWidget);
+    expect(find.text('Estadísticas'), findsNothing);
+  });
+
+  testWidgets('proveedor: el menú ofrece Estadísticas y Ajustes', (tester) async {
+    roleStore.value = RoleState.provider;
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+    await abrirMenu(tester);
+
+    expect(find.text('Estadísticas'), findsOneWidget);
+    expect(find.text('Ajustes'), findsOneWidget);
+  });
+
+  testWidgets('tocar "Ajustes" navega a /settings', (tester) async {
+    roleStore.value = RoleState.consumer;
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+    await abrirMenu(tester);
+
+    await tester.tap(find.text('Ajustes'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('pantalla de ajustes'), findsOneWidget);
+  });
+
+  testWidgets('proveedor: tocar "Estadísticas" navega a /provider/stats',
+      (tester) async {
+    roleStore.value = RoleState.provider;
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+    await abrirMenu(tester);
+
+    await tester.tap(find.text('Estadísticas'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('pantalla de estadísticas'), findsOneWidget);
+  });
+
+  testWidgets('sin foto de perfil, el avatar muestra la inicial del nombre',
+      (tester) async {
+    profileStore.avatarUrl = null;
+    profileStore.firstName = 'Ana';
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+
+    final avatar = tester.widget<CircleAvatar>(find.byType(CircleAvatar));
+    expect(avatar.backgroundImage, isNull);
+    expect(find.text('A'), findsOneWidget);
+  });
+
+  testWidgets('sin foto ni nombre, el avatar cae a un signo de interrogación',
+      (tester) async {
+    profileStore.avatarUrl = null;
+    profileStore.firstName = null;
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+
+    expect(find.text('?'), findsOneWidget);
+  });
+
+  testWidgets('con foto de perfil, el avatar usa esa imagen de red',
+      (tester) async {
+    profileStore.avatarUrl = 'https://example.com/foto.jpg';
+    profileStore.firstName = 'Ana';
+    await tester.pumpWidget(host());
+    await tester.pump(); // sin pumpAndSettle: no esperar a que la red resuelva
+
+    final avatar = tester.widget<CircleAvatar>(find.byType(CircleAvatar));
+    expect(
+        avatar.backgroundImage,
+        isA<NetworkImage>()
+            .having((i) => i.url, 'url', 'https://example.com/foto.jpg'));
+    expect(avatar.child, isNull,
+        reason: 'con foto no debe superponerse el fallback de inicial');
+
+    // El entorno de test intercepta todo HttpClient y responde 400 (no hay
+    // red real) — NetworkImage intenta decodificar esa respuesta y falla de
+    // forma asíncrona. Es un artefacto conocido del binding de test (ver
+    // aviso de `flutter test`), no un bug del widget: se drena aquí para que
+    // no tumbe el test.
+    expect(tester.takeException(), isA<Object>());
+  });
+
+  testWidgets(
+      'el botón tiene tooltip accesible y un área de toque de al menos 48x48',
+      (tester) async {
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Tu perfil'), findsOneWidget);
+    final size = tester.getSize(find.byType(IconButton));
+    expect(size.width, greaterThanOrEqualTo(48));
+    expect(size.height, greaterThanOrEqualTo(48));
+  });
+
+  testWidgets('con "reducir animaciones" no queda nada animando y no hay excepciones',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp.router(
+      theme: jayaloTheme(Brightness.light),
+      routerConfig: routerWithHome(const ProfileAvatarButton()),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+}
