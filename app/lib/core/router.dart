@@ -87,9 +87,13 @@ GoRouter buildRouter() => GoRouter(
                       key: state.pageKey,
                       opaque: false,
                       barrierColor: Colors.black45,
+                      // 3ª pasada PO: 600ms (modalRise) con la curva
+                      // enfatizada — frenada MUY visible al llegar al tope.
+                      // El cierre se queda en page (300ms): al salir no debe
+                      // arrastrar.
                       transitionDuration: JayaloMotion.reduced(context)
                           ? Duration.zero
-                          : JayaloMotion.page,
+                          : JayaloMotion.modalRise,
                       reverseTransitionDuration:
                           JayaloMotion.reduced(context)
                               ? Duration.zero
@@ -100,7 +104,7 @@ GoRouter buildRouter() => GoRouter(
                                 begin: const Offset(0, 1), end: Offset.zero)
                             .animate(CurvedAnimation(
                                 parent: animation,
-                                curve: JayaloMotion.emphasized,
+                                curve: JayaloMotion.rise,
                                 reverseCurve: JayaloMotion.emphasized)),
                         child: child,
                       ),
