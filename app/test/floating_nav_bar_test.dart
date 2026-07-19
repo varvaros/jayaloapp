@@ -2,9 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
+import 'package:jayalo_app/core/brand.dart';
 import 'package:jayalo_app/core/session_state.dart';
 import 'package:jayalo_app/features/shell/floating_nav_bar.dart';
 import 'package:jayalo_app/features/shell/nav_destinations.dart';
+
+/// Ratio de contraste WCAG entre dos colores (fórmula estándar sobre la
+/// luminancia relativa que ya calcula `Color.computeLuminance()`).
+double _contrastRatio(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  final lighter = la > lb ? la : lb;
+  final darker = la > lb ? lb : la;
+  return (lighter + 0.05) / (darker + 0.05);
+}
 
 /// Contrato de la barra, no sus píxeles. Lo importante: que solo el activo
 /// lleve texto (decisión PO — limpia como la referencia pero el usuario
@@ -27,6 +38,23 @@ void main() {
           ),
         ),
       );
+
+  /// Igual que [host] pero con el brillo elegido — para probar el color de
+  /// la barra en claro y en oscuro (iteración 2: tinte violeta).
+  Widget hostBrightness(int index, Brightness brightness) => MaterialApp(
+        theme: jayaloTheme(brightness),
+        home: Scaffold(
+          bottomNavigationBar: FloatingNavBar(
+            destinations: dests,
+            currentIndex: index,
+            onSelected: (_) {},
+          ),
+        ),
+      );
+
+  Icon iconFor(WidgetTester tester, String label) => tester.widget<Icon>(
+      find.descendant(
+          of: find.bySemanticsLabel(label), matching: find.byType(Icon)));
 
   testWidgets('solo el destino activo muestra su texto', (tester) async {
     await tester.pumpWidget(host(0));
@@ -129,16 +157,17 @@ void main() {
       expect(find.text(d.label), findsNothing, reason: d.label);
     }
 
-    // Ningún ícono queda teñido de primary — ni los laterales (_SideItem)
-    // ni el círculo central (_CenterButton, que usa cs.primary siempre como
-    // fondo del círculo, pero cuyo texto de abajo solo aparece si `active`).
+    // Ningún ícono queda teñido de primary — ni los laterales (_SideItem,
+    // que en claro usan onPrimaryContainer/opacidad, iteración 2) ni el
+    // círculo central (_CenterButton, cuyo fondo en claro es
+    // onPrimaryContainer, no primary; su texto de abajo solo aparece si
+    // `active`). Este host es siempre en claro (ver [host]).
     final cs = Theme.of(tester.element(find.byType(FloatingNavBar))).colorScheme;
     final iconos = tester.widgetList<Icon>(find.descendant(
         of: find.byType(FloatingNavBar), matching: find.byType(Icon)));
     for (final icono in iconos) {
-      // El ícono del círculo central es cs.onPrimary (sobre fondo primary),
-      // no cs.primary: no cuenta como "teñido de primary" en el sentido de
-      // la regla de la barra lateral.
+      // El ícono del círculo central es cs.onPrimary, no cs.primary: no
+      // cuenta como "teñido de primary" en el sentido de la regla lateral.
       expect(icono.color, isNot(cs.primary),
           reason: 'ningún ícono debe quedar teñido de primary sin una '
               'pestaña activa');
@@ -155,5 +184,131 @@ void main() {
         reason:
             'kNavBarReservedSpace ($kNavBarReservedSpace) se quedó corto '
             'frente al alto real (${size.height})');
+  });
+
+  group('color (iteración 2 — tinte violeta, spec §2)', () {
+    testWidgets('la píldora se tiñe con primaryContainer en claro',
+        (tester) async {
+      await tester.pumpWidget(hostBrightness(0, Brightness.light));
+      await tester.pumpAndSettle();
+      final cs =
+          Theme.of(tester.element(find.byType(FloatingNavBar))).colorScheme;
+      final pill = tester.widget<Container>(find.descendant(
+          of: find.byType(FloatingNavBar), matching: find.byType(Container)));
+      final deco = pill.decoration as BoxDecoration;
+      expect(deco.color, cs.primaryContainer);
+      expect(cs.primaryContainer, JayaloColors.accent,
+          reason: 'primaryContainer debe seguir siendo el token accent del '
+              'spec §2 en claro');
+    });
+
+    testWidgets('la píldora se tiñe con primaryContainer en oscuro',
+        (tester) async {
+      await tester.pumpWidget(hostBrightness(0, Brightness.dark));
+      await tester.pumpAndSettle();
+      final cs =
+          Theme.of(tester.element(find.byType(FloatingNavBar))).colorScheme;
+      final pill = tester.widget<Container>(find.descendant(
+          of: find.byType(FloatingNavBar), matching: find.byType(Container)));
+      final deco = pill.decoration as BoxDecoration;
+      expect(deco.color, cs.primaryContainer);
+      expect(cs.primaryContainer, JayaloColors.dAccent,
+          reason: 'primaryContainer debe seguir siendo el token dAccent del '
+              'spec §2 en oscuro');
+    });
+
+    testWidgets(
+        'el destino lateral activo usa onPrimaryContainer (violeta oscuro) '
+        'en claro y dForeground en oscuro', (tester) async {
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(hostBrightness(0, brightness));
+        await tester.pumpAndSettle();
+        final cs = Theme.of(tester.element(find.byType(FloatingNavBar)))
+            .colorScheme;
+        final icon = iconFor(tester, 'Mis ofertas');
+        expect(icon.color, cs.onPrimaryContainer,
+            reason: 'brillo: $brightness');
+      }
+    });
+
+    testWidgets(
+        'el destino lateral inactivo en claro es el mismo tono atenuado '
+        '(onPrimaryContainer con opacidad reducida), no otro color',
+        (tester) async {
+      await tester.pumpWidget(hostBrightness(0, Brightness.light));
+      await tester.pumpAndSettle();
+      final cs =
+          Theme.of(tester.element(find.byType(FloatingNavBar))).colorScheme;
+      final icon = iconFor(tester, 'Estadísticas'); // índice 1, inactivo
+      expect(icon.color, isNot(cs.onPrimaryContainer));
+      expect((icon.color as Color).withValues(alpha: 1.0), cs.onPrimaryContainer,
+          reason: 'el inactivo debe ser el MISMO tono que el activo, solo '
+              'con opacidad reducida — nunca un color distinto');
+    });
+
+    testWidgets(
+        'el destino lateral inactivo en oscuro usa onSurfaceVariant '
+        '(dMutedFg), tal como especifica la tabla del spec §2',
+        (tester) async {
+      await tester.pumpWidget(hostBrightness(0, Brightness.dark));
+      await tester.pumpAndSettle();
+      final cs =
+          Theme.of(tester.element(find.byType(FloatingNavBar))).colorScheme;
+      final icon = iconFor(tester, 'Estadísticas'); // índice 1, inactivo
+      expect(icon.color, cs.onSurfaceVariant);
+      expect(cs.onSurfaceVariant, JayaloColors.dMutedFg);
+    });
+
+    testWidgets(
+        'el círculo central usa onPrimaryContainer (accentFg) en claro y '
+        'primary (dPrimary) en oscuro', (tester) async {
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(hostBrightness(kCenterIndex, brightness));
+        await tester.pumpAndSettle();
+        final cs = Theme.of(tester.element(find.byType(FloatingNavBar)))
+            .colorScheme;
+        final circle = tester
+            .widgetList<Material>(find.descendant(
+                of: find.bySemanticsLabel('Ver solicitudes'),
+                matching: find.byType(Material)))
+            .firstWhere((m) => m.shape is CircleBorder);
+        final expected =
+            brightness == Brightness.dark ? cs.primary : cs.onPrimaryContainer;
+        expect(circle.color, expected, reason: 'brillo: $brightness');
+      }
+    });
+
+    testWidgets('el ícono dentro del círculo sigue siendo onPrimary',
+        (tester) async {
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(hostBrightness(kCenterIndex, brightness));
+        await tester.pumpAndSettle();
+        final cs = Theme.of(tester.element(find.byType(FloatingNavBar)))
+            .colorScheme;
+        final icon = iconFor(tester, 'Ver solicitudes');
+        expect(icon.color, cs.onPrimary, reason: 'brillo: $brightness');
+      }
+    });
+
+    test(
+        'el inactivo en claro cumple el mínimo WCAG de contraste no-textual '
+        '(3:1, SC 1.4.11) sobre el fondo teñido — solo se pinta el ícono, '
+        'la etiqueta nunca se muestra en estado inactivo', () {
+      final cs = jayaloScheme(Brightness.light);
+      final inactive = cs.onPrimaryContainer.withValues(alpha: 0.6);
+      final blended = Color.alphaBlend(inactive, cs.primaryContainer);
+      final ratio = _contrastRatio(blended, cs.primaryContainer);
+      expect(ratio, greaterThanOrEqualTo(3.0),
+          reason: 'ratio real: $ratio — ver cálculo en task-1-report.md');
+    });
+
+    test(
+        'el inactivo en oscuro (onSurfaceVariant/dMutedFg) también cumple '
+        'el mínimo WCAG de 3:1 sobre el nuevo fondo teñido (dAccent)', () {
+      final cs = jayaloScheme(Brightness.dark);
+      final ratio = _contrastRatio(cs.onSurfaceVariant, cs.primaryContainer);
+      expect(ratio, greaterThanOrEqualTo(3.0),
+          reason: 'ratio real: $ratio — ver cálculo en task-1-report.md');
+    });
   });
 }

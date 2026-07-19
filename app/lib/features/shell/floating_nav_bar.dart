@@ -85,7 +85,12 @@ class FloatingNavBar extends StatelessWidget {
               Container(
                 height: _pillHeight,
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerLowest,
+                  // Iteración 2 (spec §2): la píldora se tiñe de violeta
+                  // claro (`accent`) / azul oscuro (`dAccent`) — antes era
+                  // igual al fondo de la app y "no se percibía" (feedback
+                  // del PO en device). `primaryContainer` ya está clavado a
+                  // esos tokens en `jayaloScheme` (core/brand.dart).
+                  color: cs.primaryContainer,
                   borderRadius: BorderRadius.circular(_pillHeight / 2),
                   boxShadow: [
                     BoxShadow(
@@ -143,7 +148,17 @@ class _SideItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final color = active ? cs.primary : cs.onSurfaceVariant;
+    // Iteración 2 (spec §2): sobre la píldora teñida (`primaryContainer`) el
+    // activo va con el color pleno (`onPrimaryContainer` — accentFg/claro,
+    // dForeground/oscuro) y el inactivo es el MISMO tono atenuado, no otro
+    // color. En oscuro el spec da un token distinto para el inactivo
+    // (dMutedFg, ya poblado en `onSurfaceVariant`) en vez de una opacidad —
+    // se respeta tal cual dice la tabla; la opacidad de 0.6 en claro se
+    // eligió para llegar al mínimo WCAG 3:1 (ver test de contraste).
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = active
+        ? cs.onPrimaryContainer
+        : (isDark ? cs.onSurfaceVariant : cs.onPrimaryContainer.withValues(alpha: .6));
     final reduced = JayaloMotion.reduced(context);
     return Semantics(
       label: destination.label,
@@ -199,6 +214,14 @@ class _CenterButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Iteración 2 (spec §2): el círculo NO usa el mismo rol en los dos temas
+    // — en claro es `onPrimaryContainer` (accentFg, el violeta oscuro de la
+    // marca) y en oscuro es `primary` (dPrimary, el azul: la web tampoco usa
+    // violeta como primario en oscuro, ver core/brand.dart). No hay un único
+    // rol de ColorScheme que cubra ambos casos, así que se resuelve por
+    // brillo — mismo patrón que ya usa brand.dart para dark vs. light.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final circleColor = isDark ? cs.primary : cs.onPrimaryContainer;
     return Semantics(
       label: destination.label,
       button: true,
@@ -209,7 +232,7 @@ class _CenterButton extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Material(
-            color: cs.primary,
+            color: circleColor,
             shape: const CircleBorder(),
             elevation: 6,
             shadowColor: cs.shadow.withValues(alpha: .35),
@@ -232,7 +255,7 @@ class _CenterButton extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: cs.primary),
+                    color: circleColor),
               ),
             ),
         ],
