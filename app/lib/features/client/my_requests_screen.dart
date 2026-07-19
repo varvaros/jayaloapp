@@ -149,6 +149,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                   DateTime.parse(r['created_at'] as String),
                               phase: phase,
                               offerCount: offerCount,
+                              imageUrl: _firstImage(r),
+                              kind: r['kind'] as String?,
                               onTap: () =>
                                   context.go('/client/request/${r['id']}'),
                             ).cascadeIn(i);
@@ -199,16 +201,28 @@ class _SecRow extends StatelessWidget {
   }
 }
 
-/// Variante "A · Respiración plena" (elegida por el PO): la tarjeta entera se
-/// tiñe del tono de su fase, igual que una notificación sin leer. Las fases
-/// vivas (con ofertas, aceptada, desbloqueado) llevan color; esperando y
-/// completada van apagadas como una notificación leída.
+/// Primera foto de la solicitud (paridad con la web: `image_url` primaria,
+/// `image_urls` como respaldo). `null` si no tiene foto.
+String? _firstImage(Map<String, dynamic> r) {
+  final primary = r['image_url'] as String?;
+  if (primary != null && primary.isNotEmpty) return primary;
+  final list = (r['image_urls'] as List?)?.cast<String>() ?? const [];
+  final first = list.where((u) => u.isNotEmpty);
+  return first.isEmpty ? null : first.first;
+}
+
+/// Tarjeta de solicitud del home (mockup Tanda 1): tarjeta redondeada teñida
+/// por fase, con FOTO (miniatura), tema, tiempo y un CHIP de estado — el de
+/// "N ofertas" en lila/morado. Fases vivas (con ofertas/aceptada/desbloqueado)
+/// llevan color; esperando/completada van sobre tarjeta blanca.
 class _RequestCard extends StatelessWidget {
   const _RequestCard({
     required this.title,
     required this.createdAt,
     required this.phase,
     required this.offerCount,
+    required this.imageUrl,
+    required this.kind,
     required this.onTap,
   });
 
@@ -216,6 +230,8 @@ class _RequestCard extends StatelessWidget {
   final DateTime createdAt;
   final RequestPhase phase;
   final int offerCount;
+  final String? imageUrl;
+  final String? kind;
   final VoidCallback onTap;
 
   static const _live = {
@@ -228,49 +244,96 @@ class _RequestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tone = toneFor(context, phase);
-    final alive = _live.contains(phase);
-    final bg =
-        alive ? tone.bg : cs.surfaceContainerHighest.withValues(alpha: .55);
-    final fg = alive ? tone.ink : cs.onSurfaceVariant;
-    final ic = alive ? tone.ink : cs.outline;
-    final (icon, label) = phaseChip(phase, offerCount);
+    final tinted = _live.contains(phase);
+    // Tarjeta teñida en las fases vivas; blanca cuando espera/completa.
+    final bg = tinted ? tone.bg : cs.surfaceContainerLowest;
+    final fg = tinted ? tone.ink : cs.onSurface;
+    final (_, label) = phaseChip(phase, offerCount);
     return JayaloCard(
       onTap: onTap,
       tint: bg,
+      padding: const EdgeInsets.all(11),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: ic.withValues(alpha: .14),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: 20, color: ic),
-          ),
-          const SizedBox(width: 12),
+          _thumb(context, tinted, tone),
+          const SizedBox(width: 13),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontWeight: FontWeight.w600, color: fg),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '$label · ${timeAgo(createdAt)}',
                   style: TextStyle(
-                      fontSize: 12, color: fg.withValues(alpha: .75)),
+                      fontSize: 14,
+                      height: 1.3,
+                      fontWeight: FontWeight.w600,
+                      color: fg),
                 ),
+                const SizedBox(height: 3),
+                Text(
+                  timeAgo(createdAt),
+                  style: TextStyle(
+                      fontSize: 11.5, color: fg.withValues(alpha: .7)),
+                ),
+                const SizedBox(height: 8),
+                _pill(label, tone, tinted),
               ],
             ),
           ),
+          Icon(Icons.chevron_right,
+              size: 20, color: fg.withValues(alpha: .4)),
         ],
       ),
     );
   }
+
+  /// Miniatura: foto (cover) si la hay; si no, un ícono de tipo sobre relleno
+  /// suave (nunca un ícono roto).
+  Widget _thumb(BuildContext context, bool tinted, StatusTone tone) {
+    final cs = Theme.of(context).colorScheme;
+    final holderBg =
+        tinted ? Colors.white.withValues(alpha: .65) : cs.surfaceContainerHighest;
+    Widget placeholder() => Container(
+          width: 54,
+          height: 54,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: holderBg,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Icon(
+              kind == 'servicio'
+                  ? Icons.handyman_outlined
+                  : Icons.inventory_2_outlined,
+              size: 24,
+              color: tone.ink.withValues(alpha: .8)),
+        );
+    final url = imageUrl;
+    if (url == null) return placeholder();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Image.network(url,
+          width: 54,
+          height: 54,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => placeholder(),
+          loadingBuilder: (_, child, p) => p == null ? child : placeholder()),
+    );
+  }
+
+  /// Chip de estado: sobre tarjeta teñida va en píldora blanca translúcida con
+  /// la tinta de la fase; sobre tarjeta blanca va en la píldora teñida.
+  Widget _pill(String label, StatusTone tone, bool tinted) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
+        decoration: BoxDecoration(
+          color: tinted ? Colors.white.withValues(alpha: .85) : tone.bg,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w600, color: tone.ink)),
+      );
 }

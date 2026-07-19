@@ -105,16 +105,12 @@ final profileStore = ProfileStore();
 /// el avatar del header violeta (`violet_header.dart`) — un solo menú, un solo
 /// comportamiento.
 ///
-/// El menú SALE DE LA DERECHA (PO 2026-07-19, revisión visual en device;
-/// antes era `showModalBottomSheet`, desde abajo): un panel lateral tipo
-/// end-drawer con esquinas izquierdas redondeadas que desliza desde el borde
-/// derecho — el mismo lado donde vive el avatar que lo abre. Con "reducir
-/// animaciones" aparece sin movimiento.
-///
-/// 2ª pasada del PO el mismo día: "debe ser suave y antes de llegar se vuelve
-/// más lento" — a 250 ms con easeOut la frenada no se alcanzaba a percibir.
-/// Ahora `page` (300 ms) con `emphasized` (easeInOutCubic): arranque suave,
-/// frenada visible antes de asentarse.
+/// El menú SALE DE LA IZQUIERDA (PO 2026-07-19, tras mover el avatar al leading
+/// del header violeta): un panel lateral tipo drawer con esquinas derechas
+/// redondeadas que desliza desde el borde izquierdo — el mismo lado donde ahora
+/// vive el avatar que lo abre. Con "reducir animaciones" aparece sin
+/// movimiento. Curva `emphasized` (easeInOutCubic) a `page` (300 ms): arranque
+/// suave, frenada visible antes de asentarse.
 Future<void> openProfileMenu(BuildContext context) async {
   final isProvider = roleStore.value == RoleState.provider;
   final route = await showGeneralDialog<String>(
@@ -125,9 +121,9 @@ Future<void> openProfileMenu(BuildContext context) async {
     transitionDuration:
         JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.page,
     pageBuilder: (ctx, _, _) => Align(
-      alignment: Alignment.centerRight,
+      alignment: Alignment.centerLeft,
       child: Material(
-        borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
+        borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)),
         clipBehavior: Clip.antiAlias,
         child: SafeArea(
           child: SizedBox(
@@ -152,7 +148,7 @@ Future<void> openProfileMenu(BuildContext context) async {
       ),
     ),
     transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-      position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+      position: Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero)
           .animate(CurvedAnimation(
               parent: anim,
               curve: JayaloMotion.emphasized,

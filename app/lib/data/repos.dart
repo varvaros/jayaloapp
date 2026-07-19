@@ -13,7 +13,7 @@ Future<List<Map<String, dynamic>>> myRequests() async {
   final uid = supa.auth.currentUser!.id;
   return List<Map<String, dynamic>>.from(await supa
       .from('customer_requests')
-      .select('id,title,kind,status,is_wholesale,created_at')
+      .select('id,title,kind,status,is_wholesale,created_at,image_url,image_urls')
       .eq('user_id', uid)
       .order('created_at', ascending: false));
 }

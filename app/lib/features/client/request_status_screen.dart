@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
+import '../../core/motion.dart';
 import '../../data/repos.dart';
 import '../../domain/chat_time.dart';
 import '../../domain/money.dart';
@@ -65,7 +66,8 @@ class RequestStatusScreen extends StatefulWidget {
   State<RequestStatusScreen> createState() => _RequestStatusScreenState();
 }
 
-class _RequestStatusScreenState extends State<RequestStatusScreen> {
+class _RequestStatusScreenState extends State<RequestStatusScreen>
+    with TickerProviderStateMixin {
   Map<String, dynamic>? _request;
 
   @override
@@ -119,15 +121,24 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
   /// Hoja de ofertas que sube sobre el detalle: cada oferta es una tarjeta;
   /// tocarla abre la MISMA `showOfferSheet` de siempre (aceptar/rechazar), sin
   /// tocar el flujo de aceptación.
-  void _showOffers(BuildContext context, Map<String, dynamic> req,
-      List<Map<String, dynamic>> offers) {
+  ///
+  /// SUBE con la MISMA configuración que el modal de crear-solicitud (subida
+  /// lenta y fluida: `modalRise` con la curva enfatizada; cierre en `page`).
+  Future<void> _showOffers(BuildContext context, Map<String, dynamic> req,
+      List<Map<String, dynamic>> offers) async {
     final hasAccepted = offers
         .any((o) => o['status'] == 'accepted' || o['status'] == 'completed');
     final cheapest = _cheapestOfferId(offers);
-    showModalBottomSheet(
+    final riseController = BottomSheet.createAnimationController(this)
+      ..duration =
+          JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.modalRise
+      ..reverseDuration =
+          JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.page;
+    await showModalBottomSheet(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
+      transitionAnimationController: riseController,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
@@ -184,6 +195,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
         ]),
       ),
     );
+    riseController.dispose();
   }
 }
 
@@ -285,30 +297,24 @@ class _AmberPanel extends StatelessWidget {
     final topInset = MediaQuery.paddingOf(context).top;
     return Container(
       height: 300 + topInset,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: am.panel,
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
       ),
       child: Stack(
-        clipBehavior: Clip.none,
         children: [
-          // Foto principal (o ícono de fase si no hay fotos).
-          Positioned(
-            top: topInset + 24,
-            left: 20,
-            bottom: 24,
-            right: images.length > 1 ? 92 : 20,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: images.isEmpty
-                  ? Center(child: Icon(icon, size: 120, color: am.ink))
-                  : Image.network(images.first,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          Center(child: Icon(icon, size: 120, color: am.ink))),
-            ),
+          // La foto LLENA todo el panel ámbar (cover) — el ámbar solo asoma si
+          // no hay foto (ícono de fase centrado). Sin cuadro interno.
+          Positioned.fill(
+            child: images.isEmpty
+                ? Center(child: Icon(icon, size: 120, color: am.ink))
+                : Image.network(images.first,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) =>
+                        Center(child: Icon(icon, size: 120, color: am.ink))),
           ),
-          // Miniatura de la 2ª foto (una solicitud admite máximo 2).
+          // Miniatura de la 2ª foto pegada al borde derecho (máx. 2 fotos).
           if (images.length > 1)
             Positioned(
               top: topInset + 30,

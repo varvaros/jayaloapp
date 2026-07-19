@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/money.dart';
 import '../shared/brand_kit.dart';
@@ -149,11 +150,9 @@ class _CatalogViewState extends State<CatalogView> {
                       crossAxisCount: 2,
                       mainAxisSpacing: 8,
                       crossAxisSpacing: 8,
-                      // .62, no .72: con la imagen cuadrada + 2 líneas de
-                      // nombre + precio, un ratio más ajustado desborda por
-                      // unos px en anchos de teléfono típicos (~360-390dp) —
-                      // verificado con el ratio anterior en ese ancho.
-                      childAspectRatio: .62,
+                      // Cards un poco más altas (.56) para el nombre/precio más
+                      // grandes (2 líneas de nombre + precio) sin desbordar.
+                      childAspectRatio: .56,
                     ),
                     itemCount: items.length,
                     itemBuilder: (_, i) =>
@@ -265,19 +264,22 @@ class _CatalogCard extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
+                    style: TextStyle(
+                        fontSize: 15,
+                        height: 1.25,
+                        fontWeight: FontWeight.w600,
+                        color: jayaloHead(context))),
+                const SizedBox(height: 6),
                 Text(priceLabel,
                     style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 16,
                         fontWeight: FontWeight.w600,
                         color: cs.primary)),
               ],
