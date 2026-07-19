@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/brand.dart';
@@ -96,27 +97,53 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Widget build(BuildContext context) => FutureBuilder<ProductDetailData?>(
         future: _load,
         builder: (context, snap) {
-          final title = (snap.data?.product['name'] as String?) ?? 'Producto';
+          final body = switch (snap.connectionState) {
+            ConnectionState.done => snap.hasError
+                ? ErrorRetry(onRetry: () async => _refetch())
+                : snap.data == null
+                    ? EmptyState(
+                        message: 'No encontramos este producto.\n\n'
+                            'Puede que ya no esté disponible.',
+                      )
+                    : ProductDetailView(
+                        data: snap.data!, onInterestSent: _refetch),
+            _ => const SkeletonList(),
+          };
+          // Sin AppBar: la foto manda (misma doctrina que el detalle de
+          // solicitud). El atrás flota sobre la galería.
           return Scaffold(
-            appBar: AppBar(
-                title: Text(title,
-                    maxLines: 1, overflow: TextOverflow.ellipsis)),
-            body: switch (snap.connectionState) {
-              ConnectionState.done => snap.hasError
-                  ? ErrorRetry(onRetry: () async => _refetch())
-                  : snap.data == null
-                      ? EmptyState(
-                          message: 'No encontramos este producto.\n\n'
-                              'Puede que ya no esté disponible.',
-                        )
-                      : ProductDetailView(
-                          data: snap.data!, onInterestSent: _refetch),
-              _ => const SkeletonList(),
-            },
+            body: Stack(children: [
+              body,
+              SafeArea(child: productBackFab(context)),
+            ]),
           );
         },
       );
 }
+
+/// Atrás flotante sobre la galería del producto (mismo gesto que el detalle de
+/// solicitud: en el detalle no hay header violeta, solo el atrás).
+Widget productBackFab(BuildContext context) => Padding(
+      padding: const EdgeInsets.only(top: 8, left: 16),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Material(
+          color: Theme.of(context).colorScheme.surfaceContainerLowest,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          elevation: 1,
+          child: InkWell(
+            onTap: () => context.pop(),
+            child: SizedBox(
+              width: 42,
+              height: 42,
+              child: Icon(Icons.arrow_back_ios_new,
+                  size: 18, color: jayaloHead(context)),
+            ),
+          ),
+        ),
+      ),
+    );
 
 /// Solo dibuja — recibe los datos ya resueltos. Stateful por la galería
 /// (imagen activa) y por su propio [ScrollController] (nunca el singleton
@@ -204,13 +231,15 @@ class _ProductDetailViewState extends State<ProductDetailView> {
                   ]),
                 ),
               Text(name,
-                  style: const TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.w700)),
+                  style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                      color: jayaloHead(context))),
               const SizedBox(height: 6),
               Text(priceLabel,
                   style: TextStyle(
                       fontSize: 20,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                       color: cs.primary)),
               if (description != null && description.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -376,7 +405,7 @@ class _BusinessCard extends StatelessWidget {
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
               Text(revealed ? business.name : 'Proveedor',
                   style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700)),
+                      fontSize: 14, fontWeight: FontWeight.w600)),
               if (revealed && business.verified) ...[
                 const SizedBox(height: 4),
                 StatusChip(
@@ -571,7 +600,10 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(_isServicio ? 'Solicitar servicio' : 'Confirmar solicitud',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: jayaloHead(context))),
           const SizedBox(height: 4),
           Text(
             _isServicio
@@ -590,7 +622,7 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
                     Text(p['name'] as String? ?? '',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
                     Text([
                       priceLabel,
                       ?conditionLabel,
@@ -652,7 +684,7 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
             icon: const Icon(Icons.remove),
           ),
           Text('$_quantity',
-              style: const TextStyle(fontWeight: FontWeight.w700)),
+              style: const TextStyle(fontWeight: FontWeight.w600)),
           IconButton(
             onPressed: _quantity < 999
                 ? () => setState(() => _quantity++)
@@ -838,7 +870,7 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
           children: [
             Text(label.toUpperCase(),
                 style: const TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: .4)),
+                    fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
             const SizedBox(height: 6),
             child,
           ],

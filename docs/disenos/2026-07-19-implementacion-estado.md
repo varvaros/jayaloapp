@@ -38,6 +38,7 @@ por el PO) al código Flutter. Doctrina que rige: `jayalo-doctrina-estetica-mock
 | Chat | `chat/chat_screen.dart` + `widgets/bubbles.dart` | **Header violeta (sin redondeo inferior) + panel lila a pantalla completa** + burbujas re-teñidas (own lila claro, peer lila claro, ink oscuro). Realtime/envío intactos |
 | Detalle solicitud (cliente) | `client/request_status_screen.dart` | **Panel ámbar con foto + hoja blanca** (título, "Desde", chips de detalles) + CTA "Ver N ofertas" → hoja de ofertas. Aceptar sigue por `showOfferSheet` (flujo intacto) |
 | Detalle solicitud (proveedor) | `provider/request_detail_screen.dart` | Panel ámbar + hoja blanca con detalles + el formulario de "Hacer oferta" (lógica intacta) |
+| Detalle de producto | `client/product_detail_screen.dart` | Sin AppBar: la foto manda + atrás flotante; tipografía ligera; form "Solicitar" intacto |
 
 ## ⛔ HUECOS DE LÓGICA (documentados, NO corregidos — instrucción del PO)
 
@@ -69,8 +70,6 @@ por el PO) al código Flutter. Doctrina que rige: `jayalo-doctrina-estetica-mock
 
 ## Pendiente
 
-- **Detalle de producto** (`client/product_detail_screen.dart`): sin mockup
-  propio; hereda la paleta cálida pero conserva su AppBar. Rediseño opcional.
 - **Ajustes / login / onboarding:** sin mockup; heredan la paleta.
 - **Modo oscuro cálido:** el PO aún no lo aprobó; el tema oscuro sigue en azul.
 
