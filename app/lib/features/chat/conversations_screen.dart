@@ -5,9 +5,8 @@ import '../../data/repos.dart';
 import '../../domain/chat_time.dart';
 import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
-import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
-import '../shared/profile_avatar_button.dart';
+import '../shared/violet_header.dart';
 
 const _tabs = [
   ('abierto', 'Abierto'),
@@ -24,16 +23,23 @@ Color _statusColor(BuildContext c, String s) => switch (s) {
     };
 
 class ConversationsScreen extends StatefulWidget {
-  /// [actions] es inyectable (mismo patrón que `CatalogView`/
-  /// `ProviderInboxView`) para poder probar el contrato del AppBar sin
-  /// montar `NotificationBell`/`ProfileAvatarButton` de verdad — ambos
-  /// tocan Supabase en su `initState`/constructor y esta app no inicializa
-  /// Supabase en los tests de widgets.
+  /// [leading] y [actions] son inyectables (mismo patrón que `CatalogView`/
+  /// `ProviderInboxView`) para poder probar el contrato del header sin montar
+  /// `HeaderAvatar`/`HeaderBell` de verdad — ambos tocan Supabase en su
+  /// `initState` (perfil/conteo) y esta app no inicializa Supabase en los tests
+  /// de widgets.
+  ///
+  /// I1 (invariante que se preserva del AppBar viejo): Mensajes es la única
+  /// pestaña raíz sin acceso propio a Notificaciones y al menú de perfil
+  /// (Ajustes/Estadísticas) si el header no los trae — por eso el avatar
+  /// (→ menú) va de leading y la campana (→ notificaciones) de acción.
   const ConversationsScreen({
     super.key,
-    this.actions = const [NotificationBell(), ProfileAvatarButton()],
+    this.leading = const HeaderAvatar(),
+    this.actions = const [HeaderBell()],
   });
 
+  final Widget leading;
   final List<Widget> actions;
 
   @override
@@ -66,25 +72,25 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   Widget build(BuildContext context) {
     final all = _all;
     return Scaffold(
-      appBar: AppBar(
-          title: const Text('Mensajes'),
-          // I1 (revisión final de rama): Mensajes es el puesto 3 en ambas
-          // barras (spec navbar-iteración 2) pero es la ÚNICA pestaña raíz
-          // que se había quedado sin campana/avatar — sin esto, un usuario
-          // parado aquí no tenía ninguna vía a Ajustes sin cambiar de
-          // pestaña primero (ver docstring de `profile_avatar_button.dart`).
-          actions: widget.actions),
-      body: _error
-          ? ErrorRetry(
-              onRetry: _load, message: 'No pudimos cargar tus mensajes')
-          : all == null
-              ? const SkeletonList()
-              : RefreshIndicator(onRefresh: _load, child: _body(all)),
+      body: Column(children: [
+        VioletHeader(
+          leading: widget.leading,
+          title: 'Mensajes',
+          actions: widget.actions,
+        ),
+        Expanded(
+          child: _error
+              ? ErrorRetry(
+                  onRetry: _load, message: 'No pudimos cargar tus mensajes')
+              : all == null
+                  ? const SkeletonList()
+                  : RefreshIndicator(onRefresh: _load, child: _body(all)),
+        ),
+      ]),
     );
   }
 
   Widget _body(List<Map<String, dynamic>> all) {
-    final cs = Theme.of(context).colorScheme;
     final counts = <String, int>{};
     for (final c in all) {
       counts[c['status'] as String] = (counts[c['status'] as String] ?? 0) + 1;
@@ -99,7 +105,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         .toList();
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
         child: SegmentedButton<String>(
           segments: [
             for (final (v, label) in _tabs)
@@ -114,20 +120,15 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         ),
       ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-        child: TextField(
-          decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: 'Buscar…',
-              isDense: true,
-              filled: true,
-              fillColor: cs.surfaceContainerHighest,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none)),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+        child: _SearchPill(
+          hint: 'Buscar conversación',
           onChanged: (v) => setState(() => _q = v),
         ),
       ),
+      // Contenedor blanco a sangre con filas PLANAS separadas por línea fina
+      // (doctrina: la lista de conversaciones se reconoce por ser plana, no una
+      // pila de tarjetas flotantes).
       Expanded(
         child: filtered.isEmpty
             ? EmptyState(
@@ -137,13 +138,31 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                         ? 'Sin conversaciones completadas.'
                         : 'Sin conversaciones no concretadas.',
               )
-            : ListView.builder(
-                padding: EdgeInsets.only(
-                    top: 4, bottom: 4 + navBarReservedSpace(context)),
-                itemCount: filtered.length,
-                itemBuilder: (context, i) =>
-                    _ConversationCard(c: filtered[i], onOpen: _open)
-                        .cascadeIn(i),
+            : Container(
+                margin: const EdgeInsets.only(top: 4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerLowest,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(28)),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: ListView.separated(
+                  padding: EdgeInsets.only(
+                      top: 6, bottom: 6 + navBarReservedSpace(context)),
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, _) => Divider(
+                      height: 1,
+                      thickness: 1,
+                      indent: 22,
+                      endIndent: 22,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outlineVariant
+                          .withValues(alpha: .5)),
+                  itemBuilder: (context, i) =>
+                      _ConversationRow(c: filtered[i], onOpen: _open)
+                          .cascadeIn(i),
+                ),
               ),
       ),
     ]);
@@ -161,109 +180,156 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   }
 }
 
-/// Tarjeta que respira para la conversación: con no-leídos se tiñe del verde
-/// de "mensajes" (mismo tono que un contacto desbloqueado en la web); al día,
-/// tarjeta neutra.
-class _ConversationCard extends StatelessWidget {
-  const _ConversationCard({required this.c, required this.onOpen});
+/// Buscador blanco redondeado (píldora) — reemplaza el TextField gris; sigue
+/// filtrando de verdad (a diferencia del buscador del home, que es un hueco).
+class _SearchPill extends StatelessWidget {
+  const _SearchPill({required this.hint, required this.onChanged});
+  final String hint;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: jayaloCardShadow(context),
+      ),
+      padding: const EdgeInsets.only(left: 16, right: 8),
+      child: Row(children: [
+        Icon(Icons.search, size: 18, color: cs.onSurfaceVariant),
+        const SizedBox(width: 10),
+        Expanded(
+          child: TextField(
+            onChanged: onChanged,
+            style: const TextStyle(fontSize: 14),
+            decoration: InputDecoration(
+              isCollapsed: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              hintText: hint,
+              hintStyle: TextStyle(fontSize: 13.5, color: cs.onSurfaceVariant),
+              filled: false,
+              border: InputBorder.none,
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Fila PLANA de conversación (doctrina: la lista de conversaciones se
+/// reconoce por ser plana, no una pila de tarjetas). Con no-leídos respira un
+/// tinte tenue y suma el badge violeta; al día, va limpia sobre el blanco.
+class _ConversationRow extends StatelessWidget {
+  const _ConversationRow({required this.c, required this.onOpen});
   final Map<String, dynamic> c;
   final Future<void> Function(Map<String, dynamic>) onOpen;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final unread = (c['unread_count'] as int?) ?? 0;
-    final tone = dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight;
     final tinted = unread > 0;
-    final fg = tinted ? tone.ink : cs.onSurface;
-    final muted = tinted ? tone.ink.withValues(alpha: .75) : cs.onSurfaceVariant;
+    final fg = cs.onSurface;
+    final muted = cs.onSurfaceVariant;
     final lastAt = c['last_created_at'] ?? c['updated_at'];
     final price = c['agreed_price'] != null
         ? ' · ${fmtRD(c['agreed_price'] as num)}'
         : c['agreed_hourly_rate'] != null
             ? ' · ${fmtRD(c['agreed_hourly_rate'] as num)}/h'
             : '';
-    return JayaloCard(
-      tint: tinted ? tone.bg : null,
-      onTap: () => onOpen(c),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            backgroundImage: c['peer_avatar_url'] != null
-                ? NetworkImage(c['peer_avatar_url'] as String)
-                : null,
-            child: c['peer_avatar_url'] == null
-                ? const Icon(Icons.person_outline)
-                : null,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Container(
-                      width: 6,
-                      height: 6,
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _statusColor(context, c['status'] as String))),
-                  Expanded(
-                      child: Text(c['peer_name'] as String? ?? '',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontWeight:
-                                  tinted ? FontWeight.w700 : FontWeight.w500,
-                              fontSize: 14,
-                              color: fg))),
+    return Material(
+      color: tinted ? cs.primaryContainer.withValues(alpha: .35) : Colors.transparent,
+      child: InkWell(
+        onTap: () => onOpen(c),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 23,
+                backgroundImage: c['peer_avatar_url'] != null
+                    ? NetworkImage(c['peer_avatar_url'] as String)
+                    : null,
+                child: c['peer_avatar_url'] == null
+                    ? const Icon(Icons.person_outline)
+                    : null,
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsets.only(right: 6),
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _statusColor(
+                                  context, c['status'] as String))),
+                      Expanded(
+                          child: Text(c['peer_name'] as String? ?? '',
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontWeight: tinted
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                  fontSize: 14,
+                                  color: tinted ? jayaloHead(context) : fg))),
+                    ]),
+                    const SizedBox(height: 2),
+                    Text(
+                        c['last_kind'] == null
+                            ? 'Sin mensajes aún'
+                            : '${messagePreview(c['last_kind'] as String, c['last_body'] as String? ?? '')}'
+                                '${(c['product_name'] as String?)?.isNotEmpty == true ? ' · ${c['product_name']}$price' : ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: muted,
+                            fontWeight:
+                                tinted ? FontWeight.w500 : FontWeight.normal)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
                   Text(
                       lastAt == null
                           ? ''
                           : formatListTime(
                               DateTime.parse(lastAt as String).toLocal()),
-                      style: TextStyle(fontSize: 11, color: muted)),
-                ]),
-                const SizedBox(height: 2),
-                Text('${c['product_name'] ?? ''}$price',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: muted)),
-                const SizedBox(height: 2),
-                Row(children: [
-                  Expanded(
-                      child: Text(
-                          c['last_kind'] == null
-                              ? 'Sin mensajes aún'
-                              : messagePreview(c['last_kind'] as String,
-                                  c['last_body'] as String? ?? ''),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: tinted ? fg : cs.onSurfaceVariant,
-                              fontWeight: tinted
-                                  ? FontWeight.w600
-                                  : FontWeight.normal))),
-                  if (unread > 0)
+                      style: TextStyle(fontSize: 10.5, color: muted)),
+                  if (unread > 0) ...[
+                    const SizedBox(height: 6),
                     Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                        constraints: const BoxConstraints(minWidth: 20),
+                        height: 20,
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
                         decoration: BoxDecoration(
-                            color: tone.ink,
+                            color: cs.primary,
                             borderRadius: BorderRadius.circular(10)),
                         child: Text('$unread',
                             style: TextStyle(
-                                color: tone.bg,
+                                color: cs.onPrimary,
                                 fontSize: 11,
-                                fontWeight: FontWeight.w700))),
-                ]),
-              ],
-            ),
+                                fontWeight: FontWeight.w600))),
+                  ],
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
