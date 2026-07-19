@@ -88,7 +88,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                 message: 'Aún no has pedido nada.\n'
                     'Cuéntanos qué buscas y los proveedores te harán ofertas.',
                 ctaLabel: 'Crear solicitud',
-                onCta: () => context.go('/client/create'),
+                // push, no go: crear-solicitud es MODAL (sube por encima con
+                // su CustomTransitionPage); un go la trataría como pestaña
+                // más — swap instantáneo sin la subida (gotcha ShellRoute).
+                onCta: () => context.push('/client/create'),
               );
             }
             return ListView.builder(

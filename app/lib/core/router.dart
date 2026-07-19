@@ -67,17 +67,26 @@ GoRouter buildRouter() => GoRouter(
             // de las demás, con esquinas superiores redondeadas, que sube
             // desde abajo con ease-in-out (arranca suave y FRENA antes de
             // llegar a su tope — easeInOutCubic, `emphasized`). `opaque:
-            // false` deja viva la pantalla de abajo: se asoma por el recorte
-            // de las esquinas y por el scrim durante la subida, que es lo que
-            // vende el "por encima de las demás". Para que de verdad se
-            // apile (y esta transición corra), el botón central navega con
-            // `push`, no `go` — ver `home_shell.dart`.
+            // false` deja viva la pantalla de abajo. Para que de verdad se
+            // apile (y esta transición corra), se navega con `push`, no `go`
+            // — ver `home_shell.dart`.
+            //
+            // 2ª pasada del mismo día, verificada con screenshots por adb: a
+            // pantalla COMPLETA el modal era invisible como modal — las
+            // esquinas quedaban en el borde físico (bajo el status bar) y,
+            // con la pantalla de atrás compartiendo el mismo fondo, ni el
+            // recorte ni la subida se percibían ("no sube suave con bordes
+            // redondeados", PO). Lo que vende la ventana es el HUECO
+            // superior: la tarjeta arranca debajo del status bar y en esa
+            // franja queda visible la pantalla anterior atenuada por el
+            // scrim. `removePadding(removeTop)` evita que el AppBar interno
+            // vuelva a reservar un status bar bajo el que ya no está.
             GoRoute(
                 path: '/client/create',
                 pageBuilder: (context, state) => CustomTransitionPage(
                       key: state.pageKey,
                       opaque: false,
-                      barrierColor: Colors.black38,
+                      barrierColor: Colors.black45,
                       transitionDuration: JayaloMotion.reduced(context)
                           ? Duration.zero
                           : JayaloMotion.page,
@@ -95,12 +104,22 @@ GoRouter buildRouter() => GoRouter(
                                 reverseCurve: JayaloMotion.emphasized)),
                         child: child,
                       ),
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(24)),
-                        child: const BackGuard(child: CreateRequestScreen()),
-                      ),
-                    )),
+                      child: Builder(
+                          builder: (context) => Padding(
+                                padding: EdgeInsets.only(
+                                    top: MediaQuery.paddingOf(context).top +
+                                        12),
+                                child: ClipRRect(
+                                  borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(24)),
+                                  child: MediaQuery.removePadding(
+                                    context: context,
+                                    removeTop: true,
+                                    child: const BackGuard(
+                                        child: CreateRequestScreen()),
+                                  ),
+                                ),
+                              )))),
             GoRoute(
                 path: '/client/reputation',
                 builder: (_, _) => const BackGuard(child: ReputationScreen())),
