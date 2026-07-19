@@ -8,9 +8,8 @@ import '../../domain/recharge.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
 import '../client/request_status_screen.dart' show offerPriceLabel;
 import '../shell/floating_nav_bar.dart';
-import '../notifications/notification_bell.dart';
 import '../shared/brand_kit.dart';
-import '../shared/profile_avatar_button.dart';
+import '../shared/violet_header.dart';
 
 int estimatedUnlockCost(Map<String, dynamic> o) {
   final c = pointsForOffer(
@@ -83,17 +82,21 @@ class _MyOffersScreenState extends State<MyOffersScreen>
             (o['status'] == 'accepted' && o['unlocked_at'] != null))
         .toList();
     return Scaffold(
-      appBar: AppBar(
-          title: const Text('Mis ofertas'),
-          actions: const [NotificationBell(), ProfileAvatarButton()]),
-      body: _loading
-          ? const SkeletonList()
-          : RefreshIndicator(
-              onRefresh: _refetch,
-              child: ListView(
-                  padding: EdgeInsets.only(
-                      top: 12, bottom: 12 + navBarReservedSpace(context)),
-                  children: [
+      body: Column(children: [
+        const VioletHeader(
+          leading: HeaderAvatar(),
+          title: 'Mis ofertas',
+          actions: [HeaderBell()],
+        ),
+        Expanded(
+          child: _loading
+              ? const SkeletonList()
+              : RefreshIndicator(
+                  onRefresh: _refetch,
+                  child: ListView(
+                      padding: EdgeInsets.only(
+                          top: 12, bottom: 12 + navBarReservedSpace(context)),
+                      children: [
                 _WalletCard(
                     balance: _balance, tone: _amber, onRecharge: _openWallet),
                 if (toUnlock.isNotEmpty) ...[
@@ -109,10 +112,12 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                           'Oferta desde "Solicitudes" — es gratis y te avisamos si te aceptan.')),
                 for (final o in pending) _offerCard(o),
                 if (rest.isNotEmpty) const SectionHeader(text: 'Historial'),
-                for (final o in rest) _offerCard(o),
-                const SizedBox(height: 16),
-              ]),
-            ),
+                    for (final o in rest) _offerCard(o),
+                    const SizedBox(height: 16),
+                  ]),
+                ),
+        ),
+      ]),
     );
   }
 
@@ -144,7 +149,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontWeight: FontWeight.w700, color: tone.ink)),
+                        fontWeight: FontWeight.w600, color: tone.ink)),
                 const SizedBox(height: 2),
                 Text('${offerPriceLabel(o)} · Toca para desbloquear',
                     style: TextStyle(
@@ -194,7 +199,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                 Text(o['request_title'] as String? ?? '',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
                 Text(
                     created == null
@@ -439,7 +444,7 @@ class _WalletCard extends StatelessWidget {
                 Text('${balance ?? '—'} crédito${balance == 1 ? '' : 's'}',
                     style: TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                         color: tone.ink)),
                 Text('Tu saldo para desbloquear contactos',
                     style: TextStyle(
