@@ -6,6 +6,14 @@ import '../../core/session_state.dart';
 import 'floating_nav_bar.dart';
 import 'nav_destinations.dart';
 
+/// Desplazamiento vertical del `body` al entrar (spec de movimiento, punto 1
+/// del cierre de rama): arranca `_bodyEnterSlide` px por debajo de su
+/// posición final y sube mientras se desvanece — el mismo lenguaje visual
+/// que ya usa la barra flotante al aparecer (`SizeTransition` + fundido más
+/// abajo), solo que aquí es una traslación pequeña porque no hay ningún alto
+/// de layout que reservar.
+const _bodyEnterSlide = 16.0;
+
 class HomeShell extends StatelessWidget {
   const HomeShell({super.key, required this.child});
   final Widget child;
@@ -47,7 +55,7 @@ class HomeShell extends StatelessWidget {
       extendBody: showNavBar,
       // NO envolver `child` en un `AnimatedSwitcher`/`KeyedSubtree` cuyo key
       // dependa de `idx`/`loc` (así estaba antes, para un "fade through" al
-      // cambiar de pestaña). Se retiró al escribir la cobertura de C2: `child`
+      // cambiar de pestaña; se retiró al escribir la cobertura de C2). `child`
       // es el Navigator anidado que arma el propio `ShellRoute`, con un
       // `GlobalKey` ESTABLE por diseño de go_router (necesario para conservar
       // su estado entre navegaciones dentro de la misma rama) — y
@@ -57,12 +65,49 @@ class HomeShell extends StatelessWidget {
       // entre dos pestañas normales, sin tocar `push` ni `-1`: `/provider` →
       // `/provider/offers`), las dos ramas embeben el MISMO `child` con el
       // MISMO `GlobalKey` a la vez → "Duplicate GlobalKey detected in widget
-      // tree" — un cuelgue real en modo debug para CUALQUIER cambio de
-      // pestaña, nunca antes ejercitado por un test con un `GoRouter` de
-      // verdad (los tests existentes o fijan `initialLocation` sin navegar en
-      // vivo, o navegan sin cambiar de pestaña). El "fade through" nunca
-      // llegó a funcionar; quitarlo no regresiona nada que estuviera vivo.
-      body: child,
+      // tree".
+      //
+      // Corrección (revisión final de rama, cierre): lo anterior NO era un
+      // cuelgue real. Medido en vivo: es un `FlutterError` de BUILD atrapado
+      // por el framework — se reporta una vez en el log y el frame se
+      // recupera solo; la pantalla destino queda correcta al asentarse (sin
+      // excepción a mitad de transición ni tras el settle, `ofertas=1`). El
+      // daño real era doble: (a) un error de log en CADA cambio de pestaña,
+      // puro ruido, y (b) que la rama saliente se destruía de golpe en vez de
+      // cruzar-desvanecerse — el "fade through" nunca llegó a cruzar nada.
+      // Quitarlo no regresionó nada que estuviera vivo. El "fade through"
+      // auténtico (dos subárboles vivos a la vez, cruzando) exigiría que cada
+      // pestaña tuviera su PROPIO Navigator (`StatefulShellRoute`) — decisión
+      // de backlog del PO, no se hace aquí.
+      //
+      // Lo que SÍ repone el movimiento sin ese riesgo (doctrina PO: nada de
+      // swaps instantáneos): fundido + deslizado SOLO DE ENTRADA, con UN
+      // ÚNICO subárbol vivo a la vez. La key es `matchedLocation`, no
+      // `loc`/`uri.path` de arriba — es justo la "ubicación pegajosa" que el
+      // propio C2 documentó: se congela durante un `push` (entrar a un chat,
+      // abrir Estadísticas o Notificaciones) y solo se mueve cuando cambia la
+      // ruta de nivel superior. Por eso un `push` nunca dispara esta
+      // animación (no compite con la transición propia del Navigator
+      // empujando su página) y un cambio de pestaña real sí. Al cambiar la
+      // key, Flutter desactiva el elemento viejo y arma uno nuevo en el mismo
+      // paso síncrono — nunca coexisten dos, así que el `GlobalKey` estable de
+      // `child` jamás se duplica (ver test "ningún `go()` entre pestañas
+      // lanza excepción").
+      body: TweenAnimationBuilder<double>(
+        key: ValueKey(GoRouterState.of(context).matchedLocation),
+        tween: Tween(begin: 0, end: 1),
+        duration:
+            JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base,
+        curve: JayaloMotion.enter,
+        builder: (context, t, bodyChild) => Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, (1 - t) * _bodyEnterSlide),
+            child: bodyChild,
+          ),
+        ),
+        child: child,
+      ),
       // M2 (revisión final de rama): antes era `showNavBar ? FloatingNavBar(
       // ...) : null` — un swap instantáneo, contra la doctrina de movimiento
       // (transiciones premium, deslizado + ease-out). `SizeTransition` (no

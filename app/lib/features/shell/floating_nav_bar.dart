@@ -279,7 +279,22 @@ class _SideItem extends StatelessWidget {
           children: [
             Icon(destination.icon, color: color, size: 24),
             AnimatedSize(
-              duration: reduced ? Duration.zero : JayaloMotion.base,
+              // `Duration.zero` es el caso patológico de `AnimatedSize`
+              // (distinto de `AnimatedSwitcher`/`SizeTransition`, que sí lo
+              // toleran bien — ver `home_shell.dart`): con duration cero, el
+              // `RenderAnimatedSize` completa su animación DENTRO de su
+              // propio `performLayout`, y notificar a sus listeners desde
+              // ahí dispara un `markNeedsLayout` sobre sí mismo a mitad de
+              // layout → "A RenderAnimatedSize was mutated in its own
+              // performLayout implementation" en CADA cambio de destino
+              // activo con "reducir animaciones" activado (reproducido en
+              // `floating_nav_bar_test.dart`). 1ms es imperceptible para el
+              // usuario — cumple la doctrina de "sin movimiento" tanto como
+              // cero — pero deja al menos un frame entre el inicio y el fin
+              // de la animación, evitando la completitud síncrona que
+              // dispara el bug.
+              duration:
+                  reduced ? const Duration(milliseconds: 1) : JayaloMotion.base,
               curve: JayaloMotion.enter,
               child: active
                   ? Padding(

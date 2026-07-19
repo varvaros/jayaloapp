@@ -121,6 +121,32 @@ void main() {
   });
 
   testWidgets(
+      'con reducir animaciones, cambiar de destino activo no revienta el '
+      'AnimatedSize del _SideItem (Duration.zero es el caso patológico de '
+      'AnimatedSize: "A RenderAnimatedSize was mutated in its own '
+      'performLayout implementation")', (tester) async {
+    await tester.pumpWidget(host(0, reduced: true));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull,
+        reason: 'el montaje inicial no dispara el bug: el bug ocurre '
+            'cuando el AnimatedSize YA MONTADO recibe un tamaño destino '
+            'nuevo (el active de un _SideItem cambia de true a false o '
+            'viceversa) con duration cero');
+
+    // Cambiar de destino activo (como cualquier cambio de pestaña real)
+    // hace que el _SideItem de índice 0 pierda su etiqueta y el de índice 1
+    // la gane: es exactamente el cambio de tamaño que dispara el bug.
+    await tester.pumpWidget(host(1, reduced: true));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull,
+        reason: 'con reducir animaciones activado, cada cambio de pestaña '
+            'no debe dejar ningún FlutterError en el log — aunque el '
+            'frame se recupere solo, es ruido justo en la ruta de '
+            'accesibilidad');
+  });
+
+  testWidgets(
       'el nodo de semántica de un destino lateral y el del centro exponen '
       'la acción de tap (esto es lo que activa el doble-tap de un lector '
       'de pantalla; tester.tap() no lo hubiera cazado porque hace hit-test '
