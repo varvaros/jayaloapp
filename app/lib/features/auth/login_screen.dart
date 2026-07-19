@@ -32,11 +32,11 @@ Future<void> signInWithGoogleNative(BuildContext context) async {
   }
 }
 
-/// Lavanda del fondo horneado en la imagen de bienvenida — se usa como color
-/// del Scaffold para que, si el recorte de `cover` deja algún borde, funda con
-/// la imagen en vez de mostrar el fondo del tema.
-const _welcomeBg = Color(0xFFF0ECFB);
-const _welcomeInk = Color(0xFF1C1533);
+// Lavanda del fondo de la imagen (fallback del Scaffold) y tinta oscura del
+// titular. El texto va en la tipografía de la app, sin negritas (w600 máximo,
+// como los títulos de la app).
+const _welcomeBg = Color(0xFFEDE9FA);
+const _welcomeInk = Color(0xFF2A2350);
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -68,59 +68,97 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: _welcomeBg,
       body: Stack(
         children: [
-          // El hero de bienvenida es la imagen que hizo el PO (wordmark,
-          // titular, subtítulo, mascota 3D, íconos y sombra ya horneados). Se
-          // ancla arriba para que el titular quede siempre visible; el recorte
-          // de `cover` cae en el espacio inferior, donde va el botón.
+          // Fondo: la imagen del PO (mascota 3D + patrón de isotipos, sin
+          // texto). El texto lo pone Flutter encima, en la tipografía de la app.
           Positioned.fill(
             child: Image.asset(
               'assets/images/welcome.png',
               fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
+              alignment: Alignment.center,
             ),
           ),
-          // Botón de Google sobre el espacio inferior de la imagen.
           SafeArea(
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(28, 0, 28, 22),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _busy ? null : _go,
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(54),
-                          backgroundColor: cs.primary,
-                          foregroundColor: cs.onPrimary,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(999)),
-                          textStyle: const TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w600),
-                        ),
-                        icon: _busy
-                            ? const JayaloSpinner(size: 18, color: Colors.white)
-                            : const Icon(Icons.g_mobiledata, size: 26),
-                        label: const Text('Continuar con Google'),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 14, 28, 22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Wordmark.
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const JayaloMascot(size: 24),
+                      const SizedBox(width: 8),
+                      const Text('Jayalo',
+                          style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: _welcomeInk)),
+                    ],
+                  ),
+                  const SizedBox(height: 26),
+                  // Titular — tipografía de la app, peso semibold (nunca bold),
+                  // "idea" en el violeta de acción.
+                  Text.rich(
+                    TextSpan(children: [
+                      const TextSpan(text: 'Todo empieza\ncon una '),
+                      TextSpan(
+                          text: 'idea', style: TextStyle(color: cs.primary)),
+                      const TextSpan(text: '.'),
+                    ]),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 33,
+                        height: 1.12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -.2,
+                        color: _welcomeInk),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Describe lo que necesitas y deja que los mejores '
+                    'proveedores encuentren la solución.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 15,
+                        height: 1.5,
+                        fontWeight: FontWeight.w400,
+                        color: _welcomeInk.withValues(alpha: .64)),
+                  ),
+                  // La mascota del fondo se ve en este espacio.
+                  const Spacer(),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _busy ? null : _go,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(54),
+                        backgroundColor: cs.primary,
+                        foregroundColor: cs.onPrimary,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999)),
+                        textStyle: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w600),
                       ),
+                      icon: _busy
+                          ? const JayaloSpinner(size: 18, color: Colors.white)
+                          : const Icon(Icons.g_mobiledata, size: 26),
+                      label: const Text('Continuar con Google'),
                     ),
-                    const SizedBox(height: 12),
-                    // El registro es NATIVO desde el onboarding (spec
-                    // 2026-07-16): mandar a jayalo.com sería mentirle al
-                    // usuario nuevo.
-                    Text(
-                      '¿Primera vez? Entra con Google y creamos tu cuenta al momento.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 12,
-                          height: 1.4,
-                          color: _welcomeInk.withValues(alpha: .55)),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 12),
+                  // El registro es NATIVO desde el onboarding (spec 2026-07-16):
+                  // mandar a jayalo.com sería mentirle al usuario nuevo.
+                  Text(
+                    '¿Primera vez? Entra con Google y creamos tu cuenta al momento.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 12,
+                        height: 1.4,
+                        fontWeight: FontWeight.w400,
+                        color: _welcomeInk.withValues(alpha: .55)),
+                  ),
+                ],
               ),
             ),
           ),
