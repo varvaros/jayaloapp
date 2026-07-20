@@ -1,13 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
-import '../../domain/money.dart';
 import '../shared/brand_kit.dart';
+import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
 import 'catalog_filter_sheet.dart';
@@ -273,7 +271,7 @@ class _CatalogViewState extends State<CatalogView> {
                         top: 8, bottom: 12 + navBarReservedSpace(context)),
                     itemCount: items.length,
                     itemBuilder: (_, i) =>
-                        _CatalogCard(item: items[i]).cascadeIn(i),
+                        ProductListCard(item: items[i]).cascadeIn(i),
                   );
                 },
               ),
@@ -340,188 +338,6 @@ class _HeaderSearchField extends StatelessWidget {
       ]),
     );
   }
-}
-
-/// Tarjeta del catálogo: foto (con placeholder/error, nunca ícono roto),
-/// nombre y precio (`catalogPriceLabel`, fijo o rango — paridad
-/// `ProductHitCard.tsx`). Task 7 (2026-07-19): ya navega al detalle
-/// (`/catalog/:id`) — antes (Task 6) no tenía `onTap` porque el detalle no
-/// existía todavía.
-class _CatalogCard extends StatelessWidget {
-  const _CatalogCard({required this.item});
-  final Map<String, dynamic> item;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final name = item['name'] as String? ?? '';
-    final desc = (item['description'] as String? ?? '').trim();
-    final catName = categoryNameById(item['category_id'] as String?);
-    final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
-    final img = images.isEmpty ? null : images.first;
-    return JayaloCard(
-      padding: const EdgeInsets.all(10),
-      onTap: () => context.push('/catalog/${item['id']}'),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(kCardRadius - 6),
-            child: SizedBox(
-              width: 104,
-              height: 104,
-              child: img == null
-                  ? _imagePlaceholder(cs)
-                  : Image.network(
-                      img,
-                      fit: BoxFit.cover,
-                      // Fundido suave al cargar (doctrina de movimiento).
-                      frameBuilder: (_, child, frame, wasSync) => wasSync
-                          ? child
-                          : AnimatedOpacity(
-                              opacity: frame == null ? 0 : 1,
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeOut,
-                              child: child,
-                            ),
-                      errorBuilder: (_, _, _) => _imagePlaceholder(cs),
-                    ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (catName != null) ...[
-                  Text(catName.toUpperCase(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: .8,
-                          color: cs.primary)),
-                  const SizedBox(height: 3),
-                ],
-                Text(name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 15,
-                        height: 1.25,
-                        fontWeight: FontWeight.w600,
-                        color: jayaloHead(context))),
-                ?_ratingLine(context, cs),
-                if (desc.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(desc,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      // onSurface (no onSurfaceVariant): el muted #847D8F sobre
-                      // la tarjeta blanca queda ~3.2:1, bajo el mínimo 4.5:1.
-                      // El peso normal + tamaño menor ya lo separan del nombre.
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          height: 1.3,
-                          color: cs.onSurface)),
-                ],
-                const SizedBox(height: 8),
-                _priceLine(cs),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Reputación del proveedor: ★ + promedio a 1 decimal + conteo (misma
-  /// convención que Estadísticas/Reputación — escala de la app, no 5 estrellas).
-  /// Devuelve `null` (fila oculta) si el proveedor aún no tiene reseñas, para no
-  /// mostrar un "0.0" que parezca mala nota.
-  Widget? _ratingLine(BuildContext context, ColorScheme cs) {
-    final avg = (item['avg_rating'] as num?)?.toDouble() ?? 0;
-    final count = (item['reviews_count'] as num?)?.toInt() ?? 0;
-    if (avg <= 0 || count <= 0) return null;
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.star_rounded, size: 15, color: Color(0xFFF5A623)),
-        const SizedBox(width: 3),
-        Text(avg.toStringAsFixed(1),
-            style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: jayaloHead(context))),
-        const SizedBox(width: 4),
-        Text('($count)',
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-      ]),
-    );
-  }
-
-  /// Precio protagonista (20px, bold, violeta de marca). Un [FittedBox] deja
-  /// que un rango largo ("RD$500 – RD$1,200") se encoja a una sola línea sin
-  /// que los precios cortos se vean pequeños. "desde" va como prefijo tenue y
-  /// "Consultar precio" en gris (no es una cifra: no debe gritar en violeta).
-  Widget _priceLine(ColorScheme cs) {
-    final price = item['price'] as num?;
-    final min = item['price_min'] as num?;
-    final max = item['price_max'] as num?;
-    final big = TextStyle(
-      fontSize: 20,
-      height: 1,
-      fontWeight: FontWeight.w700,
-      color: cs.primary,
-      letterSpacing: -.2,
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
-
-    if (price == null && min == null) {
-      return Text('Consultar precio',
-          maxLines: 1,
-          style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: cs.onSurfaceVariant));
-    }
-
-    final Widget line;
-    if (price != null) {
-      line = Text(fmtRD(price), maxLines: 1, style: big);
-    } else if (max != null) {
-      // Guion simple con espacios: paridad EXACTA con `catalogPriceLabel` /
-      // `formatProductHitPrice` de la web (no un guion largo tipográfico).
-      line = Text('${fmtRD(min)} - ${fmtRD(max)}', maxLines: 1, style: big);
-    } else {
-      line = Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          Text('desde ',
-              style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurfaceVariant)),
-          Text(fmtRD(min), style: big),
-        ],
-      );
-    }
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: FittedBox(
-          fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: line),
-    );
-  }
-
-  Widget _imagePlaceholder(ColorScheme cs) => Container(
-        color: cs.surfaceContainerHighest,
-        alignment: Alignment.center,
-        child: Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
-      );
 }
 
 /// Píldora "Filtrar" de la fila de búsqueda (Task 6): abre
