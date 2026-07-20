@@ -658,7 +658,6 @@ class _DetailsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final catName = categoryNameById(business.categoryId);
     final chips = <Widget>[
       if (catName != null) _MetaChip(icon: Icons.category_outlined, label: catName),
@@ -746,7 +745,6 @@ class _ReviewCard extends StatelessWidget {
   final BusinessReview review;
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return JayaloCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -773,6 +771,12 @@ class _ReviewCard extends StatelessWidget {
 
 Añadir los imports que falten en `my_business_screen.dart`: `../shared/product_list_card.dart`, `../../domain/catalog.dart` (para `categoryNameById`), y `BusinessReview`/`BusinessRating` ya vienen de `../../data/repos.dart`.
 
+**Consumidor a arreglar (si no, rompe `flutter test` Y `flutter analyze`):** `test/stats_screen_test.dart` importa `CatalogCard` de `my_business_screen.dart` (`show CatalogCard`) y asevera `expect(find.byType(CatalogCard), findsNothing)`. Al borrar `CatalogCard`, ese archivo no compila. Fix: quitar `CatalogCard` del `show` (dejar el resto del import) y borrar esa aserción; las aserciones por texto que ya tiene (`'LO QUE OFRECES'`, etc.) siguen cubriendo el contrato "esto se movió fuera de Estadísticas".
+
+**Notas del análisis previo:**
+- `category_id` y `description` de `provider_businesses` están confirmadas reales (aparecen en el `Row` de `provider_businesses` en `types.ts` de la web).
+- Tras reescribir `_fetch`, `providerCatalogCounts` y `providerCompletedCount` (`repos.dart`) quedan sin consumidores. Son top-level públicas → NO disparan `unused_element` (analyze sigue en 0); dejarlas por ahora (código muerto inerte), no borrar en esta task para no ampliar el diff.
+
 - [ ] **Step 5: Correr los tests para verificar que pasan**
 
 Run: `cd app && flutter test test/my_business_screen_test.dart`
@@ -782,7 +786,7 @@ Expected: PASS.
 
 ```bash
 cd app && flutter analyze && flutter test
-git add app/lib/data/repos.dart app/lib/features/provider/my_business_screen.dart app/test/my_business_screen_test.dart
+git add app/lib/data/repos.dart app/lib/features/provider/my_business_screen.dart app/test/my_business_screen_test.dart app/test/stats_screen_test.dart
 git commit -m "feat(tienda): Mi negocio muestra el escaparate de solo lectura
 
 Detalles + productos + servicios + opiniones. Sin edición (V2/web).
@@ -865,7 +869,9 @@ Expected: PASS.
 - [ ] **Step 5: Escribir el endpoint** — `src/routes/api/app/business-editor-link.ts`:
 
 ```ts
-import { createFileRoute } from "@tanstack/react-start";
+// createFileRoute viene de @tanstack/react-router (NO @tanstack/react-start) —
+// así lo importan las 5 rutas API existentes, incl. chat-stream.ts.
+import { createFileRoute } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { extractBearerToken } from "@/lib/aiSession.server";
