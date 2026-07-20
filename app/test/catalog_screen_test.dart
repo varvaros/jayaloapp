@@ -171,7 +171,7 @@ void main() {
   });
 
   testWidgets(
-      'la rejilla de 2 columnas no desborda en un ancho de teléfono típico',
+      'la lista no desborda con un nombre largo en un ancho de teléfono típico',
       (tester) async {
     addTearDown(tester.view.reset);
     tester.view.physicalSize = const Size(390, 844);

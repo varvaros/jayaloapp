@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
 import '../../data/repos.dart';
+import '../../domain/catalog.dart';
 import '../../domain/money.dart';
 import '../shared/brand_kit.dart';
 import '../shared/violet_header.dart';
@@ -22,10 +23,16 @@ typedef CatalogFetch = Future<List<Map<String, dynamic>>> Function(
 /// barra flotante es posterior (no se toca `nav_destinations.dart`); hoy se
 /// llega aquí navegando a `/catalog` a mano, como `/provider/business`.
 class CatalogScreen extends StatelessWidget {
-  const CatalogScreen({super.key});
+  const CatalogScreen({super.key, this.autofocusSearch = false});
+
+  /// Cuando se llega tocando el buscador de otra pantalla (p. ej. "Buscar en
+  /// Jayalo" de Mis solicitudes), el buscador del catálogo abre con el foco
+  /// puesto y el teclado arriba, listo para escribir.
+  final bool autofocusSearch;
 
   @override
-  Widget build(BuildContext context) => const CatalogView(fetch: catalogProducts);
+  Widget build(BuildContext context) =>
+      CatalogView(fetch: catalogProducts, autofocusSearch: autofocusSearch);
 }
 
 /// Dibuja el toggle Producto/Servicio, la búsqueda y la rejilla. StatefulWidget
@@ -38,10 +45,12 @@ class CatalogView extends StatefulWidget {
     super.key,
     required this.fetch,
     this.actions = const [HeaderBell()],
+    this.autofocusSearch = false,
   });
 
   final CatalogFetch fetch;
   final List<Widget> actions;
+  final bool autofocusSearch;
 
   @override
   State<CatalogView> createState() => _CatalogViewState();
@@ -127,6 +136,7 @@ class _CatalogViewState extends State<CatalogView> {
             below: _HeaderSearchField(
               controller: _searchCtrl,
               hint: 'Buscar en el catálogo',
+              autofocus: widget.autofocusSearch,
               onSubmitted: _applySearch,
               onClear: _clearSearch,
             ),
@@ -156,19 +166,15 @@ class _CatalogViewState extends State<CatalogView> {
                       onCta: _search != null ? _clearSearch : null,
                     );
                   }
-                  return GridView.builder(
+                  // Lista a todo el ancho (no rejilla): cada ítem es una
+                  // "tarjeta que respira" horizontal — foto a la izquierda,
+                  // categoría + nombre + descripción + precio a la derecha. Es
+                  // el idioma del resto de la app (Mis solicitudes, etc.) y deja
+                  // ver mucho más detalle por ítem que la rejilla de 2 columnas.
+                  return ListView.builder(
                     controller: _scrollController,
-                    padding: EdgeInsets.fromLTRB(
-                        12, 8, 12, 12 + navBarReservedSpace(context)),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      // Cards un poco más altas (.56) para el nombre/precio más
-                      // grandes (2 líneas de nombre + precio) sin desbordar.
-                      childAspectRatio: .56,
-                    ),
+                    padding: EdgeInsets.only(
+                        top: 8, bottom: 12 + navBarReservedSpace(context)),
                     itemCount: items.length,
                     itemBuilder: (_, i) =>
                         _CatalogCard(item: items[i]).cascadeIn(i),
@@ -189,12 +195,14 @@ class _HeaderSearchField extends StatelessWidget {
     required this.hint,
     required this.onSubmitted,
     required this.onClear,
+    this.autofocus = false,
   });
 
   final TextEditingController controller;
   final String hint;
   final VoidCallback onSubmitted;
   final VoidCallback onClear;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
@@ -209,6 +217,7 @@ class _HeaderSearchField extends StatelessWidget {
         Expanded(
           child: TextField(
             controller: controller,
+            autofocus: autofocus,
             textInputAction: TextInputAction.search,
             onSubmitted: (_) => onSubmitted(),
             style: TextStyle(fontSize: 14, color: cs.onSurface),
@@ -250,39 +259,56 @@ class _CatalogCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final name = item['name'] as String? ?? '';
+    final desc = (item['description'] as String? ?? '').trim();
+    final catName = categoryNameById(item['category_id'] as String?);
     final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
     final img = images.isEmpty ? null : images.first;
-    final priceLabel = catalogPriceLabel(
-      price: item['price'] as num?,
-      priceMin: item['price_min'] as num?,
-      priceMax: item['price_max'] as num?,
-    );
     return JayaloCard(
-      margin: EdgeInsets.zero,
-      padding: EdgeInsets.zero,
+      padding: const EdgeInsets.all(10),
       onTap: () => context.push('/catalog/${item['id']}'),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AspectRatio(
-            aspectRatio: 1,
-            child: ClipRRect(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(kCardRadius)),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(kCardRadius - 6),
+            child: SizedBox(
+              width: 104,
+              height: 104,
               child: img == null
                   ? _imagePlaceholder(cs)
                   : Image.network(
                       img,
                       fit: BoxFit.cover,
+                      // Fundido suave al cargar (doctrina de movimiento).
+                      frameBuilder: (_, child, frame, wasSync) => wasSync
+                          ? child
+                          : AnimatedOpacity(
+                              opacity: frame == null ? 0 : 1,
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOut,
+                              child: child,
+                            ),
                       errorBuilder: (_, _, _) => _imagePlaceholder(cs),
                     ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          const SizedBox(width: 12),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
+                if (catName != null) ...[
+                  Text(catName.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: .8,
+                          color: cs.primary)),
+                  const SizedBox(height: 3),
+                ],
                 Text(name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -291,12 +317,22 @@ class _CatalogCard extends StatelessWidget {
                         height: 1.25,
                         fontWeight: FontWeight.w600,
                         color: jayaloHead(context))),
-                const SizedBox(height: 6),
-                Text(priceLabel,
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: cs.primary)),
+                ?_ratingLine(context, cs),
+                if (desc.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(desc,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      // onSurface (no onSurfaceVariant): el muted #847D8F sobre
+                      // la tarjeta blanca queda ~3.2:1, bajo el mínimo 4.5:1.
+                      // El peso normal + tamaño menor ya lo separan del nombre.
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          height: 1.3,
+                          color: cs.onSurface)),
+                ],
+                const SizedBox(height: 8),
+                _priceLine(cs),
               ],
             ),
           ),
@@ -305,8 +341,89 @@ class _CatalogCard extends StatelessWidget {
     );
   }
 
+  /// Reputación del proveedor: ★ + promedio a 1 decimal + conteo (misma
+  /// convención que Estadísticas/Reputación — escala de la app, no 5 estrellas).
+  /// Devuelve `null` (fila oculta) si el proveedor aún no tiene reseñas, para no
+  /// mostrar un "0.0" que parezca mala nota.
+  Widget? _ratingLine(BuildContext context, ColorScheme cs) {
+    final avg = (item['avg_rating'] as num?)?.toDouble() ?? 0;
+    final count = (item['reviews_count'] as num?)?.toInt() ?? 0;
+    if (avg <= 0 || count <= 0) return null;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.star_rounded, size: 15, color: Color(0xFFF5A623)),
+        const SizedBox(width: 3),
+        Text(avg.toStringAsFixed(1),
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: jayaloHead(context))),
+        const SizedBox(width: 4),
+        Text('($count)',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+      ]),
+    );
+  }
+
+  /// Precio protagonista (20px, bold, violeta de marca). Un [FittedBox] deja
+  /// que un rango largo ("RD$500 – RD$1,200") se encoja a una sola línea sin
+  /// que los precios cortos se vean pequeños. "desde" va como prefijo tenue y
+  /// "Consultar precio" en gris (no es una cifra: no debe gritar en violeta).
+  Widget _priceLine(ColorScheme cs) {
+    final price = item['price'] as num?;
+    final min = item['price_min'] as num?;
+    final max = item['price_max'] as num?;
+    final big = TextStyle(
+      fontSize: 20,
+      height: 1,
+      fontWeight: FontWeight.w700,
+      color: cs.primary,
+      letterSpacing: -.2,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+
+    if (price == null && min == null) {
+      return Text('Consultar precio',
+          maxLines: 1,
+          style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurfaceVariant));
+    }
+
+    final Widget line;
+    if (price != null) {
+      line = Text(fmtRD(price), maxLines: 1, style: big);
+    } else if (max != null) {
+      // Guion simple con espacios: paridad EXACTA con `catalogPriceLabel` /
+      // `formatProductHitPrice` de la web (no un guion largo tipográfico).
+      line = Text('${fmtRD(min)} - ${fmtRD(max)}', maxLines: 1, style: big);
+    } else {
+      line = Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Text('desde ',
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurfaceVariant)),
+          Text(fmtRD(min), style: big),
+        ],
+      );
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: FittedBox(
+          fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: line),
+    );
+  }
+
   Widget _imagePlaceholder(ColorScheme cs) => Container(
         color: cs.surfaceContainerHighest,
-        child: Icon(Icons.image_outlined, color: cs.onSurfaceVariant),
+        alignment: Alignment.center,
+        child: Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
       );
 }

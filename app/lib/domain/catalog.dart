@@ -4,6 +4,16 @@
 /// del plan (Task 3) si la web cambia la lista.
 typedef Category = ({String id, String name});
 
+/// Nombre visible de una categoría por su id (slug), o `null` si no existe —
+/// equivalente móvil de `findCategoryById` de la web, para pintar el rótulo de
+/// categoría en la tarjeta del catálogo. Mapa construido una sola vez.
+final Map<String, String> _categoryNameById = {
+  for (final c in kCategories) c.id: c.name,
+};
+
+String? categoryNameById(String? id) =>
+    id == null ? null : _categoryNameById[id];
+
 const List<Category> kCategories = [
   (id: 'autos', name: 'Autos'),
   (id: 'ferreteria', name: 'Ferretería'),

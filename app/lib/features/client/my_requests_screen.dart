@@ -10,22 +10,6 @@ import '../shared/profile_avatar_button.dart';
 import '../shared/swipe_to_actions.dart';
 import '../shared/violet_header.dart';
 
-/// Aviso temporal mientras el buscador/filtro del header no está cableado.
-///
-/// ⚠️ HUECO DE LÓGICA DOCUMENTADO (no es un bug): el diseño aprobado pone un
-/// buscador con "Filtrar" en el home, pero buscar/filtrar solicitudes propias
-/// es funcionalidad NUEVA que hoy no existe en el backend ni en el estado de la
-/// pantalla. Decisión pendiente del PO: implementarlo o retirarlo del diseño
-/// (ver memoria `jayalo-mockups-app-handoff`). Se dibuja la barra (estética
-/// primero) y se avisa al tocar, sin fingir resultados.
-void _searchSoon(BuildContext context) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      const SnackBar(content: Text('Buscar y filtrar: próximamente.')),
-    );
-}
-
 String timeAgo(DateTime d) {
   final diff = DateTime.now().difference(d);
   if (diff.inMinutes < 60) return 'hace ${diff.inMinutes} min';
@@ -205,10 +189,15 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                 subtitle: 'Tú pides y los proveedores te ofertan.',
               ),
             ),
+            // El buscador "en Jayalo" no busca solicitudes propias (no tiene
+            // sentido) sino el CATÁLOGO del marketplace, que es donde vive la
+            // búsqueda real + los filtros. `?focus=1` abre con el foco puesto;
+            // "Filtrar" abre el catálogo (su hoja de filtros llega con la
+            // feature de filtros del catálogo).
             below: WarmSearchField(
               hint: 'Buscar en Jayalo',
-              onTap: () => _searchSoon(context),
-              onFilter: () => _searchSoon(context),
+              onTap: () => context.push('/catalog?focus=1'),
+              onFilter: () => context.push('/catalog'),
             ),
           ),
           Expanded(

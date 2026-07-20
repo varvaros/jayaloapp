@@ -138,7 +138,12 @@ GoRouter buildRouter() => GoRouter(
             // `/provider/business`).
             GoRoute(
                 path: '/catalog',
-                builder: (_, _) => const BackGuard(child: CatalogScreen())),
+                // `?focus=1` (desde el buscador de Mis solicitudes) abre el
+                // catálogo con el buscador enfocado.
+                builder: (_, s) => BackGuard(
+                    child: CatalogScreen(
+                        autofocusSearch:
+                            s.uri.queryParameters['focus'] == '1'))),
             // Task 7 (2026-07-19): detalle del producto/servicio + "Me
             // interesa". Modelo `/client/request/:id`: fetch propio por id,
             // AppBar sin campana/avatar (pantalla de detalle, no pestaña raíz).
