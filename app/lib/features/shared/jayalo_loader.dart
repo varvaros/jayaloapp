@@ -11,6 +11,7 @@
 /// meter el SVG como asset, y así el loader escala sin perder nitidez.
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -177,27 +178,69 @@ class JayaloMascot extends StatelessWidget {
 
 /// Bloque de carga centrado — equivalente del `JayaloLoaderBlock` de la web,
 /// para reemplazar spinners de pantalla completa.
-class JayaloLoaderBlock extends StatelessWidget {
-  const JayaloLoaderBlock({super.key, this.label, this.size = 88});
+///
+/// NO aparece de inmediato: espera [delay] antes de mostrar la mascota (PO
+/// 2026-07-19, comparando con WhatsApp/Spotify — "solo le das clic y pasa"):
+/// una carga típica de esta app resuelve en un puñado de ms, y mostrar la
+/// mascota en cada navegación la hacía sentir más lenta de lo que es. Si la
+/// carga sí tarda (red mala), el loader aparece pasado el umbral — nunca deja
+/// al usuario mirando una pantalla en blanco sin explicación. Pasar
+/// `delay: Duration.zero` para los pocos casos que SÍ deben verse al
+/// instante (hoy: ninguno de los que usan este widget).
+class JayaloLoaderBlock extends StatefulWidget {
+  const JayaloLoaderBlock({
+    super.key,
+    this.label,
+    this.size = 88,
+    this.delay = const Duration(milliseconds: 400),
+  });
   final String? label;
   final double size;
+  final Duration delay;
 
   @override
-  Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            JayaloLoader(size: size),
-            if (label != null) ...[
-              const SizedBox(height: 16),
-              Text(label!,
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            ],
+  State<JayaloLoaderBlock> createState() => _JayaloLoaderBlockState();
+}
+
+class _JayaloLoaderBlockState extends State<JayaloLoaderBlock> {
+  late bool _show = widget.delay == Duration.zero;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_show) {
+      _timer = Timer(widget.delay, () {
+        if (mounted) setState(() => _show = true);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_show) return const SizedBox.shrink();
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          JayaloLoader(size: widget.size),
+          if (widget.label != null) ...[
+            const SizedBox(height: 16),
+            Text(widget.label!,
+                style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ],
-        ),
-      );
+        ],
+      ),
+    );
+  }
 }
 
 /// Spinner chico para botones — el "ojo" de Jayalo: aro tenue con la pupila

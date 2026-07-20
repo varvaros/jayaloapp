@@ -189,10 +189,38 @@ GoRouter buildRouter() => GoRouter(
                           peerName: m?['peer_name'] as String?,
                           peerAvatarUrl: m?['peer_avatar_url'] as String?));
                 }),
+            // Una de las 4 excepciones pedidas por el PO (2026-07-19, 4ª
+            // pasada) que SÍ conserva animación tras retirar el deslizado
+            // general de sección: fade + leve deslizado desde la derecha,
+            // 300ms — corto, sin el frenado de 2s que se quitó del resto.
             GoRoute(
                 path: '/notifications',
-                builder: (_, _) =>
-                    const BackGuard(child: NotificationsScreen())),
+                pageBuilder: (context, state) => CustomTransitionPage(
+                      key: state.pageKey,
+                      transitionDuration: JayaloMotion.reduced(context)
+                          ? Duration.zero
+                          : JayaloMotion.page,
+                      reverseTransitionDuration: JayaloMotion.reduced(context)
+                          ? Duration.zero
+                          : JayaloMotion.page,
+                      transitionsBuilder: (context, animation, _, child) {
+                        final curved = CurvedAnimation(
+                            parent: animation,
+                            curve: JayaloMotion.enter,
+                            reverseCurve: JayaloMotion.exit);
+                        return FadeTransition(
+                          opacity: curved,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                                    begin: const Offset(.06, 0),
+                                    end: Offset.zero)
+                                .animate(curved),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: const BackGuard(child: NotificationsScreen()),
+                    )),
           ],
         ),
       ],

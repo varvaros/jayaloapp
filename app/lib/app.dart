@@ -4,40 +4,28 @@ import 'package:go_router/go_router.dart';
 import 'core/brand.dart';
 import 'core/motion.dart';
 
-/// Doctrina de movimiento (decisión PO 2026-07-18): TODA transición de
-/// pantalla debe sentirse premium — deslizado suave, nunca el zoom/fade
-/// genérico de Android por defecto. Un solo builder aquí cubre las ~15 rutas
-/// de `core/router.dart` sin tocarlas una por una.
+/// SIN animación en los cambios de sección (PO 2026-07-19, 4ª pasada —
+/// REVIERTE el deslizado de las directrices 07-18/07-19 anteriores):
+/// "veo que WhatsApp, Spotify no tienen loader en cada sección, solo le das
+/// clic y pasa… vamos a eliminar la animación de cambio de sección". El
+/// deslizado horizontal con frenado de 2s quedó descartado — un solo builder
+/// aquí cubre las ~15 rutas de `core/router.dart` sin tocarlas una por una.
 ///
-/// Eje HORIZONTAL (3ª directriz del PO, revisión visual en device
-/// 2026-07-19: "el deslizamiento de las secciones que sea a la derecha";
-/// sustituye al eje vertical del 07-18): la sección entrante LLEGA desde la
-/// derecha (8% del ancho) con fade in, y la saliente se guarda hacia la
-/// izquierda (4%) atenuándose. Al volver atrás, la reversa deshace el
-/// gesto — la de arriba se va por la derecha. Curva `easeInOutCubic` en
-/// ambas: el movimiento arranca y termina suave, sin tirones.
-///
-/// `secondaryAnimation` (la saliente) solo corre al EMPUJAR una ruta encima;
-/// al volver, la de abajo baja de vuelta a su sitio.
+/// Las 4 excepciones pedidas por el PO (Crear solicitud, Notificaciones, Ver
+/// ofertas, menú de Avatar) NO pasan por este builder — cada una es un
+/// `CustomTransitionPage`/`showModalBottomSheet`/`showGeneralDialog` con su
+/// propia animación, independiente del `PageTransitionsTheme`. Ver
+/// `core/router.dart` (`/client/create`, `/notifications`),
+/// `client/request_status_screen.dart` (`_showOffers`) y
+/// `shared/profile_avatar_button.dart` (`openProfileMenu`).
 class _JayaloPageTransitionsBuilder extends PageTransitionsBuilder {
   const _JayaloPageTransitionsBuilder();
 
-  // PO 2026-07-19 (3ª pasada): "el deslizamiento de la pantalla debe ser con
-  // un frenado de 2 segundos". Con la curva `brake` (easeOutQuint) casi todo
-  // el recorrido sucede en los primeros ~400ms — lo que se percibe rápido —
-  // y el resto de los 2s es la frenada: el último tramo aterriza despacio.
-  // `MaterialRouteTransitionMixin.transitionDuration` lee este getter del
-  // builder del theme (verificado en el código de Flutter 3.44), así que
-  // esto aplica a TODAS las rutas MaterialPage sin tocarlas una a una.
   @override
-  Duration get transitionDuration => JayaloMotion.screenSlide;
+  Duration get transitionDuration => Duration.zero;
 
-  // La VUELTA es corta (PO 2026-07-19, misma sesión: "al dar atrás se siente
-  // muy lenta la salida"): los 2s con `brake` invertida dejaban ~1.5s de
-  // pantalla quieta antes de moverse. Al volver no hay nada que saborear —
-  // salida en `page` (300ms).
   @override
-  Duration get reverseTransitionDuration => JayaloMotion.page;
+  Duration get reverseTransitionDuration => Duration.zero;
 
   @override
   Widget buildTransitions<T>(
@@ -46,40 +34,8 @@ class _JayaloPageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> animation,
     Animation<double> secondaryAnimation,
     Widget child,
-  ) {
-    // Accesibilidad: con "reducir animaciones" la pantalla cambia sin
-    // movimiento (el sistema ya acorta la ruta; no se pelea con él).
-    if (JayaloMotion.reduced(context)) return child;
-    // A la ida, curva `brake` (frenada larga). A la VUELTA, `exit`
-    // (easeInCubic): el movimiento arranca al instante — con `brake` invertida
-    // la reversa se quedaba quieta casi todo el recorrido y se sentía lenta.
-    final incoming = CurvedAnimation(
-        parent: animation,
-        curve: JayaloMotion.brake,
-        reverseCurve: JayaloMotion.exit);
-    final outgoing = CurvedAnimation(
-        parent: secondaryAnimation,
-        curve: JayaloMotion.brake,
-        reverseCurve: JayaloMotion.exit);
-    return SlideTransition(
-      // Llega desde la derecha hasta su sitio.
-      position: Tween<Offset>(begin: const Offset(.08, 0), end: Offset.zero)
-          .animate(incoming),
-      child: FadeTransition(
-        opacity: incoming,
-        child: SlideTransition(
-          // La anterior se guarda hacia la izquierda mientras se atenúa.
-          position: Tween<Offset>(
-                  begin: Offset.zero, end: const Offset(-.04, 0))
-              .animate(outgoing),
-          child: FadeTransition(
-            opacity: Tween<double>(begin: 1, end: .4).animate(outgoing),
-            child: child,
-          ),
-        ),
-      ),
-    );
-  }
+  ) =>
+      child;
 }
 
 /// Física de scroll con frenado largo (PO 2026-07-19, 4ª pasada: "el scroll

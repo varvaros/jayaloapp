@@ -56,8 +56,11 @@ void main() {
 
   testWidgets('el loader animado late sin repintar de más ni tirar excepciones',
       (tester) async {
+    // delay: Duration.zero — este test cubre la ANIMACIÓN del isotipo, no la
+    // demora de aparición (que tiene su propio test abajo).
     await tester.pumpWidget(const MaterialApp(
-      home: Scaffold(body: JayaloLoaderBlock(label: 'Cargando')),
+      home: Scaffold(
+          body: JayaloLoaderBlock(label: 'Cargando', delay: Duration.zero)),
     ));
     expect(find.text('Cargando'), findsOneWidget);
     // Avanza el ciclo: cubre parpadeo, escaneo de pupila y pulso de puntos.
@@ -65,5 +68,25 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
     }
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'JayaloLoaderBlock no aparece antes de su demora — como WhatsApp/Spotify, '
+      'una carga rápida no debe parpadear el loader', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: JayaloLoaderBlock(label: 'Cargando')),
+    ));
+    // Recién montado: nada visible todavía.
+    expect(find.text('Cargando'), findsNothing);
+    expect(find.byType(JayaloLoader), findsNothing);
+
+    // Justo antes del umbral (400ms default): sigue sin aparecer.
+    await tester.pump(const Duration(milliseconds: 399));
+    expect(find.text('Cargando'), findsNothing);
+
+    // Pasado el umbral: aparece.
+    await tester.pump(const Duration(milliseconds: 2));
+    expect(find.text('Cargando'), findsOneWidget);
+    expect(find.byType(JayaloLoader), findsOneWidget);
   });
 }
