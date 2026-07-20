@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/ai_client.dart';
 import '../../core/brand.dart';
-import '../../core/turnstile.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_turns.dart';
 import '../../domain/image_pick.dart';
@@ -100,13 +99,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _input.clear();
     });
     try {
-      String? token;
-      if (_messages.length == 1) token = await getTurnstileToken(context);
+      // El JWT de la sesión exime el Turnstile del primer turno (ADR-0032);
+      // el WebView del CAPTCHA se quitó: se pintaba negro en MIUI y colgaba
+      // el flujo completo de crear solicitud.
       final turn = await _ai.sendTurn(
           messages: _messages,
           kind: _kind,
           wholesale: _wholesale,
-          turnstileToken: token,
+          accessToken: supa.auth.currentSession?.accessToken,
           imageDataUrl: _photos.isNotEmpty ? _photos[0].dataUrl : null,
           imageDataUrl2: _photos.length > 1 ? _photos[1].dataUrl : null);
       _messages.add(AiMessage('assistant', jsonEncode(_turnToJson(turn))));
