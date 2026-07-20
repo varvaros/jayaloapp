@@ -32,6 +32,13 @@ class _JayaloPageTransitionsBuilder extends PageTransitionsBuilder {
   @override
   Duration get transitionDuration => JayaloMotion.screenSlide;
 
+  // La VUELTA es corta (PO 2026-07-19, misma sesión: "al dar atrás se siente
+  // muy lenta la salida"): los 2s con `brake` invertida dejaban ~1.5s de
+  // pantalla quieta antes de moverse. Al volver no hay nada que saborear —
+  // salida en `page` (300ms).
+  @override
+  Duration get reverseTransitionDuration => JayaloMotion.page;
+
   @override
   Widget buildTransitions<T>(
     PageRoute<T> route,
@@ -43,16 +50,17 @@ class _JayaloPageTransitionsBuilder extends PageTransitionsBuilder {
     // Accesibilidad: con "reducir animaciones" la pantalla cambia sin
     // movimiento (el sistema ya acorta la ruta; no se pelea con él).
     if (JayaloMotion.reduced(context)) return child;
-    // Curva `brake` en las dos direcciones: el movimiento visible es
-    // inmediato y la mayor parte de la duración es la frenada final.
+    // A la ida, curva `brake` (frenada larga). A la VUELTA, `exit`
+    // (easeInCubic): el movimiento arranca al instante — con `brake` invertida
+    // la reversa se quedaba quieta casi todo el recorrido y se sentía lenta.
     final incoming = CurvedAnimation(
         parent: animation,
         curve: JayaloMotion.brake,
-        reverseCurve: JayaloMotion.brake);
+        reverseCurve: JayaloMotion.exit);
     final outgoing = CurvedAnimation(
         parent: secondaryAnimation,
         curve: JayaloMotion.brake,
-        reverseCurve: JayaloMotion.brake);
+        reverseCurve: JayaloMotion.exit);
     return SlideTransition(
       // Llega desde la derecha hasta su sitio.
       position: Tween<Offset>(begin: const Offset(.08, 0), end: Offset.zero)
