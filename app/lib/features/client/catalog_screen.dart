@@ -10,6 +10,7 @@ import '../../domain/money.dart';
 import '../shared/brand_kit.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
+import 'catalog_filter_sheet.dart';
 
 /// Signature de la fuente de datos del catálogo (paridad `productHitsQ` de la
 /// web). Inyectada en [CatalogView] para poder probar la pantalla sin red —
@@ -113,15 +114,21 @@ class _CatalogViewState extends State<CatalogView> {
 
   /// Mutador de categoría/rubro (lo usan los filtros de Task 5/6): reemplaza
   /// ambos a la vez porque un rubro siempre vive dentro de una categoría — no
-  /// tiene sentido aplicar uno sin el otro. Todavía sin UI que lo dispare
-  /// (esa es Task 5/6) — el ignore se retira cuando esa UI llame a esto.
-  // ignore: unused_element
+  /// tiene sentido aplicar uno sin el otro.
   void _applyFilter({String? categoryId, String? rubro}) {
     setState(() {
       _categoryId = categoryId;
       _rubro = rubro;
     });
     _refetch();
+  }
+
+  /// Abre la hoja de filtro (Task 6) y aplica el resultado — `null` significa
+  /// que el usuario cerró sin cambiar nada.
+  Future<void> _openFilter() async {
+    final res = await showCatalogFilterSheet(context,
+        categoryId: _categoryId, rubro: _rubro);
+    if (res != null) _applyFilter(categoryId: res.categoryId, rubro: res.rubro);
   }
 
   void _toggleWholesale(bool on) {
@@ -184,13 +191,27 @@ class _CatalogViewState extends State<CatalogView> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                _HeaderSearchField(
-                  controller: _searchCtrl,
-                  hint: 'Buscar en el catálogo',
-                  autofocus: widget.autofocusSearch,
-                  onSubmitted: _applySearch,
-                  onClear: _clearSearch,
-                ),
+                Row(children: [
+                  Expanded(
+                    child: _HeaderSearchField(
+                      controller: _searchCtrl,
+                      hint: 'Buscar en el catálogo',
+                      autofocus: widget.autofocusSearch,
+                      onSubmitted: _applySearch,
+                      onClear: _clearSearch,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterPill(
+                    label: _categoryId == null
+                        ? 'Filtrar'
+                        : (categoryNameById(_categoryId) ?? 'Filtrar'),
+                    active: _categoryId != null,
+                    onTap: _openFilter,
+                    onClear:
+                        _categoryId != null ? () => _applyFilter() : null,
+                  ),
+                ]),
               ],
             ),
           ),
@@ -210,13 +231,25 @@ class _CatalogViewState extends State<CatalogView> {
                   if (items.isEmpty) {
                     return EmptyState(
                       controller: _scrollController,
-                      message: _search != null
-                          ? 'No hay artículos que coincidan con tu búsqueda.'
+                      message: (_search != null || _categoryId != null)
+                          ? 'No hay artículos que coincidan con tu filtro.'
                           : 'Aún no hay artículos publicados en esta '
                               'categoría.\n\nVuelve más tarde: los '
                               'proveedores publican todos los días.',
-                      ctaLabel: _search != null ? 'Quitar búsqueda' : null,
-                      onCta: _search != null ? _clearSearch : null,
+                      ctaLabel: (_search != null || _categoryId != null)
+                          ? 'Quitar filtro'
+                          : null,
+                      onCta: (_search != null || _categoryId != null)
+                          ? () {
+                              _searchCtrl.clear();
+                              setState(() {
+                                _search = null;
+                                _categoryId = null;
+                                _rubro = null;
+                              });
+                              _refetch();
+                            }
+                          : null,
                     );
                   }
                   // Lista a todo el ancho (no rejilla): cada ítem es una
@@ -479,4 +512,56 @@ class _CatalogCard extends StatelessWidget {
         alignment: Alignment.center,
         child: Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
       );
+}
+
+/// Píldora "Filtrar" de la fila de búsqueda (Task 6): abre
+/// [showCatalogFilterSheet]; cuando hay categoría activa muestra su nombre y
+/// una ✕ para limpiar sin reabrir la hoja.
+class _FilterPill extends StatelessWidget {
+  const _FilterPill(
+      {required this.label,
+      required this.active,
+      required this.onTap,
+      this.onClear});
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.onPrimaryContainer,
+      borderRadius: BorderRadius.circular(999),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.tune, size: 15, color: Colors.white),
+            const SizedBox(width: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 90),
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white)),
+            ),
+            if (active && onClear != null) ...[
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: onClear,
+                child: const Icon(Icons.close, size: 15, color: Colors.white),
+              ),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
 }
