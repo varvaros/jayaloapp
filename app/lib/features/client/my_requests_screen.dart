@@ -7,6 +7,7 @@ import '../shell/floating_nav_bar.dart';
 import '../shell/home_scroll.dart';
 import '../shared/brand_kit.dart';
 import '../shared/profile_avatar_button.dart';
+import '../shared/swipe_to_actions.dart';
 import '../shared/violet_header.dart';
 
 /// Aviso temporal mientras el buscador/filtro del header no está cableado.
@@ -20,8 +21,9 @@ import '../shared/violet_header.dart';
 void _searchSoon(BuildContext context) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(const SnackBar(
-        content: Text('Buscar y filtrar: próximamente.')));
+    ..showSnackBar(
+      const SnackBar(content: Text('Buscar y filtrar: próximamente.')),
+    );
 }
 
 String timeAgo(DateTime d) {
@@ -34,15 +36,15 @@ String timeAgo(DateTime d) {
 /// Ícono y copy corto por fase. Con ofertas muestra el conteo real — es el
 /// dato que hace abrir la app.
 (IconData, String) phaseChip(RequestPhase p, int offerCount) => switch (p) {
-      RequestPhase.waiting => (Icons.schedule, 'Esperando ofertas'),
-      RequestPhase.withOffers => (
-          Icons.local_offer_outlined,
-          '$offerCount oferta${offerCount == 1 ? '' : 's'}'
-        ),
-      RequestPhase.accepted => (Icons.handshake, 'Aceptada'),
-      RequestPhase.unlocked => (Icons.lock_open, 'Desbloqueado'),
-      RequestPhase.completed => (Icons.done_all, 'Completada'),
-    };
+  RequestPhase.waiting => (Icons.schedule, 'Esperando ofertas'),
+  RequestPhase.withOffers => (
+    Icons.local_offer_outlined,
+    '$offerCount oferta${offerCount == 1 ? '' : 's'}',
+  ),
+  RequestPhase.accepted => (Icons.handshake, 'Aceptada'),
+  RequestPhase.unlocked => (Icons.lock_open, 'Desbloqueado'),
+  RequestPhase.completed => (Icons.done_all, 'Completada'),
+};
 
 class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({super.key});
@@ -53,6 +55,8 @@ class MyRequestsScreen extends StatefulWidget {
 class _MyRequestsScreenState extends State<MyRequestsScreen> {
   late Future<List<(Map<String, dynamic>, RequestPhase, int)>> _load = _fetch();
   int _seenTick = requestsChanged.value;
+  // Coordina "un solo row de swipe abierto a la vez".
+  final ValueNotifier<Object?> _openRow = ValueNotifier(null);
 
   // La pantalla vive montada como pestaña del shell: sin esto, publicar una
   // solicitud no se reflejaba hasta el pull-to-refresh (bug PO 2026-07-19).
@@ -69,8 +73,72 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   @override
   void dispose() {
     requestsChanged.removeListener(_reload);
+    _openRow.dispose();
     super.dispose();
   }
+
+  /// Eliminar una solicitud. SIEMPRE doble confirmación (pedido PO): el swipe
+  /// destapa el botón, luego dos diálogos. La RPC `cancel_customer_request`
+  /// pone la fila en `cancelled` (soft-delete: nunca borra un lead que un
+  /// proveedor ya pagó — en ese caso lanza `unlocked_offer_exists`); al
+  /// filtrarse las canceladas del listado, para el cliente "desaparece".
+  Future<void> _deleteRequest(String id, int offerCount) async {
+    final first = await _confirm(
+      title: '¿Eliminar esta solicitud?',
+      body: offerCount > 0
+          ? 'Ya tienes ${offerCount == 1 ? 'una oferta' : '$offerCount ofertas'}. '
+                'Si la eliminas, se retira del marketplace y esos proveedores se '
+                'quedan sin respuesta — baja tu reputación como comprador.'
+          : 'Se retira del marketplace y ningún proveedor podrá ofertarte.',
+      confirmLabel: 'Sí, eliminar',
+    );
+    if (first != true || !mounted) return;
+    final second = await _confirm(
+      title: '¿Seguro?',
+      body: 'Esta acción es definitiva: no podrás reabrir la solicitud.',
+      confirmLabel: 'Eliminar definitivamente',
+    );
+    if (second != true || !mounted) return;
+    try {
+      await cancelCustomerRequest(id); // bump requestsChanged → refetch
+      if (mounted) showJayaloToast(context, 'Solicitud eliminada.');
+    } catch (e) {
+      if (!mounted) return;
+      showJayaloToast(
+        context,
+        e.toString().contains('unlocked_offer_exists')
+            ? 'No puedes eliminarla: un proveedor ya pagó por contactarte. '
+                  'Responde a sus ofertas — si no aceptas ninguna, queda '
+                  'desierta y baja tu reputación.'
+            : 'No se pudo eliminar la solicitud.',
+      );
+    }
+  }
+
+  Future<bool?> _confirm({
+    required String title,
+    required String body,
+    required String confirmLabel,
+  }) => showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: Text(body),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(ctx).colorScheme.error,
+          ),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text(confirmLabel),
+        ),
+      ],
+    ),
+  );
 
   void _reload() {
     if (mounted) {
@@ -92,10 +160,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     final reqs = await myRequests();
     if (reqs.isEmpty) return [];
     final ids = reqs.map((r) => r['id'] as String).toList();
-    final offers = List<Map<String, dynamic>>.from(await supa
-        .from('provider_offers')
-        .select('request_id,status,unlocked_at')
-        .inFilter('request_id', ids));
+    final offers = List<Map<String, dynamic>>.from(
+      await supa
+          .from('provider_offers')
+          .select('request_id,status,unlocked_at')
+          .inFilter('request_id', ids),
+    );
     final byReq = <String, List<OfferLite>>{};
     for (final o in offers) {
       byReq.putIfAbsent(o['request_id'] as String, () => []).add(offerLite(o));
@@ -105,10 +175,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         (
           r,
           phaseForRequest(
-              requestStatus: r['status'] as String,
-              offers: byReq[r['id']] ?? const []),
+            requestStatus: r['status'] as String,
+            offers: byReq[r['id']] ?? const [],
+          ),
           byReq[r['id']]?.length ?? 0,
-        )
+        ),
     ];
   }
 
@@ -158,7 +229,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                   if (items.isEmpty) {
                     return EmptyState(
                       controller: homeScrollController,
-                      message: 'Aún no has pedido nada.\n'
+                      message:
+                          'Aún no has pedido nada.\n'
                           'Cuéntanos qué buscas y los proveedores te harán ofertas.',
                       ctaLabel: 'Crear solicitud',
                       // push, no go: crear-solicitud es MODAL (sube por encima
@@ -175,20 +247,77 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                         child: ListView.builder(
                           controller: homeScrollController,
                           padding: EdgeInsets.only(
-                              top: 2, bottom: 8 + navBarReservedSpace(context)),
+                            top: 2,
+                            bottom: 8 + navBarReservedSpace(context),
+                          ),
                           itemCount: items.length,
                           itemBuilder: (_, i) {
                             final (r, phase, offerCount) = items[i];
-                            return _RequestCard(
+                            final id = r['id'] as String;
+                            // push (no go): apila el detalle SOBRE la lista para
+                            // que su atrás pueda volver. Con go() la pila se
+                            // reemplazaba y el `context.pop()` del detalle
+                            // (flecha) no tenía nada que popear — la flecha "no
+                            // funcionaba". El resto de detalles (chat/catálogo)
+                            // ya usa push por esto mismo.
+                            void open() => context.push('/client/request/$id');
+                            // El swipe (eliminar/editar) solo tiene sentido
+                            // mientras la solicitud está ABIERTA: la RPC de
+                            // borrar solo permite `open`, y editar una ya
+                            // aceptada/completada no aplica. En esas fases el
+                            // card va sin swipe.
+                            final canManage =
+                                phase == RequestPhase.waiting ||
+                                phase == RequestPhase.withOffers;
+                            if (!canManage) {
+                              return _RequestCard(
+                                title: r['title'] as String,
+                                createdAt: DateTime.parse(
+                                  r['created_at'] as String,
+                                ),
+                                phase: phase,
+                                offerCount: offerCount,
+                                imageUrl: _firstImage(r),
+                                kind: r['kind'] as String?,
+                                onTap: open,
+                              ).cascadeIn(i);
+                            }
+                            final card = _RequestCard(
                               title: r['title'] as String,
-                              createdAt:
-                                  DateTime.parse(r['created_at'] as String),
+                              createdAt: DateTime.parse(
+                                r['created_at'] as String,
+                              ),
                               phase: phase,
                               offerCount: offerCount,
                               imageUrl: _firstImage(r),
                               kind: r['kind'] as String?,
-                              onTap: () =>
-                                  context.go('/client/request/${r['id']}'),
+                              onTap: open,
+                              // Sin margen propio: lo aplica el swipe.
+                              margin: EdgeInsets.zero,
+                            );
+                            return SwipeToActions(
+                              id: id,
+                              group: _openRow,
+                              actions: [
+                                SwipeAction(
+                                  icon: Icons.delete_outline,
+                                  label: 'Eliminar',
+                                  color: Theme.of(context).colorScheme.error,
+                                  onTap: () => _deleteRequest(id, offerCount),
+                                ),
+                                SwipeAction(
+                                  icon: Icons.edit_outlined,
+                                  label: 'Editar',
+                                  color: const Color(0xFF378ADD),
+                                  // Editar llega en una sesión próxima
+                                  // (decisión PO); por ahora avisa.
+                                  onTap: () async => showJayaloToast(
+                                    context,
+                                    'Editar solicitud: próximamente.',
+                                  ),
+                                ),
+                              ],
+                              child: card,
                             ).cascadeIn(i);
                           },
                         ),
@@ -220,17 +349,23 @@ class _SecRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          Text('Tus solicitudes',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: jayaloHead(context))),
+          Text(
+            'Tus solicitudes',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: jayaloHead(context),
+            ),
+          ),
           const Spacer(),
-          Text('$count activa${count == 1 ? '' : 's'}',
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurfaceVariant)),
+          Text(
+            '$count activa${count == 1 ? '' : 's'}',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
@@ -260,6 +395,7 @@ class _RequestCard extends StatelessWidget {
     required this.imageUrl,
     required this.kind,
     required this.onTap,
+    this.margin,
   });
 
   final String title;
@@ -269,6 +405,10 @@ class _RequestCard extends StatelessWidget {
   final String? imageUrl;
   final String? kind;
   final VoidCallback onTap;
+
+  /// Null = margen estándar de lista; se pasa cero cuando el card vive dentro
+  /// de [SwipeToActions] (el swipe aplica el margen exterior).
+  final EdgeInsetsGeometry? margin;
 
   static const _live = {
     RequestPhase.withOffers,
@@ -289,6 +429,7 @@ class _RequestCard extends StatelessWidget {
       onTap: onTap,
       tint: bg,
       padding: const EdgeInsets.all(11),
+      margin: margin ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Row(
         children: [
           _thumb(context, tinted, tone),
@@ -303,24 +444,26 @@ class _RequestCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      fontSize: 14,
-                      height: 1.3,
-                      fontWeight: FontWeight.w600,
-                      color: fg),
+                    fontSize: 14,
+                    height: 1.3,
+                    fontWeight: FontWeight.w600,
+                    color: fg,
+                  ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   timeAgo(createdAt),
                   style: TextStyle(
-                      fontSize: 11.5, color: fg.withValues(alpha: .7)),
+                    fontSize: 11.5,
+                    color: fg.withValues(alpha: .7),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 _pill(label, tone, tinted),
               ],
             ),
           ),
-          Icon(Icons.chevron_right,
-              size: 20, color: fg.withValues(alpha: .4)),
+          Icon(Icons.chevron_right, size: 20, color: fg.withValues(alpha: .4)),
         ],
       ),
     );
@@ -330,46 +473,55 @@ class _RequestCard extends StatelessWidget {
   /// suave (nunca un ícono roto).
   Widget _thumb(BuildContext context, bool tinted, StatusTone tone) {
     final cs = Theme.of(context).colorScheme;
-    final holderBg =
-        tinted ? Colors.white.withValues(alpha: .65) : cs.surfaceContainerHighest;
+    final holderBg = tinted
+        ? Colors.white.withValues(alpha: .65)
+        : cs.surfaceContainerHighest;
     Widget placeholder() => Container(
-          width: 54,
-          height: 54,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: holderBg,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Icon(
-              kind == 'servicio'
-                  ? Icons.handyman_outlined
-                  : Icons.inventory_2_outlined,
-              size: 24,
-              color: tone.ink.withValues(alpha: .8)),
-        );
+      width: 54,
+      height: 54,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: holderBg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Icon(
+        kind == 'servicio'
+            ? Icons.handyman_outlined
+            : Icons.inventory_2_outlined,
+        size: 24,
+        color: tone.ink.withValues(alpha: .8),
+      ),
+    );
     final url = imageUrl;
     if (url == null) return placeholder();
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
-      child: Image.network(url,
-          width: 54,
-          height: 54,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => placeholder(),
-          loadingBuilder: (_, child, p) => p == null ? child : placeholder()),
+      child: Image.network(
+        url,
+        width: 54,
+        height: 54,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => placeholder(),
+        loadingBuilder: (_, child, p) => p == null ? child : placeholder(),
+      ),
     );
   }
 
   /// Chip de estado: sobre tarjeta teñida va en píldora blanca translúcida con
   /// la tinta de la fase; sobre tarjeta blanca va en la píldora teñida.
   Widget _pill(String label, StatusTone tone, bool tinted) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
-        decoration: BoxDecoration(
-          color: tinted ? Colors.white.withValues(alpha: .85) : tone.bg,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w600, color: tone.ink)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
+    decoration: BoxDecoration(
+      color: tinted ? Colors.white.withValues(alpha: .85) : tone.bg,
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        color: tone.ink,
+      ),
+    ),
+  );
 }

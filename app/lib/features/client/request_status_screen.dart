@@ -80,15 +80,39 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
         .then((r) => mounted ? setState(() => _request = r) : null);
   }
 
+  /// Atrás robusto: si hay pila (se llegó con push desde la lista), vuelve;
+  /// si no (deep-link de una notificación abre el detalle con go y no hay pila),
+  /// cae al home en vez de quedarse muerto.
+  void _goBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/client');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final req = _request;
     if (req == null) {
       return Scaffold(
-        body: Stack(children: [
-          const JayaloLoaderBlock(),
-          SafeArea(child: _BackFab(onTap: () => context.pop())),
-        ]),
+        body: Stack(
+          children: [
+            const JayaloLoaderBlock(),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8, left: 16),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: _CornerFab(
+                    icon: Icons.arrow_back_ios_new,
+                    onTap: _goBack,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       );
     }
     return Scaffold(
@@ -97,20 +121,22 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
         builder: (context, snap) {
           final offers = snap.data ?? const <Map<String, dynamic>>[];
           final phase = phaseForRequest(
-              requestStatus: req['status'] as String,
-              offers: offers.map(offerLite).toList());
-          return Column(children: [
-            _AmberPanel(
-                request: req, phase: phase, onBack: () => context.pop()),
-            Expanded(
-              child: _DetailSheet(
-                request: req,
-                phase: phase,
-                offers: offers,
-                onSeeOffers: () => _showOffers(context, req, offers),
+            requestStatus: req['status'] as String,
+            offers: offers.map(offerLite).toList(),
+          );
+          return Column(
+            children: [
+              _AmberPanel(request: req, phase: phase, onBack: _goBack),
+              Expanded(
+                child: _DetailSheet(
+                  request: req,
+                  phase: phase,
+                  offers: offers,
+                  onSeeOffers: () => _showOffers(context, req, offers),
+                ),
               ),
-            ),
-          ]);
+            ],
+          );
         },
       ),
     );
@@ -127,10 +153,14 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
   /// controllers custom + drag; reproducido en el Redmi). Con la animación
   /// estándar del sheet, arrastrar/tap fuera/atrás cierran como en el resto
   /// de la app.
-  Future<void> _showOffers(BuildContext context, Map<String, dynamic> req,
-      List<Map<String, dynamic>> offers) async {
-    final hasAccepted = offers
-        .any((o) => o['status'] == 'accepted' || o['status'] == 'completed');
+  Future<void> _showOffers(
+    BuildContext context,
+    Map<String, dynamic> req,
+    List<Map<String, dynamic>> offers,
+  ) async {
+    final hasAccepted = offers.any(
+      (o) => o['status'] == 'accepted' || o['status'] == 'completed',
+    );
     final cheapest = _cheapestOfferId(offers);
     await showModalBottomSheet(
       context: context,
@@ -138,7 +168,8 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
       // Altura FIJA (70%), sin DraggableScrollableSheet: el DSS anidado en un
       // showModalBottomSheet se atascaba en su minChildSize al arrastrar hacia
       // abajo y el sheet NUNCA se cerraba (reproducido en el Redmi — "sube
@@ -146,51 +177,66 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
       // (asa/encabezado), el tap fuera y el atrás cierran como siempre.
       builder: (ctx) => SizedBox(
         height: MediaQuery.of(ctx).size.height * .7,
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 4, 22, 10),
-            child: Row(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 4, 22, 10),
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.baseline,
                 textBaseline: TextBaseline.alphabetic,
                 children: [
-                  Text('Ofertas',
-                      style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                          color: jayaloHead(ctx))),
-                  const Spacer(),
-                  Text('Acepta la que más te convenga',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
-                ]),
-          ),
-          Expanded(
-            child: offers.isEmpty
-                ? const Center(
-                    child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                        'Todavía no hay ofertas.\nTe avisaremos con una notificación.',
-                        textAlign: TextAlign.center),
-                  ))
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    itemCount: offers.length,
-                    itemBuilder: (_, i) {
-                      final o = offers[i];
-                      return _OfferCard(
-                        offer: o,
-                        cheapest: o['id'] == cheapest,
-                        statusChip: offerStatusChip(ctx, o, hasAccepted),
-                        onTap: () => showOfferSheet(ctx, req, o,
-                            hasAcceptedElsewhere:
-                                hasAccepted && o['status'] == 'pending'),
-                      );
-                    },
+                  Text(
+                    'Ofertas',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: jayaloHead(ctx),
+                    ),
                   ),
-          ),
-        ]),
+                  const Spacer(),
+                  Text(
+                    'Acepta la que más te convenga',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: offers.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          'Todavía no hay ofertas.\nTe avisaremos con una notificación.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      itemCount: offers.length,
+                      itemBuilder: (_, i) {
+                        final o = offers[i];
+                        return _OfferCard(
+                          offer: o,
+                          cheapest: o['id'] == cheapest,
+                          statusChip: offerStatusChip(ctx, o, hasAccepted),
+                          onTap: () => showOfferSheet(
+                            ctx,
+                            req,
+                            o,
+                            hasAcceptedElsewhere:
+                                hasAccepted && o['status'] == 'pending',
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -213,72 +259,80 @@ String? _cheapestOfferId(List<Map<String, dynamic>> offers) {
 }
 
 Widget offerStatusChip(
-    BuildContext context, Map<String, dynamic> o, bool hasAccepted) {
+  BuildContext context,
+  Map<String, dynamic> o,
+  bool hasAccepted,
+) {
   final dark = Theme.of(context).brightness == Brightness.dark;
   final st = o['status'] as String;
   final (txt, tone) = switch (st) {
     'accepted' when o['unlocked_at'] != null => (
-        'Desbloqueada',
-        dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight
-      ),
+      'Desbloqueada',
+      dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight,
+    ),
     'accepted' => (
-        'Aceptada',
-        dark ? JayaloStatus.acceptedDark : JayaloStatus.acceptedLight
-      ),
+      'Aceptada',
+      dark ? JayaloStatus.acceptedDark : JayaloStatus.acceptedLight,
+    ),
     'completed' => (
-        'Completada',
-        dark ? JayaloStatus.completedDark : JayaloStatus.completedLight
-      ),
+      'Completada',
+      dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
+    ),
     'rejected' => (
-        'Rechazada',
-        dark ? JayaloStatus.completedDark : JayaloStatus.completedLight
-      ),
-    _ => hasAccepted
-        ? (
-            'Otra aceptada',
-            dark ? JayaloStatus.completedDark : JayaloStatus.completedLight
-          )
-        : ('Pendiente',
-            dark ? JayaloStatus.pendingDark : JayaloStatus.pendingLight),
+      'Rechazada',
+      dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
+    ),
+    _ =>
+      hasAccepted
+          ? (
+              'Otra aceptada',
+              dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
+            )
+          : (
+              'Pendiente',
+              dark ? JayaloStatus.pendingDark : JayaloStatus.pendingLight,
+            ),
   };
   return StatusChip(label: txt, tone: tone);
 }
 
-/// Botón de atrás flotante sobre el panel ámbar (la doctrina: en el detalle la
-/// FOTO manda; no lleva header violeta, solo el atrás flotando).
-class _BackFab extends StatelessWidget {
-  const _BackFab({required this.onTap});
+/// Botón circular flotante sobre el panel ámbar (la doctrina: en el detalle la
+/// FOTO manda; no lleva header violeta, solo los controles flotando). El atrás
+/// va a la izquierda; el ⋮ (menú) a la derecha.
+class _CornerFab extends StatelessWidget {
+  const _CornerFab({required this.icon, required this.onTap, this.tooltip});
+  final IconData icon;
   final VoidCallback onTap;
+  final String? tooltip;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 8, left: 16),
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: Material(
-            color: Theme.of(context).colorScheme.surfaceContainerLowest,
-            shape: const CircleBorder(),
-            clipBehavior: Clip.antiAlias,
-            elevation: 1,
-            child: InkWell(
-              onTap: onTap,
-              child: SizedBox(
-                width: 42,
-                height: 42,
-                child: Icon(Icons.arrow_back_ios_new,
-                    size: 18, color: jayaloHead(context)),
-              ),
-            ),
-          ),
+  Widget build(BuildContext context) => Material(
+    color: Theme.of(context).colorScheme.surfaceContainerLowest,
+    shape: const CircleBorder(),
+    clipBehavior: Clip.antiAlias,
+    elevation: 1,
+    child: InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        width: 42,
+        height: 42,
+        child: Tooltip(
+          message: tooltip ?? '',
+          child: Icon(icon, size: 18, color: jayaloHead(context)),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 /// Panel ámbar con la foto grande (cover) + miniaturas al borde derecho, o un
 /// ícono de fase si la solicitud no trae fotos.
 class _AmberPanel extends StatelessWidget {
-  const _AmberPanel(
-      {required this.request, required this.phase, required this.onBack});
+  const _AmberPanel({
+    required this.request,
+    required this.phase,
+    required this.onBack,
+  });
   final Map<String, dynamic> request;
   final RequestPhase phase;
   final VoidCallback onBack;
@@ -286,10 +340,10 @@ class _AmberPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final am = _amber(context);
-    final images = ((request['image_urls'] as List?)?.cast<String>() ??
-            const <String>[])
-        .where((u) => u.isNotEmpty)
-        .toList();
+    final images =
+        ((request['image_urls'] as List?)?.cast<String>() ?? const <String>[])
+            .where((u) => u.isNotEmpty)
+            .toList();
     // Sin foto, el panel se pinta LILA CLARO con el ícono violeta (pedido PO
     // 2026-07-19: "color lila claro al fondo que se ve debajo del
     // placeholder"); con foto sigue el ámbar de siempre detrás del cover.
@@ -314,10 +368,12 @@ class _AmberPanel extends StatelessWidget {
                 ? Center(child: Icon(icon, size: 120, color: ph.ink))
                 : GestureDetector(
                     onTap: () => showPhotoViewer(context, images),
-                    child: Image.network(images.first,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Center(
-                            child: Icon(icon, size: 120, color: am.ink))),
+                    child: Image.network(
+                      images.first,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) =>
+                          Center(child: Icon(icon, size: 120, color: am.ink)),
+                    ),
                   ),
           ),
           // Miniatura de la 2ª foto pegada al borde derecho (máx. 2 fotos).
@@ -328,18 +384,33 @@ class _AmberPanel extends StatelessWidget {
               child: GestureDetector(
                 onTap: () => showPhotoViewer(context, images, initialIndex: 1),
                 child: ClipRRect(
-                  borderRadius:
-                      const BorderRadius.horizontal(left: Radius.circular(16)),
-                  child: Image.network(images[1],
-                      width: 76,
-                      height: 76,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          Container(width: 76, height: 76, color: am.panel)),
+                  borderRadius: const BorderRadius.horizontal(
+                    left: Radius.circular(16),
+                  ),
+                  child: Image.network(
+                    images[1],
+                    width: 76,
+                    height: 76,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) =>
+                        Container(width: 76, height: 76, color: am.panel),
+                  ),
                 ),
               ),
             ),
-          SafeArea(child: _BackFab(onTap: onBack)),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8, left: 16),
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: _CornerFab(
+                  icon: Icons.arrow_back_ios_new,
+                  tooltip: 'Atrás',
+                  onTap: onBack,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -381,105 +452,133 @@ class _DetailSheet extends StatelessWidget {
         color: cs.surfaceContainerLowest,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      child: Column(children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(22, 22, 22, 8),
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(request['title'] as String,
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(22, 22, 22, 8),
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        request['title'] as String,
                         style: TextStyle(
-                            fontSize: 21,
-                            height: 1.2,
-                            fontWeight: FontWeight.w600,
-                            color: jayaloHead(context))),
-                  ),
-                  const SizedBox(width: 12),
-                  StatusChip(label: _phaseTitle[phase]!, tone: tone),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(children: [
-                Text(
-                    cheapest != null
-                        ? 'Desde: '
-                        : 'Aún sin ofertas',
-                    style: TextStyle(fontSize: 15, color: cs.onSurfaceVariant)),
-                if (cheapest != null)
-                  Text(fmtRD(cheapest),
+                          fontSize: 21,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                          color: jayaloHead(context),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    StatusChip(label: _phaseTitle[phase]!, tone: tone),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Text(
+                      cheapest != null ? 'Desde: ' : 'Aún sin ofertas',
                       style: TextStyle(
+                        fontSize: 15,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    if (cheapest != null)
+                      Text(
+                        fmtRD(cheapest),
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: jayaloHead(context))),
-                const Spacer(),
-                _ProviderDots(count: offers.length),
-              ]),
-              if (bullets.isNotEmpty) ...[
-                const SizedBox(height: 18),
-                Text('Detalles',
-                    style:
-                        TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
-                const SizedBox(height: 10),
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (final b in bullets)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                          color: cs.surface,
-                          borderRadius: BorderRadius.circular(999)),
-                      child: Text(b,
-                          style: TextStyle(fontSize: 12, color: cs.onSurface)),
+                          color: jayaloHead(context),
+                        ),
+                      ),
+                    const Spacer(),
+                    _ProviderDots(count: offers.length),
+                  ],
+                ),
+                if (bullets.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  Text(
+                    'Detalles',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: cs.onSurfaceVariant,
                     ),
-                ]),
-              ],
-              const SizedBox(height: 18),
-              Text(
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final b in bullets)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: cs.surface,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            b,
+                            style: TextStyle(fontSize: 12, color: cs.onSurface),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 18),
+                Text(
                   'Publicada: ${formatDayLabel(createdAt)} · ${formatTimeHM(createdAt)}',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-              const SizedBox(height: 8),
-              Text(_phaseCopy[phase]!,
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _phaseCopy[phase]!,
                   style: TextStyle(
-                      fontSize: 12.5, height: 1.5, color: cs.onSurfaceVariant)),
-            ],
-          ),
-        ),
-        // CTA: "Ver N ofertas" (violeta, solo navega — aceptar vive por oferta
-        // en la hoja). Reserva el alto de la barra flotante para no quedar tapado.
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-              16, 8, 16, 12 + navBarReservedSpace(context)),
-          child: Row(children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => context.pop(),
-                style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(999))),
-                child: const Text('Volver'),
-              ),
+                    fontSize: 12.5,
+                    height: 1.5,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              flex: 2,
+          ),
+          // CTA único: "Ver N ofertas" (violeta, solo navega — aceptar vive por
+          // oferta en la hoja). El "Volver" se quitó: duplicaba la flecha de
+          // atrás flotante del panel (ambos hacían context.pop()). Reserva el
+          // alto de la barra flotante para no quedar tapado.
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              8,
+              16,
+              12 + navBarReservedSpace(context),
+            ),
+            child: SizedBox(
+              width: double.infinity,
               child: FilledButton(
                 onPressed: onSeeOffers,
                 style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(999))),
-                child: Text(offers.isEmpty
-                    ? 'Ver ofertas'
-                    : 'Ver ${offers.length} oferta${offers.length == 1 ? '' : 's'}'),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                child: Text(
+                  offers.isEmpty
+                      ? 'Ver ofertas'
+                      : 'Ver ${offers.length} oferta${offers.length == 1 ? '' : 's'}',
+                ),
               ),
             ),
-          ]),
-        ),
-      ]),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -509,9 +608,16 @@ class _ProviderDots extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: cs.primaryContainer,
-                  border: Border.all(color: cs.surfaceContainerLowest, width: 2),
+                  border: Border.all(
+                    color: cs.surfaceContainerLowest,
+                    width: 2,
+                  ),
                 ),
-                child: Icon(Icons.person, size: 15, color: cs.onPrimaryContainer),
+                child: Icon(
+                  Icons.person,
+                  size: 15,
+                  color: cs.onPrimaryContainer,
+                ),
               ),
             ),
         ],
@@ -545,29 +651,40 @@ class _OfferCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Text(offerPriceLabel(offer),
+          Row(
+            children: [
+              Text(
+                offerPriceLabel(offer),
                 style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    color: jayaloHead(context))),
-            const SizedBox(width: 8),
-            if (cheapest)
-              StatusChip(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: jayaloHead(context),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (cheapest)
+                StatusChip(
                   label: 'Más económica',
                   tone: Theme.of(context).brightness == Brightness.dark
                       ? JayaloStatus.unlockedDark
-                      : JayaloStatus.unlockedLight),
-            const Spacer(),
-            statusChip,
-          ]),
+                      : JayaloStatus.unlockedLight,
+                ),
+              const Spacer(),
+              statusChip,
+            ],
+          ),
           if (message.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(message,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 12.5, height: 1.4, color: cs.onSurfaceVariant)),
+            Text(
+              message,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.4,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
           ],
         ],
       ),

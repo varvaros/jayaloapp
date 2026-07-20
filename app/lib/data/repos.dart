@@ -17,11 +17,18 @@ final requestsChanged = ValueNotifier<int>(0);
 
 Future<List<Map<String, dynamic>>> myRequests() async {
   final uid = supa.auth.currentUser!.id;
-  return List<Map<String, dynamic>>.from(await supa
-      .from('customer_requests')
-      .select('id,title,kind,status,is_wholesale,created_at,image_url,image_urls')
-      .eq('user_id', uid)
-      .order('created_at', ascending: false));
+  return List<Map<String, dynamic>>.from(
+    await supa
+        .from('customer_requests')
+        .select(
+          'id,title,kind,status,is_wholesale,created_at,image_url,image_urls',
+        )
+        .eq('user_id', uid)
+        // Las canceladas (soft-delete de "Eliminar") desaparecen del listado; la
+        // fila sigue en la BD (auditable / no se borra un lead pagado).
+        .neq('status', 'cancelled')
+        .order('created_at', ascending: false),
+  );
 }
 
 const offerCols =
@@ -29,28 +36,33 @@ const offerCols =
     'hourly_rate,estimated_hours,message,status,unlocked_at,created_at';
 
 Future<List<Map<String, dynamic>>> offersForRequest(String requestId) async =>
-    List<Map<String, dynamic>>.from(await supa
-        .from('provider_offers')
-        .select(offerCols)
-        .eq('request_id', requestId)
-        .order('created_at', ascending: false));
+    List<Map<String, dynamic>>.from(
+      await supa
+          .from('provider_offers')
+          .select(offerCols)
+          .eq('request_id', requestId)
+          .order('created_at', ascending: false),
+    );
 
 Stream<List<Map<String, dynamic>>> offersStream(String requestId) => supa
     .from('provider_offers')
-    .stream(primaryKey: ['id']).eq('request_id', requestId);
+    .stream(primaryKey: ['id'])
+    .eq('request_id', requestId);
 
 OfferLite offerLite(Map<String, dynamic> o) => OfferLite(
-    status: o['status'] as String,
-    unlockedAt: o['unlocked_at'] == null
-        ? null
-        : DateTime.parse(o['unlocked_at'] as String));
+  status: o['status'] as String,
+  unlockedAt: o['unlocked_at'] == null
+      ? null
+      : DateTime.parse(o['unlocked_at'] as String),
+);
 
 /// Nombres visibles de rubros por id (para el paso "rubros sugeridos" del
 /// formulario final de crear solicitud).
 Future<Map<String, String>> rubroNames(List<String> ids) async {
   if (ids.isEmpty) return {};
   final rows = List<Map<String, dynamic>>.from(
-      await supa.from('rubros').select('id,name').inFilter('id', ids));
+    await supa.from('rubros').select('id,name').inFilter('id', ids),
+  );
   return {for (final r in rows) r['id'] as String: r['name'] as String};
 }
 
@@ -100,9 +112,8 @@ Future<void> submitRequest({
     'target_categories': categories,
     'target_rubros': rubros,
     'service_modality': isService ? serviceModality : '',
-    'service_event_date': isService &&
-            serviceModality == 'event' &&
-            serviceEventDate != null
+    'service_event_date':
+        isService && serviceModality == 'event' && serviceEventDate != null
         ? serviceEventDate.toUtc().toIso8601String()
         : null,
     'urgency_level': isService ? urgencyLevel : '',
@@ -113,6 +124,16 @@ Future<void> submitRequest({
     'is_wholesale': !isService && wholesale,
     'target_business_id': null,
   });
+  requestsChanged.value++;
+}
+
+/// Cancela (retira) una solicitud del marketplace. La regla dura la impone la
+/// RPC `cancel_customer_request` (SECURITY DEFINER, migración 20260717120000),
+/// NO el cliente: solo el dueño, solo si está `open`, y NUNCA si un proveedor
+/// ya pagó por desbloquear el contacto — en ese caso la RPC lanza
+/// `unlocked_offer_exists` (el llamador lo detecta en el mensaje del error).
+Future<void> cancelCustomerRequest(String requestId) async {
+  await supa.rpc('cancel_customer_request', params: {'_request_id': requestId});
   requestsChanged.value++;
 }
 
@@ -128,15 +149,21 @@ Future<bool> acceptOffer({required String offerId}) async {
   return rows.isNotEmpty;
 }
 
-Future<void> rejectOffer({required String offerId, required String reason}) async {
+Future<void> rejectOffer({
+  required String offerId,
+  required String reason,
+}) async {
   await supa
       .from('provider_offers')
       .update({'status': 'rejected', 'rejection_reason': reason})
       .eq('id', offerId);
 }
 
-Future<void> submitReview(
-    {required String businessId, required int rating, String comment = ''}) async {
+Future<void> submitReview({
+  required String businessId,
+  required int rating,
+  String comment = '',
+}) async {
   await supa.from('business_reviews').insert({
     'business_id': businessId,
     'reviewer_id': supa.auth.currentUser!.id,
@@ -151,8 +178,9 @@ Future<void> submitReview(
 /// (mismo patrón que `ProfileStore.loader` en `profile_avatar_button.dart`)
 /// para que un test pueda alimentar filas falsas sin red.
 Future<dynamic> _fetchProviderInboxRows(String? kind) => supa.rpc(
-    'get_provider_inbox_unified',
-    params: {'p_limit': 100, 'p_offset': 0, 'p_kind': kind});
+  'get_provider_inbox_unified',
+  params: {'p_limit': 100, 'p_offset': 0, 'p_kind': kind},
+);
 
 /// Bug arreglado 2026-07-19 — `providerInbox()` descartaba las filas
 /// `source == 'store'` (intereses de producto) que la RPC YA devuelve junto a
@@ -163,13 +191,13 @@ Future<dynamic> _fetchProviderInboxRows(String? kind) => supa.rpc(
 Future<List<Map<String, dynamic>>> providerInbox({
   String? kind,
   Future<dynamic> Function(String?) fetcher = _fetchProviderInboxRows,
-}) async =>
-    List<Map<String, dynamic>>.from(await fetcher(kind));
+}) async => List<Map<String, dynamic>>.from(await fetcher(kind));
 
 Future<Map<String, dynamic>?> requestById(String id) async => await supa
     .from('customer_requests')
     .select(
-        'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at')
+      'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at',
+    )
     .eq('id', id)
     .maybeSingle();
 
@@ -217,11 +245,13 @@ Future<void> makeOffer({
 
 Future<List<Map<String, dynamic>>> myOffers() async {
   final uid = supa.auth.currentUser!.id;
-  return List<Map<String, dynamic>>.from(await supa
-      .from('provider_offers')
-      .select('$offerCols,request_title,points_charged,purchase_completed')
-      .eq('user_id', uid)
-      .order('created_at', ascending: false));
+  return List<Map<String, dynamic>>.from(
+    await supa
+        .from('provider_offers')
+        .select('$offerCols,request_title,points_charged,purchase_completed')
+        .eq('user_id', uid)
+        .order('created_at', ascending: false),
+  );
 }
 
 Future<int?> walletBalance() async {
@@ -237,9 +267,15 @@ Future<int?> walletBalance() async {
 /// RPC atómica; el `_cost` enviado se IGNORA server-side (el costo real lo
 /// calcula la RPC — regla de seguridad del proyecto).
 Future<({bool ok, bool already, int charged, int? newBalance})> unlockOffer(
-    String offerId, int estimatedCost) async {
-  final res = await supa.rpc('try_unlock_offer',
-      params: {'_offer_id': offerId, '_cost': estimatedCost}) as Map<String, dynamic>;
+  String offerId,
+  int estimatedCost,
+) async {
+  final res =
+      await supa.rpc(
+            'try_unlock_offer',
+            params: {'_offer_id': offerId, '_cost': estimatedCost},
+          )
+          as Map<String, dynamic>;
   return (
     ok: res['ok'] == true,
     already: res['already_unlocked'] == true,
@@ -248,9 +284,15 @@ Future<({bool ok, bool already, int charged, int? newBalance})> unlockOffer(
   );
 }
 
-Future<({String? firstName, String? phone})> unlockedContact(String offerId) async {
+Future<({String? firstName, String? phone})> unlockedContact(
+  String offerId,
+) async {
   final rows = List<Map<String, dynamic>>.from(
-      await supa.rpc('get_unlocked_offer_contact', params: {'_offer_id': offerId}));
+    await supa.rpc(
+      'get_unlocked_offer_contact',
+      params: {'_offer_id': offerId},
+    ),
+  );
   final r = rows.isEmpty ? const <String, dynamic>{} : rows.first;
   return (firstName: r['first_name'] as String?, phone: r['phone'] as String?);
 }
@@ -263,9 +305,13 @@ Future<({String? firstName, String? phone})> unlockedContact(String offerId) asy
 /// es un ÉXITO idempotente (el contacto ya estaba pagado), no un error —
 /// quien llame debe seguir tratando `ok == true` como el único gate.
 Future<({bool ok, bool already, int charged, int? newBalance})>
-    unlockProductInterest(String interestId, int estimatedCost) async {
-  final res = await supa.rpc('try_unlock_product_interest',
-      params: {'_interest_id': interestId, '_cost': estimatedCost}) as Map<String, dynamic>;
+unlockProductInterest(String interestId, int estimatedCost) async {
+  final res =
+      await supa.rpc(
+            'try_unlock_product_interest',
+            params: {'_interest_id': interestId, '_cost': estimatedCost},
+          )
+          as Map<String, dynamic>;
   return (
     ok: res['ok'] == true,
     already: res['already_unlocked'] == true,
@@ -275,10 +321,14 @@ Future<({bool ok, bool already, int charged, int? newBalance})>
 }
 
 Future<({String? firstName, String? phone})> productInterestContact(
-    String interestId) async {
-  final rows = List<Map<String, dynamic>>.from(await supa.rpc(
+  String interestId,
+) async {
+  final rows = List<Map<String, dynamic>>.from(
+    await supa.rpc(
       'get_unlocked_product_interest_contact',
-      params: {'_interest_id': interestId}));
+      params: {'_interest_id': interestId},
+    ),
+  );
   final r = rows.isEmpty ? const <String, dynamic>{} : rows.first;
   return (firstName: r['first_name'] as String?, phone: r['phone'] as String?);
 }
@@ -288,10 +338,14 @@ Future<({String? firstName, String? phone})> productInterestContact(
 /// `_source_id` = id del INTERÉS (no del producto). El RPC puede devolver el
 /// id envuelto en una fila (`rpc` de PostgREST) o el escalar directo, según
 /// cómo lo declare Postgres — se cubren ambos.
-Future<String?> getOrCreateConversation(
-    {required String kind, required String sourceId}) async {
-  final res = await supa.rpc('get_or_create_conversation',
-      params: {'_kind': kind, '_source_id': sourceId});
+Future<String?> getOrCreateConversation({
+  required String kind,
+  required String sourceId,
+}) async {
+  final res = await supa.rpc(
+    'get_or_create_conversation',
+    params: {'_kind': kind, '_source_id': sourceId},
+  );
   if (res is List) {
     if (res.isEmpty) return null;
     final first = res.first;
@@ -301,11 +355,14 @@ Future<String?> getOrCreateConversation(
 }
 
 Future<void> markPurchaseCompleted(String offerId) async {
-  await supa.from('provider_offers').update({
-    'purchase_completed': true,
-    'purchase_completed_at': DateTime.now().toIso8601String(),
-    'status': 'completed',
-  }).eq('id', offerId);
+  await supa
+      .from('provider_offers')
+      .update({
+        'purchase_completed': true,
+        'purchase_completed_at': DateTime.now().toIso8601String(),
+        'status': 'completed',
+      })
+      .eq('id', offerId);
 }
 
 Future<bool> isProviderAccount() async {
@@ -344,10 +401,10 @@ Future<bool> whatsappVerified() async {
 }
 
 Future<bool> isWhatsappTakenRemote(String digits) async =>
-    await supa.rpc('is_whatsapp_taken', params: {
-      '_whatsapp': digits,
-      '_exclude_user': supa.auth.currentUser!.id,
-    }) ==
+    await supa.rpc(
+      'is_whatsapp_taken',
+      params: {'_whatsapp': digits, '_exclude_user': supa.auth.currentUser!.id},
+    ) ==
     true;
 
 /// Alta de consumidor — payload idéntico a choose-role.tsx L88-104 de la web.
@@ -371,8 +428,9 @@ Future<void> completeConsumerProfile({
     'address': address,
     'lat': lat,
     'lng': lng,
-    'location_captured_at':
-        (lat != null && lng != null) ? DateTime.now().toIso8601String() : null,
+    'location_captured_at': (lat != null && lng != null)
+        ? DateTime.now().toIso8601String()
+        : null,
     'account_type': 'consumer',
     'terms_accepted_at': DateTime.now().toIso8601String(),
     'terms_version': termsVersion,
@@ -388,13 +446,18 @@ Future<String> completeProviderOnboarding({
   required Map<String, dynamic> business, // shape pending_business
   required String termsVersion,
 }) async {
-  final res = await supa.rpc('complete_provider_onboarding', params: {
-    '_first_name': firstName,
-    '_last_name': lastName,
-    '_phone': phone,
-    '_business': business,
-    '_terms_version': termsVersion,
-  }) as Map<String, dynamic>;
+  final res =
+      await supa.rpc(
+            'complete_provider_onboarding',
+            params: {
+              '_first_name': firstName,
+              '_last_name': lastName,
+              '_phone': phone,
+              '_business': business,
+              '_terms_version': termsVersion,
+            },
+          )
+          as Map<String, dynamic>;
   return res['business_id'] as String;
 }
 
@@ -410,10 +473,10 @@ Never _throwFunctionError(FunctionException e) {
 /// que el copy no mienta si `app_settings.otp_channel` cambia.
 Future<String> sendOtp({required String phone, String? businessId}) async {
   try {
-    final res = await supa.functions.invoke('send-otp', body: {
-      'phone': phone,
-      'business_id': ?businessId,
-    });
+    final res = await supa.functions.invoke(
+      'send-otp',
+      body: {'phone': phone, 'business_id': ?businessId},
+    );
     final data = res.data as Map<String, dynamic>?;
     if (data?['ok'] != true) {
       throw Exception(data?['error'] ?? 'No se pudo enviar el código');
@@ -424,18 +487,23 @@ Future<String> sendOtp({required String phone, String? businessId}) async {
   }
 }
 
-Future<({bool ok, bool businessBadgeVerified})> verifyOtp(
-    {required String code, String? businessId}) async {
+Future<({bool ok, bool businessBadgeVerified})> verifyOtp({
+  required String code,
+  String? businessId,
+}) async {
   try {
-    final res = await supa.functions.invoke('verify-otp', body: {
-      'code': code,
-      'business_id': ?businessId,
-    });
+    final res = await supa.functions.invoke(
+      'verify-otp',
+      body: {'code': code, 'business_id': ?businessId},
+    );
     final data = res.data as Map<String, dynamic>?;
     if (data?['ok'] != true) {
       throw Exception(data?['error'] ?? 'No se pudo verificar el código');
     }
-    return (ok: true, businessBadgeVerified: data?['business_badge_verified'] == true);
+    return (
+      ok: true,
+      businessBadgeVerified: data?['business_badge_verified'] == true,
+    );
   } on FunctionException catch (e) {
     _throwFunctionError(e);
   }
@@ -461,14 +529,21 @@ Future<String> createWalletLoginLink() async {
 /// Chequeo liviano PRE-cobro (paridad web ProviderOffersSection.tsx:670):
 /// nunca desbloquear si el contacto no es revelable.
 Future<bool> canRevealOffer(String offerId) async =>
-    await supa.rpc('can_reveal_offer_whatsapp', params: {'_offer_id': offerId}) == true;
+    await supa.rpc(
+      'can_reveal_offer_whatsapp',
+      params: {'_offer_id': offerId},
+    ) ==
+    true;
 
-Future<List<Map<String, dynamic>>> rubrosForCategories(List<String> categoryIds) async =>
-    List<Map<String, dynamic>>.from(await supa
-        .from('rubros')
-        .select('id,name,category_id')
-        .inFilter('category_id', categoryIds)
-        .order('name'));
+Future<List<Map<String, dynamic>>> rubrosForCategories(
+  List<String> categoryIds,
+) async => List<Map<String, dynamic>>.from(
+  await supa
+      .from('rubros')
+      .select('id,name,category_id')
+      .inFilter('category_id', categoryIds)
+      .order('name'),
+);
 
 Future<String?> uploadBusinessLogo(String filePath) async {
   final uid = supa.auth.currentUser!.id;
@@ -497,138 +572,205 @@ Future<String> _uploadMarketplaceImage(String filePath, String kind) async {
   final dot = filePath.lastIndexOf('.');
   final ext =
       (dot == -1 ? '' : filePath.substring(dot + 1).toLowerCase()).isEmpty
-          ? 'jpg'
-          : filePath.substring(dot + 1).toLowerCase();
+      ? 'jpg'
+      : filePath.substring(dot + 1).toLowerCase();
   final rand = _rand.nextInt(1 << 31).toRadixString(16);
-  final path =
-      '$uid/$kind/${DateTime.now().millisecondsSinceEpoch}-$rand.$ext';
-  await supa.storage.from('business-logos').upload(path, File(filePath),
-      fileOptions: FileOptions(contentType: _imageContentType(ext)));
+  final path = '$uid/$kind/${DateTime.now().millisecondsSinceEpoch}-$rand.$ext';
+  await supa.storage
+      .from('business-logos')
+      .upload(
+        path,
+        File(filePath),
+        fileOptions: FileOptions(contentType: _imageContentType(ext)),
+      );
   return supa.storage.from('business-logos').getPublicUrl(path);
 }
 
 String _imageContentType(String ext) => switch (ext) {
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      _ => 'image/jpeg',
-    };
+  'png' => 'image/png',
+  'webp' => 'image/webp',
+  _ => 'image/jpeg',
+};
 
 // ── Chat (spec 2026-07-17-chat-app-design.md) ───────────────────────────────
 
 const chatMsgCols = 'id,sender_id,kind,body,created_at';
 
 Future<List<Map<String, dynamic>>> conversationsList() async =>
-    List<Map<String, dynamic>>.from(await supa.rpc('get_my_conversations_list'));
+    List<Map<String, dynamic>>.from(
+      await supa.rpc('get_my_conversations_list'),
+    );
 
-Future<Map<String, dynamic>?> fetchConversation(String id) async =>
-    await supa
-        .from('conversations')
-        .select('id,kind,source_id,customer_id,provider_user_id,product_name,'
-            'agreed_price,agreed_hourly_rate,agreed_estimated_hours,'
-            'product_image_url,request_title,status,created_at')
-        .eq('id', id)
-        .maybeSingle();
+Future<Map<String, dynamic>?> fetchConversation(String id) async => await supa
+    .from('conversations')
+    .select(
+      'id,kind,source_id,customer_id,provider_user_id,product_name,'
+      'agreed_price,agreed_hourly_rate,agreed_estimated_hours,'
+      'product_image_url,request_title,status,created_at',
+    )
+    .eq('id', id)
+    .maybeSingle();
 
 /// Página de historial, más recientes primero. Cursor COMPUESTO (created_at,id)
 /// — un cursor de una sola columna salta filas con timestamps iguales.
-Future<List<Map<String, dynamic>>> messagesPage(String convId,
-    {String? beforeCreatedAt, String? beforeId, int limit = 50}) async {
+Future<List<Map<String, dynamic>>> messagesPage(
+  String convId, {
+  String? beforeCreatedAt,
+  String? beforeId,
+  int limit = 50,
+}) async {
   var q = supa
       .from('conversation_messages')
       .select(chatMsgCols)
       .eq('conversation_id', convId);
   if (beforeCreatedAt != null && beforeId != null) {
-    q = q.or('created_at.lt.$beforeCreatedAt,'
-        'and(created_at.eq.$beforeCreatedAt,id.lt.$beforeId)');
+    q = q.or(
+      'created_at.lt.$beforeCreatedAt,'
+      'and(created_at.eq.$beforeCreatedAt,id.lt.$beforeId)',
+    );
   }
-  return List<Map<String, dynamic>>.from(await q
-      .order('created_at', ascending: false)
-      .order('id', ascending: false)
-      .limit(limit));
+  return List<Map<String, dynamic>>.from(
+    await q
+        .order('created_at', ascending: false)
+        .order('id', ascending: false)
+        .limit(limit),
+  );
 }
 
 /// Gap al volver de background: solo lo nuevo desde el último visto.
-Future<List<Map<String, dynamic>>> messagesSince(String convId, String afterCreatedAt) async =>
-    List<Map<String, dynamic>>.from(await supa
-        .from('conversation_messages')
-        .select(chatMsgCols)
-        .eq('conversation_id', convId)
-        .gt('created_at', afterCreatedAt)
-        .order('created_at', ascending: true));
+Future<List<Map<String, dynamic>>> messagesSince(
+  String convId,
+  String afterCreatedAt,
+) async => List<Map<String, dynamic>>.from(
+  await supa
+      .from('conversation_messages')
+      .select(chatMsgCols)
+      .eq('conversation_id', convId)
+      .gt('created_at', afterCreatedAt)
+      .order('created_at', ascending: true),
+);
 
-Future<Map<String, dynamic>> insertChatMessage(
-        {required String convId, required String? senderId, required String kind, required String body}) async =>
-    Map<String, dynamic>.from(await supa
-        .from('conversation_messages')
-        .insert({'conversation_id': convId, 'sender_id': senderId, 'kind': kind, 'body': body})
-        .select(chatMsgCols)
-        .single());
+Future<Map<String, dynamic>> insertChatMessage({
+  required String convId,
+  required String? senderId,
+  required String kind,
+  required String body,
+}) async => Map<String, dynamic>.from(
+  await supa
+      .from('conversation_messages')
+      .insert({
+        'conversation_id': convId,
+        'sender_id': senderId,
+        'kind': kind,
+        'body': body,
+      })
+      .select(chatMsgCols)
+      .single(),
+);
 
-Future<void> updateQuickBody(String messageId, String body) async =>
-    supa.from('conversation_messages').update({'body': body}).eq('id', messageId);
+Future<void> updateQuickBody(String messageId, String body) async => supa
+    .from('conversation_messages')
+    .update({'body': body})
+    .eq('id', messageId);
 
-Future<void> markConversationCompleted(String convId) async =>
-    supa.rpc('mark_conversation_completed', params: {'_conversation_id': convId});
+Future<void> markConversationCompleted(String convId) async => supa.rpc(
+  'mark_conversation_completed',
+  params: {'_conversation_id': convId},
+);
 
 Future<void> markConversationLost(String convId) async =>
     supa.from('conversations').update({'status': 'perdido'}).eq('id', convId);
 
-Future<void> improveOfferPrice(String convId, num newPrice) async =>
-    supa.from('conversations').update({'agreed_price': newPrice}).eq('id', convId);
+Future<void> improveOfferPrice(String convId, num newPrice) async => supa
+    .from('conversations')
+    .update({'agreed_price': newPrice})
+    .eq('id', convId);
 
 Future<bool> hasConversationRating(String convId) async =>
-    (await supa.from('conversation_ratings').select('id').eq('conversation_id', convId).maybeSingle()) != null;
+    (await supa
+        .from('conversation_ratings')
+        .select('id')
+        .eq('conversation_id', convId)
+        .maybeSingle()) !=
+    null;
 
 /// ¿Ya existe un mensaje de auditoría en esta conversación? Query dedicada:
 /// mirar los 50 cargados no basta (la auditoría puede estar más atrás).
 Future<bool> hasAuditMessage(String convId) async =>
-    (await supa.from('conversation_messages').select('id')
-        .eq('conversation_id', convId).eq('kind', 'audit')
-        .limit(1).maybeSingle()) != null;
+    (await supa
+        .from('conversation_messages')
+        .select('id')
+        .eq('conversation_id', convId)
+        .eq('kind', 'audit')
+        .limit(1)
+        .maybeSingle()) !=
+    null;
 
-Future<void> submitConversationRating(
-        {required String convId, required String customerId, required String providerUserId,
-        required int overall, required bool quality, required bool fulfillment,
-        required bool service, required bool condition, String? comment}) async =>
-    supa.from('conversation_ratings').insert({
-      'conversation_id': convId,
-      'customer_id': customerId,
-      'provider_user_id': providerUserId,
-      'overall': overall,
-      'quality_ok': quality,
-      'fulfillment_ok': fulfillment,
-      'service_ok': service,
-      'condition_ok': condition,
-      'comment': (comment == null || comment.trim().isEmpty) ? null : comment.trim(),
-    });
+Future<void> submitConversationRating({
+  required String convId,
+  required String customerId,
+  required String providerUserId,
+  required int overall,
+  required bool quality,
+  required bool fulfillment,
+  required bool service,
+  required bool condition,
+  String? comment,
+}) async => supa.from('conversation_ratings').insert({
+  'conversation_id': convId,
+  'customer_id': customerId,
+  'provider_user_id': providerUserId,
+  'overall': overall,
+  'quality_ok': quality,
+  'fulfillment_ok': fulfillment,
+  'service_ok': service,
+  'condition_ok': condition,
+  'comment': (comment == null || comment.trim().isEmpty)
+      ? null
+      : comment.trim(),
+});
 
-Future<void> reportAccount(
-        {required String reporterId, required String reportedUserId, String? convId,
-        required String reason, String? details}) async =>
-    supa.from('account_reports').insert({
-      'reporter_id': reporterId,
-      'reported_user_id': reportedUserId,
-      'conversation_id': convId,
-      'reason': reason,
-      'details': (details == null || details.trim().isEmpty) ? null : details.trim(),
-    });
+Future<void> reportAccount({
+  required String reporterId,
+  required String reportedUserId,
+  String? convId,
+  required String reason,
+  String? details,
+}) async => supa.from('account_reports').insert({
+  'reporter_id': reporterId,
+  'reported_user_id': reportedUserId,
+  'conversation_id': convId,
+  'reason': reason,
+  'details': (details == null || details.trim().isEmpty)
+      ? null
+      : details.trim(),
+});
 
 /// Gotcha #14: matchear por LINK (formato actual + legado), nunca entity_id.
 Future<void> markChatNotificationsRead(String convId) async {
   final uid = supa.auth.currentUser!.id;
   final readAt = DateTime.now().toUtc().toIso8601String();
   await Future.wait([
-    supa.from('notifications').update({'read_at': readAt})
-        .eq('user_id', uid).eq('kind', 'message_new')
-        .eq('link', '/messages?c=$convId').isFilter('read_at', null),
-    supa.from('notifications').update({'read_at': readAt})
-        .eq('user_id', uid).eq('kind', 'message_new')
-        .eq('link', '/messages/$convId').isFilter('read_at', null),
+    supa
+        .from('notifications')
+        .update({'read_at': readAt})
+        .eq('user_id', uid)
+        .eq('kind', 'message_new')
+        .eq('link', '/messages?c=$convId')
+        .isFilter('read_at', null),
+    supa
+        .from('notifications')
+        .update({'read_at': readAt})
+        .eq('user_id', uid)
+        .eq('kind', 'message_new')
+        .eq('link', '/messages/$convId')
+        .isFilter('read_at', null),
   ]);
 }
 
 /// Foto del chat → `{uid}/chat/<ts>-<rand>.<ext>` (mismo bucket público).
-Future<String> uploadChatImage(String filePath) => _uploadMarketplaceImage(filePath, 'chat');
+Future<String> uploadChatImage(String filePath) =>
+    _uploadMarketplaceImage(filePath, 'chat');
 
 Future<String?> myBusinessAddressBody() async {
   final uid = supa.auth.currentUser!.id;
@@ -639,23 +781,41 @@ Future<String?> myBusinessAddressBody() async {
       .limit(1)
       .maybeSingle();
   if (biz == null) return null;
-  final address = await supa.rpc('get_business_address', params: {'_business_id': biz['id']});
+  final address = await supa.rpc(
+    'get_business_address',
+    params: {'_business_id': biz['id']},
+  );
   if (address == null || (address as String).isEmpty) return null;
-  final cityLine = [biz['sector'], biz['city']].whereType<String>().where((s) => s.isNotEmpty).join(', ');
-  return [biz['name'], address, cityLine].whereType<String>().where((s) => s.isNotEmpty).join('\n');
+  final cityLine = [
+    biz['sector'],
+    biz['city'],
+  ].whereType<String>().where((s) => s.isNotEmpty).join(', ');
+  return [
+    biz['name'],
+    address,
+    cityLine,
+  ].whereType<String>().where((s) => s.isNotEmpty).join('\n');
 }
 
 Future<String?> myContactBody() async {
   final uid = supa.auth.currentUser!.id;
-  final p = await supa.from('profiles')
-      .select('first_name,last_name,phone,whatsapp').eq('user_id', uid).maybeSingle();
+  final p = await supa
+      .from('profiles')
+      .select('first_name,last_name,phone,whatsapp')
+      .eq('user_id', uid)
+      .maybeSingle();
   if (p == null) return null;
-  final fullName = [p['first_name'], p['last_name']]
-      .whereType<String>().where((s) => s.isNotEmpty).join(' ').trim();
+  final fullName = [
+    p['first_name'],
+    p['last_name'],
+  ].whereType<String>().where((s) => s.isNotEmpty).join(' ').trim();
   final lines = <String>[
     if (fullName.isNotEmpty) 'Nombre: $fullName',
-    if (p['phone'] is String && (p['phone'] as String).isNotEmpty) 'Teléfono: ${p['phone']}',
-    if (p['whatsapp'] is String && (p['whatsapp'] as String).isNotEmpty && p['whatsapp'] != p['phone'])
+    if (p['phone'] is String && (p['phone'] as String).isNotEmpty)
+      'Teléfono: ${p['phone']}',
+    if (p['whatsapp'] is String &&
+        (p['whatsapp'] as String).isNotEmpty &&
+        p['whatsapp'] != p['phone'])
       'WhatsApp: ${p['whatsapp']}',
   ];
   return lines.isEmpty ? null : '📇 Mis datos de contacto\n${lines.join('\n')}';
@@ -663,14 +823,22 @@ Future<String?> myContactBody() async {
 
 Future<String?> myLocationBody() async {
   final uid = supa.auth.currentUser!.id;
-  final p = await supa.from('profiles')
-      .select('address,address_reference,sector,city').eq('user_id', uid).maybeSingle();
+  final p = await supa
+      .from('profiles')
+      .select('address,address_reference,sector,city')
+      .eq('user_id', uid)
+      .maybeSingle();
   if (p == null) return null;
-  final cityLine = [p['sector'], p['city']].whereType<String>().where((s) => s.isNotEmpty).join(', ');
+  final cityLine = [
+    p['sector'],
+    p['city'],
+  ].whereType<String>().where((s) => s.isNotEmpty).join(', ');
   final parts = <String>[
-    if (p['address'] is String && (p['address'] as String).isNotEmpty) p['address'] as String,
+    if (p['address'] is String && (p['address'] as String).isNotEmpty)
+      p['address'] as String,
     if (cityLine.isNotEmpty) cityLine,
-    if (p['address_reference'] is String && (p['address_reference'] as String).isNotEmpty)
+    if (p['address_reference'] is String &&
+        (p['address_reference'] as String).isNotEmpty)
       'Referencia: ${p['address_reference']}',
   ];
   return parts.isEmpty ? null : parts.join('\n');
@@ -691,28 +859,46 @@ const defaultChatWelcome = <String, String>{
 
 Future<Map<String, dynamic>> chatWelcomeConfig() async {
   try {
-    final row = await supa.from('app_settings')
-        .select('value').eq('key', 'chat_welcome_messages').maybeSingle();
+    final row = await supa
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'chat_welcome_messages')
+        .maybeSingle();
     final v = row?['value'];
-    return {...defaultChatWelcome, if (v is Map) ...Map<String, dynamic>.from(v)};
+    return {
+      ...defaultChatWelcome,
+      if (v is Map) ...Map<String, dynamic>.from(v),
+    };
   } catch (_) {
-    return Map<String, dynamic>.from(defaultChatWelcome); // best-effort, nunca bloquea
+    return Map<String, dynamic>.from(
+      defaultChatWelcome,
+    ); // best-effort, nunca bloquea
   }
 }
 
 Future<String?> conversationCustomerFirstName(String convId) async {
-  final rows = List<Map<String, dynamic>>.from(await supa
-      .rpc('get_conversation_customer_name', params: {'_conversation_id': convId}));
+  final rows = List<Map<String, dynamic>>.from(
+    await supa.rpc(
+      'get_conversation_customer_name',
+      params: {'_conversation_id': convId},
+    ),
+  );
   if (rows.isEmpty) return null;
-  final full = [rows.first['first_name'], rows.first['last_name']]
-      .whereType<String>().where((s) => s.isNotEmpty).join(' ').trim();
+  final full = [
+    rows.first['first_name'],
+    rows.first['last_name'],
+  ].whereType<String>().where((s) => s.isNotEmpty).join(' ').trim();
   return full.isEmpty ? null : full;
 }
 
 Future<String?> myBusinessName() async {
   final uid = supa.auth.currentUser!.id;
-  final biz = await supa.from('provider_businesses')
-      .select('name').eq('user_id', uid).limit(1).maybeSingle();
+  final biz = await supa
+      .from('provider_businesses')
+      .select('name')
+      .eq('user_id', uid)
+      .limit(1)
+      .maybeSingle();
   final n = biz?['name'];
   return (n is String && n.isNotEmpty) ? n : null;
 }
@@ -733,7 +919,8 @@ Future<String?> myBusinessName() async {
 Future<Map<String, dynamic>?> customerReputation() async {
   final uid = supa.auth.currentUser!.id;
   final rows = List<Map<String, dynamic>>.from(
-      await supa.rpc('get_customer_reputation', params: {'_customer_id': uid}));
+    await supa.rpc('get_customer_reputation', params: {'_customer_id': uid}),
+  );
   return rows.isEmpty ? null : rows.first;
 }
 
@@ -767,10 +954,9 @@ Future<Map<String, dynamic>> providerStats() async {
 /// Solo la CIFRA — el catálogo navegable es un spec aparte.
 Future<({int productos, int servicios})> providerCatalogCounts() async {
   final uid = supa.auth.currentUser!.id;
-  final rows = List<Map<String, dynamic>>.from(await supa
-      .from('provider_products')
-      .select('kind')
-      .eq('user_id', uid));
+  final rows = List<Map<String, dynamic>>.from(
+    await supa.from('provider_products').select('kind').eq('user_id', uid),
+  );
   return (
     productos: rows.where((r) => r['kind'] == 'producto').length,
     servicios: rows.where((r) => r['kind'] == 'servicio').length,
@@ -783,9 +969,12 @@ Future<({int productos, int servicios})> providerCatalogCounts() async {
 Future<int> providerCompletedCount() async {
   final uid = supa.auth.currentUser!.id;
   final rows = List<Map<String, dynamic>>.from(
-      await supa.rpc('get_provider_stats', params: {'_user_id': uid}));
-  return (rows.isEmpty ? 0 : (rows.first['completed_count'] as num?)?.toInt())
-      ?? 0;
+    await supa.rpc('get_provider_stats', params: {'_user_id': uid}),
+  );
+  return (rows.isEmpty
+          ? 0
+          : (rows.first['completed_count'] as num?)?.toInt()) ??
+      0;
 }
 
 /// SOLO `business_verified_at` (RNC del negocio, revisado por un admin)
@@ -813,7 +1002,7 @@ bool businessVerifiedFrom(Map<String, dynamic> businessRow) =>
 /// `null` si el proveedor todavía no tiene negocio creado (no debería pasar
 /// en esta pantalla, pero la ruta no lo garantiza).
 Future<({String id, String name, String? logoUrl, bool verified})?>
-    myBusinessProfile() async {
+myBusinessProfile() async {
   final uid = supa.auth.currentUser!.id;
   final biz = await supa
       .from('provider_businesses')
@@ -846,12 +1035,14 @@ Future<List<Map<String, dynamic>>> allOpenRequests({String? kind}) async {
       .neq('user_id', uid);
   if (kind != null) q = q.eq('kind', kind);
   return List<Map<String, dynamic>>.from(
-      await q.order('created_at', ascending: false).limit(100));
+    await q.order('created_at', ascending: false).limit(100),
+  );
 }
 
 // ── Catálogo (Task 6): listado de productos/servicios publicados ───────────
 
-const catalogProductCols = 'id,user_id,business_id,name,description,price,'
+const catalogProductCols =
+    'id,user_id,business_id,name,description,price,'
     'price_min,price_max,image_urls,category_id,rubro,kind';
 
 /// Quita `%`/`,` de un término de búsqueda antes de meterlo en un patrón
@@ -870,8 +1061,10 @@ String sanitizeCatalogSearchTerm(String term) =>
 /// filtros de categoría/rubro de la web quedan para una iteración futura —
 /// el listado ya es útil sin ellos y evita traer todo `kCategories` a esta
 /// pantalla.
-Future<List<Map<String, dynamic>>> catalogProducts(
-    {required String kind, String? search}) async {
+Future<List<Map<String, dynamic>>> catalogProducts({
+  required String kind,
+  String? search,
+}) async {
   var q = supa
       .from('provider_products')
       .select(catalogProductCols)
@@ -879,10 +1072,13 @@ Future<List<Map<String, dynamic>>> catalogProducts(
   final term = search?.trim();
   if (term != null && term.isNotEmpty) {
     final safe = sanitizeCatalogSearchTerm(term);
-    q = q.or('name.ilike.%$safe%,description.ilike.%$safe%,rubro.ilike.%$safe%');
+    q = q.or(
+      'name.ilike.%$safe%,description.ilike.%$safe%,rubro.ilike.%$safe%',
+    );
   }
   return List<Map<String, dynamic>>.from(
-      await q.order('created_at', ascending: false).limit(60));
+    await q.order('created_at', ascending: false).limit(60),
+  );
 }
 
 // ── Catálogo (Task 7): detalle del producto + "Me interesa" ────────────────
@@ -890,7 +1086,8 @@ Future<List<Map<String, dynamic>>> catalogProducts(
 /// Columnas del detalle — paridad con el `select` de
 /// `src/routes/products.$productId.tsx` (web) + `condition`, que trae aparte
 /// `InterestConfirmDialog.tsx` para el chip Nuevo/Usado.
-const productDetailCols = 'id,user_id,business_id,name,description,color,'
+const productDetailCols =
+    'id,user_id,business_id,name,description,color,'
     'price,price_min,price_max,image_urls,category_id,rubro,condition,'
     'offers_shipping,offers_installation,kind';
 
@@ -903,7 +1100,12 @@ Future<Map<String, dynamic>?> productDetail(String id) async => await supa
 /// Cabecera pública de un negocio (nombre/logo/sello) — mismo shape que
 /// `BusinessProfile` de `my_business_screen.dart`, redefinido aquí (capa de
 /// datos, sin importar entre features de cliente/proveedor).
-typedef BusinessLite = ({String id, String name, String? logoUrl, bool verified});
+typedef BusinessLite = ({
+  String id,
+  String name,
+  String? logoUrl,
+  bool verified,
+});
 
 BusinessLite? _mapBusinessLite(Map<String, dynamic>? b) {
   if (b == null) return null;
@@ -918,22 +1120,25 @@ BusinessLite? _mapBusinessLite(Map<String, dynamic>? b) {
 
 const _businessLiteCols = 'id,name,logo_url,business_verified_at';
 
-Future<BusinessLite?> businessLite(String businessId) async =>
-    _mapBusinessLite(await supa
-        .from('provider_businesses')
-        .select(_businessLiteCols)
-        .eq('id', businessId)
-        .maybeSingle());
+Future<BusinessLite?> businessLite(String businessId) async => _mapBusinessLite(
+  await supa
+      .from('provider_businesses')
+      .select(_businessLiteCols)
+      .eq('id', businessId)
+      .maybeSingle(),
+);
 
 /// Fallback cuando el producto no tiene `business_id` (paridad web: busca el
 /// negocio del proveedor por `user_id`).
 Future<BusinessLite?> businessLiteByOwner(String userId) async =>
-    _mapBusinessLite(await supa
-        .from('provider_businesses')
-        .select(_businessLiteCols)
-        .eq('user_id', userId)
-        .limit(1)
-        .maybeSingle());
+    _mapBusinessLite(
+      await supa
+          .from('provider_businesses')
+          .select(_businessLiteCols)
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle(),
+    );
 
 /// Estado de interés del cliente actual sobre un producto: `exists` alimenta
 /// el estado idempotente "ya enviaste tu interés" (el SELECT sigue permitido
@@ -943,7 +1148,8 @@ Future<BusinessLite?> businessLiteByOwner(String userId) async =>
 /// proveedor pagó por desbloquear el interés de este cliente en este
 /// producto — nunca se revela gratis por adelantado).
 Future<({bool exists, bool unlocked})> productInterestStatus(
-    String productId) async {
+  String productId,
+) async {
   final uid = supa.auth.currentUser?.id;
   if (uid == null) return (exists: false, unlocked: false);
   final row = await supa
@@ -964,11 +1170,15 @@ Future<({bool exists, bool unlocked})> productInterestStatus(
 /// el INSERT directo a `product_interests` está revocado. `already_exists`
 /// distingue el reintento idempotente sin round-trip extra.
 Future<({bool ok, bool alreadyExists, String? id})> sendProductInterest(
-    String productId, String message) async {
-  final res = await supa.rpc('create_product_interest', params: {
-    '_product_id': productId,
-    '_message': message,
-  }) as Map<String, dynamic>;
+  String productId,
+  String message,
+) async {
+  final res =
+      await supa.rpc(
+            'create_product_interest',
+            params: {'_product_id': productId, '_message': message},
+          )
+          as Map<String, dynamic>;
   return (
     ok: res['ok'] == true,
     alreadyExists: res['already_exists'] == true,
