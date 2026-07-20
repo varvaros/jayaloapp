@@ -16,6 +16,12 @@ void main() {
         home: child,
       );
 
+  // Desde Task 5 hay DOS `HeaderSegmented` en pantalla (Producto/Servicio y
+  // Al detalle/Al por mayor) — este finder aísla el primero para los tests
+  // que ya existían y solo les interesa el toggle de tipo.
+  Finder kindSegmented() => find.byWidgetPredicate(
+      (w) => w is HeaderSegmented && w.options.first == 'Producto');
+
   Future<List<Map<String, dynamic>>> vacio(
           {required String kind,
           String? search,
@@ -72,8 +78,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(calls, ['producto']);
-    final toggle =
-        tester.widget<HeaderSegmented>(find.byType(HeaderSegmented));
+    final toggle = tester.widget<HeaderSegmented>(kindSegmented());
     expect(toggle.index, 0);
   });
 
@@ -224,7 +229,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.arrow_back), findsNothing);
-    expect(find.byType(HeaderSegmented), findsOneWidget);
+    expect(kindSegmented(), findsOneWidget);
   });
 
   testWidgets('apilada (canPop): muestra atrás y conserva el segmentado',
@@ -248,7 +253,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-    expect(find.byType(HeaderSegmented), findsOneWidget);
+    expect(kindSegmented(), findsOneWidget);
   });
 
   testWidgets('la tarjeta muestra la reputación (★ + promedio + conteo)',
@@ -282,5 +287,21 @@ void main() {
     expect(seen.last['kind'], 'servicio');
     expect(seen.last['categoryId'], isNull);
     expect(seen.last['rubro'], isNull);
+  });
+
+  testWidgets('el toggle Al por mayor filtra el catálogo', (tester) async {
+    final wholesaleSeen = <bool>[];
+    await tester.pumpWidget(host(CatalogView(
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async {
+        wholesaleSeen.add(wholesale);
+        return [];
+      },
+      actions: const [],
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Al por mayor'));
+    await tester.pumpAndSettle();
+
+    expect(wholesaleSeen.last, isTrue);
   });
 }

@@ -124,7 +124,6 @@ class _CatalogViewState extends State<CatalogView> {
     _refetch();
   }
 
-  // ignore: unused_element
   void _toggleWholesale(bool on) {
     setState(() => _wholesale = on);
     _refetch();
@@ -173,12 +172,26 @@ class _CatalogViewState extends State<CatalogView> {
             title: 'Catálogo',
             titleAlign: HeaderTitleAlign.end,
             actions: widget.actions,
-            below: _HeaderSearchField(
-              controller: _searchCtrl,
-              hint: 'Buscar en el catálogo',
-              autofocus: widget.autofocusSearch,
-              onSubmitted: _applySearch,
-              onClear: _clearSearch,
+            below: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: HeaderSegmented(
+                    options: const ['Al detalle', 'Al por mayor'],
+                    index: _wholesale ? 1 : 0,
+                    onChanged: (i) => _toggleWholesale(i == 1),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _HeaderSearchField(
+                  controller: _searchCtrl,
+                  hint: 'Buscar en el catálogo',
+                  autofocus: widget.autofocusSearch,
+                  onSubmitted: _applySearch,
+                  onClear: _clearSearch,
+                ),
+              ],
             ),
           ),
           Expanded(
