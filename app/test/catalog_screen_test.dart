@@ -227,4 +227,18 @@ void main() {
     expect(find.byIcon(Icons.arrow_back), findsOneWidget);
     expect(find.byType(HeaderSegmented), findsOneWidget);
   });
+
+  testWidgets('la tarjeta muestra la reputación (★ + promedio + conteo)',
+      (tester) async {
+    final rated = {...fixedItem, 'avg_rating': 8.7, 'reviews_count': 34};
+    await tester.pumpWidget(host(CatalogView(
+      fetch: ({required kind, search}) async => [rated],
+      actions: const [],
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('8.7'), findsOneWidget);
+    expect(find.text('(34)'), findsOneWidget);
+    expect(find.byIcon(Icons.star_rounded), findsOneWidget);
+  });
 }

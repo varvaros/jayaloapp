@@ -1140,6 +1140,23 @@ List<Map<String, dynamic>> mergeCatalogRatings(
   ];
 }
 
+/// Entrada de PRODUCCIÓN del catálogo: trae los productos y les fusiona la
+/// reputación de su negocio en una segunda llamada por lote. La `CatalogView`
+/// consume esto; los tests/harness inyectan su propio `fetch` con el rating ya
+/// horneado, así que no tocan la red.
+Future<List<Map<String, dynamic>>> catalogProductsWithRatings({
+  required String kind,
+  String? search,
+}) async {
+  final items = await catalogProducts(kind: kind, search: search);
+  final ids = <String>{
+    for (final it in items)
+      if (it['business_id'] is String) it['business_id'] as String,
+  }.toList();
+  final ratings = await businessRatings(ids);
+  return mergeCatalogRatings(items, ratings);
+}
+
 /// Cabecera pública de un negocio (nombre/logo/sello) — mismo shape que
 /// `BusinessProfile` de `my_business_screen.dart`, redefinido aquí (capa de
 /// datos, sin importar entre features de cliente/proveedor).

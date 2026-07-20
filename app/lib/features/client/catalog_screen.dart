@@ -32,7 +32,7 @@ class CatalogScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      CatalogView(fetch: catalogProducts, autofocusSearch: autofocusSearch);
+      CatalogView(fetch: catalogProductsWithRatings, autofocusSearch: autofocusSearch);
 }
 
 /// Dibuja el toggle Producto/Servicio, la búsqueda y la rejilla. StatefulWidget
