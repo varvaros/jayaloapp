@@ -17,7 +17,11 @@ void main() {
       );
 
   Future<List<Map<String, dynamic>>> vacio(
-          {required String kind, String? search}) async =>
+          {required String kind,
+          String? search,
+          String? categoryId,
+          String? rubro,
+          bool wholesale = false}) async =>
       [];
 
   final fixedItem = {
@@ -54,7 +58,11 @@ void main() {
       (tester) async {
     final calls = <String>[];
     Future<List<Map<String, dynamic>>> recorder(
-        {required String kind, String? search}) async {
+        {required String kind,
+        String? search,
+        String? categoryId,
+        String? rubro,
+        bool wholesale = false}) async {
       calls.add(kind);
       return [];
     }
@@ -73,7 +81,11 @@ void main() {
       (tester) async {
     final calls = <String>[];
     Future<List<Map<String, dynamic>>> recorder(
-        {required String kind, String? search}) async {
+        {required String kind,
+        String? search,
+        String? categoryId,
+        String? rubro,
+        bool wholesale = false}) async {
       calls.add(kind);
       return [];
     }
@@ -90,7 +102,8 @@ void main() {
 
   testWidgets('la tarjeta muestra nombre y precio fijo', (tester) async {
     await tester.pumpWidget(host(CatalogView(
-      fetch: ({required kind, search}) async => [fixedItem],
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
+          [fixedItem],
       actions: const [],
     )));
     await tester.pumpAndSettle();
@@ -102,7 +115,8 @@ void main() {
   testWidgets('la tarjeta muestra el rango de precio cuando no hay precio fijo',
       (tester) async {
     await tester.pumpWidget(host(CatalogView(
-      fetch: ({required kind, search}) async => [rangeItem],
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
+          [rangeItem],
       actions: const [],
     )));
     await tester.pumpAndSettle();
@@ -124,7 +138,11 @@ void main() {
       (tester) async {
     var attempts = 0;
     Future<List<Map<String, dynamic>>> fallando(
-        {required String kind, String? search}) async {
+        {required String kind,
+        String? search,
+        String? categoryId,
+        String? rubro,
+        bool wholesale = false}) async {
       attempts++;
       // El `await` real importa: sin él la excepción "completa" el Future
       // antes de que el próximo frame re-adjunte el listener del
@@ -154,7 +172,11 @@ void main() {
       (tester) async {
     final searches = <String?>[];
     Future<List<Map<String, dynamic>>> recorder(
-        {required String kind, String? search}) async {
+        {required String kind,
+        String? search,
+        String? categoryId,
+        String? rubro,
+        bool wholesale = false}) async {
       searches.add(search);
       return [];
     }
@@ -183,7 +205,8 @@ void main() {
       'name': 'Set de destornilladores de precisión de 32 piezas',
     };
     await tester.pumpWidget(host(CatalogView(
-      fetch: ({required kind, search}) async => [longName, rangeItem],
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
+          [longName, rangeItem],
       actions: const [],
     )));
     await tester.pumpAndSettle();
@@ -232,7 +255,8 @@ void main() {
       (tester) async {
     final rated = {...fixedItem, 'avg_rating': 8.7, 'reviews_count': 34};
     await tester.pumpWidget(host(CatalogView(
-      fetch: ({required kind, search}) async => [rated],
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
+          [rated],
       actions: const [],
     )));
     await tester.pumpAndSettle();
@@ -240,5 +264,23 @@ void main() {
     expect(find.text('8.7'), findsOneWidget);
     expect(find.text('(34)'), findsOneWidget);
     expect(find.byIcon(Icons.star_rounded), findsOneWidget);
+  });
+
+  testWidgets('cambiar de kind limpia categoría y rubro', (tester) async {
+    final seen = <Map<String, dynamic>>[];
+    await tester.pumpWidget(host(CatalogView(
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async {
+        seen.add({'kind': kind, 'categoryId': categoryId, 'rubro': rubro});
+        return [];
+      },
+      actions: const [],
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Servicio'));
+    await tester.pumpAndSettle();
+
+    expect(seen.last['kind'], 'servicio');
+    expect(seen.last['categoryId'], isNull);
+    expect(seen.last['rubro'], isNull);
   });
 }

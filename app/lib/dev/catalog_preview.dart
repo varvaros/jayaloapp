@@ -106,7 +106,11 @@ final _fake = <Map<String, dynamic>>[
 ];
 
 Future<List<Map<String, dynamic>>> _fakeFetch(
-    {required String kind, String? search}) async {
+    {required String kind,
+    String? search,
+    String? categoryId,
+    String? rubro,
+    bool wholesale = false}) async {
   await Future<void>.delayed(const Duration(milliseconds: 300));
   return _fake;
 }

@@ -1056,19 +1056,25 @@ String sanitizeCatalogSearchTerm(String term) =>
 /// público de productos/servicios de CUALQUIER proveedor, sin paginación por
 /// cursor (la web tampoco la tiene en esta vista — `limit(60)` alcanza).
 ///
-/// Decisión de alcance (Task 6, v1 móvil): solo `kind` (el toggle
-/// Producto/Servicio, que la web SIEMPRE aplica) + búsqueda por texto. Los
-/// filtros de categoría/rubro de la web quedan para una iteración futura —
-/// el listado ya es útil sin ellos y evita traer todo `kCategories` a esta
-/// pantalla.
+/// Task 4 (2026-07-20): además de `kind` + búsqueda por texto, ya soporta los
+/// filtros de categoría/rubro/mayoreo de la web.
 Future<List<Map<String, dynamic>>> catalogProducts({
   required String kind,
   String? search,
+  String? categoryId,
+  String? rubro,
+  bool wholesale = false,
 }) async {
-  var q = supa
-      .from('provider_products')
-      .select(catalogProductCols)
-      .eq('kind', kind);
+  // En mayoreo se une el negocio (inner) para poder exigir is_wholesale, igual
+  // que `productHitsQ` de la web. El objeto embebido `provider_businesses` que
+  // vuelve en cada fila es inofensivo (la tarjeta no lo lee).
+  final cols = wholesale
+      ? '$catalogProductCols,provider_businesses!inner(is_wholesale)'
+      : catalogProductCols;
+  var q = supa.from('provider_products').select(cols).eq('kind', kind);
+  if (wholesale) q = q.eq('provider_businesses.is_wholesale', true);
+  if (categoryId != null) q = q.eq('category_id', categoryId);
+  if (rubro != null) q = q.ilike('rubro', rubro);
   final term = search?.trim();
   if (term != null && term.isNotEmpty) {
     final safe = sanitizeCatalogSearchTerm(term);
@@ -1147,8 +1153,16 @@ List<Map<String, dynamic>> mergeCatalogRatings(
 Future<List<Map<String, dynamic>>> catalogProductsWithRatings({
   required String kind,
   String? search,
+  String? categoryId,
+  String? rubro,
+  bool wholesale = false,
 }) async {
-  final items = await catalogProducts(kind: kind, search: search);
+  final items = await catalogProducts(
+      kind: kind,
+      search: search,
+      categoryId: categoryId,
+      rubro: rubro,
+      wholesale: wholesale);
   final ids = <String>{
     for (final it in items)
       if (it['business_id'] is String) it['business_id'] as String,

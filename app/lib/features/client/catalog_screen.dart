@@ -15,7 +15,11 @@ import '../shell/floating_nav_bar.dart';
 /// web). Inyectada en [CatalogView] para poder probar la pantalla sin red —
 /// mismo patrón que `InboxFetch` en `provider/inbox_screen.dart`.
 typedef CatalogFetch = Future<List<Map<String, dynamic>>> Function(
-    {required String kind, String? search});
+    {required String kind,
+    String? search,
+    String? categoryId,
+    String? rubro,
+    bool wholesale});
 
 /// Task 6 (2026-07-18): SOLO el listado. El detalle del producto y el botón
 /// "Me interesa" son la tarea siguiente — por eso las tarjetas de esta
@@ -59,11 +63,18 @@ class CatalogView extends StatefulWidget {
 class _CatalogViewState extends State<CatalogView> {
   String _kind = 'producto';
   String? _search;
+  String? _categoryId;
+  String? _rubro;
+  bool _wholesale = false;
   final _searchCtrl = TextEditingController();
   final _scrollController = ScrollController();
 
-  late Future<List<Map<String, dynamic>>> _load =
-      widget.fetch(kind: _kind, search: _search);
+  late Future<List<Map<String, dynamic>>> _load = widget.fetch(
+      kind: _kind,
+      search: _search,
+      categoryId: _categoryId,
+      rubro: _rubro,
+      wholesale: _wholesale);
 
   // Bloque, no expresión: el mismo gotcha documentado en inbox_screen.dart —
   // `setState(() => _load = future)` hace que la closure DEVUELVA el Future.
@@ -76,7 +87,13 @@ class _CatalogViewState extends State<CatalogView> {
   // el `Future` como atendido sin tocar su valor — `FutureBuilder` sigue
   // escuchando la MISMA instancia por su cuenta.
   void _refetch() {
-    final next = widget.fetch(kind: _kind, search: _search)..ignore();
+    final next = widget.fetch(
+        kind: _kind,
+        search: _search,
+        categoryId: _categoryId,
+        rubro: _rubro,
+        wholesale: _wholesale)
+      ..ignore();
     setState(() {
       _load = next;
     });
@@ -91,6 +108,25 @@ class _CatalogViewState extends State<CatalogView> {
   void _clearSearch() {
     _searchCtrl.clear();
     setState(() => _search = null);
+    _refetch();
+  }
+
+  /// Mutador de categoría/rubro (lo usan los filtros de Task 5/6): reemplaza
+  /// ambos a la vez porque un rubro siempre vive dentro de una categoría — no
+  /// tiene sentido aplicar uno sin el otro. Todavía sin UI que lo dispare
+  /// (esa es Task 5/6) — el ignore se retira cuando esa UI llame a esto.
+  // ignore: unused_element
+  void _applyFilter({String? categoryId, String? rubro}) {
+    setState(() {
+      _categoryId = categoryId;
+      _rubro = rubro;
+    });
+    _refetch();
+  }
+
+  // ignore: unused_element
+  void _toggleWholesale(bool on) {
+    setState(() => _wholesale = on);
     _refetch();
   }
 
@@ -125,7 +161,11 @@ class _CatalogViewState extends State<CatalogView> {
                 options: const ['Producto', 'Servicio'],
                 index: _kind == 'producto' ? 0 : 1,
                 onChanged: (i) {
-                  setState(() => _kind = i == 0 ? 'producto' : 'servicio');
+                  setState(() {
+                    _kind = i == 0 ? 'producto' : 'servicio';
+                    _categoryId = null; // cambiar de kind limpia el filtro
+                    _rubro = null;
+                  });
                   _refetch();
                 },
               ),
