@@ -140,15 +140,20 @@ class _ProviderRequestDetailScreenState
     final topInset = MediaQuery.paddingOf(context).top;
     return Scaffold(
       body: Column(children: [
-        // Panel ámbar del detalle (doctrina: el detalle es cálido, no lila).
-        // La FOTO LLENA todo el panel (cover) IGUAL que en el detalle del
-        // cliente (`request_status_screen._AmberPanel`) — el ámbar solo asoma
-        // si no hay foto (ícono de fase centrado). Sin cuadro interno.
+        // Panel ámbar del detalle. La FOTO LLENA todo el panel (cover) IGUAL
+        // que en el detalle del cliente (`request_status_screen._AmberPanel`).
+        // Sin foto, el panel se pinta LILA CLARO con el ícono violeta (pedido
+        // PO 2026-07-19, mismo criterio que el detalle del cliente).
         Container(
           height: 300 + topInset,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: amberPanel,
+            color: images.isEmpty
+                ? (dark
+                        ? JayaloStatus.respondedDark
+                        : JayaloStatus.respondedLight)
+                    .bg
+                : amberPanel,
             borderRadius:
                 const BorderRadius.vertical(bottom: Radius.circular(30)),
           ),
@@ -162,7 +167,10 @@ class _ProviderRequestDetailScreenState
                               ? Icons.handyman_outlined
                               : Icons.inventory_2_outlined,
                           size: 120,
-                          color: amberInk))
+                          color: (dark
+                                  ? JayaloStatus.respondedDark
+                                  : JayaloStatus.respondedLight)
+                              .ink))
                   : GestureDetector(
                       onTap: () => showPhotoViewer(context, images),
                       child: Image.network(images.first,

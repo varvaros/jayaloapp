@@ -290,23 +290,28 @@ class _AmberPanel extends StatelessWidget {
             const <String>[])
         .where((u) => u.isNotEmpty)
         .toList();
+    // Sin foto, el panel se pinta LILA CLARO con el ícono violeta (pedido PO
+    // 2026-07-19: "color lila claro al fondo que se ve debajo del
+    // placeholder"); con foto sigue el ámbar de siempre detrás del cover.
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final ph = dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight;
     final (icon, _) = phaseChip(phase, 0);
     final topInset = MediaQuery.paddingOf(context).top;
     return Container(
       height: 300 + topInset,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: am.panel,
+        color: images.isEmpty ? ph.bg : am.panel,
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
       ),
       child: Stack(
         children: [
-          // La foto LLENA todo el panel ámbar (cover) — el ámbar solo asoma si
-          // no hay foto (ícono de fase centrado). Sin cuadro interno.
-          // Tocarla abre el visor a pantalla completa.
+          // La foto LLENA todo el panel ámbar (cover) — si no hay foto queda
+          // el placeholder (ícono de fase centrado sobre lila claro). Sin
+          // cuadro interno. Tocarla abre el visor a pantalla completa.
           Positioned.fill(
             child: images.isEmpty
-                ? Center(child: Icon(icon, size: 120, color: am.ink))
+                ? Center(child: Icon(icon, size: 120, color: ph.ink))
                 : GestureDetector(
                     onTap: () => showPhotoViewer(context, images),
                     child: Image.network(images.first,

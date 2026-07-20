@@ -333,6 +333,10 @@ class _AmberPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final am = _amber(context);
+    // Sin foto, el panel se pinta LILA CLARO con el ícono violeta (pedido PO
+    // 2026-07-19 para el detalle de solicitud; este panel es "=" por doctrina).
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final ph = dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight;
     final topInset = MediaQuery.paddingOf(context).top;
     final fallbackIcon =
         isServicio ? Icons.handyman_outlined : Icons.inventory_2_outlined;
@@ -342,14 +346,14 @@ class _AmberPanel extends StatelessWidget {
       height: 300 + topInset,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: am.panel,
+        color: main == null ? ph.bg : am.panel,
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
       ),
       child: Stack(children: [
         // Tocar la foto abre el visor a pantalla completa (desde la activa).
         Positioned.fill(
           child: main == null
-              ? Center(child: Icon(fallbackIcon, size: 120, color: am.ink))
+              ? Center(child: Icon(fallbackIcon, size: 120, color: ph.ink))
               : GestureDetector(
                   onTap: () => showPhotoViewer(context, images,
                       initialIndex: activeIndex.clamp(0, images.length - 1)),
