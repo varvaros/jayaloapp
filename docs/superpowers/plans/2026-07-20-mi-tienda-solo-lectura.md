@@ -49,12 +49,10 @@
   - `BusinessReview parseBusinessReview(Map<String, dynamic> row)`
   - `Future<List<BusinessReview>> businessReviews(String businessId)`
 
-- [ ] **Step 1: Escribir el test que falla** — añadir a `app/test/repos_test.dart`:
+- [ ] **Step 1: Escribir el test que falla** — añadir a `app/test/repos_test.dart`. NO añadir un `import ... show`: el archivo ya importa `repos.dart` completo (`repos_test.dart:2`), y un import con `show` dispararía el lint `unnecessary_import` → rompería `flutter analyze == 0`. Solo se añade el `group`:
 
 ```dart
-import 'package:jayalo_app/data/repos.dart' show parseBusinessReview;
-
-// dentro de main():
+// dentro de main() (repos.dart ya está importado en la cabecera):
   group('parseBusinessReview', () {
     test('mapea rating, comentario y fecha', () {
       final r = parseBusinessReview({
@@ -148,12 +146,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
   - `Future<List<Map<String, dynamic>>> myStoreProducts(String businessId)`
   - `(List<Map<String, dynamic>>, List<Map<String, dynamic>>) partitionStoreItems(List<Map<String, dynamic>> items)` — `(productos, servicios)`
 
-- [ ] **Step 1: Escribir el test que falla** — añadir a `app/test/repos_test.dart`:
+- [ ] **Step 1: Escribir el test que falla** — añadir a `app/test/repos_test.dart` (sin `import ... show`: ver nota de la Task 1; `repos.dart` ya está importado, y el `show` dispararía `unnecessary_import`):
 
 ```dart
-import 'package:jayalo_app/data/repos.dart' show partitionStoreItems;
-
-// dentro de main():
+// dentro de main() (repos.dart ya está importado en la cabecera):
   group('partitionStoreItems', () {
     test('separa por kind: servicio a servicios, el resto a productos', () {
       final (prods, servs) = partitionStoreItems([
@@ -329,6 +325,13 @@ class ProductListCard extends StatelessWidget {
 ```dart
 itemBuilder: (_, i) => ProductListCard(item: items[i]).cascadeIn(i),
 ```
+
+**Además, eliminar 3 imports que quedan huérfanos** al mover `_CatalogCard` (sus únicos usos vivían dentro de esa clase; si no se borran, `unused_import` rompe `flutter analyze == 0`):
+- `import 'package:go_router/go_router.dart';` (`context.push` solo estaba en `_CatalogCard`)
+- `import '../../core/brand.dart';` (`jayaloHead` solo en `_CatalogCard`)
+- `import '../../domain/money.dart';` (`fmtRD` solo en `_CatalogCard`)
+
+**Conservar** `import '../../domain/catalog.dart';` (`categoryNameById` sigue usándose en el header, `:218`), `../shared/brand_kit.dart` (`cascadeIn`/`JayaloLoaderBlock`/`EmptyState`), y `dart:async` (`..ignore()`).
 
 - [ ] **Step 5: Correr los tests (card nueva + catálogo no regresiona)**
 
