@@ -304,4 +304,29 @@ void main() {
 
     expect(wholesaleSeen.last, isTrue);
   });
+
+  testWidgets(
+      'en Servicio se oculta el toggle de mayoreo y se re-pide con '
+      'wholesale=false (mayoreo es solo productos)', (tester) async {
+    final wholesaleSeen = <bool>[];
+    await tester.pumpWidget(host(CatalogView(
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async {
+        wholesaleSeen.add(wholesale);
+        return [];
+      },
+      actions: const [],
+    )));
+    await tester.pumpAndSettle();
+    // En Producto el toggle está visible.
+    expect(find.text('Al por mayor'), findsOneWidget);
+    // Enciende mayoreo y luego cambia a Servicio.
+    await tester.tap(find.text('Al por mayor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Servicio'));
+    await tester.pumpAndSettle();
+    // El toggle desaparece y el catálogo se re-pide sin mayoreo.
+    expect(find.text('Al por mayor'), findsNothing);
+    expect(find.text('Al detalle'), findsNothing);
+    expect(wholesaleSeen.last, isFalse);
+  });
 }

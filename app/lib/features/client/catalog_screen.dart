@@ -171,6 +171,10 @@ class _CatalogViewState extends State<CatalogView> {
                     _kind = i == 0 ? 'producto' : 'servicio';
                     _categoryId = null; // cambiar de kind limpia el filtro
                     _rubro = null;
+                    // El mayoreo es SOLO de productos (paridad web): al pasar a
+                    // servicio se apaga para que el toggle oculto no deje un
+                    // filtro invisible activo.
+                    if (_kind == 'servicio') _wholesale = false;
                   });
                   _refetch();
                 },
@@ -182,15 +186,21 @@ class _CatalogViewState extends State<CatalogView> {
             below: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: HeaderSegmented(
-                    options: const ['Al detalle', 'Al por mayor'],
-                    index: _wholesale ? 1 : 0,
-                    onChanged: (i) => _toggleWholesale(i == 1),
+                // "Al detalle / Al por mayor" es SOLO de productos (paridad
+                // web: el mayoreo no aplica a servicios). En Servicio se oculta;
+                // la distinción de servicios (Único/Por contrato) llegará con la
+                // Tienda del proveedor — hoy no hay dato para filtrarla.
+                if (_kind == 'producto') ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: HeaderSegmented(
+                      options: const ['Al detalle', 'Al por mayor'],
+                      index: _wholesale ? 1 : 0,
+                      onChanged: (i) => _toggleWholesale(i == 1),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
+                  const SizedBox(height: 10),
+                ],
                 Row(children: [
                   Expanded(
                     child: _HeaderSearchField(
