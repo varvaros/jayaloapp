@@ -105,4 +105,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('No encontramos tu negocio'), findsOneWidget);
   });
+
+  testWidgets('el botón Editar en la web invoca el callback', (tester) async {
+    var called = false;
+    await tester.pumpWidget(host(MyBusinessView(
+      business: negocio,
+      productos: const [],
+      servicios: const [],
+      reviews: const [],
+      rating: null,
+      onEditWeb: () async => called = true,
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Editar en la web'));
+    await tester.pump();
+    expect(called, isTrue);
+  });
 }

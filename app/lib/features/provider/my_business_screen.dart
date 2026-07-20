@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/brand.dart';
+import '../../core/editor_link_client.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../shell/floating_nav_bar.dart';
@@ -84,6 +86,32 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
         _load = _fetch();
       });
 
+  /// Pide el magic link a la web y lo abre en el navegador externo (ya
+  /// logueado, redirige a /provider/business/:id). NO usa WebView (el CAPTCHA
+  /// se quemó con MIUI, ADR-0032). La edición vive en la web (V2).
+  Future<void> _openEditor(String businessId) async {
+    final token = supa.auth.currentSession?.accessToken;
+    if (token == null) {
+      _toast('Inicia sesión de nuevo para editar.');
+      return;
+    }
+    try {
+      final url = await EditorLinkClient()
+          .fetchEditorUrl(businessId: businessId, accessToken: token);
+      final ok =
+          await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      if (!ok) _toast('No pudimos abrir el navegador.');
+    } catch (_) {
+      _toast('No se pudo abrir el editor. Intenta de nuevo.');
+    }
+  }
+
+  void _toast(String m) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         body: Column(children: [
@@ -107,6 +135,9 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
                   servicios: data.servicios,
                   reviews: data.reviews,
                   rating: data.rating,
+                  onEditWeb: data.business == null
+                      ? null
+                      : () => _openEditor(data.business!.id),
                 );
               },
             ),
@@ -126,6 +157,7 @@ class MyBusinessView extends StatefulWidget {
     required this.servicios,
     required this.reviews,
     required this.rating,
+    this.onEditWeb,
   });
 
   final StoreProfile? business;
@@ -133,6 +165,10 @@ class MyBusinessView extends StatefulWidget {
   final List<Map<String, dynamic>> servicios;
   final List<BusinessReview> reviews;
   final BusinessRating? rating;
+
+  /// Abre el editor en la web (magic-link SSO, Task 6). Nulo → el botón no se
+  /// dibuja (p. ej. sin negocio). Inyectable para probar sin red.
+  final Future<void> Function()? onEditWeb;
 
   @override
   State<MyBusinessView> createState() => _MyBusinessViewState();
@@ -164,6 +200,15 @@ class _MyBusinessViewState extends State<MyBusinessView> {
       children: [
         _BusinessHeaderCard(business: b).cascadeIn(0),
         _DetailsRow(business: b).cascadeIn(1),
+        if (widget.onEditWeb != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: FilledButton.icon(
+              onPressed: () => widget.onEditWeb!.call(),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: const Text('Editar en la web'),
+            ),
+          ),
         const SectionHeader(text: 'PRODUCTOS'),
         ..._itemsOrEmpty(widget.productos, 'Aún no tienes productos.'),
         const SectionHeader(text: 'SERVICIOS'),
