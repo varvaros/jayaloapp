@@ -13,7 +13,11 @@ que **ya existen** en el router pero no están en su navbar ni en su menú:
 - `/client/reputation` — **Reputación** (de comprador; `get_customer_reputation`).
   Relevante para el proveedor que también pide: las advertencias de "baja tu
   reputación como comprador" (al eliminar una solicitud) apuntan aquí.
-- `/catalog` — **Catálogo** (navegar el marketplace como comprador).
+- `/catalog` — el **catálogo del marketplace** (todos los productos/servicios
+  publicados; vista de comprador). En el menú del proveedor se etiqueta
+  **"Otros proveedores"** para que se entienda que es lo que ofrecen los demás,
+  NO su propio catálogo (sus productos viven en "Mi negocio", `/provider/business`,
+  ya en su navbar).
 - **Créditos / wallet** — el proveedor gasta créditos para desbloquear
   contactos, pero no puede ver su saldo ni recargar salvo dentro de las hojas
   de desbloqueo.
@@ -54,7 +58,8 @@ Role-aware, como ya es `openProfileMenu` (`roleStore.value`).
    encabezados de sección):
    - Mis solicitudes → `/client`
    - Reputación → `/client/reputation`
-   - Catálogo → `/catalog`
+   - Otros proveedores → `/catalog` *(el catálogo del marketplace, renombrado
+     para el proveedor: lo que ofrecen los demás, no su propio negocio)*
    - — divider —
    - Estadísticas → `/provider/stats` *(ya existía)*
    - Recargar créditos → wallet externo
