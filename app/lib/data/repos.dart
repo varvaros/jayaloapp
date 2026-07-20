@@ -1167,7 +1167,10 @@ Future<List<Map<String, dynamic>>> catalogProductsWithRatings({
     for (final it in items)
       if (it['business_id'] is String) it['business_id'] as String,
   }.toList();
-  final ratings = await businessRatings(ids);
+  // La reputación es un adorno (spec §2): si la RPC por lote falla, se ocultan
+  // las estrellas — NO se tira todo el catálogo a la pantalla de error.
+  final ratings = await businessRatings(ids)
+      .catchError((_) => <String, BusinessRating>{});
   return mergeCatalogRatings(items, ratings);
 }
 

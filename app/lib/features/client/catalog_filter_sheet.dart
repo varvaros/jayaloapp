@@ -109,7 +109,6 @@ class _CatalogFilterSheetState extends State<_CatalogFilterSheet> {
                   ),
                   if (_expanded == c.id)
                     _RubroList(
-                      categoryId: c.id,
                       categoryName: c.name,
                       rubros: _rubros,
                       selectedRubro:
@@ -131,14 +130,12 @@ class _CatalogFilterSheetState extends State<_CatalogFilterSheet> {
 
 class _RubroList extends StatelessWidget {
   const _RubroList({
-    required this.categoryId,
     required this.categoryName,
     required this.rubros,
     required this.selectedRubro,
     required this.onAll,
     required this.onRubro,
   });
-  final String categoryId;
   final String categoryName;
   final List<Map<String, dynamic>>? rubros;
   final String? selectedRubro;
