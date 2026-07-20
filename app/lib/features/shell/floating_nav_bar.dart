@@ -339,14 +339,13 @@ class _CenterButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // Iteración 2 (spec §2): el círculo NO usa el mismo rol en los dos temas
-    // — en claro es `onPrimaryContainer` (accentFg, el violeta oscuro de la
-    // marca) y en oscuro es `primary` (dPrimary, el azul: la web tampoco usa
-    // violeta como primario en oscuro, ver core/brand.dart). No hay un único
-    // rol de ColorScheme que cubra ambos casos, así que se resuelve por
-    // brillo — mismo patrón que ya usa brand.dart para dark vs. light.
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final circleColor = isDark ? cs.primary : cs.onPrimaryContainer;
+    // PO 2026-07-20: el círculo central (+) usa el violeta del header
+    // (`primary`) en AMBOS temas — antes en claro era `onPrimaryContainer` (el
+    // violeta oscuro). En oscuro `primary` ya era el azul dPrimary, sin cambio.
+    // La etiqueta activa se queda en `onPrimaryContainer` (violeta oscuro),
+    // legible sobre la píldora lila igual que las etiquetas laterales — un
+    // violeta primario pequeño sobre lila no llegaría al 4.5:1 de texto.
+    final circleColor = cs.primary;
     return Semantics(
       label: destination.label,
       button: true,
@@ -386,7 +385,7 @@ class _CenterButton extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: circleColor),
+                    color: cs.onPrimaryContainer),
               ),
             ),
         ],

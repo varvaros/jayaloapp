@@ -32,13 +32,14 @@ abstract final class JayaloColors {
   static const secondary = Color(0xFFE9ECF1); //  neutro frío (segmentos)
   static const muted = Color(0xFFE9ECF1);
   static const mutedFg = Color(0xFF847D8F); //    --mut
-  // ⚠️ LA NAVBAR ESTÁ CERRADA (no se toca). Su píldora es `primaryContainer`
-  // (= accent) y sus ítems `onPrimaryContainer` (= accentFg). Por eso estos
-  // DOS tokens se dejan EXACTOS como estaban antes del rediseño cálido: así la
-  // barra flotante queda pixel-idéntica y su test de contraste WCAG 3:1 sigue
-  // pasando. El mockup pinta el acento en #F1EAFE/#4B3B94, imperceptiblemente
-  // distinto — no vale la pena mover la navbar por 1/255 de diferencia.
-  static const accent = Color(0xFFF0EAFF); //     lila de acento (= navbar)
+  // Navbar: la píldora es `primaryContainer` (= accent) y sus ítems
+  // `onPrimaryContainer` (= accentFg). PO 2026-07-20: el lila se OSCURECIÓ un
+  // punto (#F0EAFF → #E2D6FB) para que la barra flotante no se pierda contra el
+  // fondo gris frío nuevo. El ícono lateral inactivo sigue cumpliendo WCAG 3:1
+  // (el test de contraste en `floating_nav_bar_test.dart` recalcula el ratio
+  // REAL desde estos tokens, no un valor fijo). El botón central (+) pasó a
+  // `primary` (el violeta del header) — ver `floating_nav_bar.dart`.
+  static const accent = Color(0xFFE2D6FB); //     lila de acento (navbar)
   static const accentFg = Color(0xFF3C1590); //   violeta oscuro de acento
   static const destructive = Color(0xFFEA2126);
   static const success = Color(0xFF00A159);

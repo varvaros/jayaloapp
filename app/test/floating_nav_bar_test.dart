@@ -297,8 +297,8 @@ void main() {
     });
 
     testWidgets(
-        'el círculo central usa onPrimaryContainer (accentFg) en claro y '
-        'primary (dPrimary) en oscuro', (tester) async {
+        'el círculo central usa primary (violeta del header en claro, '
+        'dPrimary en oscuro) — PO 2026-07-20', (tester) async {
       for (final brightness in Brightness.values) {
         await tester.pumpWidget(hostBrightness(kCenterIndex, brightness));
         await tester.pumpAndSettle();
@@ -309,9 +309,7 @@ void main() {
                 of: find.bySemanticsLabel('Crear solicitud'),
                 matching: find.byType(Material)))
             .firstWhere((m) => m.shape is CircleBorder);
-        final expected =
-            brightness == Brightness.dark ? cs.primary : cs.onPrimaryContainer;
-        expect(circle.color, expected, reason: 'brillo: $brightness');
+        expect(circle.color, cs.primary, reason: 'brillo: $brightness');
       }
     });
 
