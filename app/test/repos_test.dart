@@ -103,4 +103,28 @@ void main() {
       expect(productInterestUnlockCost, 1);
     });
   });
+
+  group('parseBusinessReview', () {
+    test('mapea rating, comentario y fecha', () {
+      final r = parseBusinessReview({
+        'rating': 4,
+        'comment': '  Excelente servicio  ',
+        'created_at': '2026-07-01T12:00:00Z',
+      });
+      expect(r.rating, 4.0);
+      expect(r.comment, 'Excelente servicio'); // recortado
+      expect(r.createdAt.toUtc(), DateTime.utc(2026, 7, 1, 12));
+    });
+
+    test('comentario vacío o solo espacios queda null', () {
+      expect(parseBusinessReview({'rating': 5, 'comment': '   '}).comment, isNull);
+      expect(parseBusinessReview({'rating': 5, 'comment': null}).comment, isNull);
+    });
+
+    test('rating ausente cae a 0 y fecha inválida a epoch', () {
+      final r = parseBusinessReview({'comment': 'x'});
+      expect(r.rating, 0.0);
+      expect(r.createdAt.millisecondsSinceEpoch, 0);
+    });
+  });
 }

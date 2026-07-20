@@ -1128,6 +1128,37 @@ Future<Map<String, BusinessRating>> businessRatings(
   };
 }
 
+// ── Opiniones con texto (Mi tienda) ────────────────────────────────────────
+// Anónimas a propósito: solo rating/comment/created_at, NUNCA reviewer_id
+// (misma restricción que `get_business_ratings`). La web lee estas mismas
+// columnas client-side, así que la RLS de `business_reviews` ya las permite a
+// `authenticated`; si un cambio de RLS lo bloqueara, mover a una RPC
+// SECURITY DEFINER `get_business_reviews(_business_id)` sin cambiar esta firma.
+typedef BusinessReview = ({double rating, String? comment, DateTime createdAt});
+
+BusinessReview parseBusinessReview(Map<String, dynamic> row) {
+  final raw = (row['comment'] as String?)?.trim() ?? '';
+  return (
+    rating: (row['rating'] as num?)?.toDouble() ?? 0,
+    comment: raw.isEmpty ? null : raw,
+    createdAt:
+        DateTime.tryParse(row['created_at'] as String? ?? '')?.toLocal() ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+  );
+}
+
+Future<List<BusinessReview>> businessReviews(String businessId) async {
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('business_reviews')
+        .select('rating,comment,created_at')
+        .eq('business_id', businessId)
+        .order('created_at', ascending: false)
+        .limit(50),
+  );
+  return rows.map(parseBusinessReview).toList();
+}
+
 /// Fusiona la reputación en cada item del catálogo por su `business_id`. Pura y
 /// sin mutar la entrada: un negocio sin reseñas queda sin `avg_rating` (la
 /// tarjeta oculta la estrella).
