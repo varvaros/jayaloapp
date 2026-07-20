@@ -1001,22 +1001,40 @@ bool businessVerifiedFrom(Map<String, dynamic> businessRow) =>
 /// Ajustes ("Sello de WhatsApp del negocio").
 /// `null` si el proveedor todavía no tiene negocio creado (no debería pasar
 /// en esta pantalla, pero la ruta no lo garantiza).
-Future<({String id, String name, String? logoUrl, bool verified})?>
+Future<
+    ({
+      String id,
+      String name,
+      String? logoUrl,
+      bool verified,
+      String? categoryId,
+      String? city,
+      bool wholesale,
+      String? description,
+    })?>
 myBusinessProfile() async {
   final uid = supa.auth.currentUser!.id;
   final biz = await supa
       .from('provider_businesses')
-      .select('id,name,logo_url,business_verified_at')
+      .select(
+          'id,name,logo_url,business_verified_at,category_id,city,is_wholesale,description')
       .eq('user_id', uid)
       .limit(1)
       .maybeSingle();
   if (biz == null) return null;
   final logo = biz['logo_url'] as String?;
+  final city = (biz['city'] as String?)?.trim();
+  final desc = (biz['description'] as String?)?.trim();
+  final cat = (biz['category_id'] as String?)?.trim();
   return (
     id: biz['id'] as String,
     name: (biz['name'] as String?) ?? '',
     logoUrl: (logo != null && logo.isNotEmpty) ? logo : null,
     verified: businessVerifiedFrom(biz),
+    categoryId: (cat != null && cat.isNotEmpty) ? cat : null,
+    city: (city != null && city.isNotEmpty) ? city : null,
+    wholesale: biz['is_wholesale'] == true,
+    description: (desc != null && desc.isNotEmpty) ? desc : null,
   );
 }
 

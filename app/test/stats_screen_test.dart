@@ -5,8 +5,6 @@ import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/core/session_state.dart';
 import 'package:jayalo_app/features/notifications/notification_bell.dart';
 import 'package:jayalo_app/features/provider/stats_screen.dart';
-import 'package:jayalo_app/features/provider/my_business_screen.dart'
-    show CatalogCard;
 import 'package:jayalo_app/features/shared/profile_avatar_button.dart';
 import 'package:jayalo_app/features/shell/back_guard.dart';
 
@@ -55,7 +53,6 @@ void main() {
       (tester) async {
     await tester.pumpWidget(host(const StatsView(data: conActividad)));
     await tester.pumpAndSettle();
-    expect(find.byType(CatalogCard), findsNothing);
     expect(find.textContaining('LO QUE OFRECES'), findsNothing);
     expect(find.textContaining('productos'), findsNothing);
     expect(find.textContaining('servicios'), findsNothing);
