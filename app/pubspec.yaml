@@ -47,11 +47,18 @@ dependencies:
   image_picker: ^1.2.1
   shared_preferences: ^2.5.2
   flutter_animate: ^4.5.0
+  # En dependencies (no dev_dependencies) a propósito: como dev_dependency el
+  # Gradle de Flutter la EXCLUYE del classpath de release pero el
+  # GeneratedPluginRegistrant la referencia igual → `flutter build apk
+  # --release` no compila ("package dev.flutter.plugins.integration_test does
+  # not exist", visto 2026-07-19 tras un flutter clean; lógica en
+  # PluginHandler.kt:115 del SDK). Aquí es inerte en producción: solo se
+  # activa al correr con `am instrument`.
+  integration_test:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:
-    sdk: flutter
-  integration_test:
     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to
@@ -60,6 +67,21 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# Ícono de la app (isotipo de la marca — PO 2026-07-19): genera el mipmap
+# legacy Y el adaptativo de Android (`dart run flutter_launcher_icons`).
+# `icon_foreground.png` es el mismo isotipo recortado a su contenido real y
+# reescalado a ~62% del lienzo — la "zona segura" que los launchers no
+# recortan al aplicar su máscara (círculo/squircle/gota…); `icon.png` es el
+# original sin recortar, usado en el mipmap plano (sin máscara) como
+# fallback. Fondo blanco: mismo contraste que trae el asset de origen.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
