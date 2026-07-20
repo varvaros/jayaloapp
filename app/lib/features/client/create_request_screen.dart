@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/ai_client.dart';
@@ -8,8 +9,10 @@ import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_turns.dart';
 import '../../domain/image_pick.dart';
+import '../../domain/request_progress.dart';
 import '../shell/floating_nav_bar.dart';
 import '../verification/verify_banner.dart';
+import 'request_success_view.dart';
 import '../shared/brand_kit.dart';
 import '../shared/violet_header.dart';
 
@@ -27,16 +30,6 @@ class CreateRequestScreen extends StatefulWidget {
   const CreateRequestScreen({super.key});
   @override
   State<CreateRequestScreen> createState() => _CreateRequestScreenState();
-}
-
-class _Bubble {
-  _Bubble.user(this.text)
-      : isUser = true,
-        turn = null;
-  _Bubble.ai(this.turn, this.text) : isUser = false;
-  final bool isUser;
-  final String text;
-  final AiTurn? turn;
 }
 
 /// Píldora "Al por mayor" para el header violeta: blanca plena con check al
@@ -76,26 +69,40 @@ class _WholesaleToggle extends StatelessWidget {
   }
 }
 
+/// Rediseño "Jayi te entrevista" (spec 2026-07-19-solicitud-gamificada):
+/// sin burbujas de chat — la mascota pregunta, las opciones son botones de
+/// ancho completo y abajo la tarjeta "Tu solicitud" se va llenando con cada
+/// respuesta (barra honesta "N de ~M"). El contrato con la IA no cambia.
 class _CreateRequestScreenState extends State<CreateRequestScreen> {
   final _ai = AiClient();
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final List<AiMessage> _messages = [];
-  final List<_Bubble> _bubbles = [];
   String _kind = 'producto';
   bool _wholesale = false;
   bool _busy = false;
+  bool _correcting = false;
+  bool _submitted = false;
   List<String> _categories = [];
   List<String> _rubros = [];
   final List<_PendingPhoto> _photos = [];
+  final List<String> _answers = [];
+  AiTurn? _current;
+  int _pop = 0; // key de la micro-reacción de la mascota (cambia por turno)
   AiReady? _ready;
 
   Future<void> _send(String text) async {
     if (text.trim().isEmpty || _busy) return;
+    // Solo cuentan como "respuesta" de la solicitud las contestaciones a una
+    // pregunta real de la IA (no el auto-"ok" del routing, ni la foto, ni las
+    // correcciones tras el ready).
+    final record =
+        !_correcting && (_current is AiQuestion || _current is AiKindSwitch);
     setState(() {
       _busy = true;
-      _bubbles.add(_Bubble.user(text));
+      _correcting = false;
       _messages.add(AiMessage('user', text));
+      if (record) _answers.add(text);
       _input.clear();
     });
     try {
@@ -117,17 +124,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           : e.message);
       setState(() {
         _messages.removeLast();
-        _bubbles.removeLast();
+        if (record) _answers.removeLast();
       });
     } catch (e) {
       _toast('Algo falló. Intenta de nuevo.');
       setState(() {
         _messages.removeLast();
-        _bubbles.removeLast();
+        if (record) _answers.removeLast();
       });
     } finally {
       if (mounted) setState(() => _busy = false);
-      _scrollDown();
     }
   }
 
@@ -197,25 +203,32 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   Future<void> _handleTurn(AiTurn turn) async {
     switch (turn) {
       case AiQuestion q:
-        setState(() => _bubbles.add(_Bubble.ai(q, q.question)));
+        setState(() {
+          _current = q;
+          _pop++;
+        });
       case AiKindSwitch k:
-        setState(() => _bubbles.add(_Bubble.ai(k, k.message)));
+        setState(() {
+          _current = k;
+          _pop++;
+        });
       case AiImageRequest ir:
-        // La IA pide una foto: mostramos el mensaje y ofrecemos adjuntarla
-        // (los botones viven en _turnActions). El modelo la verá vía imageDataUrl.
-        setState(() => _bubbles.add(_Bubble.ai(
-            ir, ir.hint.isEmpty ? ir.message : '${ir.message}\n${ir.hint}')));
+        setState(() {
+          _current = ir;
+          _pop++;
+        });
       case AiRouting r:
         setState(() {
           _categories = r.categories;
           _rubros = r.rubros;
-          _bubbles.add(_Bubble.ai(r, '${r.message} ${r.categories.join(", ")}'));
+          _current = r;
         });
         await _send('ok');
       case AiReady rd:
         setState(() {
           _ready = rd;
-          _bubbles.add(_Bubble.ai(rd, '¡Listo! Revisa tu solicitud:'));
+          _current = rd;
+          _pop++;
         });
     }
   }
@@ -272,9 +285,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           rubros: _rubros,
           imageUrls: imageUrls);
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('¡Solicitud enviada! 🎉')));
-      context.go('/client');
+      setState(() => _submitted = true);
     } catch (_) {
       _toast('No se pudo enviar la solicitud.');
     } finally {
@@ -286,16 +297,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     if (mounted) showJayaloToast(context, m);
   }
 
-  void _scrollDown() => WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scroll.hasClients) {
-          _scroll.animateTo(_scroll.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
-        }
-      });
-
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final started = _messages.isNotEmpty;
     return Scaffold(
       body: Column(children: [
@@ -331,89 +334,18 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                   ],
                 ]),
         ),
-        // Nudge de verificación (spec §6.1) — cerrable, nunca bloquea el envío.
-        const VerifyWhatsappBanner(),
+        if (!_submitted)
+          // Nudge de verificación (spec §6.1) — cerrable, nunca bloquea el envío.
+          const VerifyWhatsappBanner(),
         Expanded(
-          child: _bubbles.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // La mascota "buscando" — el mismo vacío de la web.
-                        const JayaloMascot(size: 76),
-                        const SizedBox(height: 16),
-                        Text(
-                            'Sube una foto y describe lo que buscas\npara mejor resultado.',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyLarge),
-                        const SizedBox(height: 16),
-                        // El botón de HACER la foto, visible desde el arranque
-                        // (pedido PO): cámara primero, galería al lado. La foto
-                        // queda en la tira y viaja con el primer mensaje.
-                        Wrap(spacing: 8, runSpacing: 4, children: [
-                          ActionChip(
-                              avatar: const Icon(Icons.photo_camera_outlined,
-                                  size: 18),
-                              label: const Text('Tomar foto'),
-                              onPressed: () =>
-                                  _pickPhoto(ImageSource.camera)),
-                          ActionChip(
-                              avatar: const Icon(Icons.photo_library_outlined,
-                                  size: 18),
-                              label: const Text('Galería'),
-                              onPressed: () =>
-                                  _pickPhoto(ImageSource.gallery)),
-                        ]),
-                      ],
-                    ),
-                  ),
-                )
-              : ListView.builder(
-                  controller: _scroll,
-                  padding: EdgeInsets.fromLTRB(
-                      16, 16, 16, 16 + navBarReservedSpace(context)),
-                  itemCount: _bubbles.length,
-                  itemBuilder: (_, i) {
-                    final b = _bubbles[i];
-                    final isLast = i == _bubbles.length - 1;
-                    return Column(
-                      crossAxisAlignment:
-                          b.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          constraints: const BoxConstraints(maxWidth: 320),
-                          decoration: BoxDecoration(
-                            color:
-                                b.isUser ? cs.primaryContainer : cs.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Text(b.text),
-                        ),
-                        if (!b.isUser && isLast && !_busy) _turnActions(b.turn),
-                      ],
-                    );
-                  },
-                ),
+          child: _submitted
+              ? _successView()
+              : !started
+                  ? _emptyState()
+                  : _guidedView(),
         ),
-        if (_busy)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-            child: Row(children: [
-              const JayaloSpinner(size: 16),
-              const SizedBox(width: 8),
-              Text('Pensando…',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            ]),
-          ),
-        if (_photos.isNotEmpty) _photoStrip(),
-        if (_ready == null)
+        if (!started && _photos.isNotEmpty) _photoStrip(),
+        if (_ready == null && !_submitted)
           SafeArea(
             // '/client/create' es una pestaña del shell: la barra flotante
             // sigue visible aquí (ver home_shell.dart), pero con
@@ -432,10 +364,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 enabled: !_busy,
                 onSubmitted: _send,
                 decoration: InputDecoration(
-                  hintText: started ? 'Escribe tu respuesta…' : '¿Qué estás buscando?',
+                  hintText: _correcting
+                      ? 'Escribe qué corregir…'
+                      : started
+                          ? 'Escribe tu respuesta…'
+                          : '¿Qué estás buscando?',
                   // "F1 · Rellenos suaves" (elegido por el PO para este grupo).
                   filled: true,
-                  fillColor: cs.surfaceContainerHighest,
+                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(28),
                       borderSide: BorderSide.none),
@@ -455,6 +391,316 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       ]),
     );
   }
+
+  Widget _emptyState() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // La mascota "buscando" — el mismo vacío de la web.
+              const JayaloMascot(size: 76),
+              const SizedBox(height: 16),
+              Text('Sube una foto y describe lo que buscas\npara mejor resultado.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyLarge),
+              const SizedBox(height: 16),
+              // El botón de HACER la foto, visible desde el arranque
+              // (pedido PO): cámara primero, galería al lado. La foto
+              // queda en la tira y viaja con el primer mensaje.
+              Wrap(spacing: 8, runSpacing: 4, children: [
+                ActionChip(
+                    avatar: const Icon(Icons.photo_camera_outlined, size: 18),
+                    label: const Text('Tomar foto'),
+                    onPressed: () => _pickPhoto(ImageSource.camera)),
+                ActionChip(
+                    avatar: const Icon(Icons.photo_library_outlined, size: 18),
+                    label: const Text('Galería'),
+                    onPressed: () => _pickPhoto(ImageSource.gallery)),
+              ]),
+            ],
+          ),
+        ),
+      );
+
+  /// El corazón del rediseño: mascota entrevistadora + pregunta en grande +
+  /// botones de ancho completo + tarjeta "Tu solicitud" que se va llenando.
+  Widget _guidedView() {
+    final cs = Theme.of(context).colorScheme;
+    return ListView(
+      controller: _scroll,
+      padding:
+          EdgeInsets.fromLTRB(20, 20, 20, 16 + navBarReservedSpace(context)),
+      children: [
+        Center(
+          child: const JayaloMascot(size: 64)
+              .animate(key: ValueKey('mascota-$_pop'))
+              .scale(
+                  begin: const Offset(.85, .85),
+                  end: const Offset(1, 1),
+                  duration: 200.ms,
+                  curve: Curves.easeOutBack),
+        ),
+        const SizedBox(height: 14),
+        if (_ready != null)
+          _readyCard(_ready!)
+        else ...[
+          if (_busy)
+            Column(children: [
+              const SizedBox(height: 4),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                const JayaloSpinner(size: 14),
+                const SizedBox(width: 8),
+                Text('Pensando…',
+                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+              ]),
+            ])
+          else
+            _questionArea(cs),
+          _buildingCard(cs),
+        ],
+      ],
+    );
+  }
+
+  Widget _questionArea(ColorScheme cs) {
+    final String question;
+    List<Widget> actions = const [];
+    String? counter;
+    if (_correcting) {
+      question = '¿Qué quieres corregir?';
+      counter = 'Escríbelo abajo y lo ajustamos.';
+    } else {
+      switch (_current) {
+        case AiQuestion q:
+          question = q.question;
+          counter = 'Pregunta ${_answers.length + 1}';
+          actions = [for (final op in q.options) _optionButton(op, () => _send(op))];
+        case AiKindSwitch k:
+          question = k.message;
+          actions = [
+            for (final op in k.options)
+              _optionButton(op, () {
+                final low = op.toLowerCase();
+                if (low.startsWith('sí') || low.startsWith('si')) {
+                  setState(() => _kind = k.suggestedKind);
+                }
+                _send(op);
+              }),
+          ];
+        case AiImageRequest ir:
+          question = ir.hint.isEmpty ? ir.message : '${ir.message}\n${ir.hint}';
+          actions = [
+            if (_photos.length < _maxRequestPhotos) ...[
+              _optionButton('Tomar foto',
+                  icon: Icons.photo_camera_outlined,
+                  () => _pickForRequest(ImageSource.camera)),
+              _optionButton('Elegir de la galería',
+                  icon: Icons.photo_library_outlined,
+                  () => _pickForRequest(ImageSource.gallery)),
+            ],
+            _optionButton('Seguir sin foto', () => _send('Sigamos sin foto.')),
+          ];
+        default:
+          return const SizedBox.shrink();
+      }
+    }
+    return Column(
+      key: ValueKey('pregunta-$_pop-$_correcting'),
+      children: [
+        Text(question,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 20,
+                height: 1.3,
+                fontWeight: FontWeight.w500,
+                color: jayaloHead(context))),
+        if (counter != null) ...[
+          const SizedBox(height: 6),
+          Text(counter,
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        ],
+        if (actions.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          ...actions,
+        ],
+      ],
+    ).animate().fadeIn(duration: 200.ms);
+  }
+
+  /// Botón-respuesta de ancho completo (doctrina: sin bordes, sombra cálida).
+  Widget _optionButton(String label, VoidCallback onTap, {IconData? icon}) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: jayaloCardShadow(context),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: _busy ? null : onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 18, color: cs.primary),
+                  const SizedBox(width: 8),
+                ],
+                Flexible(
+                  child: Text(label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 14.5, color: jayaloHead(context))),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// "Tu solicitud" — la esencia a la vista: fotos, descripción y cada
+  /// respuesta con su check, más la barra honesta "N de ~M".
+  Widget _buildingCard(ColorScheme cs) {
+    final answered = _answers.length;
+    final total = estimatedTotal(answered: answered, wholesale: _wholesale);
+    final frac = progressFraction(
+        answered: answered, wholesale: _wholesale, ready: false);
+    // Lila del detalle sin foto (JayaloStatus.responded) — tinta violeta.
+    const bg = Color(0xFFEDEBFF);
+    const ink = Color(0xFF3C3489);
+    const check = Color(0xFF1D9E75);
+    final description = _messages.isEmpty ? '' : _messages.first.content;
+    return Container(
+      margin: const EdgeInsets.only(top: 22),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.assignment_outlined, size: 16, color: cs.primary),
+          const SizedBox(width: 6),
+          Text('Tu solicitud',
+              style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w500, color: cs.primary)),
+          const Spacer(),
+          Text('$answered de ~$total',
+              style: const TextStyle(fontSize: 12, color: ink)),
+        ]),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(99),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(end: frac),
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+            builder: (_, v, child) => LinearProgressIndicator(
+                value: v,
+                minHeight: 6,
+                backgroundColor: Colors.white,
+                color: cs.primary),
+          ),
+        ),
+        if (_photos.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, children: [
+            for (var i = 0; i < _photos.length; i++)
+              Stack(clipBehavior: Clip.none, children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.file(File(_photos[i].file.path),
+                      width: 52, height: 52, fit: BoxFit.cover),
+                ),
+                Positioned(
+                  top: -10,
+                  right: -10,
+                  child: IconButton(
+                    tooltip: 'Quitar',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.cancel, size: 18, color: ink),
+                    onPressed: _busy
+                        ? null
+                        : () => setState(() => _photos.removeAt(i)),
+                  ),
+                ),
+              ]),
+          ]),
+        ],
+        if (description.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(description,
+              style: const TextStyle(fontSize: 13, height: 1.35, color: ink)),
+        ],
+        for (final a in _answers)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.check_circle, size: 15, color: check),
+              const SizedBox(width: 6),
+              Expanded(
+                  child: Text(a,
+                      style: const TextStyle(
+                          fontSize: 13, height: 1.35, color: ink))),
+            ]),
+          ),
+      ]),
+    );
+  }
+
+  /// Turno `ready`: la tarjeta final protagonista.
+  Widget _readyCard(AiReady r) => JayaloCard(
+        padding: const EdgeInsets.all(16),
+        margin: EdgeInsets.zero,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('¡Listo! Revisa tu solicitud:',
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 8),
+          Text(r.title,
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: jayaloHead(context))),
+          const SizedBox(height: 8),
+          for (final b in r.bullets) Text('• $b'),
+          if (r.wholesale || _wholesale)
+            Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: StatusChip(
+                    label: 'Al por mayor',
+                    icon: Icons.storefront_outlined,
+                    tone: Theme.of(context).brightness == Brightness.dark
+                        ? JayaloStatus.respondedDark
+                        : JayaloStatus.respondedLight)),
+          const SizedBox(height: 12),
+          Row(children: [
+            FilledButton(
+                onPressed: _busy ? null : _submit,
+                child: _busy
+                    ? const JayaloSpinner(size: 16, color: Colors.white)
+                    : const Text('Enviar solicitud')),
+            const SizedBox(width: 8),
+            TextButton(
+                onPressed: _busy
+                    ? null
+                    : () => setState(() {
+                          _ready = null;
+                          _correcting = true;
+                        }),
+                child: const Text('Corregir algo')),
+          ]),
+        ]),
+      );
+
+  Widget _successView() => RequestPublishedView(
+        onSeeRequests: () => context.go('/client'),
+      );
 
   Widget _photoStrip() => Align(
         alignment: Alignment.centerLeft,
@@ -483,77 +729,4 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           ]),
         ),
       );
-
-  Widget _turnActions(AiTurn? t) => switch (t) {
-        AiQuestion q => Wrap(spacing: 8, runSpacing: 4, children: [
-            for (final op in q.options)
-              ActionChip(label: Text(op), onPressed: () => _send(op)),
-          ]),
-        AiImageRequest _ => Wrap(spacing: 8, runSpacing: 4, children: [
-            if (_photos.length < _maxRequestPhotos) ...[
-              ActionChip(
-                  avatar: const Icon(Icons.photo_camera_outlined, size: 18),
-                  label: const Text('Cámara'),
-                  onPressed: () => _pickForRequest(ImageSource.camera)),
-              ActionChip(
-                  avatar: const Icon(Icons.photo_library_outlined, size: 18),
-                  label: const Text('Galería'),
-                  onPressed: () => _pickForRequest(ImageSource.gallery)),
-            ],
-            ActionChip(
-                label: const Text('Seguir sin foto'),
-                onPressed: () => _send('Sigamos sin foto.')),
-          ]),
-        AiKindSwitch k => Wrap(spacing: 8, runSpacing: 4, children: [
-            for (final op in k.options)
-              ActionChip(
-                  label: Text(op),
-                  onPressed: () {
-                    final low = op.toLowerCase();
-                    if (low.startsWith('sí') || low.startsWith('si')) {
-                      setState(() => _kind = k.suggestedKind);
-                    }
-                    _send(op);
-                  }),
-          ]),
-        AiReady r => Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: JayaloCard(
-              padding: const EdgeInsets.all(16),
-              margin: EdgeInsets.zero,
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(r.title,
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: jayaloHead(context))),
-                    const SizedBox(height: 8),
-                    for (final b in r.bullets) Text('• $b'),
-                    if (r.wholesale || _wholesale)
-                      Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: StatusChip(
-                              label: 'Al por mayor',
-                              icon: Icons.storefront_outlined,
-                              tone: Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? JayaloStatus.respondedDark
-                                  : JayaloStatus.respondedLight)),
-                    const SizedBox(height: 12),
-                    Row(children: [
-                      FilledButton(
-                          onPressed: _busy ? null : _submit,
-                          child: const Text('Enviar solicitud')),
-                      const SizedBox(width: 8),
-                      TextButton(
-                          onPressed: () => setState(() => _ready = null),
-                          child: const Text('Corregir algo')),
-                    ]),
-                  ]),
-            ),
-          ),
-        _ => const SizedBox.shrink(),
-      };
 }
