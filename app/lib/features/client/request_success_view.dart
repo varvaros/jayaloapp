@@ -20,11 +20,16 @@ class RequestPublishedView extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const JayaloMascot(size: 96).animate().scale(
-                begin: const Offset(.7, .7),
-                end: const Offset(1, 1),
-                duration: 250.ms,
-                curve: Curves.easeOutBack),
+            // La mascota CELEBRANDO (ojo feliz "∩", sonrisón, saltitos y
+            // antenas vibrando) — entra con un pop y sigue de fiesta mientras
+            // cae el confeti.
+            const JayaloMascotFace(size: 96, mood: MascotMood.celebrate)
+                .animate()
+                .scale(
+                    begin: const Offset(.7, .7),
+                    end: const Offset(1, 1),
+                    duration: 250.ms,
+                    curve: Curves.easeOutBack),
             const SizedBox(height: 20),
             Text('¡Tu solicitud está publicada!',
                 textAlign: TextAlign.center,

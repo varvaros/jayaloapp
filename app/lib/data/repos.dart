@@ -54,11 +54,14 @@ Future<Map<String, String>> rubroNames(List<String> ids) async {
   return {for (final r in rows) r['id'] as String: r['name'] as String};
 }
 
-/// Insert de solicitud — campos EXACTOS de la web (requests/new.tsx L541-570).
-/// `categories`/`rubros` vienen del turno `routing`; `condition`/`urgency`/
-/// `urgencyLevel` del formulario final guiado (mismos valores que la web:
-/// condition 'nuevo'|'usado'|'ambos'|'' — vacío en servicios; urgency es el
-/// string de URGENCY_OPTIONS; urgency_level solo en servicios).
+/// Insert de solicitud — campos y gates EXACTOS del form final de la web
+/// (requests/new.tsx `submit()` L586-608). Lo del turno `routing` viaja en
+/// `categories`/`rubros`; el resto viene del FORMULARIO final:
+/// - `condition` 'nuevo'|'usado'|'ambos'|'' (vacío en servicios);
+/// - `withShipping`/`withInstallation` solo aplican a producto;
+/// - `requiresEvaluation` aplica a ambos (la web no lo capa por kind);
+/// - `urgency` = string de URGENCY_OPTIONS (producto);
+/// - `serviceModality`/`urgencyLevel`/`serviceEventDate` solo servicios.
 Future<void> submitRequest({
   required String title,
   required List<String> bullets,
@@ -69,7 +72,12 @@ Future<void> submitRequest({
   List<String> imageUrls = const [],
   String condition = '',
   String urgency = 'Normal - 24 horas',
+  bool withShipping = false,
+  bool withInstallation = false,
+  bool requiresEvaluation = false,
+  String serviceModality = '',
   String urgencyLevel = '',
+  DateTime? serviceEventDate,
 }) async {
   final uid = supa.auth.currentUser!.id;
   final isService = kind == 'servicio';
@@ -83,16 +91,20 @@ Future<void> submitRequest({
     'image_url': imageUrls.isEmpty ? '' : imageUrls.first,
     'image_urls': imageUrls,
     'image_thumb_url': null,
-    'with_shipping': false,
-    'with_installation': false,
-    'requires_evaluation': false,
+    'with_shipping': isService ? false : withShipping,
+    'with_installation': isService ? false : withInstallation,
+    'requires_evaluation': requiresEvaluation,
     'condition': isService ? '' : condition,
     'urgency': urgency,
     'status': 'open',
     'target_categories': categories,
     'target_rubros': rubros,
-    'service_modality': '',
-    'service_event_date': null,
+    'service_modality': isService ? serviceModality : '',
+    'service_event_date': isService &&
+            serviceModality == 'event' &&
+            serviceEventDate != null
+        ? serviceEventDate.toUtc().toIso8601String()
+        : null,
     'urgency_level': isService ? urgencyLevel : '',
     'budget_min': null,
     'budget_max': null,

@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/ai_client.dart';
 import '../../core/brand.dart';
-import '../../core/motion.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_turns.dart';
 import '../../domain/image_pick.dart';
@@ -20,26 +19,41 @@ import '../shared/violet_header.dart';
 
 const _maxRequestPhotos = 2;
 
-/// Pasos LOCALES tras el `ready` de la IA — las preguntas que en la web viven
-/// en el formulario final (feedback PO 2026-07-19): estado del producto,
-/// cuándo lo necesita y los rubros sugeridos. Sin costo de IA.
-enum _FormStep { condition, urgency, rubros, review }
-
-/// Mismos valores que la web (requests/new.tsx URGENCY_OPTIONS) — se
-/// persisten tal cual en `customer_requests.urgency`.
+/// URGENCY_OPTIONS de la web (requests/new.tsx): (valor persistido, etiqueta
+/// visible, descripción). El VALOR se guarda tal cual en
+/// `customer_requests.urgency`; la etiqueta es la que la web muestra.
 const _urgencyOptions = [
-  ('Urgente - 4 horas', 'Necesito respuestas rápidas.'),
-  ('Normal - 24 horas', 'Quiero comprar hoy o mañana.'),
-  ('No tengo prisa - 72 horas', 'Puedo esperar mejores ofertas.'),
-  ('No voy a comprar, solo quiero saber precio', 'Solo estoy cotizando.'),
+  ('Urgente - 4 horas', 'Urgente', 'Necesito respuestas rápidas.'),
+  ('Normal - 24 horas', 'Hoy o mañana', 'Quiero comprar hoy o mañana.'),
+  ('No tengo prisa - 72 horas', 'Sin prisa', 'Puedo esperar mejores ofertas.'),
+  (
+    'No voy a comprar, solo quiero saber precio',
+    'Solo quiero cotizar',
+    'Solo estoy cotizando.'
+  ),
 ];
 
-/// URGENCY_LEVEL_OPTIONS de la web para servicios (sin 'specific_date' en la
-/// app v1: exigiría selector de fecha; se anota en el spec).
+/// SERVICE_MODALITY_OPTIONS de la web: (valor, título, descripción, icono).
+const _serviceModalityOptions = [
+  ('on_site', 'En mi ubicación', 'El proveedor va a donde estoy.',
+      Icons.place_outlined),
+  ('at_provider', 'En local del proveedor', 'Yo voy a su taller / oficina.',
+      Icons.storefront_outlined),
+  ('remote', 'Remoto / online', 'Se puede hacer a distancia.',
+      Icons.laptop_mac_outlined),
+  ('event', 'Evento puntual', 'Servicio para una fecha específica.',
+      Icons.celebration_outlined),
+];
+
+/// URGENCY_LEVEL_OPTIONS de la web para servicios.
 const _serviceUrgencyOptions = [
-  ('emergency', 'Urgente (hoy)', 'Es una emergencia.'),
-  ('this_week', 'Esta semana', 'Cuando puedas en los próximos días.'),
-  ('flexible', 'Flexible', 'No tengo prisa, busco buen precio.'),
+  ('emergency', 'Urgente (hoy)', 'Es una emergencia.', Icons.priority_high),
+  ('this_week', 'Esta semana', 'Cuando puedas en los próximos días.',
+      Icons.date_range_outlined),
+  ('flexible', 'Flexible', 'No tengo prisa, busco buen precio.',
+      Icons.spa_outlined),
+  ('specific_date', 'Fecha específica', 'Tengo una fecha concreta en mente.',
+      Icons.event_available_outlined),
 ];
 
 /// Foto pendiente de una solicitud: el `dataUrl` base64 viaja a la IA en cada
@@ -93,10 +107,12 @@ class _WholesaleToggle extends StatelessWidget {
   }
 }
 
-/// Rediseño "Jayi te entrevista" (spec 2026-07-19-solicitud-gamificada):
-/// sin burbujas de chat — la mascota pregunta, las opciones son botones de
-/// ancho completo y abajo la tarjeta "Tu solicitud" se va llenando con cada
-/// respuesta (barra honesta "N de ~M"). El contrato con la IA no cambia.
+/// Rediseño "Jayi te entrevista" (spec 2026-07-19-solicitud-gamificada,
+/// ronda 3): la mascota EXPRESIVA entrevista (preguntas de la IA como botones
+/// de ancho completo, tarjeta "Tu solicitud" que se va llenando), y al turno
+/// `ready` aparece el FORMULARIO FINAL de la web — mismos campos, etiquetas y
+/// validaciones que requests/new.tsx (feedback PO: "no son preguntas de la
+/// IA, son parte de un formulario final"). El contrato con la IA no cambia.
 class _CreateRequestScreenState extends State<CreateRequestScreen> {
   final _ai = AiClient();
   final _input = TextEditingController();
@@ -112,18 +128,23 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   final List<_PendingPhoto> _photos = [];
   final List<String> _answers = [];
   AiTurn? _current;
-  int _pop = 0; // key de la micro-reacción de la mascota (cambia por turno)
+  int _pop = 0; // key de la reacción de la mascota (cambia por turno)
   AiReady? _ready;
-  _FormStep? _formStep;
-  String? _condition; // 'nuevo' | 'usado' | 'ambos'
-  String? _urgency; // producto (string de _urgencyOptions)
-  String? _urgencyLevel; // servicio (value de _serviceUrgencyOptions)
-  bool _rubrosConfirmed = false;
+  bool _showOther = false; // composer visible para "Otra respuesta…"
+
+  // ── Formulario final (paridad requests/new.tsx) ────────────────────────
+  bool _wantsNew = false;
+  bool _wantsUsed = false;
+  bool _withShipping = false;
+  bool _withInstallation = false;
+  bool _requiresEvaluation = false;
+  String _urgency = 'Normal - 24 horas'; // default de la web
+  String _serviceModality = '';
+  String _urgencyLevel = '';
+  DateTime? _serviceEventDate;
   Set<String> _selectedRubros = {};
   Map<String, String> _rubroNames = {};
   int _aiAnswered = 0;
-  int _formAnswered = 0;
-  bool _showOther = false; // composer visible para "Otra respuesta…"
 
   /// `force` es SOLO para las continuaciones internas (el auto-"ok" del
   /// routing): se disparan dentro del `try` del envío anterior, cuando `_busy`
@@ -278,37 +299,18 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           _ready = rd;
           _current = rd;
           _pop++;
-          // Si la IA captó el estado en la conversación, ese paso ya está
-          // respondido (paridad con el premarcado de la web).
-          if (_kind == 'producto' && _condition == null && rd.condition != null) {
-            _condition = rd.condition;
-            _answers.add('Estado: ${_conditionLabel(rd.condition!)}');
-            _formAnswered++;
+          // Premarcado del form si la IA captó el estado en la conversación —
+          // paridad exacta con `applyReadyCondition`/`conditionToFlags` web.
+          if (_kind == 'producto' && rd.condition != null) {
+            _wantsNew = rd.condition == 'nuevo' || rd.condition == 'ambos';
+            _wantsUsed = rd.condition == 'usado' || rd.condition == 'ambos';
           }
           if (_selectedRubros.isEmpty) _selectedRubros = _rubros.toSet();
-          _formStep = _nextMissingStep();
         });
         if (_rubroNames.isEmpty && _rubros.isNotEmpty) {
           unawaited(_loadRubroNames());
         }
     }
-  }
-
-  String _conditionLabel(String c) => switch (c) {
-        'nuevo' => 'Nuevo',
-        'usado' => 'Usado',
-        _ => 'Nuevo o usado',
-      };
-
-  /// Primer paso del formulario final que siga sin respuesta (permite volver
-  /// de una corrección directo al resumen si ya se contestó todo).
-  _FormStep _nextMissingStep() {
-    if (_kind == 'producto' && _condition == null) return _FormStep.condition;
-    if (_kind == 'producto' ? _urgency == null : _urgencyLevel == null) {
-      return _FormStep.urgency;
-    }
-    if (!_rubrosConfirmed) return _FormStep.rubros;
-    return _FormStep.review;
   }
 
   Future<void> _loadRubroNames() async {
@@ -318,41 +320,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     } catch (_) {
       // Sin nombres se muestran chips genéricos; no bloquea el flujo.
     }
-  }
-
-  void _answerCondition(String label, String value) => setState(() {
-        _condition = value;
-        _answers.add(label);
-        _formAnswered++;
-        _pop++;
-        _formStep = _nextMissingStep();
-      });
-
-  void _answerUrgency(String label, String value) => setState(() {
-        if (_kind == 'producto') {
-          _urgency = value;
-        } else {
-          _urgencyLevel = value;
-        }
-        _answers.add(label);
-        _formAnswered++;
-        _pop++;
-        _formStep = _nextMissingStep();
-      });
-
-  void _confirmRubros() {
-    if (_selectedRubros.isEmpty) {
-      _toast('Elige al menos un rubro.');
-      return;
-    }
-    setState(() {
-      _rubrosConfirmed = true;
-      _answers.add(
-          'Rubros: ${_selectedRubros.map((id) => _rubroNames[id] ?? 'sugerido').join(', ')}');
-      _formAnswered++;
-      _pop++;
-      _formStep = _nextMissingStep();
-    });
   }
 
   Map<String, dynamic> _turnToJson(AiTurn t) => switch (t) {
@@ -387,12 +354,39 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           },
       };
 
+  /// Gates idénticos al `submit()` de la web (requests/new.tsx L520-570).
   Future<void> _submit() async {
     final r = _ready!;
-    if (_rubros.isEmpty) {
-      _toast('La solicitud no tiene rubros; escribe "corrige la categoría" para reintentar.');
+    final isService = _kind == 'servicio';
+    if (!isService && !_wantsNew && !_wantsUsed) {
+      _toast('Indica si lo quieres nuevo o usado.');
       return;
     }
+    if (isService) {
+      if (_serviceModality.isEmpty) {
+        _toast('Selecciona dónde se hace el servicio.');
+        return;
+      }
+      if (_urgencyLevel.isEmpty) {
+        _toast('Indica cuándo lo necesitas.');
+        return;
+      }
+      if (_serviceModality == 'event' && _serviceEventDate == null) {
+        _toast('Indica la fecha del evento.');
+        return;
+      }
+    }
+    if (_selectedRubros.isEmpty) {
+      _toast('Selecciona al menos un rubro específico.');
+      return;
+    }
+    final conditionValue = _wantsNew && _wantsUsed
+        ? 'ambos'
+        : _wantsNew
+            ? 'nuevo'
+            : _wantsUsed
+                ? 'usado'
+                : '';
     setState(() => _busy = true);
     try {
       // Subir las fotos a Storage antes de insertar (nunca base64 en la BD).
@@ -404,12 +398,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           kind: _kind,
           wholesale: r.wholesale || _wholesale,
           categories: _categories,
-          rubros:
-              _selectedRubros.isEmpty ? _rubros : _selectedRubros.toList(),
+          rubros: _selectedRubros.toList(),
           imageUrls: imageUrls,
-          condition: _condition ?? '',
-          urgency: _urgency ?? 'Normal - 24 horas',
-          urgencyLevel: _urgencyLevel ?? '');
+          condition: conditionValue,
+          urgency: _urgency,
+          withShipping: _withShipping,
+          withInstallation: _withInstallation,
+          requiresEvaluation: _requiresEvaluation,
+          serviceModality: _serviceModality,
+          urgencyLevel: _urgencyLevel,
+          serviceEventDate: _serviceEventDate);
       if (!mounted) return;
       setState(() => _submitted = true);
     } catch (_) {
@@ -480,7 +478,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 _correcting ||
                 _showOther ||
                 (!_busy &&
-                    _formStep == null &&
                     _current is AiQuestion &&
                     (_current as AiQuestion).options.isEmpty)))
           SafeArea(
@@ -535,8 +532,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // La mascota "buscando" — el mismo vacío de la web.
-              const JayaloMascot(size: 76),
+              // La mascota respirando — misma cara "buscando" de la web.
+              const JayaloMascotFace(size: 76),
               const SizedBox(height: 16),
               Text('Sube una foto y describe lo que buscas\npara mejor resultado.',
                   textAlign: TextAlign.center,
@@ -560,8 +557,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         ),
       );
 
-  /// El corazón del rediseño: mascota entrevistadora + pregunta en grande +
-  /// botones de ancho completo + tarjeta "Tu solicitud" que se va llenando.
+  /// El corazón del rediseño: mascota expresiva + pregunta en grande +
+  /// botones de ancho completo + tarjeta "Tu solicitud"; al `ready`, el
+  /// FORMULARIO FINAL de la web.
   Widget _guidedView() {
     final cs = Theme.of(context).colorScheme;
     return ListView(
@@ -569,10 +567,21 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       padding:
           EdgeInsets.fromLTRB(20, 20, 20, 16 + navBarReservedSpace(context)),
       children: [
-        _mascot(),
+        Center(
+          child: JayaloMascotFace(
+            size: 68,
+            reactKey: _pop,
+            // Duda mientras piensa, sonrisa cuando la solicitud está lista.
+            mood: _busy
+                ? MascotMood.thinking
+                : _ready != null
+                    ? MascotMood.happy
+                    : MascotMood.idle,
+          ),
+        ),
         const SizedBox(height: 14),
-        if (_ready != null && _formStep == _FormStep.review)
-          _readyCard(_ready!)
+        if (_ready != null)
+          _finalForm(cs)
         else ...[
           if (_busy)
             Column(children: [
@@ -584,125 +593,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                     style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
               ]),
             ])
-          else if (_formStep != null)
-            _formStepArea(cs)
           else
             _questionArea(cs),
           _buildingCard(cs),
         ],
       ],
     );
-  }
-
-  /// La entrevistadora: respira siempre (bob suave en bucle) y hace un pop de
-  /// escala cuando llega una pregunta nueva. Con reduce-motion queda quieta.
-  Widget _mascot() {
-    Widget m = const JayaloMascot(size: 64);
-    if (!JayaloMotion.reduced(context)) {
-      m = m
-          .animate(onPlay: (c) => c.repeat(reverse: true))
-          .moveY(begin: -3, end: 3, duration: 1300.ms, curve: Curves.easeInOut);
-      m = m.animate(key: ValueKey('mascota-$_pop')).scale(
-          begin: const Offset(.8, .8),
-          end: const Offset(1, 1),
-          duration: 240.ms,
-          curve: Curves.easeOutBack);
-    }
-    return Center(child: m);
-  }
-
-  /// Pasos locales del formulario final (estado / cuándo / rubros) con la
-  /// misma anatomía visual que las preguntas de la IA.
-  Widget _formStepArea(ColorScheme cs) {
-    final String question;
-    String? caption;
-    List<Widget> actions;
-    switch (_formStep!) {
-      case _FormStep.condition:
-        question = '¿Lo quieres nuevo o usado?';
-        actions = [
-          _optionButton('Nuevo', () => _answerCondition('Nuevo', 'nuevo')),
-          _optionButton('Usado', () => _answerCondition('Usado', 'usado')),
-          _optionButton('Me da igual',
-              () => _answerCondition('Nuevo o usado', 'ambos')),
-        ];
-      case _FormStep.urgency:
-        if (_kind == 'producto') {
-          question = '¿Para cuándo lo necesitas?';
-          actions = [
-            for (final (value, desc) in _urgencyOptions)
-              _optionButton(value, () => _answerUrgency(value, value),
-                  desc: desc),
-          ];
-        } else {
-          question = '¿Para cuándo necesitas el servicio?';
-          actions = [
-            for (final (value, title, desc) in _serviceUrgencyOptions)
-              _optionButton(title, () => _answerUrgency(title, value),
-                  desc: desc),
-          ];
-        }
-      case _FormStep.rubros:
-        question = '¿Qué rubros de proveedores deben recibirla?';
-        caption = 'Sugeridos según tu solicitud — toca para quitar o poner.';
-        actions = [
-          if (_rubroNames.isEmpty && _rubros.isNotEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 10),
-              child: Center(child: JayaloSpinner(size: 16)),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                alignment: WrapAlignment.center,
-                children: [
-                  for (final id in _rubros)
-                    FilterChip(
-                      label: Text(_rubroNames[id] ?? 'Sugerido'),
-                      selected: _selectedRubros.contains(id),
-                      onSelected: (on) => setState(() {
-                        if (on) {
-                          _selectedRubros.add(id);
-                        } else {
-                          _selectedRubros.remove(id);
-                        }
-                      }),
-                    ),
-                ],
-              ),
-            ),
-          Center(
-            child: FilledButton(
-                onPressed: _confirmRubros,
-                child: const Text('Confirmar rubros')),
-          ),
-        ];
-      case _FormStep.review:
-        return const SizedBox.shrink();
-    }
-    return Column(
-      key: ValueKey('paso-$_formStep-$_pop'),
-      children: [
-        Text(question,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: 20,
-                height: 1.3,
-                fontWeight: FontWeight.w500,
-                color: jayaloHead(context))),
-        if (caption != null) ...[
-          const SizedBox(height: 6),
-          Text(caption,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-        ],
-        const SizedBox(height: 16),
-        ...actions,
-      ],
-    ).animate().fadeIn(duration: 200.ms);
   }
 
   Widget _questionArea(ColorScheme cs) {
@@ -782,9 +678,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   }
 
   /// Botón-respuesta de ancho completo (doctrina: sin bordes, sombra cálida).
-  /// Con `desc` se vuelve de dos líneas (título + explicación pequeña).
-  Widget _optionButton(String label, VoidCallback onTap,
-      {IconData? icon, String? desc}) {
+  Widget _optionButton(String label, VoidCallback onTap, {IconData? icon}) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -801,26 +695,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             onTap: _busy ? null : onTap,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 18, color: cs.primary),
-                    const SizedBox(width: 8),
-                  ],
-                  Flexible(
-                    child: Text(label,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 14.5, color: jayaloHead(context))),
-                  ),
-                ]),
-                if (desc != null) ...[
-                  const SizedBox(height: 2),
-                  Text(desc,
-                      textAlign: TextAlign.center,
-                      style:
-                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 18, color: cs.primary),
+                  const SizedBox(width: 8),
                 ],
+                Flexible(
+                  child: Text(label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 14.5, color: jayaloHead(context))),
+                ),
               ]),
             ),
           ),
@@ -832,14 +717,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// "Tu solicitud" — la esencia a la vista: fotos, descripción y cada
   /// respuesta con su check, más la barra honesta "N de ~M".
   Widget _buildingCard(ColorScheme cs) {
-    // Meta honesta: preguntas estimadas de la IA + los pasos fijos del
-    // formulario final (estado solo en producto). Llega a 100 % en el resumen.
-    final formTotal = _kind == 'producto' ? 3 : 2;
-    final total =
-        estimatedTotal(answered: _aiAnswered, wholesale: _wholesale) + formTotal;
-    final answered = _aiAnswered + _formAnswered;
-    final frac =
-        _formStep == _FormStep.review ? 1.0 : (answered / total).clamp(0.0, .96);
+    final total = estimatedTotal(answered: _aiAnswered, wholesale: _wholesale);
+    final frac = (_aiAnswered / total).clamp(0.0, .96);
     // Lila del detalle sin foto (JayaloStatus.responded) — tinta violeta.
     const bg = Color(0xFFEDEBFF);
     const ink = Color(0xFF3C3489);
@@ -857,7 +736,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               style: TextStyle(
                   fontSize: 13, fontWeight: FontWeight.w500, color: cs.primary)),
           const Spacer(),
-          Text('$answered de ~$total',
+          Text('$_aiAnswered de ~$total',
               style: const TextStyle(fontSize: 12, color: ink)),
         ]),
         const SizedBox(height: 8),
@@ -920,60 +799,241 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     );
   }
 
-  /// Turno `ready`: la tarjeta final protagonista.
-  Widget _readyCard(AiReady r) => JayaloCard(
-        padding: const EdgeInsets.all(16),
-        margin: EdgeInsets.zero,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('¡Listo! Revisa tu solicitud:',
-              style: TextStyle(
-                  fontSize: 13,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 8),
-          Text(r.title,
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: jayaloHead(context))),
-          const SizedBox(height: 8),
-          for (final b in r.bullets) Text('• $b'),
-          if (_kind == 'producto' && _condition != null)
-            Text('• Estado: ${_conditionLabel(_condition!)}'),
-          if (_urgency != null || _urgencyLevel != null)
-            Text(
-                '• Cuándo: ${_kind == 'producto' ? _urgency! : _serviceUrgencyOptions.firstWhere((o) => o.$1 == _urgencyLevel, orElse: () => (_urgencyLevel!, _urgencyLevel!, '')).$2}'),
-          if (_selectedRubros.isNotEmpty)
-            Text(
-                '• Rubros: ${_selectedRubros.map((id) => _rubroNames[id] ?? 'sugerido').join(', ')}'),
-          if (r.wholesale || _wholesale)
-            Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: StatusChip(
-                    label: 'Al por mayor',
-                    icon: Icons.storefront_outlined,
-                    tone: Theme.of(context).brightness == Brightness.dark
-                        ? JayaloStatus.respondedDark
-                        : JayaloStatus.respondedLight)),
-          const SizedBox(height: 12),
-          Row(children: [
-            FilledButton(
-                onPressed: _busy ? null : _submit,
-                child: _busy
-                    ? const JayaloSpinner(size: 16, color: Colors.white)
-                    : const Text('Enviar solicitud')),
-            const SizedBox(width: 8),
-            TextButton(
-                onPressed: _busy
-                    ? null
-                    : () => setState(() {
-                          _ready = null;
-                          _formStep = null;
-                          _correcting = true;
-                        }),
-                child: const Text('Corregir algo')),
-          ]),
+  // ── FORMULARIO FINAL (paridad requests/new.tsx) ────────────────────────
+
+  Widget _sectionTitle(String text, {bool required = false}) => Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: Row(children: [
+          Flexible(
+            child: Text(text,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: jayaloHead(context))),
+          ),
+          if (required)
+            Text(' *', style: TextStyle(color: Theme.of(context).colorScheme.error)),
         ]),
       );
+
+  /// Checkbox de dos líneas del form final (Nuevo / Usado / Con envío…),
+  /// mismas etiquetas y descripciones que la web.
+  Widget _checkTile(String title, String desc, bool value,
+      ValueChanged<bool> onChanged) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Material(
+        color: value ? const Color(0xFFEDEBFF) : cs.surface,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _busy ? null : () => onChanged(!value),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Row(children: [
+              Icon(value ? Icons.check_box : Icons.check_box_outline_blank,
+                  size: 20, color: value ? cs.primary : cs.onSurfaceVariant),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: TextStyle(
+                              fontSize: 14, color: jayaloHead(context))),
+                      Text(desc,
+                          style: TextStyle(
+                              fontSize: 12, color: cs.onSurfaceVariant)),
+                    ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Opción exclusiva de dos líneas (cuándo / dónde), estilo web: activa =
+  /// lavado lila; sin bordes (doctrina).
+  Widget _selectTile(String title, String desc, bool selected,
+      VoidCallback onTap, {IconData? icon}) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Material(
+        color: selected ? const Color(0xFFEDEBFF) : cs.surface,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _busy ? null : onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+            child: Row(children: [
+              if (icon != null) ...[
+                Icon(icon, size: 18, color: cs.primary),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight:
+                                  selected ? FontWeight.w500 : FontWeight.w400,
+                              color: jayaloHead(context))),
+                      Text(desc,
+                          style: TextStyle(
+                              fontSize: 12, color: cs.onSurfaceVariant)),
+                    ]),
+              ),
+              if (selected) Icon(Icons.check_circle, size: 18, color: cs.primary),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// El formulario final COMPLETO de la web tras el `ready`: resumen de la IA
+  /// + rubro específico + (producto: checkboxes y "¿Cuándo quieres comprar?" /
+  /// servicio: dónde y cuándo) + Enviar.
+  Widget _finalForm(ColorScheme cs) {
+    final r = _ready!;
+    final isService = _kind == 'servicio';
+    return Column(
+      key: const ValueKey('form-final'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        JayaloCard(
+          padding: const EdgeInsets.all(16),
+          margin: EdgeInsets.zero,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.check_circle, size: 18, color: cs.primary),
+              const SizedBox(width: 6),
+              Text('Esto es lo que entendí',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: cs.primary)),
+            ]),
+            const SizedBox(height: 8),
+            Text(r.title,
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: jayaloHead(context))),
+            const SizedBox(height: 8),
+            for (final b in r.bullets) Text('• $b'),
+            if (r.wholesale || _wholesale)
+              Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: StatusChip(
+                      label: 'Al por mayor',
+                      icon: Icons.storefront_outlined,
+                      tone: Theme.of(context).brightness == Brightness.dark
+                          ? JayaloStatus.respondedDark
+                          : JayaloStatus.respondedLight)),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        _sectionTitle('Rubro específico', required: true),
+        Text('Para que solo proveedores realmente especializados reciban tu solicitud.',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        const SizedBox(height: 8),
+        if (_rubroNames.isEmpty && _rubros.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Center(child: JayaloSpinner(size: 16)),
+          )
+        else
+          Wrap(spacing: 8, runSpacing: 6, children: [
+            for (final id in _rubros)
+              FilterChip(
+                label: Text(_rubroNames[id] ?? 'Sugerido'),
+                selected: _selectedRubros.contains(id),
+                onSelected: (on) => setState(() {
+                  if (on) {
+                    _selectedRubros.add(id);
+                  } else {
+                    _selectedRubros.remove(id);
+                  }
+                }),
+              ),
+          ]),
+        const SizedBox(height: 16),
+        if (!isService) ...[
+          _checkTile('Nuevo', 'Producto sin uso previo.', _wantsNew,
+              (v) => setState(() => _wantsNew = v)),
+          _checkTile('Usado', 'Acepto producto de segunda mano.', _wantsUsed,
+              (v) => setState(() => _wantsUsed = v)),
+          _checkTile('Con envío', 'Que coticen también el envío.', _withShipping,
+              (v) => setState(() => _withShipping = v)),
+          _checkTile('Con instalación', 'Que incluyan el costo de instalación.',
+              _withInstallation, (v) => setState(() => _withInstallation = v)),
+          _checkTile('Requiere evaluación', 'El precio depende de revisar en sitio.',
+              _requiresEvaluation, (v) => setState(() => _requiresEvaluation = v)),
+          const SizedBox(height: 16),
+          _sectionTitle('¿Cuándo quieres comprar?'),
+          const SizedBox(height: 6),
+          for (final (value, title, desc) in _urgencyOptions)
+            _selectTile(title, desc, _urgency == value,
+                () => setState(() => _urgency = value)),
+        ] else ...[
+          _sectionTitle('¿Dónde se hace el servicio?', required: true),
+          const SizedBox(height: 6),
+          for (final (value, title, desc, icon) in _serviceModalityOptions)
+            _selectTile(title, desc, _serviceModality == value,
+                () => setState(() => _serviceModality = value), icon: icon),
+          if (_serviceModality == 'event') ...[
+            const SizedBox(height: 6),
+            _selectTile(
+                _serviceEventDate == null
+                    ? 'Elegir la fecha del evento'
+                    : 'Fecha: ${_serviceEventDate!.day.toString().padLeft(2, '0')}/${_serviceEventDate!.month.toString().padLeft(2, '0')}/${_serviceEventDate!.year}',
+                'Toca para cambiarla.',
+                _serviceEventDate != null, () async {
+              final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _serviceEventDate ??
+                      DateTime.now().add(const Duration(days: 7)),
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime.now().add(const Duration(days: 365)));
+              if (picked != null) {
+                setState(() => _serviceEventDate = picked);
+              }
+            }, icon: Icons.event_outlined),
+          ],
+          const SizedBox(height: 16),
+          _sectionTitle('¿Cuándo lo necesitas?', required: true),
+          const SizedBox(height: 6),
+          for (final (value, title, desc, icon) in _serviceUrgencyOptions)
+            _selectTile(title, desc, _urgencyLevel == value,
+                () => setState(() => _urgencyLevel = value), icon: icon),
+        ],
+        const SizedBox(height: 18),
+        Row(children: [
+          FilledButton(
+              onPressed: _busy ? null : _submit,
+              child: _busy
+                  ? const JayaloSpinner(size: 16, color: Colors.white)
+                  : const Text('Enviar solicitud')),
+          const SizedBox(width: 8),
+          TextButton(
+              onPressed: _busy
+                  ? null
+                  : () => setState(() {
+                        _ready = null;
+                        _correcting = true;
+                      }),
+              child: const Text('Corregir algo')),
+        ]),
+      ],
+    ).animate().fadeIn(duration: 200.ms);
+  }
 
   Widget _successView() => RequestPublishedView(
         onSeeRequests: () => context.go('/client'),

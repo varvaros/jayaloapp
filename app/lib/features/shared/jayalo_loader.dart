@@ -308,6 +308,11 @@ class _SpinnerPainter extends CustomPainter {
 }
 
 /// Dibuja el isotipo con las coordenadas exactas del SVG (viewBox 200x200).
+///
+/// Los parámetros de EXPRESIÓN (`happyEye`, `smile`, `doubtMouth`, `bodyDy`,
+/// `bodyRotate`) tienen default 0 = isotipo puro, idéntico al de la marca.
+/// Solo [JayaloMascotFace] los usa (gamificación de crear-solicitud); el
+/// loader y los estados vacíos siguen dibujando la mascota canónica.
 class _MascotPainter extends CustomPainter {
   const _MascotPainter({
     required this.antennaLeft,
@@ -315,6 +320,11 @@ class _MascotPainter extends CustomPainter {
     required this.eyeScaleY,
     required this.pupilDx,
     this.pupilDy = 0,
+    this.happyEye = 0,
+    this.smile = 0,
+    this.doubtMouth = 0,
+    this.bodyDy = 0,
+    this.bodyRotate = 0,
   });
 
   /// Grados de rotación de cada antena sobre su punto de anclaje al cuerpo.
@@ -326,11 +336,29 @@ class _MascotPainter extends CustomPainter {
   final double pupilDx;
   final double pupilDy;
 
+  /// 0..1: el ojo se convierte en el arco feliz "∩" (celebración).
+  final double happyEye;
+
+  /// 0..1: sonrisa "‿" bajo el ojo (0 = sin boca, isotipo puro).
+  final double smile;
+
+  /// 0..1: boquita ladeada de duda (excluyente con [smile] en la práctica).
+  final double doubtMouth;
+
+  /// Salto y giro del cuerpo entero (px / grados del viewBox) — celebración.
+  final double bodyDy;
+  final double bodyRotate;
+
   @override
   void paint(Canvas canvas, Size size) {
     final s = size.width / 200;
     canvas.save();
     canvas.scale(s);
+
+    // Grupo del cuerpo completo: salto + giro sobre el centro (97,109).
+    canvas.translate(97, 109 + bodyDy);
+    canvas.rotate(bodyRotate * math.pi / 180);
+    canvas.translate(-97, -109);
 
     final violet = Paint()..color = JayaloColors.mascot;
     final stroke = Paint()
@@ -351,15 +379,52 @@ class _MascotPainter extends CustomPainter {
             const Rect.fromLTWH(29, 42, 136, 135), const Radius.circular(33)),
         violet);
 
-    // Ojo (parpadea escalando en Y sobre su centro) + pupila.
+    // Ojo. Con happyEye el círculo se funde en el arco feliz "∩" (ojo cerrado
+    // de alegría, estilo ^_^): el círculo se achata y el arco toma su lugar.
     const eyeCenter = Offset(67, 86);
-    canvas.save();
-    canvas.translate(eyeCenter.dx, eyeCenter.dy);
-    canvas.scale(1, math.max(eyeScaleY, .001));
-    canvas.translate(-eyeCenter.dx, -eyeCenter.dy);
-    canvas.drawCircle(eyeCenter, 29, Paint()..color = Colors.white);
-    canvas.drawCircle(Offset(82 + pupilDx, 86 + pupilDy), 9.5, violet);
-    canvas.restore();
+    final effectiveEyeY = eyeScaleY * (1 - happyEye);
+    if (effectiveEyeY > .04) {
+      canvas.save();
+      canvas.translate(eyeCenter.dx, eyeCenter.dy);
+      canvas.scale(1, math.max(effectiveEyeY, .001));
+      canvas.translate(-eyeCenter.dx, -eyeCenter.dy);
+      canvas.drawCircle(eyeCenter, 29, Paint()..color = Colors.white);
+      canvas.drawCircle(Offset(82 + pupilDx, 86 + pupilDy), 9.5, violet);
+      canvas.restore();
+    }
+    if (happyEye > 0) {
+      final happy = Paint()
+        ..color = Colors.white.withValues(alpha: happyEye.clamp(0.0, 1.0))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 10
+        ..strokeCap = StrokeCap.round;
+      final arc = Path()
+        ..moveTo(45, 92)
+        ..quadraticBezierTo(67, 92 - 30 * happyEye, 89, 92);
+      canvas.drawPath(arc, happy);
+    }
+
+    // Boca — solo en estados expresivos. Sonrisa "‿" centrada bajo el ojo.
+    if (smile > 0) {
+      final m = Paint()
+        ..color = Colors.white.withValues(alpha: smile.clamp(0.0, 1.0))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round;
+      final mouth = Path()
+        ..moveTo(58, 130)
+        ..quadraticBezierTo(78, 130 + 20 * smile, 98, 130);
+      canvas.drawPath(mouth, m);
+    }
+    // Boquita ladeada de duda ("mmm…").
+    if (doubtMouth > 0) {
+      final m = Paint()
+        ..color = Colors.white.withValues(alpha: doubtMouth.clamp(0.0, 1.0))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 7
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(const Offset(62, 133), const Offset(82, 127), m);
+    }
 
     canvas.restore();
   }
@@ -380,5 +445,229 @@ class _MascotPainter extends CustomPainter {
       old.antennaRight != antennaRight ||
       old.eyeScaleY != eyeScaleY ||
       old.pupilDx != pupilDx ||
-      old.pupilDy != pupilDy;
+      old.pupilDy != pupilDy ||
+      old.happyEye != happyEye ||
+      old.smile != smile ||
+      old.doubtMouth != doubtMouth ||
+      old.bodyDy != bodyDy ||
+      old.bodyRotate != bodyRotate;
+}
+
+/// Estados de ánimo de la mascota para la gamificación de crear-solicitud.
+enum MascotMood { idle, thinking, happy, celebrate }
+
+/// Parámetros de cara/cuerpo de un instante; se interpolan entre ánimos.
+class _MoodFrame {
+  const _MoodFrame({
+    this.antennaLeft = 0,
+    this.antennaRight = 0,
+    this.eyeScaleY = 1,
+    this.pupilDx = 0,
+    this.pupilDy = 0,
+    this.happyEye = 0,
+    this.smile = 0,
+    this.doubtMouth = 0,
+    this.bodyDy = 0,
+    this.bodyRotate = 0,
+  });
+  final double antennaLeft, antennaRight, eyeScaleY, pupilDx, pupilDy;
+  final double happyEye, smile, doubtMouth, bodyDy, bodyRotate;
+
+  static _MoodFrame lerp(_MoodFrame a, _MoodFrame b, double t) => _MoodFrame(
+        antennaLeft: a.antennaLeft + (b.antennaLeft - a.antennaLeft) * t,
+        antennaRight: a.antennaRight + (b.antennaRight - a.antennaRight) * t,
+        eyeScaleY: a.eyeScaleY + (b.eyeScaleY - a.eyeScaleY) * t,
+        pupilDx: a.pupilDx + (b.pupilDx - a.pupilDx) * t,
+        pupilDy: a.pupilDy + (b.pupilDy - a.pupilDy) * t,
+        happyEye: a.happyEye + (b.happyEye - a.happyEye) * t,
+        smile: a.smile + (b.smile - a.smile) * t,
+        doubtMouth: a.doubtMouth + (b.doubtMouth - a.doubtMouth) * t,
+        bodyDy: a.bodyDy + (b.bodyDy - a.bodyDy) * t,
+        bodyRotate: a.bodyRotate + (b.bodyRotate - a.bodyRotate) * t,
+      );
+}
+
+/// La mascota con EXPRESIONES, estilo motion graphic (gamificación de
+/// crear-solicitud, pedido PO 2026-07-20):
+///
+/// - [MascotMood.idle]      → respira, parpadea y escanea con la pupila.
+/// - [MascotMood.thinking]  → ojo entrecerrado mirando arriba, boquita
+///                            ladeada, cabeza inclinada, una antena alzada.
+/// - [MascotMood.happy]     → ojo achinado + sonrisa (el resumen final).
+/// - [MascotMood.celebrate] → ojo feliz "∩", sonrisón, saltitos y antenas
+///                            vibrando (pantalla de éxito, con el confeti).
+///
+/// El cambio de ánimo se funde en 240ms (ease-in-out, morph en pantalla) y
+/// [reactKey] dispara un pop de escala (240ms ease-out-back) — la reacción
+/// "¡nueva pregunta!". Con "reducir animaciones" del sistema queda la cara
+/// del ánimo, quieta.
+class JayaloMascotFace extends StatefulWidget {
+  const JayaloMascotFace({
+    super.key,
+    this.size = 72,
+    this.mood = MascotMood.idle,
+    this.reactKey = 0,
+    this.semanticsLabel,
+  });
+  final double size;
+  final MascotMood mood;
+  final int reactKey;
+  final String? semanticsLabel;
+
+  @override
+  State<JayaloMascotFace> createState() => _JayaloMascotFaceState();
+}
+
+class _JayaloMascotFaceState extends State<JayaloMascotFace>
+    with TickerProviderStateMixin {
+  late final AnimationController _clock =
+      AnimationController(vsync: this, duration: _cycle)..repeat();
+  // Fundido entre el ánimo anterior y el nuevo (morph: ease-in-out cúbico).
+  late final AnimationController _blend = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 240), value: 1);
+  // Pop de reacción a pregunta nueva.
+  late final AnimationController _pulse = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 240), value: 1);
+  late MascotMood _prevMood = widget.mood;
+
+  @override
+  void didUpdateWidget(covariant JayaloMascotFace old) {
+    super.didUpdateWidget(old);
+    if (old.mood != widget.mood) {
+      _prevMood = old.mood;
+      _blend.forward(from: 0);
+    }
+    if (old.reactKey != widget.reactKey) _pulse.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _clock.dispose();
+    _blend.dispose();
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  /// La cara viva de cada ánimo en el instante `t` (segundos del reloj).
+  _MoodFrame _frame(MascotMood mood, double t) => switch (mood) {
+        MascotMood.idle => _MoodFrame(
+            antennaLeft: -3 + 6 * _pingPong(t, _antennaLeftPeriod),
+            antennaRight: 3 - 6 * _pingPong(t, _antennaRightPeriod),
+            eyeScaleY: _keyframes((t % _blinkPeriod) / _blinkPeriod, const [
+              (0, 1),
+              (.84, 1),
+              (.88, .08),
+              (.92, 1),
+              (1, 1),
+            ]),
+            pupilDx: _keyframes((t % _scanPeriod) / _scanPeriod, const [
+              (0, -9),
+              (.16, -9),
+              (.46, 4),
+              (.64, 4),
+              (.92, -9),
+              (1, -9),
+            ]),
+            bodyDy: 2 - 4 * _pingPong(t, 2.4), // respiración
+          ),
+        MascotMood.thinking => _MoodFrame(
+            // "Mmm…": mira arriba-izquierda, cabeza ladeada, antena alzada.
+            antennaLeft: 8 + 4 * _pingPong(t, 1.2),
+            antennaRight: -2 + 3 * _pingPong(t, 1.7),
+            eyeScaleY: .78,
+            pupilDx: -8 + 2 * _pingPong(t, 2.0),
+            pupilDy: -9,
+            doubtMouth: 1,
+            bodyRotate: -3 + 1.5 * _pingPong(t, 2.4),
+            bodyDy: 1 - 2 * _pingPong(t, 2.8),
+          ),
+        MascotMood.happy => _MoodFrame(
+            antennaLeft: -4 + 8 * _pingPong(t, 1.4),
+            antennaRight: 4 - 8 * _pingPong(t, 1.8),
+            eyeScaleY: 1,
+            happyEye: .45,
+            smile: .8,
+            pupilDy: 3,
+            bodyDy: 2 - 4 * _pingPong(t, 2.0),
+          ),
+        MascotMood.celebrate => _MoodFrame(
+            // Fiesta: saltitos, antenas a toda vibración, giro juguetón.
+            antennaLeft: 10 * math.sin(t * math.pi * 2 / .5),
+            antennaRight: -10 * math.sin(t * math.pi * 2 / .55),
+            eyeScaleY: 1,
+            happyEye: 1,
+            smile: 1,
+            bodyDy: -14 * Curves.easeOut.transform(_pingPong(t, .9)),
+            bodyRotate: 4 * math.sin(t * math.pi * 2 / 1.8),
+          ),
+      };
+
+  /// Cara estática representativa (reduce-motion): el ánimo sin movimiento.
+  _MoodFrame _still(MascotMood mood) => switch (mood) {
+        MascotMood.idle => const _MoodFrame(pupilDx: -9),
+        MascotMood.thinking => const _MoodFrame(
+            eyeScaleY: .78,
+            pupilDx: -8,
+            pupilDy: -9,
+            doubtMouth: 1,
+            bodyRotate: -3),
+        MascotMood.happy => const _MoodFrame(happyEye: .45, smile: .8),
+        MascotMood.celebrate => const _MoodFrame(happyEye: 1, smile: 1),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.disableAnimationsOf(context)) {
+      final f = _still(widget.mood);
+      final art = CustomPaint(
+        size: Size.square(widget.size),
+        painter: _MascotPainter(
+          antennaLeft: f.antennaLeft,
+          antennaRight: f.antennaRight,
+          eyeScaleY: f.eyeScaleY,
+          pupilDx: f.pupilDx,
+          pupilDy: f.pupilDy,
+          happyEye: f.happyEye,
+          smile: f.smile,
+          doubtMouth: f.doubtMouth,
+          bodyDy: f.bodyDy,
+          bodyRotate: f.bodyRotate,
+        ),
+      );
+      return widget.semanticsLabel == null
+          ? art
+          : Semantics(label: widget.semanticsLabel, child: art);
+    }
+    return AnimatedBuilder(
+      animation: Listenable.merge([_clock, _blend, _pulse]),
+      builder: (context, _) {
+        final t = _clock.value * _cycle.inSeconds;
+        final mix = Curves.easeInOutCubic.transform(_blend.value);
+        final f = _MoodFrame.lerp(
+            _frame(_prevMood, t), _frame(widget.mood, t), mix);
+        final pop = 1 + .14 * (1 - Curves.easeOutBack.transform(_pulse.value));
+        final art = Transform.scale(
+          scale: pop,
+          child: CustomPaint(
+            size: Size.square(widget.size),
+            painter: _MascotPainter(
+              antennaLeft: f.antennaLeft,
+              antennaRight: f.antennaRight,
+              eyeScaleY: f.eyeScaleY,
+              pupilDx: f.pupilDx,
+              pupilDy: f.pupilDy,
+              happyEye: f.happyEye,
+              smile: f.smile,
+              doubtMouth: f.doubtMouth,
+              bodyDy: f.bodyDy,
+              bodyRotate: f.bodyRotate,
+            ),
+          ),
+        );
+        return widget.semanticsLabel == null
+            ? art
+            : Semantics(label: widget.semanticsLabel, child: art);
+      },
+    );
+  }
 }

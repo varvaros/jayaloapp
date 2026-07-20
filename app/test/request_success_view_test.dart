@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/client/request_success_view.dart';
+import 'package:jayalo_app/features/shared/jayalo_loader.dart';
 
 /// Contrato del éxito al publicar (spec solicitud-gamificada): mensaje claro
 /// de que la solicitud quedó publicada, confeti de una sola pasada y un botón
@@ -22,7 +23,10 @@ void main() {
     expect(find.byType(ConfettiBurst), findsOneWidget);
     await tester.tap(find.text('Ver mis solicitudes'));
     expect(taps, 1);
-    // El confeti es de una pasada: al terminar no queda nada animando.
-    await tester.pumpAndSettle();
+    // La mascota celebra en BUCLE (por diseño, ronda 3): no se puede usar
+    // pumpAndSettle aquí — basta avanzar más allá del confeti (1.8s) y
+    // verificar que la pantalla sigue viva sin excepciones.
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.byType(JayaloMascotFace), findsOneWidget);
   });
 }
