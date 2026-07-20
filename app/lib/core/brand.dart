@@ -19,14 +19,18 @@ import 'package:flutter/material.dart';
 
 abstract final class JayaloColors {
   // ── Claro · paleta cálida "arena" (mockups aprobados, tokens `.warm`) ──────
-  static const background = Color(0xFFF8F4EC); // --bg arena
+  // Fondo y neutros: gris claro FRÍO (decisión PO 2026-07-20, REVIERTE la
+  // "arena" cálida del mockup 07-19 solo para estos neutros). El violeta de
+  // acción, las tarjetas blancas y las tintas violáceas de texto no cambian:
+  // la identidad la cargan el violeta + la tipografía, no el fondo.
+  static const background = Color(0xFFF1F3F6); // --bg gris claro frío
   static const foreground = Color(0xFF4A4458); // --fg gris violáceo (cuerpo)
   static const head = Color(0xFF3E3560); //       --head violeta oscuro (títulos)
   static const card = Color(0xFFFFFFFF); //       --card
   static const primary = Color(0xFF7147F2); //    --pri (acción, = isotipo)
   static const primaryFg = Color(0xFFFCFCFC);
-  static const secondary = Color(0xFFF1ECE1); //  neutro cálido (segmentos)
-  static const muted = Color(0xFFF1ECE1);
+  static const secondary = Color(0xFFE9ECF1); //  neutro frío (segmentos)
+  static const muted = Color(0xFFE9ECF1);
   static const mutedFg = Color(0xFF847D8F); //    --mut
   // ⚠️ LA NAVBAR ESTÁ CERRADA (no se toca). Su píldora es `primaryContainer`
   // (= accent) y sus ítems `onPrimaryContainer` (= accentFg). Por eso estos
@@ -38,13 +42,15 @@ abstract final class JayaloColors {
   static const accentFg = Color(0xFF3C1590); //   violeta oscuro de acento
   static const destructive = Color(0xFFEA2126);
   static const success = Color(0xFF00A159);
-  static const border = Color(0xFFE7E0D2); //     línea cálida discreta
-  static const input = Color(0xFFEFE9DE); //      relleno de campo cálido
+  static const border = Color(0xFFE1E4EA); //     línea fría discreta
+  static const input = Color(0xFFEAEDF2); //      relleno de campo frío
 
-  /// Sombra cálida única de las tarjetas que flotan (`--shadow` del mockup:
-  /// `rgba(93,72,38,.09)`). La elevación de la app es SOLO esta sombra: nada
-  /// de bordes (doctrina "tarjetas sin borde").
-  static const warmShadow = Color(0x175D4826);
+  /// Sombra única de las tarjetas que flotan. Enfriada junto con el fondo
+  /// (2026-07-20): una sombra cálida marrón sobre el gris frío se veía turbia;
+  /// ahora es una sombra pizarra fría al mismo ~9%. La elevación de la app es
+  /// SOLO esta sombra: nada de bordes (doctrina "tarjetas sin borde"). El nombre
+  /// `warmShadow` se conserva por no tocar sus usos; ya no es cálida.
+  static const warmShadow = Color(0x17263143);
 
   // ── Oscuro ───────────────────────────────────────────────────────────────
   static const dBackground = Color(0xFF080D16);

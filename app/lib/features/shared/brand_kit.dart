@@ -495,11 +495,12 @@ class PillSegmented extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    // Pista arena en claro; en oscuro cae a la superficie más contenida del
-    // esquema para no clavar un beige que no pega sobre fondo oscuro.
+    // Pista = neutro de la marca (`secondary`, hoy gris frío) en claro; en
+    // oscuro cae a la superficie más contenida del esquema. Antes clavaba el
+    // arena `#F1ECE1` a mano — ahora sale del token para seguir la paleta.
     final track = dark
         ? Theme.of(context).colorScheme.surfaceContainerHighest
-        : const Color(0xFFF1ECE1);
+        : JayaloColors.secondary;
     final activeBg = dark
         ? Theme.of(context).colorScheme.surfaceContainerLowest
         : Colors.white;
