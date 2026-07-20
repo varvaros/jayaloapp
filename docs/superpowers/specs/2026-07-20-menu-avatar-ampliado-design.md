@@ -48,11 +48,14 @@ Role-aware, como ya es `openProfileMenu` (`roleStore.value`).
 
 **Proveedor:**
 
-1. **Encabezado** (nuevo): foto/inicial + nombre desde `profileStore`, y un chip
-   **"N créditos"**. El saldo se obtiene con `walletBalance()` al abrir el menú,
-   **best-effort**: si falla o aún no cargó, se omite el número (nunca rompe el
-   menú, mismo espíritu que el resto de fetches de `profileStore`). No se cachea
-   en un store nuevo — es una llamada por apertura del menú, aceptable.
+1. **Encabezado** (nuevo): foto/inicial + nombre desde `profileStore`, y debajo
+   una **banda de créditos RESALTADA** — el saldo **"N créditos"** en número
+   grande y violeta sobre una banda teñida, con un **"+"** violeta al lado para
+   recargar (abre el wallet externo). Los créditos son el core del negocio, por
+   eso se destacan. El saldo se obtiene con `walletBalance()` al abrir el menú,
+   **best-effort**: si falla o aún no cargó, la banda muestra "Créditos" sin
+   número pero el "+" sigue disponible (recargar nunca queda inalcanzable). No se
+   cachea en un store nuevo — una llamada por apertura del menú, aceptable.
 2. **Ítems**, en este orden (agrupación implícita: primero "yo como comprador",
    luego "mi negocio", luego cuenta; separadas por un `Divider` sutil, sin
    encabezados de sección):
@@ -62,7 +65,8 @@ Role-aware, como ya es `openProfileMenu` (`roleStore.value`).
      para el proveedor: lo que ofrecen los demás, no su propio negocio)*
    - — divider —
    - Estadísticas → `/provider/stats` *(ya existía)*
-   - Recargar créditos → wallet externo
+   - Recargar créditos → wallet externo *(se conserva junto al "+" de la banda:
+     recargar es el core del negocio, la redundancia es deliberada)*
    - — divider —
    - Ajustes → `/settings` *(ya existía)*
 

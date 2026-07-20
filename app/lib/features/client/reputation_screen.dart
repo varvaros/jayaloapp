@@ -27,7 +27,7 @@ class _ReputationScreenState extends State<ReputationScreen> {
   Widget build(BuildContext context) => Scaffold(
         body: Column(children: [
           const VioletHeader(
-            leading: HeaderAvatar(),
+            leading: HeaderLeading(),
             title: 'Mi reputación',
             actions: [HeaderBell()],
           ),

@@ -33,12 +33,22 @@ void main() {
           GoRoute(
               path: '/provider/stats',
               builder: (_, _) => const Text('pantalla de estadísticas')),
+          GoRoute(
+              path: '/client',
+              builder: (_, _) => const Text('pantalla de mis solicitudes')),
+          GoRoute(
+              path: '/client/reputation',
+              builder: (_, _) => const Text('pantalla de reputación')),
+          GoRoute(
+              path: '/catalog',
+              builder: (_, _) => const Text('pantalla de otros proveedores')),
         ],
       );
 
-  Widget host() => MaterialApp.router(
+  Widget host({Future<int?> Function()? balanceFetch}) => MaterialApp.router(
         theme: jayaloTheme(Brightness.light),
-        routerConfig: routerWithHome(const ProfileAvatarButton()),
+        routerConfig:
+            routerWithHome(ProfileAvatarButton(balanceFetch: balanceFetch)),
       );
 
   Future<void> abrirMenu(WidgetTester tester) async {
@@ -89,6 +99,79 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('pantalla de estadísticas'), findsOneWidget);
+  });
+
+  testWidgets(
+      'proveedor: el menú ofrece las pantallas de comprador, negocio y ajustes',
+      (tester) async {
+    roleStore.value = RoleState.provider;
+    await tester.pumpWidget(host(balanceFetch: () async => 5));
+    await tester.pumpAndSettle();
+    await abrirMenu(tester);
+
+    expect(find.text('Mis solicitudes'), findsOneWidget);
+    expect(find.text('Reputación'), findsOneWidget);
+    expect(find.text('Otros proveedores'), findsOneWidget);
+    expect(find.text('Estadísticas'), findsOneWidget);
+    // La fila de recargar se conserva (recargar es el core del negocio, la
+    // redundancia con el "+" del saldo es deliberada).
+    expect(find.text('Recargar créditos'), findsOneWidget);
+    expect(find.text('Ajustes'), findsOneWidget);
+  });
+
+  testWidgets(
+      'proveedor: el encabezado resalta el saldo y ofrece el botón de recargar',
+      (tester) async {
+    roleStore.value = RoleState.provider;
+    await tester.pumpWidget(host(balanceFetch: () async => 42));
+    await tester.pumpAndSettle();
+    await abrirMenu(tester);
+
+    expect(find.text('42 créditos'), findsOneWidget);
+    // El "+" para recargar vive junto al saldo (ya no una fila aparte).
+    expect(find.byTooltip('Recargar créditos'), findsOneWidget);
+  });
+
+  testWidgets(
+      'proveedor: si el saldo falla, no muestra número y el menú sigue vivo',
+      (tester) async {
+    roleStore.value = RoleState.provider;
+    await tester.pumpWidget(
+        host(balanceFetch: () async => throw Exception('sin red')));
+    await tester.pumpAndSettle();
+    await abrirMenu(tester);
+
+    // El chip de saldo ("N créditos") no aparece; "Recargar créditos" (acción)
+    // sí sigue, por eso se busca el patrón con número, no cualquier "créditos".
+    expect(find.textContaining(RegExp(r'\d+ créditos')), findsNothing);
+    expect(find.text('Ajustes'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('cliente: no ve el saldo ni las entradas de proveedor',
+      (tester) async {
+    roleStore.value = RoleState.consumer;
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+    await abrirMenu(tester);
+
+    expect(find.text('Mis solicitudes'), findsNothing);
+    expect(find.text('Estadísticas'), findsNothing);
+    expect(find.textContaining('créditos'), findsNothing);
+    expect(find.text('Ajustes'), findsOneWidget);
+  });
+
+  testWidgets('proveedor: tocar "Mis solicitudes" navega a /client',
+      (tester) async {
+    roleStore.value = RoleState.provider;
+    await tester.pumpWidget(host(balanceFetch: () async => 0));
+    await tester.pumpAndSettle();
+    await abrirMenu(tester);
+
+    await tester.tap(find.text('Mis solicitudes'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('pantalla de mis solicitudes'), findsOneWidget);
   });
 
   testWidgets('sin foto de perfil, el avatar muestra la inicial del nombre',

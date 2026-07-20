@@ -8,10 +8,13 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/config.dart';
 import '../../core/motion.dart';
 import '../../core/session_state.dart';
-import '../../data/repos.dart' show myProfile;
+import '../../data/repos.dart'
+    show myProfile, walletBalance, createWalletLoginLink;
 
 /// Foto + nombre cacheados UNA sola vez y compartidos por las 6 instancias
 /// del avatar (mismo espíritu que `NotifCountStore` en
@@ -100,7 +103,14 @@ class ProfileStore extends ChangeNotifier {
 
 final profileStore = ProfileStore();
 
-/// Abre el menú de perfil (Estadísticas para proveedor + Ajustes). Extraído a
+/// Resultado especial del menú: "Recargar créditos" no es una ruta del router
+/// sino el wallet EXTERNO (ADR-0031, el pago siempre fuera de la app).
+const _kWalletAction = '__wallet__';
+
+/// Abre el menú de perfil (role-aware). Proveedor: encabezado con nombre +
+/// saldo de créditos, luego su lado comprador (Mis solicitudes, Reputación,
+/// Otros proveedores), su negocio (Estadísticas, Recargar créditos) y Ajustes.
+/// Consumidor: solo Ajustes (ya alcanza el resto por su navbar). Extraído a
 /// función suelta para que lo compartan el `ProfileAvatarButton` del AppBar y
 /// el avatar del header violeta (`violet_header.dart`) — un solo menú, un solo
 /// comportamiento.
@@ -111,8 +121,13 @@ final profileStore = ProfileStore();
 /// vive el avatar que lo abre. Con "reducir animaciones" aparece sin
 /// movimiento. Curva `emphasized` (easeInOutCubic) a `page` (300 ms): arranque
 /// suave, frenada visible antes de asentarse.
-Future<void> openProfileMenu(BuildContext context) async {
+///
+/// [balanceFetch] es inyectable solo para test; en la app real es null y se usa
+/// `walletBalance`.
+Future<void> openProfileMenu(BuildContext context,
+    {Future<int?> Function()? balanceFetch}) async {
   final isProvider = roleStore.value == RoleState.provider;
+  final fetch = balanceFetch ?? walletBalance;
   final route = await showGeneralDialog<String>(
     context: context,
     barrierDismissible: true,
@@ -129,20 +144,59 @@ Future<void> openProfileMenu(BuildContext context) async {
           child: SizedBox(
             width: 264,
             height: double.infinity,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const SizedBox(height: 8),
-              if (isProvider)
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                // Encabezado con nombre + saldo de créditos RESALTADO (número
+                // grande en violeta con un "+" para recargar): solo proveedor
+                // (el consumidor no gasta créditos en este modelo).
+                if (isProvider)
+                  _ProfileMenuHeader(
+                    balanceFetch: fetch,
+                    onRecharge: () => Navigator.pop(ctx, _kWalletAction),
+                  ),
+                const SizedBox(height: 4),
+                // Lado "yo como comprador": pantallas que existen en el router
+                // pero que el proveedor no alcanza por su navbar.
+                if (isProvider) ...[
+                  ListTile(
+                    leading: const Icon(Icons.receipt_long_outlined),
+                    title: const Text('Mis solicitudes'),
+                    onTap: () => Navigator.pop(ctx, '/client'),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.workspace_premium_outlined),
+                    title: const Text('Reputación'),
+                    onTap: () => Navigator.pop(ctx, '/client/reputation'),
+                  ),
+                  ListTile(
+                    // El catálogo del marketplace, renombrado para el
+                    // proveedor: lo que ofrecen los DEMÁS (sus propios
+                    // productos viven en "Mi negocio").
+                    leading: const Icon(Icons.storefront_outlined),
+                    title: const Text('Otros proveedores'),
+                    onTap: () => Navigator.pop(ctx, '/catalog'),
+                  ),
+                  const Divider(height: 1),
+                  // Lado "mi negocio".
+                  ListTile(
+                    leading: const Icon(Icons.bar_chart_outlined),
+                    title: const Text('Estadísticas'),
+                    onTap: () => Navigator.pop(ctx, '/provider/stats'),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.account_balance_wallet_outlined),
+                    title: const Text('Recargar créditos'),
+                    onTap: () => Navigator.pop(ctx, _kWalletAction),
+                  ),
+                  const Divider(height: 1),
+                ],
                 ListTile(
-                  leading: const Icon(Icons.bar_chart_outlined),
-                  title: const Text('Estadísticas'),
-                  onTap: () => Navigator.pop(ctx, '/provider/stats'),
+                  leading: const Icon(Icons.settings_outlined),
+                  title: const Text('Ajustes'),
+                  onTap: () => Navigator.pop(ctx, '/settings'),
                 ),
-              ListTile(
-                leading: const Icon(Icons.settings_outlined),
-                title: const Text('Ajustes'),
-                onTap: () => Navigator.pop(ctx, '/settings'),
-              ),
-            ]),
+              ]),
+            ),
           ),
         ),
       ),
@@ -156,7 +210,140 @@ Future<void> openProfileMenu(BuildContext context) async {
       child: child,
     ),
   );
-  if (route != null && context.mounted) context.push(route);
+  if (route == null || !context.mounted) return;
+  if (route == _kWalletAction) {
+    await openExternalWallet(context);
+    return;
+  }
+  context.push(route);
+}
+
+/// Abre el wallet en el navegador del sistema (ADR-0031: el pago SIEMPRE ocurre
+/// fuera de la app). Intenta un enlace de login de un solo uso; si falla, cae a
+/// la URL genérica; si el navegador no abre, avisa. Mismo comportamiento que
+/// `inbox_screen._openWallet`.
+Future<void> openExternalWallet(BuildContext context) async {
+  Uri target = Uri.parse(AppConfig.walletUrl);
+  try {
+    target = Uri.parse(await createWalletLoginLink());
+  } catch (_) {}
+  var ok = false;
+  try {
+    ok = await launchUrl(target, mode: LaunchMode.externalApplication);
+  } catch (_) {}
+  if (!ok && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'No se pudo abrir el navegador. Visita jayalo.com para recargar.')));
+  }
+}
+
+/// Encabezado del menú (solo proveedor): foto/inicial + nombre, y debajo el
+/// saldo de créditos RESALTADO — número grande en violeta sobre una banda
+/// teñida, con un "+" para recargar al lado (los créditos son el core del
+/// negocio, por eso se destacan). El saldo se pide al abrir el menú,
+/// best-effort: si falla o aún no llega, la banda muestra "Créditos" sin número
+/// pero el "+" sigue disponible (recargar nunca queda inalcanzable).
+class _ProfileMenuHeader extends StatefulWidget {
+  const _ProfileMenuHeader({required this.balanceFetch, required this.onRecharge});
+
+  final Future<int?> Function() balanceFetch;
+  final VoidCallback onRecharge;
+
+  @override
+  State<_ProfileMenuHeader> createState() => _ProfileMenuHeaderState();
+}
+
+class _ProfileMenuHeaderState extends State<_ProfileMenuHeader> {
+  int? _balance;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBalance();
+  }
+
+  Future<void> _loadBalance() async {
+    try {
+      final b = await widget.balanceFetch();
+      if (mounted) setState(() => _balance = b);
+    } catch (_) {
+      // Best-effort: sin saldo confirmado la banda va sin número.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ListenableBuilder(
+      listenable: profileStore,
+      builder: (context, _) {
+        final url = profileStore.avatarUrl;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: cs.primaryContainer,
+                  backgroundImage: url != null ? NetworkImage(url) : null,
+                  child: url == null
+                      ? Text(profileStore.initial,
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: cs.onPrimaryContainer))
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(profileStore.firstName ?? 'Tu perfil',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600)),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              // Banda de créditos: número grande en violeta + "+" para recargar.
+              Container(
+                padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: .10),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(
+                      _balance != null ? '$_balance créditos' : 'Créditos',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: cs.primary),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Recargar créditos',
+                    onPressed: widget.onRecharge,
+                    icon: const Icon(Icons.add),
+                    style: IconButton.styleFrom(
+                      backgroundColor: cs.primary,
+                      foregroundColor: cs.onPrimary,
+                    ),
+                  ),
+                ]),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 /// Botón circular del AppBar. `IconButton` de verdad (no un `Semantics`
@@ -168,9 +355,13 @@ class ProfileAvatarButton extends StatefulWidget {
   /// [store] es inyectable solo para test (montar 2+ instancias sobre el
   /// mismo store y contar consultas reales); en la app real siempre usa el
   /// singleton `profileStore`.
-  const ProfileAvatarButton({super.key, this.store});
+  const ProfileAvatarButton({super.key, this.store, this.balanceFetch});
 
   final ProfileStore? store;
+
+  /// Inyectable solo para test (evita tocar `walletBalance`/red al abrir el
+  /// menú); en la app real es null y `openProfileMenu` usa `walletBalance`.
+  final Future<int?> Function()? balanceFetch;
 
   @override
   State<ProfileAvatarButton> createState() => _ProfileAvatarButtonState();
@@ -189,7 +380,8 @@ class _ProfileAvatarButtonState extends State<ProfileAvatarButton> {
   /// El rol se lee al momento del toque (no en `build`): siempre refleja el
   /// valor vigente de `roleStore` sin necesidad de escucharlo para redibujar
   /// el botón (el rol no cambia durante la sesión, spec §4).
-  Future<void> _openMenu() => openProfileMenu(context);
+  Future<void> _openMenu() =>
+      openProfileMenu(context, balanceFetch: widget.balanceFetch);
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(

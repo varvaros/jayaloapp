@@ -351,6 +351,29 @@ class _HeaderAvatarState extends State<HeaderAvatar> {
   }
 }
 
+/// Leading auto-ajustable del header violeta: si hay algo apilado que popear
+/// (la pantalla se abrió empujada — p. ej. un proveedor entrando a "Mis
+/// solicitudes"/"Reputación" desde el menú del avatar) muestra una flecha de
+/// atrás; como pestaña raíz muestra el avatar de perfil. Así una misma pantalla
+/// sirve de pestaña (avatar) y de sub-pantalla empujada (atrás visible) sin
+/// duplicarse. Usa `Navigator.canPop` (no la extensión de go_router) para
+/// funcionar también bajo un `Navigator` pelado en los tests de widget.
+class HeaderLeading extends StatelessWidget {
+  const HeaderLeading({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    if (Navigator.of(context).canPop()) {
+      return HeaderCircleButton(
+        icon: Icons.arrow_back,
+        tooltip: 'Atrás',
+        onTap: () => Navigator.of(context).maybePop(),
+      );
+    }
+    return const HeaderAvatar();
+  }
+}
+
 /// Buscador del header: píldora blanca con lupa + hint, y un botón "Filtrar"
 /// opcional en violeta oscuro. En Jayalo también se busca; el botón de crear
 /// solicitud vive SOLO en el centro de la navbar (doctrina), nunca aquí.

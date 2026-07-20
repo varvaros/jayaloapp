@@ -190,4 +190,41 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  // El catálogo es también la pantalla "Otros proveedores" a la que el
+  // proveedor llega APILADA desde el menú del avatar. Empujada debe ofrecer
+  // una flecha de atrás (sin perder el toggle Producto/Servicio); como
+  // pestaña del cliente (sin apilar) no muestra flecha.
+  testWidgets('sin apilar: no hay flecha de atrás, sí el segmentado',
+      (tester) async {
+    await tester.pumpWidget(host(CatalogView(fetch: vacio, actions: const [])));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.arrow_back), findsNothing);
+    expect(find.byType(HeaderSegmented), findsOneWidget);
+  });
+
+  testWidgets('apilada (canPop): muestra atrás y conserva el segmentado',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: jayaloTheme(Brightness.light),
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) =>
+                    CatalogView(fetch: vacio, actions: const []))),
+            child: const Text('ir al catálogo'),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('ir al catálogo'));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    expect(find.byType(HeaderSegmented), findsOneWidget);
+  });
 }

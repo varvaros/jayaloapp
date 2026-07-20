@@ -98,14 +98,29 @@ class _CatalogViewState extends State<CatalogView> {
           // Header violeta: segmento Producto/Servicio a la izquierda, título
           // "Catálogo" a la derecha, campana, y el buscador (funcional) debajo.
           VioletHeader(
-            leading: HeaderSegmented(
-              options: const ['Producto', 'Servicio'],
-              index: _kind == 'producto' ? 0 : 1,
-              onChanged: (i) {
-                setState(() => _kind = i == 0 ? 'producto' : 'servicio');
-                _refetch();
-              },
-            ),
+            // Como pantalla "Otros proveedores" (apilada desde el menú del
+            // proveedor) se antepone una flecha de atrás SIN perder el toggle
+            // Producto/Servicio; como pestaña del cliente (sin apilar) va solo
+            // el segmentado. `Navigator.canPop` para funcionar bajo un
+            // Navigator pelado en los tests.
+            leading: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (Navigator.of(context).canPop()) ...[
+                HeaderCircleButton(
+                  icon: Icons.arrow_back,
+                  tooltip: 'Atrás',
+                  onTap: () => Navigator.of(context).maybePop(),
+                ),
+                const SizedBox(width: 8),
+              ],
+              HeaderSegmented(
+                options: const ['Producto', 'Servicio'],
+                index: _kind == 'producto' ? 0 : 1,
+                onChanged: (i) {
+                  setState(() => _kind = i == 0 ? 'producto' : 'servicio');
+                  _refetch();
+                },
+              ),
+            ]),
             title: 'Catálogo',
             titleAlign: HeaderTitleAlign.end,
             actions: widget.actions,

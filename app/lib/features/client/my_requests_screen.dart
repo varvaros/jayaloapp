@@ -192,7 +192,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           // Header violeta: avatar → menú de perfil, "Jayalo" centrado, campana,
           // saludo grande y el buscador (envuelto por el header, doctrina).
           VioletHeader(
-            leading: const HeaderAvatar(),
+            leading: const HeaderLeading(),
             title: 'Jayalo',
             titleAlign: HeaderTitleAlign.center,
             actions: const [HeaderBell()],
