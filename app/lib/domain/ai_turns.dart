@@ -29,10 +29,18 @@ class AiRouting extends AiTurn {
 
 class AiReady extends AiTurn {
   const AiReady(
-      {required this.title, required this.bullets, required this.wholesale});
+      {required this.title,
+      required this.bullets,
+      required this.wholesale,
+      this.condition});
   final String title;
   final List<String> bullets;
   final bool wholesale;
+
+  /// 'nuevo' | 'usado' | 'ambos' si el usuario lo dijo espontáneamente en la
+  /// conversación (paridad con `parseReadyCondition` de la web): permite
+  /// saltar el paso Estado del formulario final. null = hay que preguntar.
+  final String? condition;
 }
 
 class AiKindSwitch extends AiTurn {
@@ -61,7 +69,11 @@ AiTurn parseAiTurn(Map<String, dynamic> json) => switch (json['type']) {
       'ready' => AiReady(
           title: json['title'] as String? ?? '',
           bullets: _strs(json['bullets']),
-          wholesale: json['wholesale'] == true),
+          wholesale: json['wholesale'] == true,
+          condition: switch (json['condition']) {
+            'nuevo' || 'usado' || 'ambos' => json['condition'] as String,
+            _ => null,
+          }),
       'kind_switch' => AiKindSwitch(
           message: json['message'] as String? ?? '',
           suggestedKind: json['suggested_kind'] as String? ?? 'servicio',

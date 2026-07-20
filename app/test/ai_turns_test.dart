@@ -45,4 +45,22 @@ void main() {
   test('type desconocido lanza', () {
     expect(() => parseAiTurn({'type': 'sorpresa'}), throwsFormatException);
   });
+  test('ready parsea condition solo con valores validos (ADR web parity)', () {
+    final con = parseAiTurn({
+      'type': 'ready',
+      'title': 'T',
+      'bullets': ['b'],
+      'condition': 'usado',
+    }) as AiReady;
+    expect(con.condition, 'usado');
+    final sin = parseAiTurn({'type': 'ready', 'title': 'T', 'bullets': []}) as AiReady;
+    expect(sin.condition, isNull);
+    final invalido = parseAiTurn({
+      'type': 'ready',
+      'title': 'T',
+      'bullets': [],
+      'condition': 'roto',
+    }) as AiReady;
+    expect(invalido.condition, isNull);
+  });
 }

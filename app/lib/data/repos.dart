@@ -45,8 +45,20 @@ OfferLite offerLite(Map<String, dynamic> o) => OfferLite(
         ? null
         : DateTime.parse(o['unlocked_at'] as String));
 
-/// Insert de solicitud — campos EXACTOS de la web (requests/new.tsx L541-570),
-/// camino sin fotos (v1). `categories`/`rubros` vienen del turno `routing`.
+/// Nombres visibles de rubros por id (para el paso "rubros sugeridos" del
+/// formulario final de crear solicitud).
+Future<Map<String, String>> rubroNames(List<String> ids) async {
+  if (ids.isEmpty) return {};
+  final rows = List<Map<String, dynamic>>.from(
+      await supa.from('rubros').select('id,name').inFilter('id', ids));
+  return {for (final r in rows) r['id'] as String: r['name'] as String};
+}
+
+/// Insert de solicitud — campos EXACTOS de la web (requests/new.tsx L541-570).
+/// `categories`/`rubros` vienen del turno `routing`; `condition`/`urgency`/
+/// `urgencyLevel` del formulario final guiado (mismos valores que la web:
+/// condition 'nuevo'|'usado'|'ambos'|'' — vacío en servicios; urgency es el
+/// string de URGENCY_OPTIONS; urgency_level solo en servicios).
 Future<void> submitRequest({
   required String title,
   required List<String> bullets,
@@ -55,6 +67,9 @@ Future<void> submitRequest({
   required List<String> categories,
   required List<String> rubros,
   List<String> imageUrls = const [],
+  String condition = '',
+  String urgency = 'Normal - 24 horas',
+  String urgencyLevel = '',
 }) async {
   final uid = supa.auth.currentUser!.id;
   final isService = kind == 'servicio';
@@ -71,14 +86,14 @@ Future<void> submitRequest({
     'with_shipping': false,
     'with_installation': false,
     'requires_evaluation': false,
-    'condition': '',
-    'urgency': 'normal',
+    'condition': isService ? '' : condition,
+    'urgency': urgency,
     'status': 'open',
     'target_categories': categories,
     'target_rubros': rubros,
     'service_modality': '',
     'service_event_date': null,
-    'urgency_level': '',
+    'urgency_level': isService ? urgencyLevel : '',
     'budget_min': null,
     'budget_max': null,
     'is_recurring': false,

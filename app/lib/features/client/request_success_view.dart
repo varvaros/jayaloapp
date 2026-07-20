@@ -47,8 +47,9 @@ class RequestPublishedView extends StatelessWidget {
   }
 }
 
-/// Confeti propio (sin dependencias): ~26 partículas de la paleta cayendo con
-/// giro y fundido, una sola vez, ~900 ms. Nada queda animando después.
+/// Confeti propio (sin dependencias): ~40 partículas de la paleta cayendo con
+/// giro, entrada escalonada y fundido, una sola vez, ~1.8 s (el de 900 ms se
+/// perdía — feedback PO). Nada queda animando después.
 class ConfettiBurst extends StatefulWidget {
   const ConfettiBurst({super.key});
   @override
@@ -58,7 +59,7 @@ class ConfettiBurst extends StatefulWidget {
 class _ConfettiBurstState extends State<ConfettiBurst>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 900))
+      vsync: this, duration: const Duration(milliseconds: 1800))
     ..forward();
 
   @override
@@ -92,20 +93,26 @@ class _ConfettiPainter extends CustomPainter {
       const Color(0xFFD4537E),
       const Color(0xFF1D9E75),
     ];
-    final fade = (1 - t).clamp(0.0, 1.0);
-    final fall = Curves.easeIn.transform(t);
-    for (var i = 0; i < 26; i++) {
+    for (var i = 0; i < 40; i++) {
       final x = rnd.nextDouble() * size.width;
-      final drift = (rnd.nextDouble() - .5) * 70;
-      final y0 = size.height * (.08 + rnd.nextDouble() * .18);
-      final dist = size.height * (.3 + rnd.nextDouble() * .3);
-      final spin = rnd.nextDouble() * 6.3 + t * (rnd.nextBool() ? 5 : -5);
-      final s = 5 + rnd.nextDouble() * 5;
+      final drift = (rnd.nextDouble() - .5) * 90;
+      final y0 = size.height * (.02 + rnd.nextDouble() * .2);
+      final dist = size.height * (.35 + rnd.nextDouble() * .35);
+      final spinSeed = rnd.nextDouble() * 6.3;
+      final spinDir = rnd.nextBool() ? 6 : -6;
+      final s = 6.0 + rnd.nextDouble() * 6;
+      // Entrada escalonada: cada partícula arranca con su propio retraso y
+      // vive su [0,1] local — la lluvia se siente continua, no un golpe único.
+      final delay = rnd.nextDouble() * .35;
+      final tl = ((t - delay) / (1 - delay)).clamp(0.0, 1.0);
+      if (tl <= 0) continue;
+      final fall = Curves.easeIn.transform(tl);
+      final fade = (1 - Curves.easeIn.transform(tl)).clamp(0.0, 1.0);
       final paint = Paint()
         ..color = colors[i % colors.length].withValues(alpha: fade);
       canvas.save();
-      canvas.translate(x + drift * t, y0 + dist * fall);
-      canvas.rotate(spin);
+      canvas.translate(x + drift * tl, y0 + dist * fall);
+      canvas.rotate(spinSeed + tl * spinDir);
       canvas.drawRRect(
           RRect.fromRectAndRadius(
               Rect.fromCenter(center: Offset.zero, width: s, height: s * .6),

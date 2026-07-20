@@ -52,9 +52,14 @@ class MyRequestsScreen extends StatefulWidget {
 
 class _MyRequestsScreenState extends State<MyRequestsScreen> {
   late Future<List<(Map<String, dynamic>, RequestPhase, int)>> _load = _fetch();
+  int _seenTick = requestsChanged.value;
 
   // La pantalla vive montada como pestaña del shell: sin esto, publicar una
   // solicitud no se reflejaba hasta el pull-to-refresh (bug PO 2026-07-19).
+  // Doble cinturón: el listener refresca en vivo si la pantalla está activa,
+  // y el chequeo de tick en build() cubre el caso en que el aviso llegó
+  // mientras el estado estaba desactivado por el shell (visto en device:
+  // el listener solo no bastó al volver de crear-solicitud).
   @override
   void initState() {
     super.initState();
@@ -68,7 +73,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   }
 
   void _reload() {
-    if (mounted) setState(() => _load = _fetch());
+    if (mounted) {
+      setState(() {
+        _seenTick = requestsChanged.value;
+        _load = _fetch();
+      });
+    }
+  }
+
+  void _refetchIfStale() {
+    if (_seenTick != requestsChanged.value) {
+      _seenTick = requestsChanged.value;
+      _load = _fetch();
+    }
   }
 
   Future<List<(Map<String, dynamic>, RequestPhase, int)>> _fetch() async {
@@ -97,6 +114,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    _refetchIfStale();
     return Scaffold(
       body: Column(
         children: [
