@@ -1,11 +1,17 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/phase.dart';
 import '../domain/profile_address.dart';
 
 final supa = Supabase.instance.client;
+
+/// Se incrementa cada vez que el usuario publica una solicitud, para que las
+/// pantallas ya montadas (pestañas vivas del shell) refresquen su lista sin
+/// pull-to-refresh. Escuchar con addListener y re-lanzar el fetch.
+final requestsChanged = ValueNotifier<int>(0);
 
 // ── Cliente: mis solicitudes y ofertas ──────────────────────────────────────
 
@@ -80,6 +86,7 @@ Future<void> submitRequest({
     'is_wholesale': !isService && wholesale,
     'target_business_id': null,
   });
+  requestsChanged.value++;
 }
 
 Future<bool> acceptOffer({required String offerId}) async {

@@ -6,6 +6,7 @@ import 'package:jayalo_app/core/brand.dart';
 import 'package:jayalo_app/core/motion.dart';
 import 'package:jayalo_app/domain/phase.dart';
 import 'package:jayalo_app/features/shared/brand_kit.dart';
+import 'package:jayalo_app/features/shell/floating_nav_bar.dart';
 
 /// El kit consolida los patrones visuales aprobados en /notifications; estos
 /// tests fijan el CONTRATO (tonos por fase, estados, tap), no los píxeles.
@@ -226,6 +227,24 @@ void main() {
       expect(find.text('No se pudo cargar'), findsOneWidget);
       await tester.tap(find.text('Reintentar'));
       expect(retries, 1);
+    });
+  });
+  group('showJayaloToast', () {
+    testWidgets('flotante y con margen inferior que libra la navbar',
+        (tester) async {
+      late BuildContext ctx;
+      await tester.pumpWidget(host(Builder(builder: (c) {
+        ctx = c;
+        return const SizedBox();
+      })));
+      showJayaloToast(ctx, 'Aviso de prueba');
+      await tester.pump();
+      expect(find.text('Aviso de prueba'), findsOneWidget);
+      final bar = tester.widget<SnackBar>(find.byType(SnackBar));
+      expect(bar.behavior, SnackBarBehavior.floating);
+      final margin = bar.margin!.resolve(TextDirection.ltr);
+      expect(margin.bottom,
+          greaterThanOrEqualTo(navBarReservedSpace(ctx) + 12));
     });
   });
 }

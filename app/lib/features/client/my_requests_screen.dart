@@ -53,6 +53,24 @@ class MyRequestsScreen extends StatefulWidget {
 class _MyRequestsScreenState extends State<MyRequestsScreen> {
   late Future<List<(Map<String, dynamic>, RequestPhase, int)>> _load = _fetch();
 
+  // La pantalla vive montada como pestaña del shell: sin esto, publicar una
+  // solicitud no se reflejaba hasta el pull-to-refresh (bug PO 2026-07-19).
+  @override
+  void initState() {
+    super.initState();
+    requestsChanged.addListener(_reload);
+  }
+
+  @override
+  void dispose() {
+    requestsChanged.removeListener(_reload);
+    super.dispose();
+  }
+
+  void _reload() {
+    if (mounted) setState(() => _load = _fetch());
+  }
+
   Future<List<(Map<String, dynamic>, RequestPhase, int)>> _fetch() async {
     final reqs = await myRequests();
     if (reqs.isEmpty) return [];

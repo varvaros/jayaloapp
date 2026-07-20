@@ -283,9 +283,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   }
 
   void _toast(String m) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
-    }
+    if (mounted) showJayaloToast(context, m);
   }
 
   void _scrollDown() => WidgetsBinding.instance.addPostFrameCallback((_) {
