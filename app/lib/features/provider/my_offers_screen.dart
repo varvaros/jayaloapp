@@ -90,7 +90,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
         ),
         Expanded(
           child: _loading
-              ? const SkeletonList()
+              ? const JayaloLoaderBlock()
               : RefreshIndicator(
                   onRefresh: _refetch,
                   child: ListView(

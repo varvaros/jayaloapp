@@ -514,7 +514,7 @@ class _ChatScreenState extends State<ChatScreen> {
               tooltip: 'Atrás',
               onTap: () => context.pop()),
         ),
-        const Expanded(child: SkeletonList()),
+        const Expanded(child: JayaloLoaderBlock()),
       ]));
     }
     final ms = _session.messages;

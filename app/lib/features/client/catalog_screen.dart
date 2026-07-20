@@ -123,7 +123,7 @@ class _CatalogViewState extends State<CatalogView> {
                 future: _load,
                 builder: (context, snap) {
                   if (snap.connectionState != ConnectionState.done) {
-                    return const SkeletonList();
+                    return const JayaloLoaderBlock();
                   }
                   if (snap.hasError) {
                     return ErrorRetry(onRetry: () async => _refetch());

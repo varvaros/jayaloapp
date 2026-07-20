@@ -11,7 +11,6 @@ import '../../domain/interest_message.dart';
 import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 
 /// `/catalog/:id` (Task 7): detalle del producto/servicio + "Me interesa".
 ///
@@ -115,7 +114,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     message: 'No encontramos este producto.\n\n'
                         'Puede que ya no esté disponible.',
                   ),
-            _ => const SkeletonList(),
+            _ => const JayaloLoaderBlock(),
           };
           return Scaffold(
             body: Stack(children: [
@@ -347,13 +346,18 @@ class _AmberPanel extends StatelessWidget {
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
       ),
       child: Stack(children: [
+        // Tocar la foto abre el visor a pantalla completa (desde la activa).
         Positioned.fill(
           child: main == null
               ? Center(child: Icon(fallbackIcon, size: 120, color: am.ink))
-              : Image.network(main,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Center(
-                      child: Icon(fallbackIcon, size: 120, color: am.ink))),
+              : GestureDetector(
+                  onTap: () => showPhotoViewer(context, images,
+                      initialIndex: activeIndex.clamp(0, images.length - 1)),
+                  child: Image.network(main,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Center(
+                          child: Icon(fallbackIcon, size: 120, color: am.ink))),
+                ),
         ),
         SafeArea(child: productBackFab(context)),
       ]),

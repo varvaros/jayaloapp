@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
-import '../../core/motion.dart';
 import '../../data/repos.dart';
 import '../../domain/chat_time.dart';
 import '../../domain/money.dart';
@@ -87,8 +86,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
     if (req == null) {
       return Scaffold(
         body: Stack(children: [
-          const Padding(
-              padding: EdgeInsets.only(top: 80), child: SkeletonList()),
+          const JayaloLoaderBlock(),
           SafeArea(child: _BackFab(onTap: () => context.pop())),
         ]),
       );
@@ -122,32 +120,33 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
   /// tocarla abre la MISMA `showOfferSheet` de siempre (aceptar/rechazar), sin
   /// tocar el flujo de aceptación.
   ///
-  /// SUBE con la MISMA configuración que el modal de crear-solicitud (subida
-  /// lenta y fluida: `modalRise` con la curva enfatizada; cierre en `page`).
+  /// SIN `transitionAnimationController` custom: pasarle el controller de 2s
+  /// del modal de crear (que es una transición de PÁGINA, no un sheet
+  /// arrastrable) rompía el gesto de cerrar — al soltar el arrastre el sheet
+  /// quedaba VARADO a media altura y nunca bajaba (bug conocido de Flutter con
+  /// controllers custom + drag; reproducido en el Redmi). Con la animación
+  /// estándar del sheet, arrastrar/tap fuera/atrás cierran como en el resto
+  /// de la app.
   Future<void> _showOffers(BuildContext context, Map<String, dynamic> req,
       List<Map<String, dynamic>> offers) async {
     final hasAccepted = offers
         .any((o) => o['status'] == 'accepted' || o['status'] == 'completed');
     final cheapest = _cheapestOfferId(offers);
-    final riseController = BottomSheet.createAnimationController(this)
-      ..duration =
-          JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.modalRise
-      ..reverseDuration =
-          JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.page;
     await showModalBottomSheet(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      transitionAnimationController: riseController,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-      builder: (ctx) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: .7,
-        maxChildSize: .92,
-        minChildSize: .4,
-        builder: (ctx, scroll) => Column(children: [
+      // Altura FIJA (70%), sin DraggableScrollableSheet: el DSS anidado en un
+      // showModalBottomSheet se atascaba en su minChildSize al arrastrar hacia
+      // abajo y el sheet NUNCA se cerraba (reproducido en el Redmi — "sube
+      // pero no baja"). Con altura fija, el arrastre nativo del BottomSheet
+      // (asa/encabezado), el tap fuera y el atrás cierran como siempre.
+      builder: (ctx) => SizedBox(
+        height: MediaQuery.of(ctx).size.height * .7,
+        child: Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 4, 22, 10),
             child: Row(
@@ -176,7 +175,6 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
                         textAlign: TextAlign.center),
                   ))
                 : ListView.builder(
-                    controller: scroll,
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                     itemCount: offers.length,
                     itemBuilder: (_, i) {
@@ -195,7 +193,6 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
         ]),
       ),
     );
-    riseController.dispose();
   }
 }
 
@@ -306,28 +303,35 @@ class _AmberPanel extends StatelessWidget {
         children: [
           // La foto LLENA todo el panel ámbar (cover) — el ámbar solo asoma si
           // no hay foto (ícono de fase centrado). Sin cuadro interno.
+          // Tocarla abre el visor a pantalla completa.
           Positioned.fill(
             child: images.isEmpty
                 ? Center(child: Icon(icon, size: 120, color: am.ink))
-                : Image.network(images.first,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        Center(child: Icon(icon, size: 120, color: am.ink))),
+                : GestureDetector(
+                    onTap: () => showPhotoViewer(context, images),
+                    child: Image.network(images.first,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Center(
+                            child: Icon(icon, size: 120, color: am.ink))),
+                  ),
           ),
           // Miniatura de la 2ª foto pegada al borde derecho (máx. 2 fotos).
           if (images.length > 1)
             Positioned(
               top: topInset + 30,
               right: 0,
-              child: ClipRRect(
-                borderRadius:
-                    const BorderRadius.horizontal(left: Radius.circular(16)),
-                child: Image.network(images[1],
-                    width: 76,
-                    height: 76,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        Container(width: 76, height: 76, color: am.panel)),
+              child: GestureDetector(
+                onTap: () => showPhotoViewer(context, images, initialIndex: 1),
+                child: ClipRRect(
+                  borderRadius:
+                      const BorderRadius.horizontal(left: Radius.circular(16)),
+                  child: Image.network(images[1],
+                      width: 76,
+                      height: 76,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) =>
+                          Container(width: 76, height: 76, color: am.panel)),
+                ),
               ),
             ),
           SafeArea(child: _BackFab(onTap: onBack)),

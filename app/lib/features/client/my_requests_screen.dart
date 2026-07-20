@@ -116,7 +116,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                 future: _load,
                 builder: (context, snap) {
                   if (!snap.hasData) {
-                    return const SkeletonList();
+                    return const JayaloLoaderBlock();
                   }
                   final items = snap.data!;
                   if (items.isEmpty) {

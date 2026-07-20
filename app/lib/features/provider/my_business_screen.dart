@@ -65,7 +65,7 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
                 if (snap.hasError) {
                   return ErrorRetry(onRetry: () async => _refetch());
                 }
-                if (!snap.hasData) return const SkeletonList();
+                if (!snap.hasData) return const JayaloLoaderBlock();
                 final (business, catalogo, completados) = snap.data!;
                 return MyBusinessView(
                     business: business,

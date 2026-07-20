@@ -18,6 +18,11 @@ import '../../domain/phase.dart';
 import '../shell/floating_nav_bar.dart';
 import 'jayalo_loader.dart';
 
+// Re-exporta el loader para que cualquier pantalla que ya importa el kit pueda
+// usar `JayaloLoaderBlock` (la mascota) en sus estados de carga sin un import
+// extra — decisión PO: el skeleton solo se queda en Notificaciones.
+export 'jayalo_loader.dart';
+
 /// Tono de estado por fase de solicitud — el mismo mapa que usa la web con
 /// sus `--status-*` (y que notificaciones usa por familia). Única fuente:
 /// nada de `Colors.amber`/`green` sueltos para pintar fases.
@@ -541,4 +546,118 @@ class PillSegmented extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Visor de fotos a pantalla completa: fondo negro, pellizco para zoom
+/// (InteractiveViewer), desliza entre fotos si hay varias; se cierra con un
+/// tap, con la X o con el atrás del sistema. Va por el navigator RAÍZ para
+/// cubrir también la navbar del shell.
+Future<void> showPhotoViewer(BuildContext context, List<String> urls,
+        {int initialIndex = 0}) =>
+    Navigator.of(context, rootNavigator: true).push(PageRouteBuilder(
+      opaque: false,
+      pageBuilder: (_, _, _) =>
+          _PhotoViewer(urls: urls, initialIndex: initialIndex),
+      transitionsBuilder: (_, anim, _, child) =>
+          FadeTransition(opacity: anim, child: child),
+    ));
+
+class _PhotoViewer extends StatefulWidget {
+  const _PhotoViewer({required this.urls, required this.initialIndex});
+  final List<String> urls;
+  final int initialIndex;
+
+  @override
+  State<_PhotoViewer> createState() => _PhotoViewerState();
+}
+
+class _PhotoViewerState extends State<_PhotoViewer> {
+  late final PageController _page =
+      PageController(initialPage: widget.initialIndex);
+  int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex;
+  }
+
+  @override
+  void dispose() {
+    _page.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(children: [
+          PageView.builder(
+            controller: _page,
+            itemCount: widget.urls.length,
+            onPageChanged: (i) => setState(() => _index = i),
+            itemBuilder: (_, i) => GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: InteractiveViewer(
+                maxScale: 5,
+                child: Center(
+                  child: Image.network(widget.urls[i],
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) => const Icon(
+                          Icons.broken_image_outlined,
+                          size: 64,
+                          color: Colors.white38)),
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Material(
+                  color: Colors.white24,
+                  shape: const CircleBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: const SizedBox(
+                      width: 42,
+                      height: 42,
+                      child:
+                          Icon(Icons.close, size: 22, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (widget.urls.length > 1)
+            SafeArea(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < widget.urls.length; i++)
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color:
+                                i == _index ? Colors.white : Colors.white38,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ]),
+      );
 }

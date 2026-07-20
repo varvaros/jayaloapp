@@ -45,7 +45,7 @@ class _StatsScreenState extends State<StatsScreen> {
                 if (snap.hasError) {
                   return ErrorRetry(onRetry: () async => _refetch());
                 }
-                if (!snap.hasData) return const SkeletonList();
+                if (!snap.hasData) return const JayaloLoaderBlock();
                 return StatsView(data: snap.data!);
               },
             ),

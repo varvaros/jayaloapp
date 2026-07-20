@@ -9,7 +9,6 @@ import '../../data/repos.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 
 /// Alta de consumidor (spec §6): nombre precargado de las claims de Google,
 /// WhatsApp SIN OTP (decisión PO §10.1 — el OTP se dispara después, §6.1),

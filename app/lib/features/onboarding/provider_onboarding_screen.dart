@@ -12,7 +12,6 @@ import '../../domain/catalog.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 
 /// Alta de proveedor (spec §7): 6 pasos que SOLO recolectan; la única
 /// escritura es la RPC atómica complete_provider_onboarding al final

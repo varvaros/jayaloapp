@@ -12,7 +12,6 @@ import '../../domain/image_pick.dart';
 import '../shell/floating_nav_bar.dart';
 import '../verification/verify_banner.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 import '../shared/violet_header.dart';
 
 const _maxRequestPhotos = 2;
@@ -348,9 +347,27 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                         const JayaloMascot(size: 76),
                         const SizedBox(height: 16),
                         Text(
-                            'Dinos qué buscas y la IA arma tu solicitud\npara que los proveedores te oferten.',
+                            'Sube una foto y describe lo que buscas\npara mejor resultado.',
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.bodyLarge),
+                        const SizedBox(height: 16),
+                        // El botón de HACER la foto, visible desde el arranque
+                        // (pedido PO): cámara primero, galería al lado. La foto
+                        // queda en la tira y viaja con el primer mensaje.
+                        Wrap(spacing: 8, runSpacing: 4, children: [
+                          ActionChip(
+                              avatar: const Icon(Icons.photo_camera_outlined,
+                                  size: 18),
+                              label: const Text('Tomar foto'),
+                              onPressed: () =>
+                                  _pickPhoto(ImageSource.camera)),
+                          ActionChip(
+                              avatar: const Icon(Icons.photo_library_outlined,
+                                  size: 18),
+                              label: const Text('Galería'),
+                              onPressed: () =>
+                                  _pickPhoto(ImageSource.gallery)),
+                        ]),
                       ],
                     ),
                   ),
@@ -424,9 +441,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(28),
                       borderSide: BorderSide.none),
+                  // Cámara a la vista (pedido PO: "no está el botón de hacer
+                  // la foto"): el ícono es la cámara y el sheet ofrece
+                  // Tomar foto / Galería.
                   prefixIcon: IconButton(
-                      tooltip: 'Adjuntar foto',
-                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      tooltip: 'Tomar o subir foto',
+                      icon: const Icon(Icons.photo_camera_outlined),
                       onPressed: _busy ? null : _showPickSheet),
                   suffixIcon: IconButton(
                       icon: const Icon(Icons.send), onPressed: () => _send(_input.text)),

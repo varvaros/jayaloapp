@@ -83,7 +83,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
               ? ErrorRetry(
                   onRetry: _load, message: 'No pudimos cargar tus mensajes')
               : all == null
-                  ? const SkeletonList()
+                  ? const JayaloLoaderBlock()
                   : RefreshIndicator(onRefresh: _load, child: _body(all)),
         ),
       ]),

@@ -40,7 +40,7 @@ class _ReputationScreenState extends State<ReputationScreen> {
                 }
                 if (!snap.hasData &&
                     snap.connectionState != ConnectionState.done) {
-                  return const SkeletonList();
+                  return const JayaloLoaderBlock();
                 }
                 return ReputationView(data: snap.data ?? const {});
               },

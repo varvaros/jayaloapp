@@ -123,8 +123,7 @@ class _ProviderRequestDetailScreenState
     if (req == null) {
       return Scaffold(
         body: Stack(children: [
-          const Padding(
-              padding: EdgeInsets.only(top: 80), child: SkeletonList()),
+          const JayaloLoaderBlock(),
           SafeArea(child: _backFab(context)),
         ]),
       );
@@ -154,6 +153,7 @@ class _ProviderRequestDetailScreenState
                 const BorderRadius.vertical(bottom: Radius.circular(30)),
           ),
           child: Stack(children: [
+            // Tocar la foto abre el visor a pantalla completa.
             Positioned.fill(
               child: images.isEmpty
                   ? Center(
@@ -163,30 +163,37 @@ class _ProviderRequestDetailScreenState
                               : Icons.inventory_2_outlined,
                           size: 120,
                           color: amberInk))
-                  : Image.network(images.first,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Center(
-                          child: Icon(
-                              req['kind'] == 'servicio'
-                                  ? Icons.handyman_outlined
-                                  : Icons.inventory_2_outlined,
-                              size: 120,
-                              color: amberInk))),
+                  : GestureDetector(
+                      onTap: () => showPhotoViewer(context, images),
+                      child: Image.network(images.first,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => Center(
+                              child: Icon(
+                                  req['kind'] == 'servicio'
+                                      ? Icons.handyman_outlined
+                                      : Icons.inventory_2_outlined,
+                                  size: 120,
+                                  color: amberInk))),
+                    ),
             ),
             // Miniatura de la 2ª foto pegada al borde derecho (máx. 2 visibles).
             if (images.length > 1)
               Positioned(
                 top: topInset + 30,
                 right: 0,
-                child: ClipRRect(
-                  borderRadius:
-                      const BorderRadius.horizontal(left: Radius.circular(16)),
-                  child: Image.network(images[1],
-                      width: 76,
-                      height: 76,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          Container(width: 76, height: 76, color: amberPanel)),
+                child: GestureDetector(
+                  onTap: () =>
+                      showPhotoViewer(context, images, initialIndex: 1),
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.horizontal(
+                        left: Radius.circular(16)),
+                    child: Image.network(images[1],
+                        width: 76,
+                        height: 76,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Container(
+                            width: 76, height: 76, color: amberPanel)),
+                  ),
                 ),
               ),
             SafeArea(child: _backFab(context)),

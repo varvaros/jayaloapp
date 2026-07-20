@@ -10,7 +10,6 @@ import '../../core/session_state.dart';
 import '../../data/notifications_repository.dart';
 import '../../domain/notifications.dart';
 import '../shared/brand_kit.dart';
-import '../shared/jayalo_loader.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
 import 'notification_bell.dart';
