@@ -1087,6 +1087,34 @@ Future<List<Map<String, dynamic>>> catalogProducts({
   );
 }
 
+// ── Mi tienda: productos/servicios del propio negocio (solo lectura) ────────
+const storeProductCols =
+    'id,name,description,price,price_min,price_max,image_urls,category_id,kind';
+
+/// Todos los productos y servicios del propio negocio, más recientes primero.
+/// Se separan por kind en la UI con [partitionStoreItems].
+Future<List<Map<String, dynamic>>> myStoreProducts(String businessId) async =>
+    List<Map<String, dynamic>>.from(
+      await supa
+          .from('provider_products')
+          .select(storeProductCols)
+          .eq('business_id', businessId)
+          .order('created_at', ascending: false)
+          .limit(200),
+    );
+
+/// Parte una lista mezclada en (productos, servicios). `kind == 'servicio'` va a
+/// servicios; cualquier otro valor (incluido null) cuenta como producto.
+(List<Map<String, dynamic>>, List<Map<String, dynamic>>) partitionStoreItems(
+    List<Map<String, dynamic>> items) {
+  final productos = <Map<String, dynamic>>[];
+  final servicios = <Map<String, dynamic>>[];
+  for (final i in items) {
+    (i['kind'] == 'servicio' ? servicios : productos).add(i);
+  }
+  return (productos, servicios);
+}
+
 // ── Catálogo (Task 7): detalle del producto + "Me interesa" ────────────────
 
 /// Columnas del detalle — paridad con el `select` de

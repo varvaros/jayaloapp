@@ -127,4 +127,22 @@ void main() {
       expect(r.createdAt.millisecondsSinceEpoch, 0);
     });
   });
+
+  group('partitionStoreItems', () {
+    test('separa por kind: servicio a servicios, el resto a productos', () {
+      final (prods, servs) = partitionStoreItems([
+        {'id': '1', 'kind': 'producto'},
+        {'id': '2', 'kind': 'servicio'},
+        {'id': '3', 'kind': null}, // sin kind cuenta como producto
+      ]);
+      expect(prods.map((e) => e['id']), ['1', '3']);
+      expect(servs.map((e) => e['id']), ['2']);
+    });
+
+    test('lista vacía devuelve dos listas vacías', () {
+      final (prods, servs) = partitionStoreItems([]);
+      expect(prods, isEmpty);
+      expect(servs, isEmpty);
+    });
+  });
 }
