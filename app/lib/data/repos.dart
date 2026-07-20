@@ -1097,6 +1097,49 @@ Future<Map<String, dynamic>?> productDetail(String id) async => await supa
     .eq('id', id)
     .maybeSingle();
 
+// ── Reputación del proveedor por lote (catálogo) ──────────────────────────
+
+/// avg/count de reseñas de un negocio. Interfaz ESTABLE a propósito: hoy la
+/// respalda la RPC por lote `get_business_ratings`; si mañana se denormaliza en
+/// `provider_businesses`, esta firma y la UI que la consume no cambian.
+typedef BusinessRating = ({double avg, int count});
+
+/// Trae la reputación de varios negocios en UNA llamada. De-duplica ids y no
+/// llama a la red con lista vacía.
+Future<Map<String, BusinessRating>> businessRatings(
+    List<String> businessIds) async {
+  final ids = businessIds.toSet().toList();
+  if (ids.isEmpty) return {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa.rpc('get_business_ratings', params: {'_business_ids': ids}),
+  );
+  return {
+    for (final r in rows)
+      r['business_id'] as String: (
+        avg: (r['avg_rating'] as num?)?.toDouble() ?? 0,
+        count: (r['reviews_count'] as num?)?.toInt() ?? 0,
+      ),
+  };
+}
+
+/// Fusiona la reputación en cada item del catálogo por su `business_id`. Pura y
+/// sin mutar la entrada: un negocio sin reseñas queda sin `avg_rating` (la
+/// tarjeta oculta la estrella).
+List<Map<String, dynamic>> mergeCatalogRatings(
+    List<Map<String, dynamic>> items, Map<String, BusinessRating> ratings) {
+  return [
+    for (final it in items)
+      if (it['business_id'] is String && ratings[it['business_id']] != null)
+        {
+          ...it,
+          'avg_rating': ratings[it['business_id']]!.avg,
+          'reviews_count': ratings[it['business_id']]!.count,
+        }
+      else
+        it,
+  ];
+}
+
 /// Cabecera pública de un negocio (nombre/logo/sello) — mismo shape que
 /// `BusinessProfile` de `my_business_screen.dart`, redefinido aquí (capa de
 /// datos, sin importar entre features de cliente/proveedor).
