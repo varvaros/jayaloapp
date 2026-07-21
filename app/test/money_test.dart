@@ -66,4 +66,20 @@ void main() {
       );
     });
   });
+
+  group('requestBudgetLabel (presupuesto estimado de la solicitud)', () {
+    test('rango con ambos extremos', () {
+      expect(requestBudgetLabel(5000, 12000), 'RD\$5,000 - RD\$12,000');
+    });
+    test('solo mínimo → "desde"', () {
+      expect(requestBudgetLabel(5000, null), 'desde RD\$5,000');
+    });
+    test('solo máximo → "hasta"', () {
+      expect(requestBudgetLabel(null, 12000), 'hasta RD\$12,000');
+    });
+    test('sin presupuesto (nulos o cero) → null, no se pinta la fila', () {
+      expect(requestBudgetLabel(null, null), isNull);
+      expect(requestBudgetLabel(0, 0), isNull);
+    });
+  });
 }

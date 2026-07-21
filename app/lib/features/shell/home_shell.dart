@@ -3,12 +3,39 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/motion.dart';
 import '../../core/session_state.dart';
+import '../../data/repos.dart' show solicitudesBadge, messagesBadge;
 import 'floating_nav_bar.dart';
 import 'nav_destinations.dart';
 
-class HomeShell extends StatelessWidget {
+class HomeShell extends StatefulWidget {
   const HomeShell({super.key, required this.child});
   final Widget child;
+
+  @override
+  State<HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Badge de mensajes: recuento al montar el shell (mismo patrón sin-socket
+    // que la campana de notificaciones).
+    messagesBadge.refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Al volver del background puede haber mensajes nuevos (llegaron por push).
+    if (state == AppLifecycleState.resumed) messagesBadge.refresh();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +130,7 @@ class HomeShell extends StatelessWidget {
           opacity: t,
           child: bodyChild,
         ),
-        child: child,
+        child: widget.child,
       ),
       // M2 (revisión final de rama): antes era `showNavBar ? FloatingNavBar(
       // ...) : null` — un swap instantáneo, contra la doctrina de movimiento
@@ -136,10 +163,21 @@ class HomeShell extends StatelessWidget {
           child: FadeTransition(opacity: animation, child: child),
         ),
         child: showNavBar
-            ? FloatingNavBar(
+            ? ListenableBuilder(
+                listenable: Listenable.merge([solicitudesBadge, messagesBadge]),
+                builder: (context, _) => FloatingNavBar(
                 key: const ValueKey('nav-bar-visible'),
                 destinations: dests,
                 currentIndex: idx,
+                // Badges de la barra: "Solicitudes" (índice 0, significado por
+                // rol) y "Mensajes" (mensajes de chat sin leer, pedido PO
+                // 2026-07-21). Cada pantalla mantiene su contador al día.
+                badges: {
+                  if (solicitudesBadge.value > 0)
+                    dests[0].route: solicitudesBadge.value,
+                  if (messagesBadge.count > 0)
+                    '/messages': messagesBadge.count,
+                },
                 // El centro (crear solicitud) se APILA con `push`: así corre
                 // la transición modal de su CustomTransitionPage (sube por
                 // encima de la pestaña actual, que queda viva debajo) y el
@@ -156,6 +194,7 @@ class HomeShell extends StatelessWidget {
                     context.go(d.route);
                   }
                 },
+              ),
               )
             : const SizedBox.shrink(key: ValueKey('nav-bar-hidden')),
       ),

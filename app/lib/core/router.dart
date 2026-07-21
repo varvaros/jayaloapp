@@ -8,6 +8,8 @@ import '../features/client/catalog_screen.dart';
 import '../features/client/create_request_screen.dart';
 import '../features/client/my_requests_screen.dart';
 import '../features/client/product_detail_screen.dart';
+import '../features/client/provider_store_screen.dart';
+import '../features/admin/quick_register_screen.dart';
 import '../features/client/reputation_screen.dart';
 import '../features/client/request_status_screen.dart';
 import '../features/notifications/notifications_screen.dart';
@@ -21,14 +23,27 @@ import '../features/provider/my_offers_screen.dart';
 import '../features/provider/request_detail_screen.dart';
 import '../features/provider/stats_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/settings/quick_replies_editor_screen.dart';
 import '../features/shared/profile_avatar_button.dart';
 import '../features/shell/back_guard.dart';
 import '../features/shell/home_shell.dart';
 import 'motion.dart';
 import 'session_state.dart';
 
+/// Navigator RAÍZ. Las rutas full-screen que deben cubrir TODO (tienda del
+/// proveedor, chat) viven como rutas TOP-LEVEL, hermanas del ShellRoute — así
+/// se apilan en este navigator por naturaleza, por encima de la barra
+/// flotante. GOTCHA (QA 2026-07-21, "no abre el chat / la tienda"): NO
+/// declararlas DENTRO del ShellRoute con `parentNavigatorKey: _rootNavigatorKey`
+/// — go_router lo PROHÍBE con un assert ("sub-route's parent navigator key must
+/// either be null or has the same navigator key as parent's key") que en
+/// release se elimina, y el push simplemente no monta la página: falla en
+/// silencio.
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
+
 GoRouter buildRouter() => GoRouter(
       initialLocation: '/gate',
+      navigatorKey: _rootNavigatorKey,
       refreshListenable: Listenable.merge([_AuthNotifier(), roleStore]),
       redirect: (context, state) {
         final loggedIn = Supabase.instance.client.auth.currentSession != null;
@@ -159,7 +174,10 @@ GoRouter buildRouter() => GoRouter(
                 path: '/provider/request/:id',
                 builder: (_, s) => BackGuard(
                     child: ProviderRequestDetailScreen(
-                        requestId: s.pathParameters['id']!))),
+                        requestId: s.pathParameters['id']!,
+                        // `?edit=<offerId>`: entra en modo edición de una oferta
+                        // PENDIENTE propia (desde "Mis ofertas").
+                        editOfferId: s.uri.queryParameters['edit']))),
             GoRoute(
                 path: '/provider/offers',
                 builder: (_, _) => const BackGuard(child: MyOffersScreen())),
@@ -177,23 +195,16 @@ GoRouter buildRouter() => GoRouter(
                 path: '/settings',
                 builder: (_, _) => const BackGuard(child: SettingsScreen())),
             GoRoute(
+                path: '/settings/quick-replies',
+                builder: (_, _) =>
+                    const BackGuard(child: QuickRepliesEditorScreen())),
+            GoRoute(
+                path: '/admin/quick-register',
+                builder: (_, _) =>
+                    const BackGuard(child: AdminQuickRegisterScreen())),
+            GoRoute(
                 path: '/messages',
                 builder: (_, _) => const BackGuard(child: ConversationsScreen())),
-            GoRoute(
-                path: '/messages/:id',
-                builder: (_, s) {
-                  // Task I-2: peer_name/avatar llegan por `extra` desde la
-                  // lista de conversaciones (evita el RPC agregado). Si no
-                  // vienen (deep-link/push futuro), quedan null y ChatScreen
-                  // cae al fallback con `conversationsList()`.
-                  final x = s.extra;
-                  final m = x is Map ? x : null;
-                  return BackGuard(
-                      child: ChatScreen(
-                          conversationId: s.pathParameters['id']!,
-                          peerName: m?['peer_name'] as String?,
-                          peerAvatarUrl: m?['peer_avatar_url'] as String?));
-                }),
             // Una de las 4 excepciones pedidas por el PO (2026-07-19, 4ª
             // pasada) que SÍ conserva animación tras retirar el deslizado
             // general de sección: fade + leve deslizado desde la derecha,
@@ -228,6 +239,108 @@ GoRouter buildRouter() => GoRouter(
                     )),
           ],
         ),
+        // ─── Rutas FULL-SCREEN sobre el shell (navigator raíz) ───
+        // Declaradas FUERA del ShellRoute a propósito: cubren toda la pantalla
+        // (incluida la barra flotante) al apilarse con push. Ver el gotcha
+        // documentado junto a `_rootNavigatorKey`.
+        //
+        // Tienda ANÓNIMA de un proveedor (desde una oferta o el catálogo):
+        // `?alias=` es la etiqueta "Proveedor 2820". Entra como VENTANA
+        // deslizando DESDE LA DERECHA (pedido PO 2026-07-22).
+        GoRoute(
+            path: '/store/:bid',
+            pageBuilder: (context, s) => CustomTransitionPage(
+                  key: s.pageKey,
+                  transitionDuration: JayaloMotion.reduced(context)
+                      ? Duration.zero
+                      : JayaloMotion.page,
+                  reverseTransitionDuration: JayaloMotion.reduced(context)
+                      ? Duration.zero
+                      : JayaloMotion.page,
+                  transitionsBuilder: (context, animation, _, child) =>
+                      SlideTransition(
+                    position: Tween<Offset>(
+                            begin: const Offset(1, 0), end: Offset.zero)
+                        .animate(CurvedAnimation(
+                            parent: animation,
+                            curve: JayaloMotion.enter,
+                            reverseCurve: JayaloMotion.exit)),
+                    child: child,
+                  ),
+                  child: BackGuard(
+                      child: ProviderStoreScreen(
+                          businessId: s.pathParameters['bid']!,
+                          alias:
+                              s.uri.queryParameters['alias'] ?? 'Proveedor')),
+                )),
+        // Detalle de producto ABIERTO DESDE LA TIENDA (`/store/:bid`): como la
+        // tienda vive en el navigator raíz, empujar la ruta del shell
+        // `/catalog/:id` desde ella montaba el detalle DEBAJO de la tienda y
+        // se veía vacío (QA PO 2026-07-21). Esta variante top-level apila el
+        // mismo ProductDetailScreen ENCIMA de la tienda. `ProductListCard`
+        // decide cuál de las dos rutas usar según dónde está.
+        GoRoute(
+            path: '/product/:id',
+            pageBuilder: (context, s) => CustomTransitionPage(
+                  key: s.pageKey,
+                  transitionDuration: JayaloMotion.reduced(context)
+                      ? Duration.zero
+                      : JayaloMotion.page,
+                  reverseTransitionDuration: JayaloMotion.reduced(context)
+                      ? Duration.zero
+                      : JayaloMotion.page,
+                  transitionsBuilder: (context, animation, _, child) =>
+                      SlideTransition(
+                    position: Tween<Offset>(
+                            begin: const Offset(1, 0), end: Offset.zero)
+                        .animate(CurvedAnimation(
+                            parent: animation,
+                            curve: JayaloMotion.enter,
+                            reverseCurve: JayaloMotion.exit)),
+                    child: child,
+                  ),
+                  child: BackGuard(
+                      child: ProductDetailScreen(
+                          productId: s.pathParameters['id']!)),
+                )),
+        // Chat: Scaffold de PRIMER NIVEL para que el composer reciba el inset
+        // real del sistema (anidado bajo el Scaffold del shell con su
+        // bottomNavigationBar, el inset quedaba recortado y el campo de
+        // escribir se pegaba al borde inferior — QA 2026-07-21).
+        GoRoute(
+            path: '/messages/:id',
+            pageBuilder: (context, s) {
+              // Task I-2: peer_name/avatar llegan por `extra` desde la
+              // lista de conversaciones (evita el RPC agregado). Si no
+              // vienen (deep-link/push futuro), quedan null y ChatScreen
+              // cae al fallback con `conversationsList()`.
+              final x = s.extra;
+              final m = x is Map ? x : null;
+              return CustomTransitionPage(
+                key: s.pageKey,
+                transitionDuration: JayaloMotion.reduced(context)
+                    ? Duration.zero
+                    : JayaloMotion.page,
+                reverseTransitionDuration: JayaloMotion.reduced(context)
+                    ? Duration.zero
+                    : JayaloMotion.page,
+                transitionsBuilder: (context, animation, _, child) =>
+                    SlideTransition(
+                  position: Tween<Offset>(
+                          begin: const Offset(1, 0), end: Offset.zero)
+                      .animate(CurvedAnimation(
+                          parent: animation,
+                          curve: JayaloMotion.enter,
+                          reverseCurve: JayaloMotion.exit)),
+                  child: child,
+                ),
+                child: BackGuard(
+                    child: ChatScreen(
+                        conversationId: s.pathParameters['id']!,
+                        peerName: m?['peer_name'] as String?,
+                        peerAvatarUrl: m?['peer_avatar_url'] as String?)),
+              );
+            }),
       ],
     );
 

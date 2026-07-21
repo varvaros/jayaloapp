@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../domain/chat.dart' show QuickItem;
 import '../domain/phase.dart';
 import '../domain/profile_address.dart';
 
@@ -12,6 +13,55 @@ final supa = Supabase.instance.client;
 /// pantallas ya montadas (pestañas vivas del shell) refresquen su lista sin
 /// pull-to-refresh. Escuchar con addListener y re-lanzar el fetch.
 final requestsChanged = ValueNotifier<int>(0);
+
+/// Contador para el badge de la pestaña "Solicitudes" de la barra flotante.
+/// Su significado depende del rol activo (solo hay uno por sesión): para el
+/// CLIENTE = solicitudes con ofertas por revisar; para el PROVEEDOR = solicitudes
+/// abiertas en su bandeja "Para ti". Cada pantalla lo actualiza tras su fetch;
+/// la barra lo lee con un `ValueListenableBuilder`. 0 = sin badge.
+final solicitudesBadge = ValueNotifier<int>(0);
+
+/// Badge de MENSAJES sin leer para el ícono "Mensajes" de la barra flotante
+/// (pedido PO 2026-07-21: "cuando haya mensajes nuevos en el chat, que aparezca
+/// una notificación en el icono del navbar"). Suma `unread_count` de todas las
+/// conversaciones. Se refresca al montar el shell y al volver del background
+/// (mismo patrón sin-socket que [NotifCountStore]), y de forma EXACTA cuando la
+/// lista de conversaciones o un chat ya tienen el dato fresco.
+class MessagesBadgeStore extends ChangeNotifier {
+  int count = 0;
+
+  MessagesBadgeStore() {
+    // Al cerrar sesión no arrastrar el conteo del usuario anterior. Va en
+    // try/catch: este store es global y el shell lo referencia, pero en los
+    // widget-tests de la barra Supabase no está inicializado (`Supabase.instance`
+    // dispara un assert) — el badge simplemente arranca inerte ahí.
+    try {
+      supa.auth.onAuthStateChange.listen((e) {
+        if (e.event == AuthChangeEvent.signedOut) set(0);
+      });
+    } catch (_) {}
+  }
+
+  void set(int n) {
+    final next = n.clamp(0, 999);
+    if (next != count) {
+      count = next;
+      notifyListeners();
+    }
+  }
+
+  /// Recuenta desde el servidor (best-effort: nunca rompe la barra).
+  Future<void> refresh() async {
+    try {
+      final rows = await conversationsList();
+      final total = rows.fold<int>(
+          0, (s, c) => s + ((c['unread_count'] as int?) ?? 0));
+      set(total);
+    } catch (_) {}
+  }
+}
+
+final messagesBadge = MessagesBadgeStore();
 
 // ── Cliente: mis solicitudes y ofertas ──────────────────────────────────────
 
@@ -33,7 +83,16 @@ Future<List<Map<String, dynamic>>> myRequests() async {
 
 const offerCols =
     'id,request_id,business_id,user_id,price,price_min,price_max,pricing_mode,'
-    'hourly_rate,estimated_hours,message,status,unlocked_at,created_at';
+    'hourly_rate,estimated_hours,message,status,unlocked_at,created_at,'
+    // Fotos de la oferta (marquesina en la hoja de detalle) + logística de
+    // envío (para sumar al precio en el badge "Más económica").
+    'image_urls,offers_shipping,shipping_price,'
+    // Detalles estructurados que la hoja de la oferta muestra si existen
+    // (pedido PO: color, tiempo de entrega, garantía, etc. — no solo el
+    // mensaje compuesto).
+    'offers_installation,installation_price,requires_evaluation,'
+    'evaluation_price,availability_note,estimated_duration,product_brand,'
+    'product_colors,product_warranty,delivery_time';
 
 Future<List<Map<String, dynamic>>> offersForRequest(String requestId) async =>
     List<Map<String, dynamic>>.from(
@@ -48,6 +107,86 @@ Stream<List<Map<String, dynamic>>> offersStream(String requestId) => supa
     .from('provider_offers')
     .stream(primaryKey: ['id'])
     .eq('request_id', requestId);
+
+/// De un lote de solicitudes, cuáles ya tienen una oferta de ESTE usuario
+/// (proveedor) — para el badge "Ya ofertaste" en la bandeja. Filtra por
+/// `user_id` (quien mira la bandeja), coherente con "una oferta por solicitud".
+Future<Set<String>> myOfferedRequestIds(List<String> requestIds) async {
+  if (requestIds.isEmpty) return {};
+  final uid = supa.auth.currentUser!.id;
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('provider_offers')
+        .select('request_id')
+        .eq('user_id', uid)
+        .inFilter('request_id', requestIds),
+  );
+  return {for (final r in rows) r['request_id'] as String};
+}
+
+/// Como [myOfferedRequestIds] pero con el ESTADO EFECTIVO de la oferta para el
+/// badge de la bandeja: 'pending' ("Ya ofertaste"), 'accepted' ("Aceptada") y
+/// **'unlocked'** ("Desbloqueado", cuando ya se pagó el contacto — pedido PO
+/// 2026-07-22). `unlocked_at != null` gana sobre el status.
+Future<Map<String, String>> myOfferedRequestStatuses(
+    List<String> requestIds) async {
+  if (requestIds.isEmpty) return {};
+  final uid = supa.auth.currentUser!.id;
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('provider_offers')
+        .select('request_id,status,unlocked_at')
+        .eq('user_id', uid)
+        .inFilter('request_id', requestIds),
+  );
+  return {
+    for (final r in rows)
+      r['request_id'] as String:
+          (r['unlocked_at'] != null ? 'unlocked' : r['status'] as String),
+  };
+}
+
+/// Solicitudes ABIERTAS (de otros) a las que este proveedor ya ofertó — para
+/// que una oferta hecha en OTRO rubro también aparezca en "Para ti" (pedido
+/// PO: "si alguien ofertó en otro rubro, esa oferta pasa a Para ti").
+/// Mismas columnas que [allOpenRequests] para que la tarjeta pinte igual.
+Future<List<Map<String, dynamic>>> myOfferedOpenRequests(
+    {String? kind}) async {
+  final uid = supa.auth.currentUser!.id;
+  final offers = List<Map<String, dynamic>>.from(
+    await supa.from('provider_offers').select('request_id').eq('user_id', uid),
+  );
+  final ids = {for (final o in offers) o['request_id'] as String}.toList();
+  if (ids.isEmpty) return [];
+  var q = supa
+      .from('customer_requests')
+      .select(
+          'id,title,description,kind,urgency,zone,is_wholesale,created_at,image_url')
+      .eq('status', 'open')
+      .inFilter('id', ids);
+  if (kind != null) q = q.eq('kind', kind);
+  return List<Map<String, dynamic>>.from(
+    await q.order('created_at', ascending: false).limit(100),
+  );
+}
+
+/// La oferta que ESTE negocio ya envió a esta solicitud, o `null` si aún no ha
+/// ofertado. Regla PO: **una sola oferta por solicitud por proveedor** — el
+/// detalle usa esto para mostrar "Ya ofertaste" en vez del formulario. El
+/// filtro por `business_id` (no `user_id`) hace la regla POR NEGOCIO, que es la
+/// unidad que oferta. La RLS ya deja al dueño leer sus propias ofertas.
+Future<Map<String, dynamic>?> myOfferForRequest(
+    String requestId, String businessId) async {
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('provider_offers')
+        .select(offerCols)
+        .eq('request_id', requestId)
+        .eq('business_id', businessId)
+        .limit(1),
+  );
+  return rows.isEmpty ? null : rows.first;
+}
 
 /// Bandera de verificación por negocio (RPC `businesses_verified`): el cliente
 /// no puede leer las columnas de verificación (RLS), así que la señal pública
@@ -103,6 +242,10 @@ Future<void> submitRequest({
   String serviceModality = '',
   String urgencyLevel = '',
   DateTime? serviceEventDate,
+  // Presupuesto estimado del cliente (opcional, solo servicios — paridad web
+  // requests/new.tsx). Se guarda solo si es > 0.
+  num? budgetMin,
+  num? budgetMax,
 }) async {
   final uid = supa.auth.currentUser!.id;
   final isService = kind == 'servicio';
@@ -130,8 +273,10 @@ Future<void> submitRequest({
         ? serviceEventDate.toUtc().toIso8601String()
         : null,
     'urgency_level': isService ? urgencyLevel : '',
-    'budget_min': null,
-    'budget_max': null,
+    'budget_min':
+        isService && budgetMin != null && budgetMin > 0 ? budgetMin : null,
+    'budget_max':
+        isService && budgetMax != null && budgetMax > 0 ? budgetMax : null,
     'is_recurring': false,
     'recurrence_note': '',
     'is_wholesale': !isService && wholesale,
@@ -212,7 +357,7 @@ Future<Map<String, dynamic>?> requestById(String id) async => await supa
       // image_url/image_urls: el detalle del proveedor pinta la foto del
       // cliente en el panel ámbar (igual que el detalle del cliente). Sin
       // estas columnas el panel SIEMPRE caía al ícono — "llegan sin imágenes".
-      'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at,image_url,image_urls',
+      'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at,image_url,image_urls,budget_min,budget_max',
     )
     .eq('id', id)
     .maybeSingle();
@@ -230,6 +375,62 @@ Future<String?> myBusinessId() async {
 
 /// Ofertar es GRATIS. Campos idénticos al insert de la web
 /// (RequestRespondSection.tsx L940-954, camino precio fijo/rango).
+/// Campos compartidos entre CREAR ([makeOffer]) y EDITAR ([updateOffer]) una
+/// oferta. Aísla la forma del payload en un solo lugar para no duplicar la
+/// regla de "guardar el costo solo si el toggle está activo Y > 0 (0 = gratis)"
+/// ni la de "por hora solo aplica en ese modo".
+Map<String, dynamic> _offerFields({
+  double? price,
+  double? priceMin,
+  double? priceMax,
+  required String message,
+  List<String> imageUrls = const [],
+  String pricingMode = 'fixed',
+  bool offersShipping = false,
+  double? shippingPrice,
+  bool offersInstallation = false,
+  double? installationPrice,
+  bool requiresEvaluation = false,
+  double? evaluationPrice,
+  double? hourlyRate,
+  double? estimatedHours,
+  String availabilityNote = '',
+  String estimatedDuration = '',
+  String productBrand = '',
+  List<String> productColors = const [],
+  String productWarranty = '',
+  String deliveryTime = '',
+}) => {
+  'price': price,
+  'price_min': priceMin,
+  'price_max': priceMax,
+  'message': message,
+  'image_urls': imageUrls,
+  // Logística de producto (paridad web RequestRespondSection.tsx:952-957): el
+  // precio solo se guarda si el toggle está activo Y el costo > 0 (0 = gratis).
+  'offers_shipping': offersShipping,
+  'shipping_price':
+      offersShipping && (shippingPrice ?? 0) > 0 ? shippingPrice : null,
+  'offers_installation': offersInstallation,
+  'installation_price':
+      offersInstallation && (installationPrice ?? 0) > 0 ? installationPrice : null,
+  'requires_evaluation': requiresEvaluation,
+  'evaluation_price':
+      requiresEvaluation && (evaluationPrice ?? 0) > 0 ? evaluationPrice : null,
+  'pricing_mode': pricingMode,
+  // Por hora (servicio): tarifa + horas solo aplican en ese modo.
+  'hourly_rate': pricingMode == 'hourly' ? hourlyRate : null,
+  'estimated_hours': pricingMode == 'hourly' ? estimatedHours : null,
+  'availability_note': availabilityNote,
+  'estimated_duration': estimatedDuration,
+  // Detalles del producto (paridad web): solo se guardan si vienen.
+  'product_brand': productBrand.trim().isEmpty ? null : productBrand.trim(),
+  'product_colors': productColors.isEmpty ? null : productColors,
+  'product_warranty':
+      productWarranty.trim().isEmpty ? null : productWarranty.trim(),
+  'delivery_time': deliveryTime.trim().isEmpty ? null : deliveryTime.trim(),
+};
+
 Future<void> makeOffer({
   required Map<String, dynamic> request,
   required String businessId,
@@ -260,37 +461,94 @@ Future<void> makeOffer({
     'business_id': businessId,
     'request_id': request['id'],
     'request_title': request['title'],
-    'price': price,
-    'price_min': priceMin,
-    'price_max': priceMax,
-    'message': message,
     'status': 'pending',
-    'image_urls': imageUrls,
-    // Logística de producto (paridad web RequestRespondSection.tsx:952-957): el
-    // precio solo se guarda si el toggle está activo Y el costo > 0 (0 = gratis).
-    'offers_shipping': offersShipping,
-    'shipping_price':
-        offersShipping && (shippingPrice ?? 0) > 0 ? shippingPrice : null,
-    'offers_installation': offersInstallation,
-    'installation_price':
-        offersInstallation && (installationPrice ?? 0) > 0 ? installationPrice : null,
-    'requires_evaluation': requiresEvaluation,
-    'evaluation_price':
-        requiresEvaluation && (evaluationPrice ?? 0) > 0 ? evaluationPrice : null,
-    'pricing_mode': pricingMode,
-    // Por hora (servicio): tarifa + horas solo aplican en ese modo.
-    'hourly_rate': pricingMode == 'hourly' ? hourlyRate : null,
-    'estimated_hours': pricingMode == 'hourly' ? estimatedHours : null,
-    'availability_note': availabilityNote,
-    'estimated_duration': estimatedDuration,
-    // Detalles del producto (paridad web): solo se guardan si vienen.
-    'product_brand': productBrand.trim().isEmpty ? null : productBrand.trim(),
-    'product_colors': productColors.isEmpty ? null : productColors,
-    'product_warranty':
-        productWarranty.trim().isEmpty ? null : productWarranty.trim(),
-    'delivery_time': deliveryTime.trim().isEmpty ? null : deliveryTime.trim(),
+    ..._offerFields(
+      price: price,
+      priceMin: priceMin,
+      priceMax: priceMax,
+      message: message,
+      imageUrls: imageUrls,
+      pricingMode: pricingMode,
+      offersShipping: offersShipping,
+      shippingPrice: shippingPrice,
+      offersInstallation: offersInstallation,
+      installationPrice: installationPrice,
+      requiresEvaluation: requiresEvaluation,
+      evaluationPrice: evaluationPrice,
+      hourlyRate: hourlyRate,
+      estimatedHours: estimatedHours,
+      availabilityNote: availabilityNote,
+      estimatedDuration: estimatedDuration,
+      productBrand: productBrand,
+      productColors: productColors,
+      productWarranty: productWarranty,
+      deliveryTime: deliveryTime,
+    ),
   });
 }
+
+/// Edita una oferta PENDIENTE propia (RLS: dueño). No toca
+/// request_id/business_id/status; misma forma de payload que [makeOffer].
+Future<void> updateOffer({
+  required String offerId,
+  double? price,
+  double? priceMin,
+  double? priceMax,
+  required String message,
+  List<String> imageUrls = const [],
+  String pricingMode = 'fixed',
+  bool offersShipping = false,
+  double? shippingPrice,
+  bool offersInstallation = false,
+  double? installationPrice,
+  bool requiresEvaluation = false,
+  double? evaluationPrice,
+  double? hourlyRate,
+  double? estimatedHours,
+  String availabilityNote = '',
+  String estimatedDuration = '',
+  String productBrand = '',
+  List<String> productColors = const [],
+  String productWarranty = '',
+  String deliveryTime = '',
+}) async {
+  await supa.from('provider_offers').update(_offerFields(
+    price: price,
+    priceMin: priceMin,
+    priceMax: priceMax,
+    message: message,
+    imageUrls: imageUrls,
+    pricingMode: pricingMode,
+    offersShipping: offersShipping,
+    shippingPrice: shippingPrice,
+    offersInstallation: offersInstallation,
+    installationPrice: installationPrice,
+    requiresEvaluation: requiresEvaluation,
+    evaluationPrice: evaluationPrice,
+    hourlyRate: hourlyRate,
+    estimatedHours: estimatedHours,
+    availabilityNote: availabilityNote,
+    estimatedDuration: estimatedDuration,
+    productBrand: productBrand,
+    productColors: productColors,
+    productWarranty: productWarranty,
+    deliveryTime: deliveryTime,
+  )).eq('id', offerId);
+}
+
+/// Fila COMPLETA de una oferta propia (todas las columnas) para prefijar el
+/// formulario de edición — `offerCols` no trae los detalles de producto.
+Future<Map<String, dynamic>?> offerForEdit(String offerId) async {
+  final rows = List<Map<String, dynamic>>.from(
+    await supa.from('provider_offers').select().eq('id', offerId).limit(1),
+  );
+  return rows.isEmpty ? null : rows.first;
+}
+
+/// Borra una oferta PENDIENTE propia (RLS: dueño). Solo se ofrece en la app
+/// para ofertas SIN aceptar; una aceptada ya está en el flujo de dinero.
+Future<void> deleteOffer(String offerId) =>
+    supa.from('provider_offers').delete().eq('id', offerId);
 
 Future<List<Map<String, dynamic>>> myOffers() async {
   final uid = supa.auth.currentUser!.id;
@@ -435,6 +693,115 @@ Future<Map<String, dynamic>?> myProfile() async {
       .select('account_type,first_name,last_name,phone,avatar_url')
       .eq('user_id', uid)
       .maybeSingle();
+}
+
+/// Preferencia de contacto del usuario (pedido PO 2026-07-22): si prefiere que
+/// lo contacten por WhatsApp (true) o SOLO por el chat de Jayalo (false).
+/// Es la columna `profiles.whatsapp_reveal_enabled` que gatea
+/// `can_reveal_offer_whatsapp` server-side. DEFAULT = DESACTIVADO (pedido PO
+/// 2026-07-21, alineado con la doctrina "WhatsApp nunca es la conversación"):
+/// quien lo quiera lo enciende en Ajustes.
+Future<bool> whatsappRevealEnabled() async {
+  final uid = supa.auth.currentUser!.id;
+  final row = await supa
+      .from('profiles')
+      .select('whatsapp_reveal_enabled')
+      .eq('user_id', uid)
+      .maybeSingle();
+  return row?['whatsapp_reveal_enabled'] as bool? ?? false;
+}
+
+Future<void> setWhatsappRevealEnabled(bool enabled) async {
+  final uid = supa.auth.currentUser!.id;
+  await supa
+      .from('profiles')
+      .update({'whatsapp_reveal_enabled': enabled}).eq('user_id', uid);
+}
+
+/// Respuestas rápidas del chat personalizadas por el usuario (jsonb
+/// `{"customer":[...],"provider":[...]}`). NULL / clave ausente = defaults.
+Future<Map<String, dynamic>?> fetchCustomQuickReplies() async {
+  final uid = supa.auth.currentUser!.id;
+  final row = await supa
+      .from('profiles')
+      .select('custom_quick_replies')
+      .eq('user_id', uid)
+      .maybeSingle();
+  final v = row?['custom_quick_replies'];
+  return v is Map ? Map<String, dynamic>.from(v) : null;
+}
+
+/// Guarda la lista personalizada de un rol SIN pisar la del otro (read-modify-
+/// write del jsonb). Una lista vacía deja el rol como personalizado-vacío; para
+/// volver a los defaults se guarda la lista de defaults tal cual (el editor lo
+/// hace con "Restaurar predeterminados").
+Future<void> saveCustomQuickReplies({
+  required bool provider,
+  required List<QuickItem> items,
+}) async {
+  final uid = supa.auth.currentUser!.id;
+  final current = await fetchCustomQuickReplies() ?? <String, dynamic>{};
+  current[provider ? 'provider' : 'customer'] =
+      items.map((e) => e.toJson()).toList();
+  await supa
+      .from('profiles')
+      .update({'custom_quick_replies': current}).eq('user_id', uid);
+}
+
+/// Restaura los defaults de un rol quitando su clave del jsonb (así el usuario
+/// vuelve a heredar los defaults VIVOS de la app, no una copia congelada).
+Future<void> resetCustomQuickReplies({required bool provider}) async {
+  final uid = supa.auth.currentUser!.id;
+  final current = await fetchCustomQuickReplies();
+  if (current == null) return; // nunca personalizó: ya está en defaults
+  current.remove(provider ? 'provider' : 'customer');
+  await supa
+      .from('profiles')
+      .update({'custom_quick_replies': current.isEmpty ? null : current})
+      .eq('user_id', uid);
+}
+
+/// ¿El usuario actual es admin? (RLS de `user_roles`: cada quien lee su propia
+/// fila). Para mostrar el "Registro rápido" del menú (pedido PO 2026-07-22).
+Future<bool> isAdmin() async {
+  try {
+    final uid = supa.auth.currentUser?.id;
+    if (uid == null) return false;
+    final row = await supa
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', uid)
+        .eq('role', 'admin')
+        .maybeSingle();
+    return row != null;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Registro rápido de un proveedor por correo (solo admin). Llama a la edge
+/// function `admin-invite-provider`, que reproduce el `inviteProvider` de la web
+/// (invita por Auth Admin con `pending_business` en la metadata).
+Future<void> inviteProviderQuick({
+  required String email,
+  String businessName = '',
+  String whatsapp = '',
+  String city = '',
+}) async {
+  try {
+    await supa.functions.invoke('admin-invite-provider', body: {
+      'email': email,
+      'businessName': businessName,
+      'whatsapp': whatsapp,
+      'city': city,
+    });
+  } on FunctionException catch (e) {
+    final d = e.details;
+    final msg = (d is Map && d['error'] != null)
+        ? d['error'].toString()
+        : 'No se pudo registrar el proveedor.';
+    throw Exception(msg);
+  }
 }
 
 /// ¿La fila PERSONAL (business_id NULL) está sellada? Es el gate del revelado.
@@ -684,6 +1051,21 @@ Future<String?> uploadBusinessLogo(String filePath) async {
   return supa.storage.from('business-logos').getPublicUrl(path);
 }
 
+/// Sube la foto de perfil (bucket público `business-logos`, misma ruta que la
+/// web: `{uid}/avatar-{ts}.{ext}`) y actualiza `profiles.avatar_url`. Devuelve
+/// la URL pública (pedido PO 2026-07-22: foto editable en el menú lateral).
+Future<String> updateMyAvatar(String filePath) async {
+  final uid = supa.auth.currentUser!.id;
+  final dot = filePath.lastIndexOf('.');
+  final ext = dot == -1 ? 'jpg' : filePath.substring(dot + 1).toLowerCase();
+  final path = '$uid/avatar-${DateTime.now().millisecondsSinceEpoch}.$ext';
+  await supa.storage.from('business-logos').upload(path, File(filePath),
+      fileOptions: const FileOptions(upsert: true));
+  final url = supa.storage.from('business-logos').getPublicUrl(path);
+  await supa.from('profiles').update({'avatar_url': url}).eq('user_id', uid);
+  return url;
+}
+
 // ── Fotos de solicitudes y ofertas ──────────────────────────────────────────
 // Espejan `src/lib/image/uploadRequestImage.ts` de la web: se sube al bucket
 // `business-logos` (reusado, público) con prefijo de ruta distinto y se guarda
@@ -860,6 +1242,47 @@ Future<void> submitConversationRating({
   'comment': (comment == null || comment.trim().isEmpty)
       ? null
       : comment.trim(),
+});
+
+// ── Calificación del PROVEEDOR al CLIENTE (bilateral) ──────────────────────
+// Espejo de la web (`ProviderOffersSection`): el proveedor califica al cliente
+// 1-5 + comentario en `customer_reviews`, indexado por `offer_id`. La RLS solo
+// exige que el negocio sea suyo (sin gate de estado), pero la UI lo muestra al
+// cerrarse el chat.
+
+/// ¿El proveedor ya calificó al cliente de esta oferta? (una reseña por oferta).
+Future<bool> hasCustomerReview(String offerId) async =>
+    (await supa
+        .from('customer_reviews')
+        .select('id')
+        .eq('offer_id', offerId)
+        .maybeSingle()) !=
+    null;
+
+/// `business_id` de una oferta — el proveedor es dueño de ese negocio, así que
+/// escribir el `customer_review` con él pasa la RLS.
+Future<String?> offerBusinessId(String offerId) async {
+  final row = await supa
+      .from('provider_offers')
+      .select('business_id')
+      .eq('id', offerId)
+      .maybeSingle();
+  return row?['business_id'] as String?;
+}
+
+Future<void> submitCustomerReview({
+  required String offerId,
+  required String businessId,
+  required String customerId,
+  required int rating,
+  String? comment,
+}) async => supa.from('customer_reviews').insert({
+  'offer_id': offerId,
+  'business_id': businessId,
+  'customer_id': customerId,
+  'rating': rating,
+  // comment es NOT NULL en el esquema → cadena vacía si no escribió nada.
+  'comment': (comment ?? '').trim(),
 });
 
 Future<void> reportAccount({
@@ -1048,10 +1471,14 @@ Future<String?> myBusinessName() async {
 ///
 /// Campos: avg_rating, reviews_count, completed_purchases, requests_count,
 /// median_response_minutes, response_samples.
-Future<Map<String, dynamic>?> customerReputation() async {
-  final uid = supa.auth.currentUser!.id;
+/// [customerId] null = el usuario actual (su propia reputación). Con un id, la
+/// de ESE cliente — el proveedor la ve en el detalle de una solicitud (pedido
+/// PO 2026-07-22). `get_customer_reputation` es SECURITY DEFINER, no expone
+/// contacto (solo agregados de reputación).
+Future<Map<String, dynamic>?> customerReputation([String? customerId]) async {
+  final id = customerId ?? supa.auth.currentUser!.id;
   final rows = List<Map<String, dynamic>>.from(
-    await supa.rpc('get_customer_reputation', params: {'_customer_id': uid}),
+    await supa.rpc('get_customer_reputation', params: {'_customer_id': id}),
   );
   return rows.isEmpty ? null : rows.first;
 }
@@ -1180,7 +1607,8 @@ Future<List<Map<String, dynamic>>> allOpenRequests({String? kind}) async {
   final uid = supa.auth.currentUser!.id;
   var q = supa
       .from('customer_requests')
-      .select('id,title,description,kind,urgency,zone,created_at,image_url')
+      .select(
+          'id,title,description,kind,urgency,zone,is_wholesale,created_at,image_url')
       .eq('status', 'open')
       .neq('user_id', uid);
   if (kind != null) q = q.eq('kind', kind);
@@ -1215,14 +1643,28 @@ Future<List<Map<String, dynamic>>> catalogProducts({
   String? rubro,
   bool wholesale = false,
 }) async {
-  // En mayoreo se une el negocio (inner) para poder exigir is_wholesale, igual
-  // que `productHitsQ` de la web. El objeto embebido `provider_businesses` que
-  // vuelve en cada fila es inofensivo (la tarjeta no lo lee).
-  final cols = wholesale
-      ? '$catalogProductCols,provider_businesses!inner(is_wholesale)'
-      : catalogProductCols;
-  var q = supa.from('provider_products').select(cols).eq('kind', kind);
-  if (wholesale) q = q.eq('provider_businesses.is_wholesale', true);
+  // OJO: `provider_products` NO tiene FK a `provider_businesses` (verificado en
+  // prod 2026-07-21) → el embed `provider_businesses!inner(...)` que hacía la
+  // web y la app reventaba con PGRST200 ("Could not find a relationship…") y el
+  // catálogo mostraba "No se pudo cargar" al activar "Al por mayor". Se resuelve
+  // en DOS PASOS: primero los negocios mayoristas, luego se filtra el producto
+  // por `business_id` (sin embed). (La web tiene el mismo bug — flag al PO.)
+  List<String>? wholesaleBizIds;
+  if (wholesale) {
+    final biz = await supa
+        .from('provider_businesses')
+        .select('id')
+        .eq('is_wholesale', true);
+    wholesaleBizIds = List<Map<String, dynamic>>.from(biz)
+        .map((b) => b['id'] as String)
+        .toList();
+    // Sin negocios mayoristas no hay productos que mostrar (evita un
+    // `in.()` vacío, que PostgREST rechaza).
+    if (wholesaleBizIds.isEmpty) return const [];
+  }
+  var q =
+      supa.from('provider_products').select(catalogProductCols).eq('kind', kind);
+  if (wholesaleBizIds != null) q = q.inFilter('business_id', wholesaleBizIds);
   if (categoryId != null) q = q.eq('category_id', categoryId);
   if (rubro != null) q = q.ilike('rubro', rubro);
   final term = search?.trim();
@@ -1237,9 +1679,26 @@ Future<List<Map<String, dynamic>>> catalogProducts({
   );
 }
 
-// ── Mi tienda: productos/servicios del propio negocio (solo lectura) ────────
+/// Tipo de negocio (`formal` | `informal` | `tecnico`) de un negocio. Se usa
+/// para ordenar su tienda (PO 2026-07-21): `tecnico` = perfil de SERVICIOS
+/// (servicios + trabajos primero); el resto = perfil de PRODUCTOS. Lectura
+/// pública de `provider_businesses` (misma tabla que el catálogo ya lee).
+Future<String?> providerBusinessType(String businessId) async {
+  final row = await supa
+      .from('provider_businesses')
+      .select('business_type')
+      .eq('id', businessId)
+      .maybeSingle();
+  return row?['business_type'] as String?;
+}
+
+// ── Mi tienda: productos/servicios del propio negocio ──────────────────────
+// Incluye los campos que autocompletan una oferta al elegir un producto de la
+// tienda (color/logística/estado/rubro), no solo lo que pinta la lista.
 const storeProductCols =
-    'id,name,description,price,price_min,price_max,image_urls,category_id,kind';
+    'id,name,description,color,price,price_min,price_max,image_urls,'
+    'category_id,rubro,kind,condition,offers_shipping,offers_installation,'
+    'requires_evaluation';
 
 /// Todos los productos y servicios del propio negocio, más recientes primero.
 /// Se separan por kind en la UI con [partitionStoreItems].
@@ -1252,6 +1711,92 @@ Future<List<Map<String, dynamic>>> myStoreProducts(String businessId) async =>
           .order('created_at', ascending: false)
           .limit(200),
     );
+
+/// Trabajos anteriores (portafolio) del propio negocio — para "Cargar trabajos
+/// anteriores" en la oferta. Mismo modelo que la web (`provider_portfolio_items`).
+Future<List<Map<String, dynamic>>> myPortfolioItems(String businessId) async =>
+    List<Map<String, dynamic>>.from(
+      await supa
+          .from('provider_portfolio_items')
+          .select('id,title,image_urls,category_id,completed_at')
+          .eq('business_id', businessId)
+          .order('position', ascending: true)
+          .limit(200),
+    );
+
+/// Guarda como producto de la tienda lo que el proveedor acaba de ofertar
+/// (pedido PO 2026-07-21: "¿guardar este producto para envíos futuros?").
+/// RLS: owner insert. category_id/rubro/kind/color son NOT NULL en la tabla.
+Future<void> saveProductToStore({
+  required String businessId,
+  required String name,
+  required String description,
+  required String categoryId,
+  required String rubro,
+  required String kind,
+  String color = '',
+  double? price,
+  double? priceMin,
+  double? priceMax,
+  List<String> imageUrls = const [],
+  String? condition,
+  bool offersShipping = false,
+  bool offersInstallation = false,
+  bool requiresEvaluation = false,
+}) async {
+  final uid = supa.auth.currentUser!.id;
+  await supa.from('provider_products').insert({
+    'user_id': uid,
+    'business_id': businessId,
+    'name': name,
+    'description': description,
+    'color': color,
+    'category_id': categoryId,
+    'rubro': rubro,
+    'kind': kind,
+    'price': price,
+    'price_min': priceMin,
+    'price_max': priceMax,
+    'image_urls': imageUrls,
+    'tags': const <String>[],
+    'condition': condition,
+    'offers_shipping': offersShipping,
+    'offers_installation': offersInstallation,
+    'requires_evaluation': requiresEvaluation,
+  });
+}
+
+/// category_id (slug) + un rubro (NOMBRE) del negocio, para prefijar el
+/// guardado en tienda: `provider_products` exige ambos NOT NULL y la oferta no
+/// los trae. `provider_business_rubros` guarda `rubro_id` (uuid) → se resuelve
+/// a `rubros.name` (que es lo que la web pone en `provider_products.rubro`).
+Future<({String? categoryId, String? rubro})> myBusinessCategoryRubro(
+    String businessId) async {
+  final cat = await supa
+      .from('provider_business_categories')
+      .select('category_id')
+      .eq('business_id', businessId)
+      .limit(1)
+      .maybeSingle();
+  final categoryId = cat?['category_id'] as String?;
+  String? rubro;
+  final rubRow = await supa
+      .from('provider_business_rubros')
+      .select('rubro_id')
+      .eq('business_id', businessId)
+      .limit(1)
+      .maybeSingle();
+  final rubroId = rubRow?['rubro_id'];
+  if (rubroId != null) {
+    final r = await supa
+        .from('rubros')
+        .select('name')
+        .eq('id', rubroId)
+        .maybeSingle();
+    rubro = r?['name'] as String?;
+  }
+  return (categoryId: categoryId, rubro: rubro);
+}
 
 /// Parte una lista mezclada en (productos, servicios). `kind == 'servicio'` va a
 /// servicios; cualquier otro valor (incluido null) cuenta como producto.

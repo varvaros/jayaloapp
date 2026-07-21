@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -47,6 +46,10 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _sending = false;
   bool _uploadingImage = false;
   bool _hasRating = false;
+  // Calificación bilateral: ¿el proveedor ya calificó al cliente? + el
+  // business_id con el que la escribe (dueño → pasa la RLS de customer_reviews).
+  bool _customerReviewed = false;
+  String? _reviewBusinessId;
   RealtimeChannel? _channel;
   AppLifecycleListener? _lifecycle;
   final _scroll = ScrollController();
@@ -110,8 +113,13 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       _setupRealtime();
       _afterLoad();
-      // Notificaciones leídas — best-effort, no bloquea la UI.
-      markChatNotificationsRead(widget.conversationId).catchError((_) {});
+      _maybeLoadProviderReview(conv);
+      // Notificaciones leídas — best-effort, no bloquea la UI. Al leer este
+      // chat, el badge de "Mensajes" de la barra debe bajar (pedido PO
+      // 2026-07-21): se recuenta tras marcar leído.
+      markChatNotificationsRead(widget.conversationId)
+          .then((_) => messagesBadge.refresh())
+          .catchError((_) {});
       _jumpToBottom();
     } catch (_) {
       if (mounted) setState(() => _error = true);
@@ -190,7 +198,30 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _reload() async {
     final conv = await fetchConversation(widget.conversationId);
-    if (mounted && conv != null) setState(() => _conv = conv);
+    if (mounted && conv != null) {
+      setState(() => _conv = conv);
+      _maybeLoadProviderReview(conv);
+    }
+  }
+
+  /// Carga, para el PROVEEDOR en un chat de oferta, si ya calificó al cliente y
+  /// con qué business_id — para poder mostrar el panel de calificación al
+  /// cerrarse el chat. Best-effort: si falla, el panel simplemente no aparece.
+  Future<void> _maybeLoadProviderReview(Map<String, dynamic> conv) async {
+    final isProvider = conv['provider_user_id'] == _uid;
+    final offerId = conv['source_id'] as String?;
+    if (!isProvider || conv['kind'] != 'offer' || offerId == null) return;
+    try {
+      final results =
+          await Future.wait([hasCustomerReview(offerId), offerBusinessId(offerId)]);
+      if (!mounted) return;
+      setState(() {
+        _customerReviewed = results[0] as bool;
+        _reviewBusinessId = results[1] as String?;
+      });
+    } catch (_) {
+      // El panel no se muestra; no rompe el chat.
+    }
   }
 
   void _setupRealtime() {
@@ -315,7 +346,10 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => m.body = nextBody); // optimista
     try {
       await updateQuickBody(m.id, nextBody);
-      await _sendRaw('text', quickConfirmation(p.question, option));
+      // La confirmación honra el texto personalizado que viajó en el payload
+      // (p.replies); si no vino, se cae al lookup por defaults.
+      final confirm = p.replies[option] ?? quickConfirmation(p.question, option);
+      await _sendRaw('text', confirm);
     } catch (_) {
       setState(() => m.body = prevBody); // rollback
       if (mounted) {
@@ -395,13 +429,10 @@ class _ChatScreenState extends State<ChatScreen> {
       await _sendRaw('text', item.question);
       return;
     }
-    final payload = jsonEncode({
-      'question': item.question,
-      'options': item.options,
-      'selected': null,
-      'answered_by': null,
-    });
-    await _sendRaw('quick', payload);
+    // `quickSendBody` incluye el mapa de confirmaciones del emisor para que una
+    // respuesta rápida EDITADA se confirme con su texto aunque el que contesta
+    // no la tenga en sus defaults.
+    await _sendRaw('quick', quickSendBody(item));
   }
 
   void _snack(String msg) {
@@ -684,6 +715,20 @@ class _ChatScreenState extends State<ChatScreen> {
           customerId: conv['customer_id'] as String,
           providerUserId: conv['provider_user_id'] as String,
           onDone: () => setState(() => _hasRating = true));
+    }
+    // Lado del PROVEEDOR de la calificación bilateral (pedido PO): al cerrarse
+    // un chat de oferta, el proveedor califica al cliente.
+    if (_isProvider &&
+        conv['status'] == 'cerrado' &&
+        conv['kind'] == 'offer' &&
+        _reviewBusinessId != null &&
+        !_customerReviewed) {
+      return CustomerRatingPanel(
+        offerId: conv['source_id'] as String,
+        businessId: _reviewBusinessId!,
+        customerId: conv['customer_id'] as String,
+        onDone: () => setState(() => _customerReviewed = true),
+      );
     }
     if (!_isOpen) {
       final txt = conv['status'] == 'cerrado'

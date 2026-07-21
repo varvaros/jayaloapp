@@ -14,11 +14,14 @@ class MainActivity : FlutterActivity() {
         createNotificationChannel()
     }
 
-    // Canal de notificaciones con el sonido custom (res/raw/coin.mp3). El
+    // Canal de notificaciones con el sonido custom (res/raw/notif_bell.mp3). El
     // sonido es una propiedad del CANAL en Android 8+, por eso se define aquí;
     // el manifest apunta este canal como el default de FCM, así los avisos en
-    // segundo plano suenan con él. Los canales persisten una vez creados: basta
-    // con haber abierto la app una vez.
+    // segundo plano suenan con él. ⚠️ El sonido de un canal es INMUTABLE una vez
+    // creado: para cambiarlo hay que usar un CHANNEL_ID nuevo (por eso el sufijo
+    // `_v2` al pasar de coin.mp3 a notif_bell.mp3, 2026-07-22) y actualizar el
+    // `default_notification_channel_id` del manifest para que coincida. El canal
+    // viejo queda huérfano y benigno.
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java) ?: return
@@ -29,7 +32,7 @@ class MainActivity : FlutterActivity() {
             NotificationManager.IMPORTANCE_HIGH,
         )
         channel.description = "Ofertas, mensajes y avisos de tu cuenta"
-        val sound = Uri.parse("android.resource://$packageName/${R.raw.coin}")
+        val sound = Uri.parse("android.resource://$packageName/${R.raw.notif_bell}")
         val attrs = AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .setUsage(AudioAttributes.USAGE_NOTIFICATION)
@@ -39,6 +42,6 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
-        const val CHANNEL_ID = "jayalo_alerts"
+        const val CHANNEL_ID = "jayalo_alerts_v2"
     }
 }

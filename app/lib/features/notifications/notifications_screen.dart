@@ -377,21 +377,24 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   }
 
   Widget _buildCard(AppNotification n, int index) {
-    // Swipe horizontal = marcar leída; la tarjeta NUNCA se elimina:
-    // confirmDismiss siempre devuelve false → Dismissible la regresa a su
-    // sitio con rebote y el AnimatedContainer desvanece el color (~300ms).
-    // Sobre una leída el mismo gesto es no-op y solo rebota (spec §3).
+    // Swipe horizontal = OCULTAR + marcar leída (pedido PO 2026-07-21:
+    // "cuando las deslizo hacia fuera de la pantalla deben ocultarse y
+    // marcarse como leído"). La tarjeta se va de la lista y se marca leída;
+    // si vuelve a cargarse la pantalla reaparecerá ya leída (no hay borrado
+    // en el servidor — es "archivar de la vista").
     Widget card = Dismissible(
       key: ValueKey('sw-${n.id}'),
       direction: DismissDirection.horizontal,
       dismissThresholds: const {
-        DismissDirection.startToEnd: .35,
-        DismissDirection.endToStart: .35,
+        DismissDirection.startToEnd: .4,
+        DismissDirection.endToStart: .4,
       },
       movementDuration: const Duration(milliseconds: 250),
-      confirmDismiss: (_) async {
-        _markReadOptimistic(n);
-        return false;
+      background: _swipeBackground(context, alignStart: true),
+      secondaryBackground: _swipeBackground(context, alignStart: false),
+      onDismissed: (_) {
+        _markReadOptimistic(n); // marca leída (baja el badge si era no-leída)
+        setState(() => _items.remove(n)); // la saca de la vista
       },
       child: _NotifCard(key: ValueKey(n.id), n: n, onTap: () => _open(n)),
     );
@@ -424,6 +427,31 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     }
     return card;
   }
+
+  /// Franja que asoma bajo la tarjeta al deslizarla: un check "Leído" del lado
+  /// hacia el que se arrastra. Respeta el margen horizontal de la tarjeta.
+  Widget _swipeBackground(BuildContext context, {required bool alignStart}) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      alignment: alignStart ? Alignment.centerLeft : Alignment.centerRight,
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(kCardRadius),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.done_all, size: 20, color: cs.onSurfaceVariant),
+          const SizedBox(height: 2),
+          Text('Leído',
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
 }
 
 class _NotifCard extends StatelessWidget {
@@ -434,7 +462,17 @@ class _NotifCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final fam = familyColors(context, familyFor(n.kind));
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    // "Tu saldo llegó a 0" va en ROJO (pedido PO 2026-07-22): es una
+    // advertencia (sin créditos no se desbloquean contactos), no un aviso
+    // neutro de wallet.
+    final fam = n.kind == 'wallet_empty'
+        ? (
+            bg: dark ? const Color(0x33F14E46) : const Color(0xFFFDE8E8),
+            fg: dark ? const Color(0xFFF6A7A2) : const Color(0xFFC0261C),
+            icon: dark ? const Color(0xFFF6A7A2) : const Color(0xFFC0261C),
+          )
+        : familyColors(context, familyFor(n.kind));
     final read = !n.unread;
     // Leída: la tarjeta se vuelve una tarjeta CÁLIDA (misma superficie que las
     // del home), NO un bloque gris — así la pantalla conserva el diseño aun con

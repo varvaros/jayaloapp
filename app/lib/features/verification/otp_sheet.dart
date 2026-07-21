@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../shared/jayalo_loader.dart';
 
@@ -136,14 +137,30 @@ class _OtpSheetState extends State<_OtpSheet> {
             keyboardType: TextInputType.number,
             maxLength: 6,
             autofocus: true,
-            style: const TextStyle(fontSize: 24, letterSpacing: 8),
+            // Código CASI GIGANTE (pedido PO): el número es el protagonista de
+            // la hoja — dígitos grandes y muy espaciados para leerlos/tipearlos
+            // de un vistazo, con la altura suficiente para que no se recorten.
+            style: TextStyle(
+              fontSize: 52,
+              height: 1.1,
+              letterSpacing: 14,
+              fontWeight: FontWeight.w700,
+              color: jayaloHead(context),
+            ),
             textAlign: TextAlign.center,
             decoration: InputDecoration(
               // Sin `border:` propio: hereda el relleno sin línea (F1) del
               // tema global — antes este campo era el único con un
               // OutlineInputBorder visible, desentonando con el resto.
               counterText: '',
+              contentPadding: const EdgeInsets.symmetric(vertical: 18),
               hintText: '······',
+              hintStyle: TextStyle(
+                fontSize: 52,
+                letterSpacing: 14,
+                color: Theme.of(context).colorScheme.onSurfaceVariant
+                    .withValues(alpha: .35),
+              ),
               errorText: _error,
               errorMaxLines: 3,
             ),

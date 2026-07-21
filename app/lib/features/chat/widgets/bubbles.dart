@@ -14,22 +14,24 @@ import '../../../domain/chat_time.dart';
   Color stamp,
 }) chatPalette(BuildContext context) {
   final dark = Theme.of(context).brightness == Brightness.dark;
+  // Fondo del chat ~50% más claro (pedido PO 2026-07-22: el lila pleno se
+  // sentía oscuro/incómodo). Las burbujas se ajustan para conservar contraste.
   return dark
       ? (
-          panel: const Color(0xFF2A2440),
-          own: const Color(0xFF3E3660),
-          peer: const Color(0xFF4A4370),
+          panel: const Color(0xFF3B3457),
+          own: const Color(0xFF4A4270),
+          peer: const Color(0xFF565080),
           ink: const Color(0xFFEDEAFB),
-          sys: Colors.white.withValues(alpha: .10),
+          sys: Colors.white.withValues(alpha: .12),
           stamp: const Color(0xFFCFC7EC),
         )
       : (
-          panel: const Color(0xFFBFA9F5),
-          own: const Color(0xFFDCD0FA),
-          peer: const Color(0xFFF2EDFE),
+          panel: const Color(0xFFE4DBFB), // era 0xFFBFA9F5
+          own: const Color(0xFFD3C4F7), // lavanda un poco más marcada
+          peer: Colors.white, // burbuja del cliente = blanca, contrasta
           ink: const Color(0xFF4A4458),
-          sys: Colors.white.withValues(alpha: .55),
-          stamp: const Color(0xFFF0E9FF),
+          sys: Colors.white.withValues(alpha: .65),
+          stamp: const Color(0xFFF6F1FF),
         );
 }
 

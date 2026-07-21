@@ -440,9 +440,9 @@ class _Tag extends StatelessWidget {
 }
 
 /// "Ofrecido por" — antes de [revealed] muestra un negocio genérico (nunca
-/// se regala la identidad gratis, paridad `products.$productId.tsx`). Sin
-/// `onTap`: la app no tiene una pantalla pública de negocio ajeno (solo
-/// `/provider/business` para el DUEÑO), a diferencia de la web.
+/// se regala la identidad gratis, paridad `products.$productId.tsx`). Tocarlo
+/// abre la TIENDA anónima del proveedor (pedido PO 2026-07-22): productos,
+/// servicios y trabajos, sin revelar el contacto.
 class _BusinessCard extends StatelessWidget {
   const _BusinessCard({required this.business, required this.revealed});
   final BusinessLite business;
@@ -456,6 +456,8 @@ class _BusinessCard extends StatelessWidget {
     final logoUrl = revealed ? business.logoUrl : null;
     return JayaloCard(
       margin: const EdgeInsets.only(top: 20),
+      onTap: () => context.push('/store/${business.id}'
+          '?alias=${Uri.encodeComponent(revealed ? business.name : 'Proveedor')}'),
       child: Row(children: [
         CircleAvatar(
           radius: 24,
@@ -475,6 +477,8 @@ class _BusinessCard extends StatelessWidget {
               Text('Ofrecido por',
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
               Text(revealed ? business.name : 'Proveedor',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       fontSize: 14, fontWeight: FontWeight.w600)),
               if (revealed && business.verified) ...[
@@ -561,9 +565,18 @@ Future<void> showInterestSheet(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
+    // Por el navigator RAÍZ: sin esto el sheet se apila en el navigator del
+    // shell y la barra flotante tapa el botón "Solicitar" por abajo (mismo
+    // gotcha documentado en offer_actions.dart). El padding suma el inset del
+    // sistema por la misma razón.
+    useRootNavigator: true,
     builder: (ctx) => Padding(
       padding: EdgeInsets.only(
-          left: 16, right: 16, bottom: MediaQuery.of(ctx).viewInsets.bottom + 16),
+          left: 16,
+          right: 16,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom +
+              MediaQuery.paddingOf(ctx).bottom +
+              16),
       // `isScrollControlled` por sí solo NO acota la altura del sheet a la
       // pantalla — sin este `ConstrainedBox` el `SingleChildScrollView` de
       // abajo se estira al alto TOTAL del contenido (con muchos campos,
@@ -665,24 +678,64 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
         condition == 'nuevo' ? 'Nuevo' : condition == 'usado' ? 'Usado' : null;
     final businessName = widget.data.business?.name;
 
+    final cs = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(_isServicio ? 'Solicitar servicio' : 'Confirmar solicitud',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: jayaloHead(context))),
-          const SizedBox(height: 4),
-          Text(
-            _isServicio
-                ? 'Cuéntale al proveedor qué necesitas para que responda con precio y disponibilidad.'
-                : 'Ayuda al proveedor con detalles claros para una mejor respuesta.',
-            style: const TextStyle(fontSize: 12),
+          // Encabezado con la LÍNEA GRÁFICA de la app: banda violeta + ícono en
+          // círculo blanco translúcido + título/subtítulo blancos, igual que el
+          // VioletHeader del resto de pantallas (pedido PO 2026-07-22:
+          // "Confirmar solicitud" debe tener el diseño de la app).
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cs.primary,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: .20),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                    _isServicio
+                        ? Icons.handyman_outlined
+                        : Icons.shopping_bag_outlined,
+                    color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                        _isServicio
+                            ? 'Solicitar servicio'
+                            : 'Confirmar solicitud',
+                        style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white)),
+                    const SizedBox(height: 2),
+                    Text(
+                      _isServicio
+                          ? 'Cuéntale al proveedor qué necesitas.'
+                          : 'Da detalles claros para una mejor respuesta.',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.white.withValues(alpha: .85)),
+                    ),
+                  ],
+                ),
+              ),
+            ]),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           JayaloCard(
             margin: EdgeInsets.zero,
             child: Row(children: [
@@ -745,89 +798,93 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
     );
   }
 
-  Widget _quantityField() => _fieldCard(
+  Widget _quantityField() => _section(
         label: 'Cantidad',
-        child: Row(children: [
-          IconButton(
-            onPressed: _quantity > 1
-                ? () => setState(() => _quantity--)
-                : null,
-            icon: const Icon(Icons.remove),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
           ),
-          Text('$_quantity',
-              style: const TextStyle(fontWeight: FontWeight.w600)),
-          IconButton(
-            onPressed: _quantity < 999
-                ? () => setState(() => _quantity++)
-                : null,
-            icon: const Icon(Icons.add),
-          ),
-        ]),
-      );
-
-  Widget _brandField() => _fieldCard(
-        label: _isServicio ? 'Preferencias (opcional)' : 'Marca / preferencia',
-        child: TextField(
-          controller: _brandCtrl,
-          maxLength: 120,
-          decoration: InputDecoration(
-            border: InputBorder.none,
-            counterText: '',
-            hintText: _isServicio
-                ? 'Ej. horario de tarde, marca específica, presupuesto…'
-                : 'Ej. Samsung, LG…',
-          ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            IconButton(
+              onPressed: _quantity > 1
+                  ? () => setState(() => _quantity--)
+                  : null,
+              icon: const Icon(Icons.remove),
+            ),
+            Text('$_quantity',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            IconButton(
+              onPressed: _quantity < 999
+                  ? () => setState(() => _quantity++)
+                  : null,
+              icon: const Icon(Icons.add),
+            ),
+          ]),
         ),
       );
 
-  Widget _urgencyField() => _fieldCard(
+  Widget _brandField() => TextField(
+        controller: _brandCtrl,
+        maxLength: 120,
+        decoration: filledField(
+          context,
+          _isServicio ? 'Preferencias (opcional)' : 'Marca / preferencia',
+          hint: _isServicio
+              ? 'Ej. horario de tarde, marca específica, presupuesto…'
+              : 'Ej. Samsung, LG…',
+        ).copyWith(counterText: ''),
+      );
+
+  Widget _urgencyField() => _section(
         label: _isServicio ? '¿Cuándo lo necesitas?' : '¿Cuándo quieres comprar?',
         child: Wrap(spacing: 8, runSpacing: 8, children: [
           for (final u in InterestUrgency.values)
-            ChoiceChip(
-              label: Text(u.chipLabel),
+            _pillChip(
+              label: u.chipLabel,
               selected: _urgency == u,
-              onSelected: (_) => setState(() => _urgency = u),
+              onTap: () => setState(() => _urgency = u),
             ),
         ]),
       );
 
-  Widget _colorField() => _fieldCard(
+  Widget _colorField() => _section(
         label: 'Color',
         child: Wrap(spacing: 8, runSpacing: 8, children: [
           for (final c in interestColors)
-            ChoiceChip(
-              label: Text(c.label),
+            _pillChip(
+              label: c.label,
               selected: _colorKey == c.key,
-              onSelected: (sel) =>
-                  setState(() => _colorKey = sel ? c.key : null),
+              onTap: () => setState(
+                  () => _colorKey = _colorKey == c.key ? null : c.key),
             ),
         ]),
       );
 
-  Widget _addressField() => _fieldCard(
+  Widget _addressField() => _section(
         label: 'Dirección de entrega',
         child: _addressPicker(),
       );
 
-  Widget _serviceLocationField() => _fieldCard(
+  Widget _serviceLocationField() => _section(
         label: 'Lugar del servicio',
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(
-              child: ChoiceChip(
-                label: const Text('En mi dirección'),
+              child: _pillChip(
+                label: 'En mi dirección',
                 selected: _serviceLocation == 'cliente',
-                onSelected: (_) => setState(() => _serviceLocation = 'cliente'),
+                centered: true,
+                onTap: () => setState(() => _serviceLocation = 'cliente'),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: ChoiceChip(
-                label: const Text('Local / a coordinar'),
+              child: _pillChip(
+                label: 'Local / a coordinar',
                 selected: _serviceLocation == 'proveedor',
-                onSelected: (_) =>
-                    setState(() => _serviceLocation = 'proveedor'),
+                centered: true,
+                onTap: () => setState(() => _serviceLocation = 'proveedor'),
               ),
             ),
           ]),
@@ -848,14 +905,13 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('No tienes dirección en tu perfil.',
             style: TextStyle(fontSize: 12)),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         TextField(
           controller: _addressCtrl,
           maxLength: 160,
-          decoration: const InputDecoration(
-              border: InputBorder.none,
-              counterText: '',
-              hintText: 'Calle, número, sector, ciudad…'),
+          decoration: filledField(context, 'Dirección',
+                  hint: 'Calle, número, sector, ciudad…')
+              .copyWith(counterText: ''),
         ),
       ]);
     }
@@ -875,48 +931,46 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
         TextField(
           controller: _addressCtrl,
           maxLength: 160,
-          decoration: const InputDecoration(
-              border: InputBorder.none,
-              counterText: '',
-              hintText: 'Calle, número, sector, ciudad…'),
+          decoration: filledField(context, 'Dirección',
+                  hint: 'Calle, número, sector, ciudad…')
+              .copyWith(counterText: ''),
         ),
     ]);
   }
 
   Widget _serviceNeedField() {
     final len = _needCtrl.text.trim().length;
-    return _fieldCard(
-      label: '¿Qué necesitas? *',
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        TextField(
-          controller: _needCtrl,
-          maxLength: 400,
-          maxLines: 3,
-          onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            border: InputBorder.none,
-            counterText: '',
-            hintText:
-                'Ej. Mi aire de 24k no enfría, hace ruido al encender. Vivo en un 3er piso.',
-          ),
-        ),
-        Text(
-          len < 15 ? 'Mínimo 15 caracteres ($len/15)' : 'Listo',
-          style: TextStyle(
-              fontSize: 11,
-              color: len < 15 ? Colors.amber.shade800 : null),
-        ),
-      ]),
-    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      TextField(
+        controller: _needCtrl,
+        maxLength: 400,
+        maxLines: 3,
+        onChanged: (_) => setState(() {}),
+        decoration: filledField(context, '¿Qué necesitas? *',
+                hint:
+                    'Ej. Mi aire de 24k no enfría, hace ruido al encender. Vivo en un 3er piso.')
+            .copyWith(counterText: ''),
+      ),
+      const SizedBox(height: 4),
+      Text(
+        len < 15 ? 'Mínimo 15 caracteres ($len/15)' : 'Listo',
+        style: TextStyle(
+            fontSize: 11,
+            color: len < 15 ? Colors.amber.shade800 : null),
+      ),
+    ]);
   }
 
-  Widget _photoField() => _fieldCard(
+  Widget _photoField() => _section(
         label: 'Foto de referencia (opcional)',
         child: _photo == null
-            ? OutlinedButton.icon(
-                onPressed: _pickPhoto,
-                icon: const Icon(Icons.add_photo_alternate_outlined),
-                label: const Text('Agregar foto'),
+            ? Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: _pickPhoto,
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: const Text('Agregar foto'),
+                ),
               )
             : Row(children: [
                 ClipRRect(
@@ -933,20 +987,47 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
               ]),
       );
 
-  Widget _fieldCard({required String label, required Widget child}) =>
-      JayaloCard(
-        margin: EdgeInsets.zero,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label.toUpperCase(),
-                style: const TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
-            const SizedBox(height: 6),
-            child,
-          ],
-        ),
+  /// Línea gráfica del form de "hacer oferta" (pedido PO 2026-07-21): etiqueta
+  /// de sección (13/w600 en el tono de encabezado) + contenido debajo, y los
+  /// TextField con `filledField` — se retiró la tarjeta blanca con micro-label
+  /// en mayúsculas que usaba esta hoja.
+  Widget _section({required String label, required Widget child}) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: jayaloHead(context))),
+          const SizedBox(height: 8),
+          child,
+        ],
       );
+
+  /// Chip pastilla como las del form de oferta (violeta lleno al elegir).
+  Widget _pillChip(
+      {required String label,
+      required bool selected,
+      required VoidCallback onTap,
+      bool centered = false}) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? cs.primary : cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(label,
+            textAlign: centered ? TextAlign.center : null,
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: selected ? cs.onPrimary : cs.onSurface)),
+      ),
+    );
+  }
 
   Future<void> _pickPhoto() async {
     final picked = await ImagePicker()

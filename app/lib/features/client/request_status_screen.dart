@@ -28,6 +28,18 @@ import '../shared/brand_kit.dart';
         );
 }
 
+/// Precio "efectivo" con el que se comparan las ofertas: precio base + costo
+/// de envío cuando el proveedor lo cobra (pedido PO: sumar el envío al precio
+/// para el badge "Más económica"). `null` si la oferta no tiene un precio
+/// numérico (a evaluar) — esas no entran a la comparación.
+num? offerEffectivePrice(Map<String, dynamic> o) {
+  final base = (o['price'] ?? o['price_min'] ?? o['hourly_rate']) as num?;
+  if (base == null) return null;
+  final ship =
+      o['offers_shipping'] == true ? (o['shipping_price'] as num?) : null;
+  return base + (ship ?? 0);
+}
+
 String offerPriceLabel(Map<String, dynamic> o) {
   if (o['price'] != null) return fmtRD(o['price'] as num);
   if (o['price_min'] != null && o['price_max'] != null) {
@@ -74,7 +86,8 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
     super.initState();
     supa
         .from('customer_requests')
-        .select('id,title,status,kind,bullets,user_id,created_at,image_urls')
+        .select(
+            'id,title,status,kind,bullets,user_id,created_at,image_urls,budget_min,budget_max')
         .eq('id', widget.requestId)
         .single()
         .then((r) => mounted ? setState(() => _request = r) : null);
@@ -171,7 +184,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
     final hasAccepted = list.any(
       (o) => o['status'] == 'accepted' || o['status'] == 'completed',
     );
-    final cheapest = _cheapestOfferId(list);
+    final cheapest = cheapestOfferId(list);
     // Estado de verificación de los negocios que ofertaron (para el badge rojo
     // "Negocio sin verificar"). Best-effort: si falla, no se muestra el badge.
     Map<String, bool> verified = {};
@@ -191,6 +204,14 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      // "Ver ofertas debe subir más lento" (pedido PO 2026-07-21): la misma
+      // subida suave de la hoja de la oferta (arranca rápido, frena al llegar).
+      sheetAnimationStyle: AnimationStyle(
+        duration: const Duration(milliseconds: 520),
+        reverseDuration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
       ),
       // Altura FIJA (70%), sin DraggableScrollableSheet: el DSS anidado en un
       // showModalBottomSheet se atascaba en su minChildSize al arrastrar hacia
@@ -267,17 +288,31 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
 
 /// Id de la oferta más barata (numérica) — la que lleva el chip verde "Más
 /// económica" como orientación (sin decidir por el cliente).
-String? _cheapestOfferId(List<Map<String, dynamic>> offers) {
+String? cheapestOfferId(List<Map<String, dynamic>> offers) {
   String? id;
   num? best;
+  var tied = false;
+  var priced = 0; // ofertas vivas con un precio comparable
   for (final o in offers) {
-    final p = (o['price'] ?? o['price_min'] ?? o['hourly_rate']) as num?;
+    // Solo compiten por "Más económica" las ofertas vivas (una rechazada no
+    // debería ganar el badge). Ordena por precio efectivo (precio + envío).
+    final st = o['status'] as String?;
+    if (st == 'rejected') continue;
+    final p = offerEffectivePrice(o);
     if (p == null) continue;
+    priced++;
     if (best == null || p < best) {
       best = p;
       id = o['id'] as String?;
+      tied = false;
+    } else if (p == best) {
+      tied = true; // otra oferta iguala el precio más bajo
     }
   }
+  // El badge SOLO orienta si hay con qué comparar: se necesita más de una
+  // oferta con precio Y un ganador único (PO 2026-07-21: "si solo hay una
+  // oferta no debe decir Más económica"; tampoco si el mínimo empata).
+  if (priced < 2 || tied) return null;
   return id;
 }
 
@@ -295,7 +330,8 @@ Widget offerStatusChip(
     ),
     'accepted' => (
       'Aceptada',
-      dark ? JayaloStatus.acceptedDark : JayaloStatus.acceptedLight,
+      // Azul claro (pedido PO 2026-07-21): el ámbar ya no marca "aceptada".
+      dark ? JayaloStatus.offerAcceptedDark : JayaloStatus.offerAcceptedLight,
     ),
     'completed' => (
       'Completada',
@@ -465,8 +501,9 @@ class _DetailSheet extends StatelessWidget {
             .toList();
     final createdAt = DateTime.parse(request['created_at'] as String);
     final tone = toneFor(context, phase);
+    // "Desde": el total efectivo (precio + envío) más bajo entre las ofertas.
     final cheapest = offers
-        .map((o) => (o['price'] ?? o['price_min'] ?? o['hourly_rate']) as num?)
+        .map(offerEffectivePrice)
         .whereType<num>()
         .fold<num?>(null, (a, b) => a == null ? b : (b < a ? b : a));
 
@@ -488,7 +525,8 @@ class _DetailSheet extends StatelessWidget {
                       child: Text(
                         request['title'] as String,
                         style: TextStyle(
-                          fontSize: 21,
+                          // +1pt (pedido PO).
+                          fontSize: 22,
                           height: 1.2,
                           fontWeight: FontWeight.w600,
                           color: jayaloHead(context),
@@ -553,6 +591,24 @@ class _DetailSheet extends StatelessWidget {
                         ),
                     ],
                   ),
+                ],
+                if (requestBudgetLabel(request['budget_min'] as num?,
+                        request['budget_max'] as num?) !=
+                    null) ...[
+                  const SizedBox(height: 16),
+                  Row(children: [
+                    Icon(Icons.payments_outlined,
+                        size: 16, color: cs.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                          'Presupuesto estimado: ${requestBudgetLabel(request['budget_min'] as num?, request['budget_max'] as num?)}',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: jayaloHead(context))),
+                    ),
+                  ]),
                 ],
                 const SizedBox(height: 18),
                 Text(

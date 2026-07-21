@@ -26,7 +26,8 @@ void main() {
       })));
       expect(toneFor(ctx, RequestPhase.waiting), JayaloStatus.pendingLight);
       expect(toneFor(ctx, RequestPhase.withOffers), JayaloStatus.respondedLight);
-      expect(toneFor(ctx, RequestPhase.accepted), JayaloStatus.acceptedLight);
+      // "Oferta aceptada" = azul claro (pedido PO 2026-07-21), ya no el ámbar.
+      expect(toneFor(ctx, RequestPhase.accepted), JayaloStatus.offerAcceptedLight);
       expect(toneFor(ctx, RequestPhase.unlocked), JayaloStatus.unlockedLight);
       expect(toneFor(ctx, RequestPhase.completed), JayaloStatus.completedLight);
     });

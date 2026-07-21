@@ -73,11 +73,22 @@ bool isRenderableImageSrc(String src) {
 // ── Quick messages ──────────────────────────────────────────────────────────
 
 class QuickPayload {
-  const QuickPayload({required this.question, required this.options, this.selected, this.answeredBy});
+  const QuickPayload(
+      {required this.question,
+      required this.options,
+      this.selected,
+      this.answeredBy,
+      this.replies = const {}});
   final String question;
   final List<String> options;
   final String? selected;
   final String? answeredBy;
+
+  /// Mapa opción→frase de confirmación que VIAJA en el payload (para que las
+  /// respuestas rápidas EDITADAS por el usuario se confirmen con su texto, aun
+  /// cuando el que contesta no tiene esa pregunta en sus defaults). Vacío en
+  /// payloads viejos/web → se cae al lookup por defaults.
+  final Map<String, String> replies;
 }
 
 QuickPayload? parseQuick(String body) {
@@ -85,22 +96,37 @@ QuickPayload? parseQuick(String body) {
     final m = jsonDecode(body) as Map<String, dynamic>;
     final q = m['question'];
     if (q is! String) return null;
+    final rawReplies = m['replies'];
     return QuickPayload(
       question: q,
       options: List<String>.from((m['options'] as List?) ?? const []),
       selected: m['selected'] as String?,
       answeredBy: m['answered_by'] as String?,
+      replies: rawReplies is Map
+          ? rawReplies.map((k, v) => MapEntry('$k', '$v'))
+          : const {},
     );
   } catch (_) {
     return null;
   }
 }
 
+/// Cuerpo de un mensaje 'quick' recién ENVIADO (sin responder). Incluye
+/// `replies` para que la confirmación honre el texto personalizado del emisor.
+String quickSendBody(QuickItem item) => jsonEncode({
+      'question': item.question,
+      'options': item.options,
+      'selected': null,
+      'answered_by': null,
+      if (item.replies.isNotEmpty) 'replies': item.replies,
+    });
+
 String answerQuickBody(QuickPayload p, String option, String userId) => jsonEncode({
       'question': p.question,
       'options': p.options,
       'selected': option,
       'answered_by': userId,
+      if (p.replies.isNotEmpty) 'replies': p.replies,
     });
 
 class QuickItem {
@@ -108,6 +134,25 @@ class QuickItem {
   final String question;
   final List<String> options;
   final Map<String, String> replies;
+
+  Map<String, dynamic> toJson() => {
+        'question': question,
+        if (options.isNotEmpty) 'options': options,
+        if (replies.isNotEmpty) 'replies': replies,
+      };
+
+  /// Tolerante: una entrada guardada sin `question` válido se descarta (null).
+  static QuickItem? fromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    final q = raw['question'];
+    if (q is! String || q.trim().isEmpty) return null;
+    final options =
+        (raw['options'] as List?)?.map((e) => '$e').toList() ?? const <String>[];
+    final replies = (raw['replies'] is Map)
+        ? (raw['replies'] as Map).map((k, v) => MapEntry('$k', '$v'))
+        : const <String, String>{};
+    return QuickItem(q.trim(), options, replies);
+  }
 }
 
 /// Preguntas que envía el CLIENTE; las contesta el proveedor. Copy exacto web.
@@ -160,6 +205,27 @@ const providerReplies = <QuickItem>[
   QuickItem('¿Me envía su dirección, por favor?'),
   QuickItem('¡Listo! Gracias por su compra 🙌'),
 ];
+
+/// Los defaults de la app para un rol (semilla del editor y respaldo si el
+/// usuario no ha personalizado nada).
+List<QuickItem> defaultQuickReplies({required bool provider}) =>
+    provider ? providerReplies : quickReplies;
+
+/// Traduce lo GUARDADO en `profiles.custom_quick_replies` (jsonb
+/// `{"customer":[...],"provider":[...]}`) a la lista efectiva de un rol. Si la
+/// clave del rol no existe o queda vacía tras filtrar entradas inválidas, se
+/// cae a los defaults (nunca deja al usuario sin respuestas rápidas).
+List<QuickItem> quickRepliesFromStored(dynamic stored, {required bool provider}) {
+  final key = provider ? 'provider' : 'customer';
+  if (stored is Map && stored[key] is List) {
+    final items = (stored[key] as List)
+        .map(QuickItem.fromJson)
+        .whereType<QuickItem>()
+        .toList();
+    if (items.isNotEmpty) return items;
+  }
+  return defaultQuickReplies(provider: provider);
+}
 
 String quickConfirmation(String question, String option) {
   for (final item in [...quickReplies, ...providerReplies]) {

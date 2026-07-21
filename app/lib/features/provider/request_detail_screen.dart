@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,11 +9,13 @@ import '../../core/config.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/image_pick.dart';
+import '../../domain/money.dart';
 import '../../domain/offer_message.dart';
 import '../../domain/pricing.dart';
 import '../shared/celebration.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import 'unlock_flow.dart';
 
 const _maxOfferPhotos = 5;
 
@@ -41,8 +44,17 @@ const _availabilityDays = <String>[
 const _conditionOptions = <String>['Nuevo', 'Usado'];
 
 class ProviderRequestDetailScreen extends StatefulWidget {
-  const ProviderRequestDetailScreen({super.key, required this.requestId});
+  const ProviderRequestDetailScreen({
+    super.key,
+    required this.requestId,
+    this.editOfferId,
+  });
   final String requestId;
+
+  /// Cuando llega desde "Mis ofertas" para EDITAR, es el id de la oferta
+  /// pendiente a modificar: el formulario abre prefijado con "Guardar cambios"
+  /// y "Eliminar", en vez de crear una oferta nueva.
+  final String? editOfferId;
   @override
   State<ProviderRequestDetailScreen> createState() =>
       _ProviderRequestDetailScreenState();
@@ -53,6 +65,12 @@ class _ProviderRequestDetailScreenState
   Map<String, dynamic>? _req;
   String? _businessId;
   bool _busy = false;
+
+  /// Regla PO: **una sola oferta por solicitud por proveedor**. Si este negocio
+  /// ya ofertó, el detalle muestra "Ya ofertaste" en vez del formulario.
+  /// `_offerChecked` evita el parpadeo (form → aviso) mientras se consulta.
+  Map<String, dynamic>? _existingOffer;
+  bool _offerChecked = false;
   // Producto: precio fijo vs rango. Servicio: 4 modos (ver [_svcModes]).
   bool _fixed = true;
   int _svcMode = 0;
@@ -79,6 +97,15 @@ class _ProviderRequestDetailScreenState
   String _condition = ''; // Nuevo | Usado (sin columna: va al mensaje)
   final List<String> _colors = [];
   final List<XFile> _photos = [];
+  // Modo edición: fotos YA subidas de la oferta (URLs) que se conservan; el
+  // proveedor puede quitarlas o sumar nuevas ([_photos]) hasta el tope.
+  final List<String> _keptUrls = [];
+
+  /// Reputación del CLIENTE que hizo la solicitud (pedido PO 2026-07-22): el
+  /// proveedor la ve para decidir si le conviene ofertar. No expone contacto.
+  Map<String, dynamic>? _custRep;
+
+  bool get _editing => widget.editOfferId != null;
 
   /// Modos de precio del formulario de SERVICIO (paridad web: fijo / rango /
   /// por hora / a evaluar en sitio). El índice es [_svcMode].
@@ -91,9 +118,89 @@ class _ProviderRequestDetailScreenState
   @override
   void initState() {
     super.initState();
-    requestById(widget.requestId)
-        .then((r) => mounted ? setState(() => _req = r) : null);
-    myBusinessId().then((b) => mounted ? setState(() => _businessId = b) : null);
+    requestById(widget.requestId).then((r) {
+      if (!mounted) return;
+      setState(() => _req = r);
+      // Reputación del cliente que solicita (best-effort).
+      final cid = r?['user_id'] as String?;
+      if (cid != null) {
+        customerReputation(cid)
+            .then((rep) => mounted ? setState(() => _custRep = rep) : null)
+            .catchError((_) => null);
+      }
+    });
+    if (_editing) {
+      // Modo edición: no hace falta el chequeo "¿ya ofertó?"; traemos la fila
+      // COMPLETA de la oferta y prefijamos el formulario.
+      myBusinessId()
+          .then((b) => mounted ? setState(() => _businessId = b) : null);
+      offerForEdit(widget.editOfferId!).then((o) {
+        if (!mounted) return;
+        setState(() {
+          _existingOffer = o;
+          if (o != null) _prefillFromOffer(o);
+          _offerChecked = true;
+        });
+      }).catchError((_) {
+        if (mounted) setState(() => _offerChecked = true);
+      });
+      return;
+    }
+    myBusinessId().then((b) {
+      if (!mounted) return;
+      setState(() => _businessId = b);
+      if (b == null) {
+        setState(() => _offerChecked = true);
+        return;
+      }
+      // ¿Este negocio ya ofertó a esta solicitud? (1 oferta por solicitud).
+      myOfferForRequest(widget.requestId, b).then((o) {
+        if (mounted) {
+          setState(() {
+            _existingOffer = o;
+            _offerChecked = true;
+          });
+        }
+      }).catchError((_) {
+        // Si el chequeo falla, no bloqueamos: el trigger/constraint del server
+        // sigue siendo la última línea. Dejamos ver el formulario.
+        if (mounted) setState(() => _offerChecked = true);
+      });
+    });
+  }
+
+  /// Vuelca una oferta existente en los controles del formulario (modo edición).
+  /// Los campos se guardan como columnas propias (no solo dentro del mensaje),
+  /// así que la reconstrucción es directa. Único no restaurable: "Nuevo/Usado"
+  /// (`_condition`), que la web guarda solo dentro del mensaje.
+  void _prefillFromOffer(Map<String, dynamic> o) {
+    final mode = o['pricing_mode'] as String? ?? 'fixed';
+    _svcMode = _svcModes.indexOf(mode).clamp(0, _svcModes.length - 1);
+    _fixed = mode != 'range';
+    String txt(Object? v) => v == null ? '' : '${(v as num)}';
+    _price.text = txt(o['price']);
+    _min.text = txt(o['price_min']);
+    _max.text = txt(o['price_max']);
+    _hourly.text = txt(o['hourly_rate']);
+    _hours.text = txt(o['estimated_hours']);
+    _availability.text = (o['availability_note'] as String?) ?? '';
+    _duration.text = (o['estimated_duration'] as String?) ?? '';
+    _offersShipping = o['offers_shipping'] == true;
+    _shipping.text = txt(o['shipping_price']);
+    _offersInstallation = o['offers_installation'] == true;
+    _installation.text = txt(o['installation_price']);
+    _requiresEvaluation = o['requires_evaluation'] == true;
+    _evaluation.text = txt(o['evaluation_price']);
+    _brand.text = (o['product_brand'] as String?) ?? '';
+    _warranty.text = (o['product_warranty'] as String?) ?? '';
+    _delivery.text = (o['delivery_time'] as String?) ?? '';
+    _colors
+      ..clear()
+      ..addAll(((o['product_colors'] as List?)?.cast<String>()) ?? const []);
+    _keptUrls
+      ..clear()
+      ..addAll(((o['image_urls'] as List?)?.cast<String>() ?? const [])
+          .where((u) => u.isNotEmpty));
   }
 
   @override
@@ -120,17 +227,207 @@ class _ProviderRequestDetailScreenState
     );
   }
 
+  int get _photoCount => _photos.length + _keptUrls.length;
+
+  /// Cámara = una foto; Galería = VARIAS (pedido PO: permitir seleccionar
+  /// varias). Cada una se valida y se corta al llegar al tope.
   Future<void> _pickPhoto(ImageSource source) async {
-    final picked = await ImagePicker()
-        .pickImage(source: source, maxWidth: 1200, imageQuality: 85);
-    if (picked == null) return;
-    final res = validatePickedImage(
-        sizeBytes: await picked.length(),
-        path: picked.path,
-        currentCount: _photos.length,
-        maxCount: _maxOfferPhotos);
-    if (res is ImagePickError) return _toast(res.message);
-    if (mounted) setState(() => _photos.add(picked));
+    final picker = ImagePicker();
+    final List<XFile> picked;
+    if (source == ImageSource.gallery) {
+      picked = await picker.pickMultiImage(maxWidth: 1200, imageQuality: 85);
+    } else {
+      final one =
+          await picker.pickImage(source: source, maxWidth: 1200, imageQuality: 85);
+      picked = one == null ? const [] : [one];
+    }
+    if (picked.isEmpty) return;
+    for (final x in picked) {
+      final res = validatePickedImage(
+          sizeBytes: await x.length(),
+          path: x.path,
+          // Las fotos ya subidas (edición / tienda / portafolio) también cuentan.
+          currentCount: _photoCount,
+          maxCount: _maxOfferPhotos);
+      if (res is ImagePickError) {
+        _toast(res.message);
+        break;
+      }
+      if (mounted) setState(() => _photos.add(x));
+    }
+  }
+
+  /// Suma URLs ya alojadas (tienda / portafolio) al set de fotos conservadas,
+  /// respetando el tope y sin duplicar.
+  void _addKeptUrls(Iterable<String> urls) {
+    setState(() {
+      for (final u in urls) {
+        if (u.isEmpty || _keptUrls.contains(u)) continue;
+        if (_photoCount >= _maxOfferPhotos) break;
+        _keptUrls.add(u);
+      }
+    });
+  }
+
+  /// "De mi tienda": elegir un producto/servicio ya publicado — trae sus fotos
+  /// y AUTOCOMPLETA los detalles (precio, color, envío, estado…). Todo queda
+  /// editable en el formulario (pedido PO 2026-07-21).
+  Future<void> _pickFromStore() async {
+    final bid = _businessId;
+    if (bid == null) return;
+    List<Map<String, dynamic>> items;
+    try {
+      items = await myStoreProducts(bid);
+    } catch (_) {
+      _toast('No se pudo cargar tu tienda.');
+      return;
+    }
+    if (!mounted) return;
+    // Prioriza los del mismo tipo que la solicitud; si no hay, muestra todos.
+    final sameKind =
+        items.where((p) => (p['kind'] ?? 'producto') == _req?['kind']).toList();
+    final list = sameKind.isNotEmpty ? sameKind : items;
+    if (list.isEmpty) {
+      _toast('Aún no tienes productos en tu tienda.');
+      return;
+    }
+    final chosen = await _pickStoreItemSheet('De mi tienda', list);
+    if (chosen == null || !mounted) return;
+    _applyStoreProduct(chosen);
+  }
+
+  /// "Cargar trabajos anteriores": elige un trabajo del portafolio y trae sus
+  /// fotos a la oferta (no autocompleta precio — es evidencia de trabajo).
+  Future<void> _pickFromPortfolio() async {
+    final bid = _businessId;
+    if (bid == null) return;
+    List<Map<String, dynamic>> items;
+    try {
+      items = await myPortfolioItems(bid);
+    } catch (_) {
+      _toast('No se pudieron cargar tus trabajos.');
+      return;
+    }
+    if (!mounted) return;
+    if (items.isEmpty) {
+      _toast('Aún no tienes trabajos anteriores en tu portafolio.');
+      return;
+    }
+    final chosen = await _pickStoreItemSheet('Trabajos anteriores', items,
+        titleKey: 'title');
+    if (chosen == null || !mounted) return;
+    _addKeptUrls(
+        ((chosen['image_urls'] as List?)?.cast<String>() ?? const <String>[]));
+  }
+
+  /// Hoja genérica para elegir un item con foto + nombre (tienda o portafolio).
+  Future<Map<String, dynamic>?> _pickStoreItemSheet(
+      String title, List<Map<String, dynamic>> items,
+      {String titleKey = 'name'}) {
+    final cs = Theme.of(context).colorScheme;
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      builder: (ctx) => SizedBox(
+        height: MediaQuery.of(ctx).size.height * .7,
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(title,
+                  style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700, color: jayaloHead(ctx))),
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (_, i) {
+                final it = items[i];
+                final urls =
+                    (it['image_urls'] as List?)?.cast<String>() ?? const [];
+                final first = urls.isEmpty ? null : urls.first;
+                return Material(
+                  color: cs.surfaceContainerHighest.withValues(alpha: .5),
+                  borderRadius: BorderRadius.circular(14),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => Navigator.pop(ctx, it),
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Row(children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: first == null
+                              ? Container(
+                                  width: 54,
+                                  height: 54,
+                                  color: cs.surfaceContainerHighest,
+                                  child: Icon(Icons.image_outlined,
+                                      color: cs.onSurfaceVariant))
+                              : Image.network(first,
+                                  width: 54, height: 54, fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => Container(
+                                      width: 54,
+                                      height: 54,
+                                      color: cs.surfaceContainerHighest)),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(it[titleKey] as String? ?? 'Sin nombre',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.w600)),
+                        ),
+                        Text('${urls.length} 📷',
+                            style: TextStyle(
+                                fontSize: 12, color: cs.onSurfaceVariant)),
+                      ]),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// Autocompleta el formulario con los datos de un producto de la tienda.
+  void _applyStoreProduct(Map<String, dynamic> p) {
+    setState(() {
+      final price = p['price'] as num?;
+      final min = p['price_min'] as num?;
+      final max = p['price_max'] as num?;
+      if (price != null) {
+        _fixed = true;
+        _svcMode = 0;
+        _price.text = '$price';
+      } else if (min != null && max != null) {
+        _fixed = false;
+        _svcMode = 1;
+        _min.text = '$min';
+        _max.text = '$max';
+      }
+      final color = (p['color'] as String?)?.trim() ?? '';
+      if (color.isNotEmpty && !_colors.contains(color)) _colors.add(color);
+      final cond = (p['condition'] as String?)?.trim();
+      if (cond == 'nuevo') _condition = 'Nuevo';
+      if (cond == 'usado') _condition = 'Usado';
+      _offersShipping = p['offers_shipping'] == true;
+      _offersInstallation = p['offers_installation'] == true;
+      _requiresEvaluation = p['requires_evaluation'] == true;
+    });
+    _addKeptUrls(
+        ((p['image_urls'] as List?)?.cast<String>() ?? const <String>[]));
+    _toast('Datos cargados de tu tienda — edítalos si quieres.');
   }
 
   Future<void> _submit() async {
@@ -179,9 +476,42 @@ class _ProviderRequestDetailScreenState
 
     setState(() => _busy = true);
     try {
-      // Subir las fotos a Storage antes de insertar (nunca base64 en la BD).
-      final imageUrls =
+      // Subir las fotos NUEVAS a Storage antes de guardar (nunca base64 en la
+      // BD). En edición se combinan con las que se conservan ([_keptUrls]).
+      final newUrls =
           await Future.wait(_photos.map((x) => uploadOfferImage(x.path)));
+      // Las conservadas (edición) + las de tienda/portafolio ([_keptUrls]) van
+      // SIEMPRE, no solo en edición.
+      final imageUrls = [..._keptUrls, ...newUrls];
+      if (_editing) {
+        await updateOffer(
+          offerId: widget.editOfferId!,
+          price: p,
+          priceMin: mn,
+          priceMax: mx,
+          message: message,
+          imageUrls: imageUrls,
+          pricingMode: mode,
+          offersShipping: isService ? false : _offersShipping,
+          shippingPrice: double.tryParse(_shipping.text),
+          offersInstallation: isService ? false : _offersInstallation,
+          installationPrice: double.tryParse(_installation.text),
+          requiresEvaluation: evalOn,
+          evaluationPrice: double.tryParse(_evaluation.text),
+          hourlyRate: hr,
+          estimatedHours: hrs,
+          availabilityNote: isService ? _availability.text.trim() : '',
+          estimatedDuration: isService ? _duration.text.trim() : '',
+          productBrand: isService ? '' : _brand.text.trim(),
+          productColors: isService ? const [] : _colors,
+          productWarranty: isService ? '' : _warranty.text.trim(),
+          deliveryTime: isService ? '' : _delivery.text.trim(),
+        );
+        if (!mounted) return;
+        _toast('Oferta actualizada');
+        context.go('/provider/offers');
+        return;
+      }
       await makeOffer(
         request: req,
         businessId: _businessId!,
@@ -208,6 +538,16 @@ class _ProviderRequestDetailScreenState
         deliveryTime: isService ? '' : _delivery.text.trim(),
       );
       if (!mounted) return;
+      // ¿Guardar lo ofertado como producto de la tienda? (pedido PO): antes de
+      // la celebración, para reusarlo en futuras ofertas.
+      await _maybeSaveToStore(
+        isService: isService,
+        price: p,
+        priceMin: mn,
+        priceMax: mx,
+        imageUrls: imageUrls,
+      );
+      if (!mounted) return;
       await showOfferSentCelebration(context); // 🎉 mascota + confeti
       if (!mounted) return;
       context.go('/provider');
@@ -215,6 +555,149 @@ class _ProviderRequestDetailScreenState
       if (mounted) _showSubmitError(e);
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Tras enviar la oferta, ofrece GUARDAR lo ofertado como producto/servicio
+  /// de la tienda para reusarlo (pedido PO 2026-07-21). El nombre se prefija
+  /// con el título de la solicitud; el rubro/categoría salen del negocio (son
+  /// NOT NULL en `provider_products`). Si el negocio no tiene rubro/categoría,
+  /// se omite en silencio (no se puede guardar sin ellos).
+  Future<void> _maybeSaveToStore({
+    required bool isService,
+    double? price,
+    double? priceMin,
+    double? priceMax,
+    required List<String> imageUrls,
+  }) async {
+    final bid = _businessId;
+    if (bid == null) return;
+    final nameCtrl = TextEditingController(
+        text: (_req?['title'] as String? ?? '').trim());
+    final save = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom +
+                MediaQuery.paddingOf(ctx).bottom +
+                20),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                  isService
+                      ? '¿Guardar este servicio en tu tienda?'
+                      : '¿Guardar este producto en tu tienda?',
+                  style: Theme.of(ctx)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              const Text(
+                  'Quedará publicado en tu tienda para reusarlo en próximas '
+                  'ofertas — con las mismas fotos y detalles.'),
+              const SizedBox(height: 14),
+              TextField(
+                controller: nameCtrl,
+                decoration: filledField(ctx, 'Nombre en la tienda'),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Guardar en mi tienda'),
+              ),
+              const SizedBox(height: 6),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Ahora no'),
+              ),
+            ]),
+      ),
+    );
+    if (save != true) return;
+    final name = nameCtrl.text.trim();
+    if (name.isEmpty) return;
+    ({String? categoryId, String? rubro}) cr;
+    try {
+      cr = await myBusinessCategoryRubro(bid);
+    } catch (_) {
+      return;
+    }
+    if (cr.categoryId == null || cr.rubro == null) {
+      if (mounted) {
+        _toast('Para guardarlo en tu tienda te falta categoría/rubro en el negocio.');
+      }
+      return;
+    }
+    try {
+      await saveProductToStore(
+        businessId: bid,
+        name: name,
+        description: (_req?['description'] as String? ?? '').trim(),
+        categoryId: cr.categoryId!,
+        rubro: cr.rubro!,
+        kind: isService ? 'servicio' : 'producto',
+        color: isService ? '' : (_colors.isEmpty ? '' : _colors.first),
+        price: price,
+        priceMin: priceMin,
+        priceMax: priceMax,
+        imageUrls: imageUrls,
+        condition: isService
+            ? null
+            : (_condition == 'Nuevo'
+                ? 'nuevo'
+                : _condition == 'Usado'
+                    ? 'usado'
+                    : null),
+        offersShipping: isService ? false : _offersShipping,
+        offersInstallation: isService ? false : _offersInstallation,
+        requiresEvaluation: isService ? false : _requiresEvaluation,
+      );
+      if (mounted) _toast('Guardado en tu tienda ✓');
+    } catch (_) {
+      if (mounted) _toast('No se pudo guardar en tu tienda.');
+    }
+  }
+
+  /// Borra la oferta pendiente (doble confirmación). Solo aparece en edición.
+  Future<void> _deleteOffer() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Eliminar tu oferta?'),
+        content: const Text(
+            'Esta oferta desaparecerá para el cliente. No se puede deshacer.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await deleteOffer(widget.editOfferId!);
+      if (!mounted) return;
+      _toast('Oferta eliminada');
+      context.go('/provider/offers');
+    } catch (_) {
+      if (mounted) {
+        setState(() => _busy = false);
+        _toast('No se pudo eliminar. Intenta de nuevo.');
+      }
     }
   }
 
@@ -244,6 +727,210 @@ class _ProviderRequestDetailScreenState
 
   void _toast(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
+  /// Tarjeta "Quién solicita": reputación del cliente (rating, solicitudes,
+  /// compras, tiempo de respuesta). Sin contacto — solo agregados. Se oculta
+  /// mientras carga; con cliente nuevo muestra un aviso neutro.
+  Widget _customerRepCard(BuildContext context) {
+    final cid = _req?['user_id'] as String?;
+    if (cid == null) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final rep = _custRep;
+    // Identidad ANÓNIMA antes del desbloqueo (pedido PO 2026-07-22, versión
+    // mínima sin backend): foto BLUREADA (placeholder, casi imperceptible) +
+    // alias "Cliente NNNN" derivado del id. El nombre real solo al desbloquear.
+    final alias = 'Cliente ${1000 + (cid.hashCode.abs() % 9000)}';
+    final avg = (rep?['avg_rating'] as num?)?.toDouble() ?? 0;
+    final count = (rep?['reviews_count'] as num?)?.toInt() ?? 0;
+    final completed = (rep?['completed_purchases'] as num?)?.toInt() ?? 0;
+    final requests = (rep?['requests_count'] as num?)?.toInt() ?? 0;
+    final respMin = (rep?['median_response_minutes'] as num?)?.toDouble();
+    final samples = (rep?['response_samples'] as num?)?.toInt() ?? 0;
+
+    String respLabel(double m) {
+      if (m < 60) return 'Responde en ~${m.round()} min';
+      if (m < 1440) return 'Responde en ~${(m / 60).round()} h';
+      return 'Responde en ~${(m / 1440).round()} d';
+    }
+
+    final chips = <(IconData, String)>[
+      if (count > 0)
+        (Icons.star_rounded, '${avg.toStringAsFixed(1)} ($count)'),
+      if (requests > 0)
+        (Icons.receipt_long_outlined,
+            '$requests solicitud${requests == 1 ? '' : 'es'}'),
+      if (completed > 0)
+        (Icons.check_circle_outline,
+            '$completed compra${completed == 1 ? '' : 's'} cerrada${completed == 1 ? '' : 's'}'),
+      if (respMin != null && samples >= 3)
+        (Icons.schedule_outlined, respLabel(respMin)),
+    ];
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: .5),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          // Foto blureada: placeholder con blur fuerte (no hay foto real hasta
+          // desbloquear; la identidad queda "casi imperceptible").
+          ClipOval(
+            child: ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+              child: Container(
+                width: 44,
+                height: 44,
+                color: cs.primary.withValues(alpha: .35),
+                child: Icon(Icons.person, size: 26, color: cs.primary),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(alias,
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: jayaloHead(context))),
+                Text('Nombre y foto al desbloquear',
+                    style:
+                        TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        if (chips.isEmpty)
+          Text('Cliente nuevo — aún sin historial.',
+              style: TextStyle(fontSize: 13, color: cs.onSurface))
+        else
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final (icon, txt) in chips)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(icon,
+                      size: 14,
+                      color: icon == Icons.star_rounded
+                          ? const Color(0xFFF2B705)
+                          : cs.primary),
+                  const SizedBox(width: 5),
+                  Text(txt,
+                      style: TextStyle(fontSize: 12.5, color: cs.onSurface)),
+                ]),
+              ),
+          ]),
+      ]),
+    );
+  }
+
+  /// Recarga la oferta existente tras una mutación (desbloqueo / venta
+  /// marcada) para que la tarjeta refleje el estado nuevo.
+  Future<void> _reloadOffer() async {
+    final id = _existingOffer?['id'] as String?;
+    if (id == null) return;
+    try {
+      final o = await offerForEdit(id);
+      if (mounted && o != null) setState(() => _existingOffer = o);
+    } catch (_) {}
+  }
+
+  /// Tarjeta de la oferta ya enviada, consciente del ESTADO (pedido PO
+  /// 2026-07-21): pendiente = aviso "ya ofertaste"; aceptada = "¡Te
+  /// aceptaron!" con el botón DESBLOQUEAR (nunca el formulario de edición);
+  /// desbloqueada/completada = "Ver contacto"; rechazada = aviso neutro.
+  Widget _alreadyOfferedCard(BuildContext context) {
+    final o = _existingOffer!;
+    final st = o['status'] as String? ?? 'pending';
+    final unlocked = o['unlocked_at'] != null;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final label = o['price'] != null
+        ? fmtRD(o['price'] as num)
+        : (o['price_min'] != null && o['price_max'] != null)
+            ? '${fmtRD(o['price_min'] as num)} – ${fmtRD(o['price_max'] as num)}'
+            : (o['pricing_mode'] == 'hourly' && o['hourly_rate'] != null)
+                ? '${fmtRD(o['hourly_rate'] as num)}/hora'
+                : 'A evaluar';
+
+    final (StatusTone tone, IconData icon, String title, String body,
+        String? cta, VoidCallback? onCta) = switch (st) {
+      // Violeta = el color de "desbloquear" (pedido PO 2026-07-22).
+      'accepted' when !unlocked => (
+          dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight,
+          Icons.emoji_events_outlined,
+          '🏆 ¡Te aceptaron!',
+          'El cliente aceptó tu oferta de $label. Desbloquea su contacto '
+              'para cerrar el trato.',
+          'Desbloquear contacto',
+          () => startUnlockFlow(context, o, onChanged: _reloadOffer),
+        ),
+      'accepted' || 'completed' => (
+          dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight,
+          Icons.check_circle,
+          'Contacto desbloqueado',
+          'Tu oferta: $label. Ya puedes hablar con el cliente.',
+          'Ver contacto',
+          () => showOfferContactSheet(context, o, onChanged: _reloadOffer),
+        ),
+      'rejected' => (
+          dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
+          Icons.do_not_disturb_on_outlined,
+          'El cliente eligió otra oferta',
+          'Tu oferta fue $label. Sigue atento a nuevas solicitudes de tu rubro.',
+          null,
+          null,
+        ),
+      _ => (
+          dark ? JayaloStatus.acceptedDark : JayaloStatus.acceptedLight,
+          Icons.check_circle,
+          'Ya enviaste tu oferta',
+          'Solo puedes ofertar una vez por solicitud. Tu oferta: $label. '
+              'Si el cliente la acepta, te avisaremos para desbloquear el contacto.',
+          'Ver mis ofertas',
+          () => context.go('/provider/offers'),
+        ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: tone.bg, borderRadius: BorderRadius.circular(16)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(icon, color: tone.ink, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(title,
+                style: TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w700, color: tone.ink)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        Text(body,
+            style: TextStyle(fontSize: 13, height: 1.4, color: tone.ink)),
+        if (cta != null) ...[
+          const SizedBox(height: 14),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: tone.ink, foregroundColor: tone.bg),
+            onPressed: onCta,
+            child: Text(cta),
+          ),
+        ],
+      ]),
+    );
+  }
 
   Widget _numField(TextEditingController c, String label) => TextField(
         controller: c,
@@ -541,6 +1228,32 @@ class _ProviderRequestDetailScreenState
         ),
       ]);
 
+  /// Miniatura de una foto YA subida (modo edición): igual que [_thumb] pero
+  /// desde la URL de Storage; quitarla la saca de [_keptUrls].
+  Widget _keptThumb(String url, int index) => Stack(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.network(url,
+              width: 76,
+              height: 76,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => Container(
+                  width: 76,
+                  height: 76,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest)),
+        ),
+        Positioned(
+          top: -6,
+          right: -6,
+          child: IconButton(
+            tooltip: 'Quitar',
+            icon: const Icon(Icons.cancel, size: 22),
+            onPressed:
+                _busy ? null : () => setState(() => _keptUrls.removeAt(index)),
+          ),
+        ),
+      ]);
+
   @override
   Widget build(BuildContext context) {
     final req = _req;
@@ -644,7 +1357,8 @@ class _ProviderRequestDetailScreenState
                 children: [
                   Text(req['title'] as String,
                       style: TextStyle(
-                          fontSize: 21,
+                          // +1pt (pedido PO).
+                          fontSize: 22,
                           height: 1.2,
                           fontWeight: FontWeight.w600,
                           color: jayaloHead(context))),
@@ -680,13 +1394,43 @@ class _ProviderRequestDetailScreenState
                         ),
                     ]),
                   ],
+                  if (requestBudgetLabel(req['budget_min'] as num?,
+                          req['budget_max'] as num?) !=
+                      null) ...[
+                    const SizedBox(height: 16),
+                    Row(children: [
+                      Icon(Icons.payments_outlined,
+                          size: 16, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                            'Presupuesto estimado: ${requestBudgetLabel(req['budget_min'] as num?, req['budget_max'] as num?)}',
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: jayaloHead(context))),
+                      ),
+                    ]),
+                  ],
+                  _customerRepCard(context),
                   const Divider(height: 32),
-                  if (_businessId == null)
+                  if (!_editing && _businessId == null)
           FilledButton(
             onPressed: () => launchUrl(Uri.parse('${AppConfig.siteUrl}/provider'),
                 mode: LaunchMode.externalApplication),
             child: const Text('Completa tu negocio en jayalo.com para ofertar'),
           )
+        else if (!_offerChecked)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: JayaloSpinner()),
+          )
+        // La tarjeta de estado sustituye al formulario SIEMPRE que hay oferta,
+        // salvo edición de una PENDIENTE. Una aceptada nunca se edita (pedido
+        // PO): su tarjeta trae el botón Desbloquear.
+        else if (_existingOffer != null &&
+            (!_editing || _existingOffer!['status'] != 'pending'))
+          _alreadyOfferedCard(context)
         else ...[
           Text('Tu oferta', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
@@ -712,24 +1456,25 @@ class _ProviderRequestDetailScreenState
                   : 'Fotos de tu producto (hasta $_maxOfferPhotos)',
               style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),
-          if (_photos.isNotEmpty)
+          if (_keptUrls.isNotEmpty || _photos.isNotEmpty)
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
+                for (var i = 0; i < _keptUrls.length; i++)
+                  _keptThumb(_keptUrls[i], i),
                 for (var i = 0; i < _photos.length; i++)
                   _thumb(File(_photos[i].path), i),
               ],
             ),
-          if (_photos.length < _maxOfferPhotos)
+          if (_photoCount < _maxOfferPhotos)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Row(children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _busy
-                        ? null
-                        : () => _pickPhoto(ImageSource.camera),
+                    onPressed:
+                        _busy ? null : () => _pickPhoto(ImageSource.camera),
                     icon: const Icon(Icons.photo_camera_outlined),
                     label: const Text('Cámara'),
                   ),
@@ -737,11 +1482,34 @@ class _ProviderRequestDetailScreenState
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _busy
-                        ? null
-                        : () => _pickPhoto(ImageSource.gallery),
+                    onPressed:
+                        _busy ? null : () => _pickPhoto(ImageSource.gallery),
                     icon: const Icon(Icons.photo_library_outlined),
                     label: const Text('Galería'),
+                  ),
+                ),
+              ]),
+            ),
+          // Reusar lo que el proveedor ya subió a su TIENDA / PORTAFOLIO
+          // (pedido PO 2026-07-21): "De mi tienda" trae fotos + autocompleta;
+          // "Trabajos anteriores" trae fotos del portafolio.
+          if (_businessId != null && _photoCount < _maxOfferPhotos)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _busy ? null : _pickFromStore,
+                    icon: const Icon(Icons.storefront_outlined),
+                    label: const Text('De mi tienda'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _busy ? null : _pickFromPortfolio,
+                    icon: const Icon(Icons.collections_bookmark_outlined),
+                    label: const Text('Trabajos'),
                   ),
                 ),
               ]),
@@ -769,7 +1537,17 @@ class _ProviderRequestDetailScreenState
           const SizedBox(height: 12),
           FilledButton(
               onPressed: _busy ? null : _submit,
-              child: const Text('Enviar oferta (gratis)')),
+              child: Text(_editing ? 'Guardar cambios' : 'Enviar oferta (gratis)')),
+          if (_editing) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: _busy ? null : _deleteOffer,
+              icon: Icon(Icons.delete_outline,
+                  color: Theme.of(context).colorScheme.error),
+              label: Text('Eliminar oferta',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ),
+          ],
         ],
               ]),
             ),

@@ -15,4 +15,18 @@
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
+
+    <!-- Tema del recortador (UCrop / image_cropper). Con targetSdk 35+ Android
+         fuerza edge-to-edge y la toolbar de UCrop (con su botón "aceptar")
+         quedaba DEBAJO de la barra de estado (batería/wifi) — QA PO
+         2026-07-21. `fitsSystemWindows` hace que el contenido reserve el
+         espacio del status bar; `windowOptOutEdgeToEdgeEnforcement` restaura
+         el comportamiento clásico donde el layout no consume los insets; el
+         status bar va violeta como la toolbar, con íconos claros. -->
+    <style name="Theme.Jayalo.UCrop" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:fitsSystemWindows">true</item>
+        <item name="android:statusBarColor">#6D28D9</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
 </resources>

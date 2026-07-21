@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
 /// Una acción revelada por swipe (franja de color con ícono + texto).
 class SwipeAction {
@@ -55,23 +56,42 @@ class SwipeToActions extends StatefulWidget {
 class _SwipeToActionsState extends State<SwipeToActions>
     with SingleTickerProviderStateMixin {
   double _dx = 0;
+
+  /// Posición cruda del dedo (sin la goma) mientras se arrastra: el arrastre
+  /// acumula aquí y `_dx` es su versión con resistencia. Así soltar y volver a
+  /// arrastrar no da saltos.
+  double _dragRaw = 0;
+
   // Se crea en initState (NO `late` perezoso): si el row nunca se arrastra, un
   // `late final` se instanciaría durante dispose() al llamar `_snap.dispose()`
   // — y crear un AnimationController mientras el elemento se desactiva revienta
   // ("Looking up a deactivated widget's ancestor is unsafe").
   late final AnimationController _snap;
-  Animation<double>? _anim;
   bool _busy = false;
 
   double get _revealW => widget.actions.length * widget.actionWidth;
 
+  /// Cuánto se puede estirar de más (con goma) pasado el ancho revelado.
+  static const double _maxOver = 56;
+
+  /// El "resorte" del asentamiento: subamortiguado a propósito (damping por
+  /// debajo del crítico ≈ 2·√stiffness) para que rebote un pelín al soltar —
+  /// la sensación física que pidió el PO (2026-07-22).
+  static const SpringDescription _spring =
+      SpringDescription(mass: 1, stiffness: 520, damping: 26);
+
   @override
   void initState() {
     super.initState();
-    _snap = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-    );
+    // `unbounded`: la simulación del resorte puede pasarse (rebote) del rango
+    // [0, revealW]; un controlador acotado a [0,1] lo recortaría.
+    _snap = AnimationController.unbounded(vsync: this);
+    _snap.addListener(() {
+      // Recorta el valor del resorte: el rebote de cierre no cruza a negativo
+      // (dejaría un hueco a la derecha) y el de apertura se topa en el máximo
+      // estirado.
+      setState(() => _dx = _snap.value.clamp(0.0, _revealW + _maxOver));
+    });
     widget.group.addListener(_onGroupChanged);
   }
 
@@ -84,24 +104,31 @@ class _SwipeToActionsState extends State<SwipeToActions>
 
   void _onGroupChanged() {
     // Otro row se abrió → cerrar este.
-    if (widget.group.value != widget.id && _dx > 0 && !_busy) _animateTo(0);
+    if (widget.group.value != widget.id && _dx > 0 && !_busy) _springTo(0, 0);
   }
 
-  void _animateTo(double target) {
-    _anim = Tween<double>(begin: _dx, end: target).animate(
-      CurvedAnimation(parent: _snap, curve: Curves.easeOut),
-    )..addListener(() => setState(() => _dx = _anim!.value));
-    _snap.forward(from: 0);
+  /// Curva de goma tipo iOS: a más desplazamiento, menos avanza — retorno
+  /// decreciente que tiende asintóticamente a [limit].
+  double _rubber(double delta, double limit) =>
+      (1 - 1 / (delta / limit + 1)) * limit;
+
+  /// Traduce la posición cruda del dedo a la posición con resistencia.
+  double _resist(double raw) {
+    if (raw <= 0) return -_rubber(-raw, _maxOver * 0.6); // resistencia al cerrar
+    if (raw <= _revealW) return raw; // dentro del rango: 1:1
+    return _revealW + _rubber(raw - _revealW, _maxOver); // goma al abrir de más
+  }
+
+  /// Asienta al objetivo con física de resorte, respetando la velocidad de
+  /// lanzamiento del dedo.
+  void _springTo(double target, double velocity) {
+    _snap.stop();
+    _snap.animateWith(SpringSimulation(_spring, _dx, target, velocity));
   }
 
   void _close() {
     if (widget.group.value == widget.id) widget.group.value = null;
-    _animateTo(0);
-  }
-
-  void _open() {
-    widget.group.value = widget.id; // cierra a los demás
-    _animateTo(_revealW);
+    _springTo(0, 0);
   }
 
   Future<void> _run(SwipeAction a) async {
@@ -120,19 +147,32 @@ class _SwipeToActionsState extends State<SwipeToActions>
     return Padding(
       padding: widget.margin,
       child: GestureDetector(
+        onHorizontalDragStart: (_) {
+          _snap.stop(); // toma el control del resorte si venía asentándose
+          _dragRaw = _dx; // reanuda desde donde está (en rango, resist≈1:1)
+        },
         onHorizontalDragUpdate: (d) {
-          setState(() => _dx = (_dx + d.delta.dx).clamp(0.0, _revealW));
+          _dragRaw += d.delta.dx;
+          setState(() => _dx = _resist(_dragRaw));
         },
         onHorizontalDragEnd: (d) {
           final v = d.primaryVelocity ?? 0;
+          // Decide destino por velocidad o por posición, luego SUELTA el
+          // resorte con esa velocidad (asentamiento con rebote).
+          final bool open;
           if (v > 300) {
-            _open();
+            open = true;
           } else if (v < -300) {
-            _close();
-          } else if (_dx > _revealW / 2) {
-            _open();
+            open = false;
           } else {
-            _close();
+            open = _dx > _revealW / 2;
+          }
+          if (open) {
+            widget.group.value = widget.id; // cierra a los demás
+            _springTo(_revealW, v);
+          } else {
+            if (widget.group.value == widget.id) widget.group.value = null;
+            _springTo(0, v);
           }
         },
         child: Stack(
@@ -171,7 +211,12 @@ class _SwipeToActionsState extends State<SwipeToActions>
                             ),
                           ),
                         ),
-                      const Spacer(),
+                      // Rellena el resto (y el rebote del resorte al abrir de
+                      // más) con el color de la acción contigua a la tarjeta,
+                      // para que un sobre-estiramiento no deje asomar el fondo.
+                      Expanded(
+                        child: ColoredBox(color: widget.actions.last.color),
+                      ),
                     ],
                   ),
                 ),

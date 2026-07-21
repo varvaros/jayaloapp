@@ -45,8 +45,15 @@ dependencies:
   geolocator: ^14.0.0
   geocoding: ^4.0.0
   image_picker: ^1.2.1
+  # Recorte de la foto tras tomarla/elegirla (pedido PO: al solicitar aparece
+  # un crop). Requiere la UCropActivity en el AndroidManifest.
+  image_cropper: ^9.1.0
   shared_preferences: ^2.5.2
   flutter_animate: ^4.5.0
+  # Reproduce los efectos de sonido de las dos celebraciones deliberadas
+  # (oferta aceptada / contacto desbloqueado). Pedido PO 2026-07-21: sonido en
+  # ambas. Solo se usa para SFX cortos empaquetados como asset.
+  audioplayers: ^6.1.0
   # En dependencies (no dev_dependencies) a propósito: como dev_dependency el
   # Gradle de Flutter la EXCLUYE del classpath de release pero el
   # GeneratedPluginRegistrant la referencia igual → `flutter build apk
@@ -96,6 +103,8 @@ flutter:
 
   assets:
     - assets/images/mascot.png
+    - assets/sounds/oferta_aceptada.mp3
+    - assets/sounds/desbloqueo.mp3
 
   # To add assets to your application, add an assets section, like this:
   # assets:

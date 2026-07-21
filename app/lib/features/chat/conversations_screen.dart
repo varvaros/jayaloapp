@@ -62,6 +62,10 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     setState(() => _error = false);
     try {
       final rows = await conversationsList();
+      // Contador EXACTO del badge de la barra: aquí ya tenemos el unread real
+      // de cada conversación, sin un fetch extra.
+      messagesBadge.set(
+          rows.fold<int>(0, (s, c) => s + ((c['unread_count'] as int?) ?? 0)));
       if (mounted) setState(() => _all = rows);
     } catch (_) {
       if (mounted) setState(() => _error = true);

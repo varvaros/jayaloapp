@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
@@ -41,6 +42,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   int _seenTick = requestsChanged.value;
   // Coordina "un solo row de swipe abierto a la vez".
   final ValueNotifier<Object?> _openRow = ValueNotifier(null);
+
+  /// El buscador del header se esconde al bajar por la lista y reaparece al
+  /// volver al tope (pedido PO). Mientras está escondido, una flecha permite
+  /// sacarlo a mano.
+  bool _searchHidden = false;
 
   // La pantalla vive montada como pestaña del shell: sin esto, publicar una
   // solicitud no se reflejaba hasta el pull-to-refresh (bug PO 2026-07-19).
@@ -124,6 +130,23 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     ),
   );
 
+  /// Esconde/muestra el header COMPLETO según la DIRECCIÓN del gesto: al
+  /// arrastrar hacia arriba (leer más) se pliega; al arrastrar hacia abajo se
+  /// baja. Solo reacciona a `UserScrollNotification` — ignora los avisos de
+  /// relayout que dispara el propio colapso del header (al plegarse crece la
+  /// lista, el `maxScrollExtent` puede caer a 0 y antes eso reabría el header
+  /// solo: el bug de "no se oculta", 2026-07-21).
+  bool _onListScroll(ScrollNotification n) {
+    if (n is! UserScrollNotification) return false;
+    if (n.metrics.axis != Axis.vertical) return false;
+    if (n.direction == ScrollDirection.reverse && !_searchHidden) {
+      setState(() => _searchHidden = true);
+    } else if (n.direction == ScrollDirection.forward && _searchHidden) {
+      setState(() => _searchHidden = false);
+    }
+    return false;
+  }
+
   void _reload() {
     if (mounted) {
       setState(() {
@@ -154,7 +177,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     for (final o in offers) {
       byReq.putIfAbsent(o['request_id'] as String, () => []).add(offerLite(o));
     }
-    return [
+    final rows = [
       for (final r in reqs)
         (
           r,
@@ -165,6 +188,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           byReq[r['id']]?.length ?? 0,
         ),
     ];
+    // Badge de la pestaña "Solicitudes" (cliente): cuántas tienen ofertas por
+    // revisar — lo accionable, lo que hace volver a la app.
+    solicitudesBadge.value =
+        rows.where((e) => e.$2 == RequestPhase.withOffers).length;
+    return rows;
   }
 
   @override
@@ -175,33 +203,41 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         children: [
           // Header violeta: avatar → menú de perfil, "Jayalo" centrado, campana,
           // saludo grande y el buscador (envuelto por el header, doctrina).
-          VioletHeader(
-            leading: const HeaderLeading(),
-            title: 'Jayalo',
-            titleAlign: HeaderTitleAlign.center,
-            actions: const [HeaderBell()],
-            greeting: ListenableBuilder(
-              listenable: profileStore,
-              builder: (context, _) => HeaderGreeting(
-                title: profileStore.firstName != null
-                    ? 'Hola, ${profileStore.firstName}'
-                    : 'Hola',
-                subtitle: 'Tú pides y los proveedores te ofertan.',
+          // Al navegar la lista se pliega COMPLETO (avatar y campana incluidos,
+          // pedido PO 2026-07-21) y queda solo la flecha para bajarlo.
+          CollapsibleHeader(
+            hidden: _searchHidden,
+            onReveal: () => setState(() => _searchHidden = false),
+            child: VioletHeader(
+              leading: const HeaderLeading(),
+              title: 'Jayalo',
+              titleAlign: HeaderTitleAlign.center,
+              actions: const [HeaderBell()],
+              greeting: ListenableBuilder(
+                listenable: profileStore,
+                builder: (context, _) => HeaderGreeting(
+                  title: profileStore.firstName != null
+                      ? 'Hola, ${profileStore.firstName}'
+                      : 'Hola',
+                  subtitle: 'Tú pides y los proveedores te ofertan.',
+                ),
               ),
-            ),
-            // El buscador "en Jayalo" no busca solicitudes propias (no tiene
-            // sentido) sino el CATÁLOGO del marketplace, que es donde vive la
-            // búsqueda real + los filtros. `?focus=1` abre con el foco puesto;
-            // "Filtrar" abre el catálogo (su hoja de filtros llega con la
-            // feature de filtros del catálogo).
-            below: WarmSearchField(
-              hint: 'Buscar en Jayalo',
-              onTap: () => context.push('/catalog?focus=1'),
-              onFilter: () => context.push('/catalog'),
+              // El buscador "en Jayalo" no busca solicitudes propias (no tiene
+              // sentido) sino el CATÁLOGO del marketplace, que es donde vive la
+              // búsqueda real + los filtros. `?focus=1` abre con el foco puesto;
+              // "Filtrar" abre el catálogo (su hoja de filtros llega con la
+              // feature de filtros del catálogo).
+              below: WarmSearchField(
+                hint: 'Buscar en Jayalo',
+                onTap: () => context.push('/catalog?focus=1'),
+                onFilter: () => context.push('/catalog'),
+              ),
             ),
           ),
           Expanded(
-            child: RefreshIndicator(
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onListScroll,
+              child: RefreshIndicator(
               // onRefresh espera Future<void>; setState para no devolver Future.
               onRefresh: () async {
                 setState(() {
@@ -268,6 +304,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                 offerCount: offerCount,
                                 imageUrl: _firstImage(r),
                                 kind: r['kind'] as String?,
+                                wholesale: r['is_wholesale'] == true,
                                 onTap: open,
                               ).cascadeIn(i);
                             }
@@ -280,6 +317,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                               offerCount: offerCount,
                               imageUrl: _firstImage(r),
                               kind: r['kind'] as String?,
+                              wholesale: r['is_wholesale'] == true,
                               onTap: open,
                               // Sin margen propio: lo aplica el swipe.
                               margin: EdgeInsets.zero,
@@ -315,6 +353,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                   );
                 },
               ),
+            ),
             ),
           ),
         ],
@@ -384,6 +423,7 @@ class _RequestCard extends StatelessWidget {
     required this.imageUrl,
     required this.kind,
     required this.onTap,
+    this.wholesale = false,
     this.margin,
   });
 
@@ -394,6 +434,9 @@ class _RequestCard extends StatelessWidget {
   final String? imageUrl;
   final String? kind;
   final VoidCallback onTap;
+
+  /// Solicitud "al por mayor": sticker en la esquina de la miniatura.
+  final bool wholesale;
 
   /// Null = margen estándar de lista; se pasa cero cuando el card vive dentro
   /// de [SwipeToActions] (el swipe aplica el margen exterior).
@@ -424,7 +467,11 @@ class _RequestCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(children: [
-          _thumb(context, tinted, tone),
+          Stack(clipBehavior: Clip.none, children: [
+            _thumb(context, tinted, tone),
+            if (wholesale)
+              const Positioned(top: -6, left: -6, child: WholesaleSticker()),
+          ]),
           const SizedBox(width: 13),
           Expanded(
             child: Column(
@@ -436,7 +483,8 @@ class _RequestCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 14,
+                    // +1pt (pedido PO: subir un punto a los títulos).
+                    fontSize: 15,
                     height: 1.3,
                     fontWeight: FontWeight.w600,
                     color: fg,

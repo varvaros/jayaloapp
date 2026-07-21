@@ -8,13 +8,14 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/config.dart';
 import '../../core/motion.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart'
-    show myProfile, walletBalance, createWalletLoginLink;
+    show myProfile, walletBalance, createWalletLoginLink, updateMyAvatar, isAdmin;
 
 /// Foto + nombre cacheados UNA sola vez y compartidos por las 6 instancias
 /// del avatar (mismo espíritu que `NotifCountStore` en
@@ -133,8 +134,11 @@ Future<void> openProfileMenu(BuildContext context,
     barrierDismissible: true,
     barrierLabel: 'Cerrar menú',
     barrierColor: Colors.black38,
-    transitionDuration:
-        JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.page,
+    // Más lento y con ease-out marcado (pedido PO): el panel entra deslizando
+    // desde la izquierda, arranca con brío y frena suave antes de asentarse.
+    transitionDuration: JayaloMotion.reduced(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 480),
     pageBuilder: (ctx, _, _) => Align(
       alignment: Alignment.centerLeft,
       child: Material(
@@ -149,11 +153,14 @@ Future<void> openProfileMenu(BuildContext context,
                 // Encabezado con nombre + saldo de créditos RESALTADO (número
                 // grande en violeta con un "+" para recargar): solo proveedor
                 // (el consumidor no gasta créditos en este modelo).
-                if (isProvider)
-                  _ProfileMenuHeader(
-                    balanceFetch: fetch,
-                    onRecharge: () => Navigator.pop(ctx, _kWalletAction),
-                  ),
+                // Foto + nombre editables para AMBOS roles (pedido PO
+                // 2026-07-22); la banda de créditos, solo proveedor.
+                _ProfileMenuHeader(
+                  balanceFetch: isProvider ? fetch : null,
+                  onRecharge: isProvider
+                      ? () => Navigator.pop(ctx, _kWalletAction)
+                      : null,
+                ),
                 const SizedBox(height: 4),
                 // Lado "yo como comprador": pantallas que existen en el router
                 // pero que el proveedor no alcanza por su navbar.
@@ -190,6 +197,11 @@ Future<void> openProfileMenu(BuildContext context,
                   ),
                   const Divider(height: 1),
                 ],
+                // Solo admin (pedido PO 2026-07-22): registro rápido de
+                // proveedores por correo. El item se auto-oculta si no es admin.
+                _AdminMenuItem(
+                    onSelect: () =>
+                        Navigator.pop(ctx, '/admin/quick-register')),
                 ListTile(
                   leading: const Icon(Icons.settings_outlined),
                   title: const Text('Ajustes'),
@@ -205,8 +217,9 @@ Future<void> openProfileMenu(BuildContext context,
       position: Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero)
           .animate(CurvedAnimation(
               parent: anim,
-              curve: JayaloMotion.emphasized,
-              reverseCurve: JayaloMotion.exit)),
+              // easeOutCubic: desaceleración clara al final del deslizamiento.
+              curve: Curves.easeOutCubic,
+              reverseCurve: Curves.easeInCubic)),
       child: child,
     ),
   );
@@ -244,11 +257,47 @@ Future<void> openExternalWallet(BuildContext context) async {
 /// negocio, por eso se destacan). El saldo se pide al abrir el menú,
 /// best-effort: si falla o aún no llega, la banda muestra "Créditos" sin número
 /// pero el "+" sigue disponible (recargar nunca queda inalcanzable).
-class _ProfileMenuHeader extends StatefulWidget {
-  const _ProfileMenuHeader({required this.balanceFetch, required this.onRecharge});
+/// Item de menú "Registro rápido" que SOLO aparece si el usuario es admin
+/// (consulta `isAdmin()` al montarse; mientras tanto no ocupa espacio).
+class _AdminMenuItem extends StatefulWidget {
+  const _AdminMenuItem({required this.onSelect});
+  final VoidCallback onSelect;
+  @override
+  State<_AdminMenuItem> createState() => _AdminMenuItemState();
+}
 
-  final Future<int?> Function() balanceFetch;
-  final VoidCallback onRecharge;
+class _AdminMenuItemState extends State<_AdminMenuItem> {
+  bool _admin = false;
+
+  @override
+  void initState() {
+    super.initState();
+    isAdmin().then((v) => mounted ? setState(() => _admin = v) : null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_admin) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      const Divider(height: 1),
+      ListTile(
+        leading: Icon(Icons.person_add_alt, color: cs.primary),
+        title: const Text('Registro rápido'),
+        subtitle: const Text('Registrar un proveedor por correo'),
+        onTap: widget.onSelect,
+      ),
+    ]);
+  }
+}
+
+class _ProfileMenuHeader extends StatefulWidget {
+  const _ProfileMenuHeader({this.balanceFetch, this.onRecharge});
+
+  /// Solo proveedor: si es null, la banda de créditos no se muestra (el
+  /// consumidor no gasta créditos), pero la foto + nombre editables sí.
+  final Future<int?> Function()? balanceFetch;
+  final VoidCallback? onRecharge;
 
   @override
   State<_ProfileMenuHeader> createState() => _ProfileMenuHeaderState();
@@ -256,19 +305,41 @@ class _ProfileMenuHeader extends StatefulWidget {
 
 class _ProfileMenuHeaderState extends State<_ProfileMenuHeader> {
   int? _balance;
+  bool _uploadingAvatar = false;
 
   @override
   void initState() {
     super.initState();
-    _loadBalance();
+    if (widget.balanceFetch != null) _loadBalance();
   }
 
   Future<void> _loadBalance() async {
     try {
-      final b = await widget.balanceFetch();
+      final b = await widget.balanceFetch!();
       if (mounted) setState(() => _balance = b);
     } catch (_) {
       // Best-effort: sin saldo confirmado la banda va sin número.
+    }
+  }
+
+  /// Editar la foto de perfil (pedido PO 2026-07-22): elige de la galería,
+  /// sube a Storage y refresca el avatar en toda la app.
+  Future<void> _pickAvatar() async {
+    if (_uploadingAvatar) return;
+    final picked = await ImagePicker()
+        .pickImage(source: ImageSource.gallery, maxWidth: 800, imageQuality: 85);
+    if (picked == null || !mounted) return;
+    setState(() => _uploadingAvatar = true);
+    try {
+      await updateMyAvatar(picked.path);
+      await profileStore.refresh(force: true);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se pudo actualizar la foto.')));
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingAvatar = false);
     }
   }
 
@@ -282,62 +353,118 @@ class _ProfileMenuHeaderState extends State<_ProfileMenuHeader> {
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: cs.primaryContainer,
-                  backgroundImage: url != null ? NetworkImage(url) : null,
-                  child: url == null
-                      ? Text(profileStore.initial,
-                          style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: cs.onPrimaryContainer))
-                      : null,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(profileStore.firstName ?? 'Tu perfil',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w600)),
-                ),
-              ]),
-              const SizedBox(height: 12),
-              // Banda de créditos: número grande en violeta + "+" para recargar.
-              Container(
-                padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-                decoration: BoxDecoration(
-                  color: cs.primary.withValues(alpha: .10),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(children: [
-                  Expanded(
-                    child: Text(
-                      _balance != null ? '$_balance créditos' : 'Créditos',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                          color: cs.primary),
+              // Avatar CENTRADO en el tope del menú y 200% más grande (radio
+              // 22 → 66, pedido PO 2026-07-21): la foto es la protagonista del
+              // panel. Sigue siendo EDITABLE: tocar para cambiarla, con el
+              // badge de cámara (escalado acorde). Mientras sube, un spinner.
+              Center(
+                child: GestureDetector(
+                  onTap: _uploadingAvatar ? null : _pickAvatar,
+                  child: Stack(clipBehavior: Clip.none, children: [
+                    CircleAvatar(
+                      radius: 66,
+                      backgroundColor: cs.primaryContainer,
+                      backgroundImage: url != null ? NetworkImage(url) : null,
+                      child: _uploadingAvatar
+                          ? const SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: CircularProgressIndicator(strokeWidth: 3))
+                          : (url == null
+                              ? Text(profileStore.initial,
+                                  style: TextStyle(
+                                      fontSize: 48,
+                                      fontWeight: FontWeight.w600,
+                                      color: cs.onPrimaryContainer))
+                              : null),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    tooltip: 'Recargar créditos',
-                    onPressed: widget.onRecharge,
-                    icon: const Icon(Icons.add),
-                    style: IconButton.styleFrom(
-                      backgroundColor: cs.primary,
-                      foregroundColor: cs.onPrimary,
+                    Positioned(
+                      right: 4,
+                      bottom: 4,
+                      child: Container(
+                        padding: const EdgeInsets.all(7),
+                        decoration: BoxDecoration(
+                          color: cs.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: cs.surface, width: 2),
+                        ),
+                        child: Icon(Icons.camera_alt,
+                            size: 16, color: cs.onPrimary),
+                      ),
                     ),
-                  ),
-                ]),
+                  ]),
+                ),
               ),
+              const SizedBox(height: 10),
+              Text(profileStore.firstName ?? 'Tu perfil',
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w600)),
+              // Sin foto: empuja a subir una (pedido PO: "genera más confianza
+              // con tu foto de perfil").
+              if (url == null) ...[
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: _uploadingAvatar ? null : _pickAvatar,
+                  child: Text('Genera más confianza con tu foto de perfil',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: cs.primary,
+                          fontWeight: FontWeight.w500)),
+                ),
+              ],
+              if (widget.balanceFetch == null) const SizedBox(height: 4),
+              if (widget.balanceFetch != null) ...[
+              const SizedBox(height: 12),
+              // Banda de créditos: número grande + "+" para recargar. Saldo 0
+              // = ROJO (pedido PO 2026-07-22): el proveedor no puede desbloquear
+              // contactos, es una advertencia, no algo neutro.
+              Builder(builder: (context) {
+                final empty = _balance == 0;
+                final accent = empty ? cs.error : cs.primary;
+                return Container(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: .10),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text(
+                        _balance != null ? '$_balance créditos' : 'Créditos',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: accent),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: 'Recargar créditos',
+                      onPressed: widget.onRecharge,
+                      icon: const Icon(Icons.add),
+                      style: IconButton.styleFrom(
+                        backgroundColor: accent,
+                        foregroundColor: cs.onPrimary,
+                      ),
+                    ),
+                  ]),
+                );
+              }),
+              if (_balance == 0) ...[
+                const SizedBox(height: 6),
+                Text('Tu saldo llegó a 0 — recarga para desbloquear contactos.',
+                    style: TextStyle(fontSize: 11.5, color: cs.error)),
+              ],
+              ], // cierra el spread `if (widget.balanceFetch != null) ...[`
             ],
           ),
         );

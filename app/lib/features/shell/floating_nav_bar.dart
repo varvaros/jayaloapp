@@ -68,9 +68,14 @@ class FloatingNavBar extends StatelessWidget {
     required this.destinations,
     required this.currentIndex,
     required this.onSelected,
+    this.badges = const {},
   });
 
   final List<NavDestination> destinations;
+
+  /// Contador de badge por ruta de destino (hoy solo "Solicitudes"). 0 o
+  /// ausente = sin badge. La barra no sabe qué significa: solo lo pinta.
+  final Map<String, int> badges;
 
   /// Índice del destino activo, o `-1` (lo que devuelve
   /// [activeIndex] cuando la ruta actual no es ninguna pestaña — ver I2) para
@@ -122,6 +127,7 @@ class FloatingNavBar extends StatelessWidget {
                               : _SideItem(
                                   destination: destinations[i],
                                   active: i == currentIndex,
+                                  badge: badges[destinations[i].route] ?? 0,
                                   onTap: () => onSelected(i),
                                 ),
                         ),
@@ -244,11 +250,16 @@ class _SideItem extends StatelessWidget {
     required this.destination,
     required this.active,
     required this.onTap,
+    this.badge = 0,
   });
 
   final NavDestination destination;
   final bool active;
   final VoidCallback onTap;
+
+  /// Conteo del badge (0 = sin badge). Se dibuja como una píldora roja pequeña
+  /// sobre el ícono, estilo notificación (99+ como tope).
+  final int badge;
 
   @override
   Widget build(BuildContext context) {
@@ -277,7 +288,40 @@ class _SideItem extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(destination.icon, color: color, size: 24),
+            // El ícono con su badge encima (Stack sin recorte para que la
+            // píldora roja pueda sobresalir por la esquina superior derecha).
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(destination.icon, color: color, size: 24),
+                if (badge > 0)
+                  Positioned(
+                    top: -6,
+                    right: -8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      constraints:
+                          const BoxConstraints(minWidth: 16, minHeight: 16),
+                      decoration: BoxDecoration(
+                        color: cs.error,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: cs.primaryContainer, width: 1.5),
+                      ),
+                      child: Text(
+                        badge > 99 ? '99+' : '$badge',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: cs.onError,
+                          fontSize: 9.5,
+                          height: 1.1,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             AnimatedSize(
               // `Duration.zero` es el caso patológico de `AnimatedSize`
               // (distinto de `AnimatedSwitcher`/`SizeTransition`, que sí lo

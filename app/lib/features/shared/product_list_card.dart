@@ -24,7 +24,17 @@ class ProductListCard extends StatelessWidget {
     final img = images.isEmpty ? null : images.first;
     return JayaloCard(
       padding: const EdgeInsets.all(10),
-      onTap: () => context.push('/catalog/${item['id']}'),
+      // Desde la TIENDA del proveedor (`/store/:bid`, ruta del navigator
+      // RAÍZ) hay que usar la variante top-level `/product/:id`: empujar la
+      // ruta del shell `/catalog/:id` desde ahí montaba el detalle DEBAJO de
+      // la tienda y se veía vacío (QA PO 2026-07-21). En el catálogo (shell)
+      // se conserva `/catalog/:id`, con su navbar.
+      onTap: () {
+        final inStore =
+            GoRouterState.of(context).uri.path.startsWith('/store/');
+        context.push(
+            inStore ? '/product/${item['id']}' : '/catalog/${item['id']}');
+      },
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

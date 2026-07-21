@@ -24,6 +24,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool? _verified;
   Map<String, dynamic>? _biz;
   bool _hasIdDoc = false;
+  bool? _waReveal; // preferencia de contacto (WhatsApp vs solo chat)
+  bool _savingWa = false;
 
   @override
   void initState() {
@@ -38,6 +40,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {
       // Sin red: la fila simplemente no se muestra hasta reabrir.
     }
+    try {
+      final wa = await whatsappRevealEnabled();
+      if (mounted) setState(() => _waReveal = wa);
+    } catch (_) {/* best-effort */}
     if (roleStore.value == RoleState.provider) {
       try {
         final biz = await myBusinessForVerification();
@@ -105,6 +111,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _load();
     } catch (_) {
       if (mounted) _snack('No se pudo guardar el RNC.');
+    }
+  }
+
+  Future<void> _setWaReveal(bool v) async {
+    setState(() {
+      _waReveal = v;
+      _savingWa = true;
+    });
+    try {
+      await setWhatsappRevealEnabled(v);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _waReveal = !v); // revertir
+        _snack('No se pudo guardar tu preferencia.');
+      }
+    } finally {
+      if (mounted) setState(() => _savingWa = false);
     }
   }
 
@@ -228,6 +251,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : 'Confirma el RNC de tu negocio',
             onTap: _validateRnc,
           ),
+        // Preferencia de contacto (pedido PO 2026-07-22, paridad web): el
+        // usuario decide si los proveedores pueden contactarlo por WhatsApp o
+        // SOLO por el chat de Jayalo. Con los mismos warnings de la web.
+        if (_waReveal != null) ...[
+          const SectionHeader(text: 'Cómo quieren contactarte'),
+          _WaPreferenceCard(
+            enabled: _waReveal!,
+            saving: _savingWa,
+            onChanged: _savingWa ? null : _setWaReveal,
+          ),
+        ],
+        const SectionHeader(text: 'Chat'),
+        _SettingsRow(
+          icon: Icons.quickreply_outlined,
+          title: 'Respuestas rápidas',
+          subtitle: 'Edita, agrega o reordena tus mensajes predeterminados',
+          onTap: () => context.push('/settings/quick-replies'),
+        ),
         const SectionHeader(text: 'Información'),
         _SettingsRow(
           icon: Icons.description_outlined,
@@ -243,6 +284,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
           title: 'Cerrar sesión',
           onTap: _signOut,
         ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Tarjeta de preferencia de contacto: toggle WhatsApp/chat + el warning de la
+/// web según el estado (pedido PO 2026-07-22).
+class _WaPreferenceCard extends StatelessWidget {
+  const _WaPreferenceCard({
+    required this.enabled,
+    required this.saving,
+    required this.onChanged,
+  });
+  final bool enabled;
+  final bool saving;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final warnBg = dark ? const Color(0x33F2B705) : const Color(0xFFFFF3D6);
+    final warnInk = dark ? const Color(0xFFF2CF7A) : const Color(0xFF8A5A00);
+    return JayaloCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(enabled ? Icons.chat : Icons.forum_outlined,
+                size: 20, color: cs.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Contacto por WhatsApp',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(
+                    enabled
+                        ? 'Los proveedores que aceptes pueden escribirte por WhatsApp.'
+                        : 'Los proveedores solo podrán escribirte por el chat de Jayalo.',
+                    style:
+                        TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          Switch(value: enabled, onChanged: onChanged),
+        ]),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: warnBg,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(Icons.info_outline, size: 16, color: warnInk),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                  enabled
+                      ? 'Al compartir tu WhatsApp, el proveedor puede escribirte fuera de Jayalo. '
+                          'Si prefieres mantener todo dentro de la app, desactívalo.'
+                      : 'Con WhatsApp desactivado no se comparte tu número: toda la conversación '
+                          'queda en el chat de Jayalo, con respaldo.',
+                  style: TextStyle(fontSize: 12, height: 1.4, color: warnInk)),
+            ),
           ]),
         ),
       ]),

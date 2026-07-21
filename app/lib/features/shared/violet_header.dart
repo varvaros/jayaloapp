@@ -163,6 +163,107 @@ class VioletHeader extends StatelessWidget {
   }
 }
 
+/// Header violeta que se PLIEGA COMPLETO al navegar la lista (pedido PO
+/// 2026-07-21: "se debe esconder todo, hasta la notificación y el avatar,
+/// desde el primer swipe — así se ve todo más limpio"). Escondido queda solo
+/// una franja violeta fina con la flecha para bajarlo de vuelta. Se usa en
+/// Tus solicitudes y en el Catálogo.
+class CollapsibleHeader extends StatefulWidget {
+  const CollapsibleHeader({
+    super.key,
+    required this.hidden,
+    required this.onReveal,
+    required this.child,
+  });
+
+  final bool hidden;
+  final VoidCallback onReveal;
+
+  /// El [VioletHeader] completo de la pantalla.
+  final Widget child;
+
+  @override
+  State<CollapsibleHeader> createState() => _CollapsibleHeaderState();
+}
+
+class _CollapsibleHeaderState extends State<CollapsibleHeader>
+    with SingleTickerProviderStateMixin {
+  // value 1 = mostrado, 0 = oculto.
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 300),
+    value: widget.hidden ? 0 : 1,
+  );
+  late final Animation<double> _t =
+      CurvedAnimation(parent: _c, curve: Curves.easeOut);
+
+  @override
+  void didUpdateWidget(CollapsibleHeader old) {
+    super.didUpdateWidget(old);
+    if (widget.hidden != old.hidden) {
+      widget.hidden ? _c.reverse() : _c.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final topInset = MediaQuery.paddingOf(context).top;
+    final collapsed = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onReveal,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: cs.primary,
+          borderRadius:
+              const BorderRadius.vertical(bottom: Radius.circular(18)),
+        ),
+        padding: EdgeInsets.only(top: topInset + 2, bottom: 5),
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: .20),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: const Icon(Icons.keyboard_arrow_down,
+                color: Colors.white, size: 22),
+          ),
+        ),
+      ),
+    );
+    // El header SE DESLIZA HACIA ARRIBA y se esconde (pedido PO 2026-07-22: la
+    // versión con AnimatedCrossFade parecía un fade). `Align(bottomCenter,
+    // heightFactor: t)` ancla el header abajo y recorta desde ARRIBA: al
+    // encogerse (t→0) el header sube tras el borde superior. Detrás queda la
+    // franja con la flecha, que aparece al plegarse.
+    return AnimatedBuilder(
+      animation: _t,
+      builder: (context, _) {
+        final t = _t.value.clamp(0.0, 1.0);
+        return Stack(alignment: Alignment.topCenter, children: [
+          if (t < .999)
+            Opacity(opacity: (1 - t), child: collapsed),
+          ClipRect(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              heightFactor: t,
+              child: IgnorePointer(ignoring: t < .5, child: widget.child),
+            ),
+          ),
+        ]);
+      },
+    );
+  }
+}
+
 /// Saludo grande del home: "Hola, {nombre}" + línea de apoyo, en blanco.
 class HeaderGreeting extends StatelessWidget {
   const HeaderGreeting({super.key, required this.title, this.subtitle});

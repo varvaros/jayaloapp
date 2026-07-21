@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
@@ -67,6 +68,25 @@ class _CatalogViewState extends State<CatalogView> {
   bool _wholesale = false;
   final _searchCtrl = TextEditingController();
   final _scrollController = ScrollController();
+
+  /// Header plegado al navegar (pedido PO: TODO el header se esconde y queda
+  /// la flecha — mismo gesto que Tus solicitudes).
+  bool _headerHidden = false;
+
+  /// Esconde/muestra el header COMPLETO según la DIRECCIÓN del gesto (calco de
+  /// `my_requests_screen`): arrastrar hacia arriba pliega, hacia abajo baja.
+  /// Solo `UserScrollNotification` — ignora el relayout del propio colapso, que
+  /// antes reabría el header solo (bug "no se oculta", 2026-07-21).
+  bool _onListScroll(ScrollNotification n) {
+    if (n is! UserScrollNotification) return false;
+    if (n.metrics.axis != Axis.vertical) return false;
+    if (n.direction == ScrollDirection.reverse && !_headerHidden) {
+      setState(() => _headerHidden = true);
+    } else if (n.direction == ScrollDirection.forward && _headerHidden) {
+      setState(() => _headerHidden = false);
+    }
+    return false;
+  }
 
   late Future<List<Map<String, dynamic>>> _load = widget.fetch(
       kind: _kind,
@@ -146,7 +166,11 @@ class _CatalogViewState extends State<CatalogView> {
         body: Column(children: [
           // Header violeta: segmento Producto/Servicio a la izquierda, título
           // "Catálogo" a la derecha, campana, y el buscador (funcional) debajo.
-          VioletHeader(
+          // Se pliega completo al navegar la lista (pedido PO 2026-07-21).
+          CollapsibleHeader(
+            hidden: _headerHidden,
+            onReveal: () => setState(() => _headerHidden = false),
+            child: VioletHeader(
             // Como pantalla "Otros proveedores" (apilada desde el menú del
             // proveedor) se antepone una flecha de atrás SIN perder el toggle
             // Producto/Servicio; como pestaña del cliente (sin apilar) va solo
@@ -222,9 +246,12 @@ class _CatalogViewState extends State<CatalogView> {
                 ]),
               ],
             ),
+            ),
           ),
           Expanded(
-            child: RefreshIndicator(
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onListScroll,
+              child: RefreshIndicator(
               onRefresh: () async => _refetch(),
               child: FutureBuilder<List<Map<String, dynamic>>>(
                 future: _load,
@@ -275,6 +302,7 @@ class _CatalogViewState extends State<CatalogView> {
                   );
                 },
               ),
+            ),
             ),
           ),
         ]),

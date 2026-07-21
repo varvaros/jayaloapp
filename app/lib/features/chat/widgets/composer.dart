@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../domain/chat.dart';
+import '../quick_replies_store.dart';
 import '../../shared/jayalo_loader.dart';
 
 enum PlusAction { sendAddress, improveOffer, sendContact, sendLocation, sendPhoto }
@@ -25,6 +26,14 @@ class ChatComposer extends StatefulWidget {
 
 class _ChatComposerState extends State<ChatComposer> {
   final _ctrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Trae las respuestas rápidas personalizadas (si las hay) para cuando el
+    // usuario abra la lista; hasta entonces sirven los defaults.
+    quickRepliesStore.ensureLoaded();
+  }
 
   @override
   void dispose() {
@@ -87,7 +96,10 @@ class _ChatComposerState extends State<ChatComposer> {
   }
 
   void _openQuickList() {
-    final list = widget.isProvider ? providerReplies : quickReplies;
+    // Lista EFECTIVA del usuario (personalizada o defaults) para su rol en esta
+    // conversación. Se reconstruye la hoja al vuelo: ya está cargada por
+    // ensureLoaded en initState.
+    final list = quickRepliesStore.forProvider(widget.isProvider);
     showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
@@ -127,9 +139,20 @@ class _ChatComposerState extends State<ChatComposer> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-        child: Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 8, 6),
+    // El chat vive en un Scaffold ANIDADO dentro del shell, que conserva una
+    // bottomNavigationBar animada aunque esté oculta en la conversación: en esa
+    // combinación el `padding.bottom` del MediaQuery del cuerpo puede quedar
+    // recortado, así que un `SafeArea` normal no repone el inset y el composer
+    // quedaba "muy debajo", pegado a la barra de gestos (pedido PO 2026-07-21:
+    // subirlo). Se usa el `viewPadding` CRUDO (que el Scaffold no recorta) más
+    // un respiro fijo; con el teclado abierto ese inset físico ya no aplica
+    // (el teclado ocupa esa zona) → se colapsa para que el campo quede justo
+    // encima del teclado sin hueco muerto.
+    final mq = MediaQuery.of(context);
+    final keyboardUp = mq.viewInsets.bottom > 0;
+    final bottomGap = 8.0 + (keyboardUp ? 0.0 : mq.viewPadding.bottom);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(4, 4, 8, bottomGap),
       child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
         IconButton(onPressed: _openPlusMenu, icon: const Icon(Icons.add)),
         IconButton(onPressed: _openEmojis, icon: const Icon(Icons.emoji_emotions_outlined)),
@@ -157,6 +180,6 @@ class _ChatComposerState extends State<ChatComposer> {
                 ? const JayaloSpinner(size: 16)
                 : const Icon(Icons.send)),
       ]),
-    ));
+    );
   }
 }

@@ -98,6 +98,15 @@ abstract final class JayaloStatus {
   static const acceptedLight = (bg: Color(0xFFFFE9CB), ink: Color(0xFF8F4700));
   static const acceptedDark = (bg: Color(0xFF432E14), ink: Color(0xFFFFBD8E));
 
+  /// "Oferta aceptada" = AZUL CLARO (pedido PO 2026-07-21: "el color ámbar no
+  /// me gusta" para ese estado). El ámbar (`accepted*`) queda SOLO para
+  /// contextos de dinero/espera ("Ya ofertaste", costo del unlock, wallet).
+  /// Derivado con la misma receta pastel+tinta de los demás status.
+  static const offerAcceptedLight =
+      (bg: Color(0xFFDBEDFF), ink: Color(0xFF0D4F8B));
+  static const offerAcceptedDark =
+      (bg: Color(0xFF16293D), ink: Color(0xFF9CCBFF));
+
   static const unlockedLight = (bg: Color(0xFFD0FAE6), ink: Color(0xFF005D3F));
   static const unlockedDark = (bg: Color(0xFF103627), ink: Color(0xFF8CE3BE));
 

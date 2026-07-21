@@ -22,3 +22,15 @@ String catalogPriceLabel(
   if (priceMin != null) return 'desde ${fmtRD(priceMin)}';
   return 'Consultar precio';
 }
+
+/// Etiqueta del PRESUPUESTO ESTIMADO de una solicitud (paridad con el detalle
+/// web `$requestId.tsx`): rango "RD$X - RD$Y", "desde RD$X" o "hasta RD$Y".
+/// Devuelve null si el cliente no puso presupuesto (para no pintar la fila).
+String? requestBudgetLabel(num? min, num? max) {
+  final lo = (min != null && min > 0) ? min : null;
+  final hi = (max != null && max > 0) ? max : null;
+  if (lo != null && hi != null) return '${fmtRD(lo)} - ${fmtRD(hi)}';
+  if (lo != null) return 'desde ${fmtRD(lo)}';
+  if (hi != null) return 'hasta ${fmtRD(hi)}';
+  return null;
+}

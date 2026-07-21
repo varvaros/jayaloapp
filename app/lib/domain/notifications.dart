@@ -43,6 +43,8 @@ IconData iconFor(String kind) => switch (kind) {
         Icons.cancel_outlined,
       'welcome_customer' || 'welcome_provider' => Icons.auto_awesome,
       'message_new' => Icons.chat_bubble_outline,
+      // Aviso de que un chat está por cerrarse por inactividad (cron 48h).
+      'conversation_inactivity_warning' => Icons.hourglass_bottom,
       _ => _fallbackIcon(familyFor(kind)),
     };
 

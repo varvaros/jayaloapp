@@ -48,6 +48,24 @@ List<BoxShadow> jayaloCardShadow(BuildContext context) {
 /// más contenido que el del lienzo por el padding menor de la app).
 const double kCardRadius = 20;
 
+/// Color del badge de estado de una OFERTA del proveedor (pedido PO
+/// 2026-07-21): `pending` ("Ya ofertaste") = ÁMBAR (esperando decisión);
+/// `accepted` ("Aceptada") = VERDE (te eligieron); `unlocked`/`completed`
+/// ("Desbloqueado") = VIOLETA (ya pagaste y tienes el contacto). Un solo lugar
+/// para que la bandeja y Mis ofertas usen exactamente los mismos tonos.
+StatusTone offerBadgeTone(BuildContext context, String state) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return switch (state) {
+    'accepted' => dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight,
+    'unlocked' ||
+    'completed' =>
+      dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight,
+    'rejected' =>
+      dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
+    _ => dark ? JayaloStatus.acceptedDark : JayaloStatus.acceptedLight,
+  };
+}
+
 StatusTone toneFor(BuildContext context, RequestPhase phase) {
   final dark = Theme.of(context).brightness == Brightness.dark;
   return switch (phase) {
@@ -55,8 +73,10 @@ StatusTone toneFor(BuildContext context, RequestPhase phase) {
       dark ? JayaloStatus.pendingDark : JayaloStatus.pendingLight,
     RequestPhase.withOffers =>
       dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight,
+    // "Oferta aceptada" en AZUL claro (pedido PO 2026-07-21; el ámbar queda
+    // para espera/dinero).
     RequestPhase.accepted =>
-      dark ? JayaloStatus.acceptedDark : JayaloStatus.acceptedLight,
+      dark ? JayaloStatus.offerAcceptedDark : JayaloStatus.offerAcceptedLight,
     RequestPhase.unlocked =>
       dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight,
     RequestPhase.completed =>
@@ -460,10 +480,14 @@ class _HoldToConfirmButtonState extends State<HoldToConfirmButton>
     final free = widget.tone == HoldToConfirmTone.free;
     // El color separa lo pagado (violeta de acción) de lo gratis (verde de
     // éxito). El texto y el icono lo refuerzan.
+    // Botón GRANDE de color sólido (violeta pagado / verde gratis) que se
+    // RELLENA con una versión CLARA del mismo color al mantener presionado
+    // (pedido PO 2026-07-22): base = color fuerte, progreso = color claro,
+    // texto e ícono SIEMPRE en blanco. La barra clara crece de izq. a der.
     final fill = free
         ? (dark ? JayaloColors.dSuccess : JayaloColors.success)
         : cs.primary;
-    final onFill = free ? Colors.white : cs.onPrimary;
+    final light = Color.lerp(fill, Colors.white, .5)!;
     final icon = free ? Icons.check_rounded : Icons.lock_outline_rounded;
     final label = widget.label ??
         (free
@@ -476,40 +500,34 @@ class _HoldToConfirmButtonState extends State<HoldToConfirmButton>
       child: AnimatedBuilder(
         animation: _c,
         builder: (_, _) {
-          final filled = _c.value > .45;
-          final fg = filled ? onFill : cs.onSurface;
-          return Stack(alignment: Alignment.center, children: [
-            Container(
-              height: 52,
-              decoration: BoxDecoration(
-                  color: fill.withValues(alpha: .25),
-                  borderRadius: BorderRadius.circular(26)),
-            ),
-            FractionallySizedBox(
-              widthFactor: _c.value.clamp(0.001, 1),
-              alignment: Alignment.centerLeft,
-              child: Container(
-                height: 52,
-                decoration: BoxDecoration(
-                    color: fill, borderRadius: BorderRadius.circular(26)),
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Stack(alignment: Alignment.center, children: [
+              Container(height: 58, color: fill), // base sólida
+              FractionallySizedBox(
+                widthFactor: _c.value.clamp(0.0, 1),
+                alignment: Alignment.centerLeft,
+                child: Container(height: 58, color: light), // se llena claro
               ),
-            ),
-            IgnorePointer(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 18, color: fg),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(label,
-                        textAlign: TextAlign.center,
-                        style:
-                            TextStyle(color: fg, fontWeight: FontWeight.w600)),
-                  ),
-                ],
+              IgnorePointer(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 19, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(label,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ]);
+            ]),
+          );
         },
       ),
     );
@@ -587,6 +605,37 @@ class PillSegmented extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Sticker "Al por mayor" para pegar en la esquina de la miniatura de una
+/// solicitud (pedido PO): distingue de un vistazo las solicitudes mayoristas.
+/// Se posiciona dentro de un `Stack` (por eso vive en un `Positioned` propio).
+class WholesaleSticker extends StatelessWidget {
+  const WholesaleSticker({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFF6D28D9), // violeta pleno, alto contraste
+        borderRadius: BorderRadius.circular(7),
+        boxShadow: const [
+          BoxShadow(color: Color(0x33000000), blurRadius: 4, offset: Offset(0, 1)),
+        ],
+      ),
+      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.inventory_2, size: 9, color: Colors.white),
+        SizedBox(width: 3),
+        Text('Por mayor',
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 8.5,
+                height: 1.1,
+                fontWeight: FontWeight.w700)),
+      ]),
     );
   }
 }

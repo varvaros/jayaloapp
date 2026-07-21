@@ -21,6 +21,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/brand.dart';
 import '../../core/motion.dart';
+import '../../core/sfx.dart';
 import 'jayalo_loader.dart';
 
 /// Overlay del candado abriéndose (desbloqueo pagado).
@@ -33,18 +34,67 @@ Future<void> showAcceptCelebration(BuildContext context) =>
 
 enum _CelebrationKind { unlock, accept }
 
+/// Rediseño PO 2026-07-21: "el fondo violeta entra desde arriba, se forma el
+/// círculo del cotejo y explota el confetti; ícono blanco, letra blanca" —
+/// para aceptar Y para desbloquear. Pantalla completa violeta que baja desde
+/// el tope (reemplaza el modal blanco con zoom de la iteración anterior).
 Future<void> _showCelebration(BuildContext context, _CelebrationKind kind) {
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: false,
-    barrierColor: Colors.black.withValues(alpha: .32),
+    barrierColor: Colors.transparent, // el violeta cubre todo: sin velo extra
     barrierLabel:
         kind == _CelebrationKind.accept ? 'Oferta aceptada' : 'Contacto desbloqueado',
-    transitionDuration: JayaloMotion.fast,
-    transitionBuilder: (_, anim, _, child) =>
-        FadeTransition(opacity: anim, child: child),
+    transitionDuration: const Duration(milliseconds: 420),
+    transitionBuilder: _slideFromTopTransition,
     pageBuilder: (_, _, _) => _CelebrationOverlay(kind: kind),
   );
+}
+
+/// Entrada de las celebraciones: el panel violeta BAJA desde arriba de la
+/// pantalla (ease-out, frena al llegar) y al cerrarse vuelve a subir.
+Widget _slideFromTopTransition(BuildContext context, Animation<double> anim,
+    Animation<double> secondaryAnimation, Widget child) {
+  final offset = Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero)
+      .animate(CurvedAnimation(
+          parent: anim,
+          curve: JayaloMotion.enter,
+          reverseCurve: JayaloMotion.exit));
+  return SlideTransition(position: offset, child: child);
+}
+
+/// Transición compartida de las celebraciones (pedido PO): el modal entra con
+/// un ZOOM IN (con un pequeño rebote) y sale con ZOOM OUT, acompañado de un
+/// fundido del fondo. `easeOutBack` da el pop de entrada; al revertir la ruta,
+/// la escala baja de vuelta = zoom out.
+Widget _zoomModalTransition(BuildContext context, Animation<double> anim,
+    Animation<double> secondaryAnimation, Widget child) {
+  final scale = Tween<double>(begin: .82, end: 1).animate(CurvedAnimation(
+      parent: anim, curve: Curves.easeOutBack, reverseCurve: Curves.easeIn));
+  return FadeTransition(
+    opacity: anim,
+    child: ScaleTransition(scale: scale, child: child),
+  );
+}
+
+/// Tarjeta-modal blanca de bordes redondeados que contiene la celebración
+/// (pedido PO: "un modal con fondo blanco, bordes redondeados"). Recorta su
+/// contenido al radio para que el confeti/animación queden dentro.
+class _CelebrationCard extends StatelessWidget {
+  const _CelebrationCard({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      elevation: 12,
+      shadowColor: Colors.black.withValues(alpha: .25),
+      borderRadius: BorderRadius.circular(28),
+      clipBehavior: Clip.antiAlias,
+      child: child,
+    );
+  }
 }
 
 class _CelebrationOverlay extends StatefulWidget {
@@ -72,12 +122,22 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
     if (_started) return;
     _started = true;
     final reduced = JayaloMotion.reduced(context);
+    final accept = widget.kind == _CelebrationKind.accept;
+    // Con movimiento: círculo que se forma → cotejo → explosión de confeti más
+    // larga (accept, pedido PO "confetti de mayor duración") / candado que se
+    // abre + halo, ventana de 4 s (unlock, pedido PO). Con reduce: destello
+    // estático breve.
     _ctrl.duration = reduced
-        ? const Duration(milliseconds: 550)
-        : (widget.kind == _CelebrationKind.accept
-            ? const Duration(milliseconds: 1500)
-            : const Duration(milliseconds: 1350));
+        ? const Duration(milliseconds: 600)
+        : (accept
+            ? const Duration(milliseconds: 3000)
+            : const Duration(milliseconds: 4000));
     _ctrl.forward();
+    // Sonido de la celebración (pedido PO 2026-07-21: sonido en ambas). El
+    // audio es decorativo — playSfx nunca lanza.
+    if (!reduced) {
+      playSfx(accept ? Sfx.offerAccepted : Sfx.unlock);
+    }
   }
 
   @override
@@ -93,28 +153,53 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
   @override
   Widget build(BuildContext context) {
     final reduced = JayaloMotion.reduced(context);
+    final violet = _brandPrimary(context);
+    final accept = widget.kind == _CelebrationKind.accept;
     return GestureDetector(
       key: ValueKey('celebration-${widget.kind.name}'),
       behavior: HitTestBehavior.opaque,
       onTap: _skip,
-      child: Center(
-        child: SizedBox(
-          width: 240,
-          height: 240,
-          child: AnimatedBuilder(
-            animation: _ctrl,
-            builder: (_, _) => CustomPaint(
-              painter: widget.kind == _CelebrationKind.accept
-                  ? _AcceptPainter(
-                      t: _ctrl.value,
-                      reduced: reduced,
-                      color: _brandSuccess(context))
-                  : _UnlockPainter(
-                      t: _ctrl.value,
-                      reduced: reduced,
-                      color: _brandPrimary(context)),
+      // Pantalla COMPLETA violeta (pedido PO): ícono y letra en blanco.
+      child: Container(
+        color: violet,
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 280,
+              height: 280,
+              child: AnimatedBuilder(
+                animation: _ctrl,
+                builder: (_, _) => accept
+                    ? CustomPaint(
+                        painter: _AcceptPainter(
+                            t: _ctrl.value, reduced: reduced, bg: violet),
+                        size: const Size(280, 280),
+                      )
+                    : _UnlockLockAnimation(t: _ctrl.value, reduced: reduced),
+              ),
             ),
-          ),
+            const SizedBox(height: 4),
+            Text(
+              accept ? '¡Oferta aceptada!' : '¡Contacto desbloqueado!',
+              textAlign: TextAlign.center,
+              // Misma tipografía de marca que el resto de títulos (hereda la
+              // familia del textTheme); blanca sobre el violeta. Pedido PO.
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+            )
+                .animate()
+                .fadeIn(duration: JayaloMotion.base, delay: 350.ms)
+                .slideY(
+                    begin: .25,
+                    end: 0,
+                    duration: JayaloMotion.base,
+                    delay: 350.ms,
+                    curve: JayaloMotion.enter),
+          ],
         ),
       ),
     );
@@ -125,11 +210,6 @@ Color _brandPrimary(BuildContext context) =>
     Theme.of(context).brightness == Brightness.dark
         ? JayaloColors.dPrimary
         : JayaloColors.primary;
-
-Color _brandSuccess(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark
-        ? JayaloColors.dSuccess
-        : JayaloColors.success;
 
 // ---------------------------------------------------------------------------
 // Confeti + cotejo (aceptar oferta).
@@ -145,13 +225,14 @@ class _Bit {
   final bool rect; // rectángulo vs círculo
 }
 
-/// Paleta festiva anclada a la marca (nada de arcoíris de payaso): violeta de
-/// acción, verde de éxito, un azul, un dorado cálido y un rosa suave — cinco
-/// tonos bien separados para que el confeti se lea con variedad.
+/// Paleta festiva anclada a la marca (nada de arcoíris de payaso). Sobre el
+/// FONDO VIOLETA de la celebración el violeta de acción desaparecería, así que
+/// su lugar lo toma el blanco: blanco, verde de éxito, un azul claro, un
+/// dorado cálido y un rosa suave — cinco tonos que se leen sobre el violeta.
 const _confettiPalette = <Color>[
-  JayaloColors.primary, // violeta de acción
+  Colors.white,
   JayaloColors.success, // verde de éxito
-  Color(0xFF3E98FF), // azul
+  Color(0xFF7FBCFF), // azul claro
   Color(0xFFF2B705), // dorado cálido
   Color(0xFFEE6C9B), // rosa suave
 ];
@@ -160,7 +241,9 @@ final List<_Bit> _confettiBits = _buildBits();
 
 List<_Bit> _buildBits() {
   final rnd = math.Random(7); // semilla fija → determinista (y testeable)
-  return List.generate(30, (i) {
+  // Ráfaga más tupida (PO 2026-07-21: "confetti de mayor duración" — junto con
+  // la ventana de aceptar ampliada a 3 s, cae más y por más tiempo).
+  return List.generate(46, (i) {
     final angle = rnd.nextDouble() * math.pi * 2;
     final speed = 0.45 + rnd.nextDouble() * 0.55;
     final size = 6.0 + rnd.nextDouble() * 7.0;
@@ -170,78 +253,94 @@ List<_Bit> _buildBits() {
   });
 }
 
+/// Cotejo sobre el fondo violeta (pedido PO 2026-07-21): primero SE FORMA EL
+/// CÍRCULO (un anillo blanco que se dibuja barriendo), luego el cotejo se
+/// traza, y al completarse EXPLOTA el confetti. Todo el ícono en blanco.
 class _AcceptPainter extends CustomPainter {
-  _AcceptPainter({required this.t, required this.reduced, required this.color});
+  _AcceptPainter({required this.t, required this.reduced, required this.bg});
   final double t;
   final bool reduced;
-  final Color color;
+
+  /// El violeta del fondo (para tintes translúcidos coherentes).
+  final Color bg;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
+    final c = size.center(Offset.zero);
+    final r = size.shortestSide * 0.24;
 
-    if (!reduced) {
-      final ct = Curves.easeOut.transform(t);
-      for (final b in _confettiBits) {
-        final dist = b.speed * size.width * 0.62 * ct;
-        final gravity = size.height * 0.55 * t * t;
-        final pos = Offset(
-          center.dx + math.cos(b.angle) * dist,
-          center.dy + math.sin(b.angle) * dist + gravity - size.height * 0.06,
-        );
-        final fade = t < 0.65 ? 1.0 : (1 - (t - 0.65) / 0.35).clamp(0.0, 1.0);
-        if (fade <= 0) continue;
-        final paint = Paint()..color = b.color.withValues(alpha: fade);
-        canvas.save();
-        canvas.translate(pos.dx, pos.dy);
-        canvas.rotate(b.spin * t);
-        if (b.rect) {
-          canvas.drawRect(
-              Rect.fromCenter(
-                  center: Offset.zero, width: b.size, height: b.size * 0.5),
-              paint);
-        } else {
-          canvas.drawCircle(Offset.zero, b.size * 0.4, paint);
-        }
-        canvas.restore();
-      }
+    // 1. El anillo se forma: barrido de 360° entre t 0 y 0.32 (arranca arriba).
+    final ringProg = reduced
+        ? 1.0
+        : Curves.easeInOut.transform((t / 0.32).clamp(0.0, 1.0));
+    if (ringProg > 0) {
+      canvas.drawArc(
+          Rect.fromCircle(center: c, radius: r),
+          -math.pi / 2,
+          math.pi * 2 * ringProg,
+          false,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = r * 0.12
+            ..strokeCap = StrokeCap.round
+            ..color = Colors.white);
+    }
+    // Relleno sutil dentro del anillo cuando ya cerró (asienta el cotejo).
+    if (ringProg >= 1) {
+      canvas.drawCircle(
+          c, r * 0.90, Paint()..color = Colors.white.withValues(alpha: .12));
     }
 
-    _paintCheckBadge(canvas, center, size.shortestSide * 0.22, color);
-  }
+    // 2. El cotejo se traza entre t 0.30 y 0.52.
+    final prog = reduced ? 1.0 : ((t - 0.30) / 0.22).clamp(0.0, 1.0);
+    if (prog > 0) {
+      final s = r * 0.82;
+      final p1 = c + Offset(-0.42, 0.02) * s;
+      final p2 = c + Offset(-0.12, 0.34) * s;
+      final p3 = c + Offset(0.44, -0.30) * s;
+      _paintPolyProgress(canvas, [p1, p2, p3], prog,
+          Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = r * 0.14
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round);
+    }
 
-  void _paintCheckBadge(Canvas canvas, Offset c, double r, Color color) {
-    // Escala de entrada del disco (rebote suave). Con reduce, aparece directo.
-    final grow = reduced
-        ? (t * 2).clamp(0.0, 1.0)
-        : Curves.easeOutBack.transform((t / 0.5).clamp(0.0, 1.0));
-    final radius = r * grow;
-    if (radius <= 0) return;
-
-    canvas.drawCircle(
-        c, radius, Paint()..color = color.withValues(alpha: 0.16));
-    canvas.drawCircle(c, radius * 0.82, Paint()..color = color);
-
-    // Trazo del cotejo: dibujado progresivamente entre t 0.30 y 0.72.
-    final prog = reduced
-        ? 1.0
-        : ((t - 0.30) / 0.42).clamp(0.0, 1.0);
-    if (prog <= 0) return;
-    final s = radius * 0.82;
-    final p1 = c + Offset(-0.42, 0.02) * s;
-    final p2 = c + Offset(-0.12, 0.34) * s;
-    final p3 = c + Offset(0.44, -0.30) * s;
-    _paintPolyProgress(canvas, [p1, p2, p3], prog,
-        Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = radius * 0.14
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round);
+    // 3. Al completarse el cotejo EXPLOTA el confetti (t 0.5 → 1).
+    if (!reduced) {
+      final ct = Curves.easeOut.transform(((t - 0.5) / 0.5).clamp(0.0, 1.0));
+      if (ct > 0) {
+        for (final b in _confettiBits) {
+          final dist = b.speed * size.width * 0.72 * ct;
+          final gravity = size.height * 0.35 * ct * ct;
+          final pos = Offset(
+            c.dx + math.cos(b.angle) * dist,
+            c.dy + math.sin(b.angle) * dist + gravity - size.height * 0.04,
+          );
+          final fade =
+              ct < 0.6 ? 1.0 : (1 - (ct - 0.6) / 0.4).clamp(0.0, 1.0);
+          if (fade <= 0) continue;
+          final paint = Paint()..color = b.color.withValues(alpha: fade);
+          canvas.save();
+          canvas.translate(pos.dx, pos.dy);
+          canvas.rotate(b.spin * ct);
+          if (b.rect) {
+            canvas.drawRect(
+                Rect.fromCenter(
+                    center: Offset.zero, width: b.size, height: b.size * 0.5),
+                paint);
+          } else {
+            canvas.drawCircle(Offset.zero, b.size * 0.4, paint);
+          }
+          canvas.restore();
+        }
+      }
+    }
   }
 
   @override
-  bool shouldRepaint(_AcceptPainter old) => old.t != t || old.color != color;
+  bool shouldRepaint(_AcceptPainter old) => old.t != t || old.bg != bg;
 }
 
 /// Dibuja una polilínea hasta [prog] (0..1) de su longitud total.
@@ -274,110 +373,132 @@ void _paintPolyProgress(
 
 // ---------------------------------------------------------------------------
 // Candado abriéndose (desbloqueo pagado).
+//
+// Rediseño PO 2026-07-21: el candado dibujado a mano quedaba DEFORME (el arco
+// pivotaba y se despegaba del cuerpo). Se reemplaza por los GLIFOS de Material
+// (`Icons.lock_rounded` → `Icons.lock_open_rounded`) — geometría impecable por
+// construcción, imposible de deformar — animados con un cross-fade y un pop, un
+// halo y unas chispas pintadas detrás. La ventana dura 4 s (ver duración del
+// controlador). Sin paquete de animación externo: los glifos SON la "librería".
 // ---------------------------------------------------------------------------
 
-class _UnlockPainter extends CustomPainter {
-  _UnlockPainter({required this.t, required this.reduced, required this.color});
+/// El candado cerrado (que entra con rebote), se abre con un POP y suelta un
+/// halo + chispas; luego respira suave hasta cerrar la ventana de 4 s.
+/// Recibe [t] 0..1 del controlador de la celebración.
+class _UnlockLockAnimation extends StatelessWidget {
+  const _UnlockLockAnimation({required this.t, required this.reduced});
   final double t;
   final bool reduced;
-  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    // Entrada con rebote (0 → 0.18).
+    final appear = reduced
+        ? 1.0
+        : Curves.easeOutBack.transform((t / 0.18).clamp(0.0, 1.0));
+
+    // Anticipación: un leve bamboleo justo antes de abrir (0.18 → 0.30).
+    double rot = 0;
+    if (!reduced && t > 0.18 && t < 0.30) {
+      rot = math.sin(((t - 0.18) / 0.12) * math.pi * 2) * 0.09;
+    }
+
+    // Cross-fade cerrado→abierto centrado en t≈0.30.
+    final openT =
+        reduced ? 1.0 : ((t - 0.27) / 0.06).clamp(0.0, 1.0);
+
+    // POP al abrir: un pequeño salto de escala en forma de campana (0.28→0.42).
+    double pop = 1.0;
+    if (!reduced) {
+      final p = ((t - 0.28) / 0.14).clamp(0.0, 1.0);
+      pop = 1 + math.sin(p * math.pi) * 0.16;
+    }
+
+    // Respiración suave en la cola (0.55→1) para que los 4 s no se sientan
+    // muertos.
+    double breathe = 1.0;
+    if (!reduced && t > 0.55) {
+      breathe = 1 + math.sin((t - 0.55) * math.pi * 2 * 1.1) * 0.02;
+    }
+
+    final scale = appear * pop * breathe;
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        if (!reduced)
+          Positioned.fill(child: CustomPaint(painter: _UnlockGlowPainter(t))),
+        Transform.rotate(
+          angle: rot,
+          child: Transform.scale(
+            scale: scale,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Candado CERRADO (se desvanece al abrir).
+                Opacity(
+                  opacity: 1 - openT,
+                  child: const Icon(Icons.lock_rounded,
+                      size: 150, color: Colors.white),
+                ),
+                // Candado ABIERTO (aparece).
+                Opacity(
+                  opacity: openT,
+                  child: const Icon(Icons.lock_open_rounded,
+                      size: 150, color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Halo blanco que se expande al abrir + un puñado de chispas radiales.
+/// Detrás del glifo del candado; todo en blanco sobre el violeta del fondo.
+class _UnlockGlowPainter extends CustomPainter {
+  _UnlockGlowPainter(this.t);
+  final double t;
+
+  static final _sparkleAngles = List<double>.generate(
+      8, (i) => -math.pi / 2 + i * (math.pi * 2 / 8) + 0.2);
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = size.center(Offset.zero);
-    final r = size.shortestSide * 0.22;
+    final base = size.shortestSide * 0.20;
 
-    // Disco de fondo (rebote de entrada).
-    final grow = reduced
-        ? (t * 2).clamp(0.0, 1.0)
-        : Curves.easeOutBack.transform((t / 0.5).clamp(0.0, 1.0));
-    final radius = r * grow;
-    if (radius <= 0) return;
-    canvas.drawCircle(
-        c, radius, Paint()..color = color.withValues(alpha: 0.16));
-    canvas.drawCircle(c, radius * 0.82, Paint()..color = color);
-
-    // Anillo de brillo que se expande al abrir (fase final).
-    if (!reduced) {
-      final ringProg = ((t - 0.55) / 0.45).clamp(0.0, 1.0);
-      if (ringProg > 0) {
-        final rr = radius * (0.82 + ringProg * 0.9);
-        canvas.drawCircle(
-            c,
-            rr,
-            Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = radius * 0.10 * (1 - ringProg)
-              ..color =
-                  color.withValues(alpha: 0.55 * (1 - ringProg)));
-      }
+    // Halo: un anillo que crece y se desvanece al abrir (0.30 → 0.72).
+    final ringT = ((t - 0.30) / 0.42).clamp(0.0, 1.0);
+    if (ringT > 0 && ringT < 1) {
+      final rr = base * (1.2 + ringT * 1.7);
+      canvas.drawCircle(
+          c,
+          rr,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = base * 0.14 * (1 - ringT)
+            ..color = Colors.white.withValues(alpha: 0.55 * (1 - ringT)));
     }
 
-    _paintPadlock(canvas, c, radius * 0.82);
-  }
-
-  void _paintPadlock(Canvas canvas, Offset c, double s) {
-    final white = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    final stroke = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = s * 0.14
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    // Cuerpo del candado (rectángulo redondeado) — no se mueve.
-    final bodyW = s * 0.92;
-    final bodyH = s * 0.72;
-    final bodyTop = c.dy - s * 0.02;
-    final body = RRect.fromRectAndRadius(
-        Rect.fromLTWH(c.dx - bodyW / 2, bodyTop, bodyW, bodyH),
-        Radius.circular(s * 0.16));
-    canvas.drawRRect(body, white);
-
-    // Ojo de la cerradura, en el color del disco (contraste sobre el blanco).
-    final keyPaint = Paint()..color = color;
-    final keyC = Offset(c.dx, bodyTop + bodyH * 0.42);
-    canvas.drawCircle(keyC, s * 0.11, keyPaint);
-    canvas.drawRect(
-        Rect.fromLTWH(keyC.dx - s * 0.045, keyC.dy, s * 0.09, s * 0.20),
-        keyPaint);
-
-    // Arco (shackle): pivota sobre su pata derecha para "abrirse".
-    final arcW = s * 0.52;
-    final legLen = s * 0.42;
-    final pivot = Offset(c.dx + arcW / 2, bodyTop + s * 0.02);
-    final open = reduced
-        ? 1.0
-        : Curves.easeOutCubic.transform((t / 0.55).clamp(0.0, 1.0));
-    final theta = -0.95 * open; // gira hacia afuera al abrir
-
-    // Semicírculo SUPERIOR explícito (ángulos, no `arcToPoint`, para no
-    // depender de la ambigüedad del flag clockwise en y-hacia-abajo): centro
-    // en (-arcW/2, -legLen), empieza en el ángulo 0 (pata derecha, y = -legLen)
-    // y barre -π → pasa por arriba (-y) hasta la pata izquierda.
-    final shackle = Path()
-      ..moveTo(0, 0) // pata derecha (en el pivote)
-      ..lineTo(0, -legLen)
-      ..arcTo(
-          Rect.fromCircle(
-              center: Offset(-arcW / 2, -legLen), radius: arcW / 2),
-          0,
-          -math.pi,
-          false)
-      ..lineTo(-arcW, 0);
-
-    canvas.save();
-    canvas.translate(pivot.dx, pivot.dy);
-    canvas.rotate(theta);
-    canvas.drawPath(shackle, stroke);
-    canvas.restore();
+    // Chispas: salen disparadas al abrir y se apagan (0.30 → 0.65).
+    final sparkT = ((t - 0.30) / 0.35).clamp(0.0, 1.0);
+    if (sparkT > 0 && sparkT < 1) {
+      final eased = Curves.easeOut.transform(sparkT);
+      final fade = (1 - sparkT).clamp(0.0, 1.0);
+      final paint = Paint()..color = Colors.white.withValues(alpha: fade);
+      for (final a in _sparkleAngles) {
+        final dist = base * (1.1 + eased * 1.6);
+        final p = c + Offset(math.cos(a), math.sin(a)) * dist;
+        canvas.drawCircle(p, base * 0.09 * (1 - sparkT * 0.5), paint);
+      }
+    }
   }
 
   @override
-  bool shouldRepaint(_UnlockPainter old) =>
-      old.t != t || old.color != color;
+  bool shouldRepaint(_UnlockGlowPainter old) => old.t != t;
 }
 
 // ---------------------------------------------------------------------------
@@ -385,15 +506,104 @@ class _UnlockPainter extends CustomPainter {
 // grande que el éxito de crear solicitud (pedido PO 2026-07-20).
 // ---------------------------------------------------------------------------
 
+/// Estrella + "¡Gracias por tu calificación!" tras enviar una calificación
+/// (pedido PO 2026-07-21). Modal blanco efímero que se auto-cierra.
+Future<void> showRatingThanks(BuildContext context) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierColor: Colors.black.withValues(alpha: .45),
+    barrierLabel: 'Gracias por tu calificación',
+    transitionDuration: const Duration(milliseconds: 300),
+    transitionBuilder: _zoomModalTransition,
+    pageBuilder: (_, _, _) => const _RatingThanksOverlay(),
+  );
+}
+
+class _RatingThanksOverlay extends StatefulWidget {
+  const _RatingThanksOverlay();
+  @override
+  State<_RatingThanksOverlay> createState() => _RatingThanksOverlayState();
+}
+
+class _RatingThanksOverlayState extends State<_RatingThanksOverlay> {
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    final ms = JayaloMotion.reduced(context) ? 800 : 1800;
+    Future.delayed(Duration(milliseconds: ms), () {
+      if (mounted) Navigator.of(context).maybePop();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final reduced = JayaloMotion.reduced(context);
+    const gold = Color(0xFFF2B705);
+    Widget star = const Icon(Icons.star_rounded, size: 96, color: gold);
+    if (!reduced) {
+      star = star
+          .animate()
+          .scale(
+              begin: const Offset(.3, .3),
+              end: const Offset(1, 1),
+              duration: 480.ms,
+              curve: Curves.elasticOut)
+          .then()
+          .shimmer(duration: 900.ms, color: Colors.white);
+    }
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (mounted) Navigator.of(context).maybePop();
+      },
+      child: Center(
+        child: _CelebrationCard(
+          child: SizedBox(
+            width: 280,
+            height: 220,
+            child: Stack(alignment: Alignment.center, children: [
+              if (!reduced)
+                const Positioned.fill(
+                    child: IgnorePointer(child: ConfettiBurst())),
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  star,
+                  const SizedBox(height: 12),
+                  Text('¡Gracias por tu calificación!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: jayaloHead(context))),
+                  const SizedBox(height: 4),
+                  Text('Tu opinión ayuda a la comunidad.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 Future<void> showOfferSentCelebration(BuildContext context) {
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: false,
     barrierColor: Colors.black.withValues(alpha: .40),
     barrierLabel: 'Oferta enviada',
-    transitionDuration: JayaloMotion.fast,
-    transitionBuilder: (_, anim, _, child) =>
-        FadeTransition(opacity: anim, child: child),
+    transitionDuration: const Duration(milliseconds: 300),
+    transitionBuilder: _zoomModalTransition,
     pageBuilder: (_, _, _) => const _OfferSentOverlay(),
   );
 }
@@ -428,36 +638,44 @@ class _OfferSentOverlayState extends State<_OfferSentOverlay> {
       onTap: () {
         if (mounted) Navigator.of(context).maybePop();
       },
-      child: Stack(children: [
-        if (!reduced)
-          const Positioned.fill(child: IgnorePointer(child: ConfettiBurst())),
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              // Más grande que el éxito de solicitud (96) — pedido PO.
-              JayaloMascotFace(size: 128, mood: MascotMood.celebrate)
-                  .animate()
-                  .scale(
-                      begin: const Offset(.7, .7),
-                      end: const Offset(1, 1),
-                      duration: 260.ms,
-                      curve: Curves.easeOutBack),
-              const SizedBox(height: 18),
-              Text('¡Oferta enviada!',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w500,
-                      color: jayaloHead(context))),
-              const SizedBox(height: 8),
-              Text('Te avisamos si te aceptan.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
+      child: Center(
+        // Modal blanco de bordes redondeados (pedido PO): el confeti vive
+        // DENTRO de la tarjeta, recortado a sus esquinas.
+        child: _CelebrationCard(
+          child: SizedBox(
+            width: 300,
+            height: 300,
+            child: Stack(alignment: Alignment.center, children: [
+              if (!reduced)
+                const Positioned.fill(
+                    child: IgnorePointer(child: ConfettiBurst())),
+              Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  JayaloMascotFace(size: 120, mood: MascotMood.celebrate)
+                      .animate()
+                      .scale(
+                          begin: const Offset(.7, .7),
+                          end: const Offset(1, 1),
+                          duration: 260.ms,
+                          curve: Curves.easeOutBack),
+                  const SizedBox(height: 18),
+                  Text('¡Oferta enviada!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w500,
+                          color: jayaloHead(context))),
+                  const SizedBox(height: 8),
+                  Text('Te avisamos si te aceptan.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
+                ]),
+              ),
             ]),
           ),
         ),
-      ]),
+      ),
     );
   }
 }

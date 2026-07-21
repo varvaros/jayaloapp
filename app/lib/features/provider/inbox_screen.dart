@@ -80,13 +80,55 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   /// aún no cargó — tratado como "sin saldo" por `shouldOfferRecharge`.
   int? _balance;
 
-  late Future<List<Map<String, dynamic>>> _load =
-      widget.fetch(kind: _kind, todas: _todas);
+  /// Estado de la oferta de este proveedor por solicitud (badge de la
+  /// tarjeta): sin entrada = no ofertó; 'pending' = "Ya ofertaste";
+  /// 'accepted'/'completed' = "Aceptada". Se recalcula en cada `_runFetch`.
+  Map<String, String> _offeredStatuses = {};
+
+  late Future<List<Map<String, dynamic>>> _load = _runFetch();
 
   @override
   void initState() {
     super.initState();
     _loadBalance();
+  }
+
+  /// Envuelve `widget.fetch` para actualizar el badge de la pestaña
+  /// "Solicitudes" (proveedor) con el conteo de la bandeja "Para ti" — las
+  /// solicitudes abiertas de su rubro por atender. En "Todas" no se toca el
+  /// badge (ese conteo no es una alerta accionable, es exploración).
+  Future<List<Map<String, dynamic>>> _runFetch() async {
+    var items = await widget.fetch(kind: _kind, todas: _todas);
+    if (mounted && !_todas) {
+      solicitudesBadge.value = items.where((r) => r['source'] != 'store').length;
+    }
+    // "Para ti" también incluye las solicitudes de OTRO rubro a las que ya
+    // ofertó (pedido PO: "si alguien ofertó en otro rubro, esa oferta pasa a
+    // Para ti") — el proveedor les da seguimiento desde su bandeja. Best-effort
+    // y DESPUÉS del badge: dar seguimiento no es una alerta pendiente.
+    if (!_todas) {
+      try {
+        final have = {for (final r in items) r['id']};
+        final offered = await myOfferedOpenRequests(kind: _kind);
+        items = [
+          ...items,
+          ...offered.where((r) => !have.contains(r['id'])),
+        ]..sort((a, b) => (b['created_at'] as String? ?? '')
+            .compareTo(a['created_at'] as String? ?? ''));
+      } catch (_) {}
+    }
+    // ¿A cuáles de estas solicitudes ya ofertó y en qué estado? (badge
+    // "Ya ofertaste"/"Aceptada").
+    try {
+      final ids = [
+        for (final r in items)
+          if (r['source'] != 'store') r['id'] as String,
+      ];
+      _offeredStatuses = await myOfferedRequestStatuses(ids);
+    } catch (_) {
+      _offeredStatuses = {};
+    }
+    return items;
   }
 
   Future<void> _loadBalance() async {
@@ -109,7 +151,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   // patrón roto vive en my_requests_screen.dart, reputation_screen.dart y
   // stats_screen.dart, pero tocar esos archivos queda fuera de esta tarea.
   void _refetch() {
-    final next = widget.fetch(kind: _kind, todas: _todas);
+    final next = _runFetch();
     setState(() {
       _load = next;
     });
@@ -383,8 +425,17 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                       description: r['description'] as String? ?? '',
                       kind: r['kind'] as String?,
                       imageUrl: r['image_url'] as String?,
+                      wholesale: r['is_wholesale'] == true,
+                      offerStatus: _offeredStatuses[r['id']],
                       createdAt: DateTime.parse(r['created_at'] as String),
-                      onTap: () => context.go('/provider/request/${r['id']}'),
+                      // push (no go): apila el detalle para que el atrás
+                      // vuelva a la bandeja (el go reemplazaba la pila y la
+                      // flecha "no funcionaba"). Al volver se refresca por si
+                      // acaba de ofertar/editar.
+                      onTap: () async {
+                        await context.push('/provider/request/${r['id']}');
+                        if (context.mounted) _refetch();
+                      },
                     ).cascadeIn(i);
                   },
                 );
@@ -409,6 +460,8 @@ class _InboxCard extends StatelessWidget {
     required this.createdAt,
     required this.onTap,
     this.imageUrl,
+    this.wholesale = false,
+    this.offerStatus,
   });
 
   final String title;
@@ -417,6 +470,15 @@ class _InboxCard extends StatelessWidget {
   final DateTime createdAt;
   final VoidCallback onTap;
   final String? imageUrl;
+
+  /// La solicitud es "al por mayor" — se marca con un sticker en la esquina de
+  /// la miniatura (pedido PO): el proveedor lo distingue de un vistazo.
+  final bool wholesale;
+
+  /// Estado de la oferta de ESTE proveedor a esta solicitud (`null` = aún no
+  /// ofertó). Pinta el badge: 'pending' → "Ya ofertaste" (verde);
+  /// 'accepted'/'completed' → "Aceptada" (ámbar, ¡hay dinero esperando!).
+  final String? offerStatus;
 
   /// Miniatura de la foto del cliente (nunca ícono roto: cae al ícono si no
   /// hay foto o falla la URL). Antes la lista era solo-ícono — el PO reportó
@@ -457,7 +519,14 @@ class _InboxCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _leading(cs),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              _leading(cs),
+              if (wholesale)
+                const Positioned(top: -6, left: -6, child: WholesaleSticker()),
+            ],
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -466,7 +535,10 @@ class _InboxCard extends StatelessWidget {
                 Text(title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                    // +1pt sobre el tamaño base del cuerpo (pedido PO: subir un
+                    // punto a los títulos de solicitudes).
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600)),
                 if (description.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(description,
@@ -476,9 +548,35 @@ class _InboxCard extends StatelessWidget {
                           fontSize: 13, color: cs.onSurfaceVariant)),
                 ],
                 const SizedBox(height: 4),
-                Text(timeAgo(createdAt),
-                    style:
-                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                Row(children: [
+                  Text(timeAgo(createdAt),
+                      style:
+                          TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                  if (offerStatus != null && offerStatus != 'rejected') ...[
+                    const SizedBox(width: 8),
+                    Builder(builder: (context) {
+                      // Colores del badge (pedido PO 2026-07-21/22): "Ya
+                      // ofertaste" = ÁMBAR (esperando); "Aceptada" = VERDE (te
+                      // eligieron); "Desbloqueado" = VIOLETA (ya pagaste el
+                      // contacto).
+                      final unlocked = offerStatus == 'unlocked' ||
+                          offerStatus == 'completed';
+                      final accepted = offerStatus == 'accepted';
+                      final (label, icon, state) = unlocked
+                          ? ('Desbloqueado', Icons.lock_open, 'unlocked')
+                          : accepted
+                              ? ('Aceptada', Icons.emoji_events_outlined,
+                                  'accepted')
+                              : ('Ya ofertaste', Icons.check_circle_outline,
+                                  'pending');
+                      return StatusChip(
+                        label: label,
+                        icon: icon,
+                        tone: offerBadgeTone(context, state),
+                      );
+                    }),
+                  ],
+                ]),
               ],
             ),
           ),

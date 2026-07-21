@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/ai_client.dart';
 import '../../core/brand.dart';
@@ -70,43 +71,6 @@ class CreateRequestScreen extends StatefulWidget {
   State<CreateRequestScreen> createState() => _CreateRequestScreenState();
 }
 
-/// Píldora "Al por mayor" para el header violeta: blanca plena con check al
-/// activarse, translúcida al apagarse.
-class _WholesaleToggle extends StatelessWidget {
-  const _WholesaleToggle({required this.selected, required this.onTap});
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? Colors.white : Colors.white.withValues(alpha: .18),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (selected) ...[
-            Icon(Icons.check, size: 14, color: cs.primary),
-            const SizedBox(width: 4),
-          ],
-          Text('Al por mayor',
-              style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w500,
-                  color: selected ? cs.primary : Colors.white)),
-        ]),
-      ),
-    );
-  }
-}
-
 /// Rediseño "Jayi te entrevista" (spec 2026-07-19-solicitud-gamificada,
 /// ronda 3): la mascota EXPRESIVA entrevista (preguntas de la IA como botones
 /// de ancho completo, tarjeta "Tu solicitud" que se va llenando), y al turno
@@ -118,7 +82,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final List<AiMessage> _messages = [];
-  String _kind = 'producto';
+  // SIN tipo por defecto (pedido PO 2026-07-21): el usuario debe elegir
+  // Producto / Servicio / Al por mayor antes de poder enviar (ver `_startSend`).
+  String _kind = '';
   bool _wholesale = false;
   bool _busy = false;
   bool _correcting = false;
@@ -142,6 +108,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   String _serviceModality = '';
   String _urgencyLevel = '';
   DateTime? _serviceEventDate;
+  // Presupuesto estimado (opcional, servicios) — paridad web requests/new.tsx.
+  String _budgetMin = '';
+  String _budgetMax = '';
   Set<String> _selectedRubros = {};
   Map<String, String> _rubroNames = {};
   int _aiAnswered = 0;
@@ -213,19 +182,46 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     final picked = await ImagePicker()
         .pickImage(source: source, maxWidth: 1200, imageQuality: 85);
     if (picked == null) return false;
-    final bytes = await picked.readAsBytes();
+    // Recorte tras tomar/elegir la foto (pedido PO): el usuario ajusta el
+    // encuadre antes de adjuntarla. Si cancela el crop, no se adjunta nada.
+    final cropped = await _cropImage(picked);
+    if (cropped == null) return false;
+    final bytes = await cropped.readAsBytes();
     final res = validatePickedImage(
         sizeBytes: bytes.length,
-        path: picked.path,
+        path: cropped.path,
         currentCount: _photos.length,
         maxCount: _maxRequestPhotos);
     if (res is ImagePickError) {
       _toast(res.message);
       return false;
     }
-    final dataUrl = 'data:${_imageMime(picked.path)};base64,${base64Encode(bytes)}';
-    if (mounted) setState(() => _photos.add(_PendingPhoto(picked, dataUrl)));
+    final dataUrl =
+        'data:${_imageMime(cropped.path)};base64,${base64Encode(bytes)}';
+    if (mounted) setState(() => _photos.add(_PendingPhoto(cropped, dataUrl)));
     return true;
+  }
+
+  /// Abre el recortador (UCrop en Android). Devuelve la foto recortada como
+  /// [XFile], o `null` si el usuario cancela. Formato JPG para peso predecible.
+  Future<XFile?> _cropImage(XFile src) async {
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: src.path,
+      compressFormat: ImageCompressFormat.jpg,
+      compressQuality: 88,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Recortar foto',
+          toolbarColor: const Color(0xFF6D28D9),
+          toolbarWidgetColor: Colors.white,
+          activeControlsWidgetColor: const Color(0xFF6D28D9),
+          lockAspectRatio: false,
+          hideBottomControls: false,
+        ),
+        IOSUiSettings(title: 'Recortar foto'),
+      ],
+    );
+    return cropped == null ? null : XFile(cropped.path);
   }
 
   /// Responde al turno `image_request`: adjunta y manda un turno para que la IA
@@ -407,7 +403,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           requiresEvaluation: _requiresEvaluation,
           serviceModality: _serviceModality,
           urgencyLevel: _urgencyLevel,
-          serviceEventDate: _serviceEventDate);
+          serviceEventDate: _serviceEventDate,
+          budgetMin: isService ? _parseMoney(_budgetMin) : null,
+          budgetMax: isService ? _parseMoney(_budgetMax) : null);
       if (!mounted) return;
       setState(() => _submitted = true);
     } catch (_) {
@@ -421,14 +419,23 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     if (mounted) showJayaloToast(context, m);
   }
 
+  /// Convierte lo escrito en el campo de presupuesto (admite "5,000", "RD$5000")
+  /// a un número; null si está vacío. Solo dígitos.
+  num? _parseMoney(String s) {
+    final digits = s.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return null;
+    return int.tryParse(digits);
+  }
+
   @override
   Widget build(BuildContext context) {
     final started = _messages.isNotEmpty;
     return Scaffold(
       body: Column(children: [
-        // Header violeta: "Crear solicitud" centrado, y antes de empezar el
-        // toggle Producto/Servicio + la píldora "Al por mayor" (doctrina: el
-        // header envuelve los controles de la pantalla).
+        // Header violeta: "Crear solicitud" centrado, SIN campana (pedido PO
+        // 2026-07-21: fuera el ícono de notificaciones aquí). Los botones de
+        // tipo (Producto/Servicio/Al por mayor) bajaron al cuerpo, debajo de
+        // la barra de búsqueda (mismo pedido).
         VioletHeader(
           leading: HeaderCircleButton(
             icon: Icons.arrow_back_ios_new,
@@ -437,26 +444,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           ),
           title: 'Crear solicitud',
           titleAlign: HeaderTitleAlign.center,
-          actions: const [HeaderBell()],
-          below: started
-              ? null
-              : Row(children: [
-                  HeaderSegmented(
-                    options: const ['Producto', 'Servicio'],
-                    index: _kind == 'producto' ? 0 : 1,
-                    onChanged: (i) => setState(() {
-                      _kind = i == 0 ? 'producto' : 'servicio';
-                      if (_kind == 'servicio') _wholesale = false;
-                    }),
-                  ),
-                  if (_kind == 'producto') ...[
-                    const SizedBox(width: 8),
-                    _WholesaleToggle(
-                      selected: _wholesale,
-                      onTap: () => setState(() => _wholesale = !_wholesale),
-                    ),
-                  ],
-                ]),
         ),
         if (!_submitted)
           // Nudge de verificación (spec §6.1) — cerrable, nunca bloquea el envío.
@@ -468,14 +455,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                   ? _emptyState()
                   : _guidedView(),
         ),
-        if (!started && _photos.isNotEmpty) _photoStrip(),
         // El campo de escribir solo aparece cuando de verdad toca escribir:
-        // describir al inicio, corregir, "Otra respuesta…", o una pregunta
-        // sin opciones. Respondiendo con botones queda fuera (feedback PO).
+        // corregir, "Otra respuesta…", o una pregunta sin opciones. El campo
+        // del ARRANQUE ya no vive aquí abajo: subió al cuerpo del empty state
+        // con borde violeta (pedido PO 2026-07-21).
         if (_ready == null &&
             !_submitted &&
-            (!started ||
-                _correcting ||
+            started &&
+            (_correcting ||
                 _showOther ||
                 (!_busy &&
                     _current is AiQuestion &&
@@ -500,9 +487,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 decoration: InputDecoration(
                   hintText: _correcting
                       ? 'Escribe qué corregir…'
-                      : started
-                          ? 'Escribe tu respuesta…'
-                          : '¿Qué estás buscando?',
+                      : 'Escribe tu respuesta…',
                   // "F1 · Rellenos suaves" (elegido por el PO para este grupo).
                   filled: true,
                   fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -526,36 +511,174 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     );
   }
 
-  Widget _emptyState() => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // La mascota respirando — misma cara "buscando" de la web.
-              const JayaloMascotFace(size: 76),
+  /// Arranque rediseñado (pedido PO 2026-07-21): el mensaje es "¿Qué quieres
+  /// jayar hoy?", el campo de describir sube AQUÍ (con borde violeta, ya no
+  /// pegado al fondo) y debajo van los botones de tipo Producto / Servicio /
+  /// Al por mayor — SIN selección por defecto: hay que elegir uno para poder
+  /// enviar.
+  Widget _emptyState() {
+    final cs = Theme.of(context).colorScheme;
+    // Anclado ARRIBA (no centrado en vertical, pedido PO 2026-07-21: la
+    // mascota quedaba grande y "detrás del buscador" al centrar) y con la
+    // mascota más pequeña, como estaba antes del rediseño.
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // La mascota respirando — misma cara "buscando" de la web. OJO: va
+          // dentro de un Center porque la columna es `stretch` y su
+          // CustomPaint ADOPTA las constraints del padre (a ancho completo se
+          // pintaba GIGANTE detrás del buscador — QA PO 2026-07-21); el
+          // Center la suelta a su tamaño propio. 112 = "100% más grande"
+          // que la pasada de 56 (pedido PO).
+          const Center(child: JayaloMascotFace(size: 112)),
+          const SizedBox(height: 12),
+            Text('¿Qué quieres jayar hoy?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color: jayaloHead(context))),
+            const SizedBox(height: 16),
+            // La barra de búsqueda, con BORDE VIOLETA (pedido PO).
+            TextField(
+              controller: _input,
+              enabled: !_busy,
+              onSubmitted: _startSend,
+              decoration: InputDecoration(
+                hintText: '¿Qué estás buscando?',
+                filled: true,
+                fillColor: cs.surface,
+                enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(28),
+                    borderSide: BorderSide(color: cs.primary, width: 1.6)),
+                focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(28),
+                    borderSide: BorderSide(color: cs.primary, width: 2)),
+                prefixIcon: IconButton(
+                    tooltip: 'Tomar o subir foto',
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    onPressed: _busy ? null : _showPickSheet),
+                suffixIcon: IconButton(
+                    icon: const Icon(Icons.send),
+                    onPressed: () => _startSend(_input.text)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Tipo de solicitud DEBAJO de la barra (pedido PO). Sin default.
+            // "Al por mayor" SOLO aparece con Producto seleccionado (pedido PO
+            // 2026-07-21): es un extra del producto, no un tercer tipo.
+            Row(children: [
+              Expanded(child: _kindPill('producto', 'Producto')),
+              const SizedBox(width: 8),
+              Expanded(child: _kindPill('servicio', 'Servicio')),
+              if (_kind == 'producto') ...[
+                const SizedBox(width: 8),
+                Expanded(child: _kindPill('mayor', 'Al por mayor')),
+              ],
+            ]),
+            if (_photos.isNotEmpty) ...[
               const SizedBox(height: 16),
-              Text('Sube una foto y describe lo que buscas\npara mejor resultado.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyLarge),
-              const SizedBox(height: 16),
-              // El botón de HACER la foto, visible desde el arranque
-              // (pedido PO): cámara primero, galería al lado. La foto
-              // queda en la tira y viaja con el primer mensaje.
-              Wrap(spacing: 8, runSpacing: 4, children: [
-                ActionChip(
-                    avatar: const Icon(Icons.photo_camera_outlined, size: 18),
-                    label: const Text('Tomar foto'),
-                    onPressed: () => _pickPhoto(ImageSource.camera)),
-                ActionChip(
-                    avatar: const Icon(Icons.photo_library_outlined, size: 18),
-                    label: const Text('Galería'),
-                    onPressed: () => _pickPhoto(ImageSource.gallery)),
+              Wrap(spacing: 8, alignment: WrapAlignment.center, children: [
+                for (var i = 0; i < _photos.length; i++)
+                  Stack(children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.file(File(_photos[i].file.path),
+                          width: 64, height: 64, fit: BoxFit.cover),
+                    ),
+                    Positioned(
+                      top: -6,
+                      right: -6,
+                      child: IconButton(
+                        tooltip: 'Quitar',
+                        icon: const Icon(Icons.cancel, size: 20),
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() => _photos.removeAt(i)),
+                      ),
+                    ),
+                  ]),
               ]),
             ],
-          ),
+            const SizedBox(height: 16),
+            Text('Sube una foto y describe lo que buscas para mejor resultado.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+            const SizedBox(height: 8),
+            // El botón de HACER la foto, visible desde el arranque
+            // (pedido PO): cámara primero, galería al lado. La foto
+            // viaja con el primer mensaje.
+            Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                alignment: WrapAlignment.center,
+                children: [
+                  ActionChip(
+                      avatar: const Icon(Icons.photo_camera_outlined, size: 18),
+                      label: const Text('Tomar foto'),
+                      onPressed: () => _pickPhoto(ImageSource.camera)),
+                  ActionChip(
+                      avatar: const Icon(Icons.photo_library_outlined, size: 18),
+                      label: const Text('Galería'),
+                      onPressed: () => _pickPhoto(ImageSource.gallery)),
+                ]),
+        ],
+      ),
+    );
+  }
+
+  /// Píldora de tipo (Producto / Servicio / Al por mayor). "Al por mayor" es
+  /// un TOGGLE extra del producto (solo visible con Producto elegido, pedido
+  /// PO 2026-07-21): producto+wholesale en el modelo de datos.
+  Widget _kindPill(String key, String label) {
+    final cs = Theme.of(context).colorScheme;
+    final selected = switch (key) {
+      'producto' => _kind == 'producto',
+      'servicio' => _kind == 'servicio',
+      _ => _wholesale,
+    };
+    return GestureDetector(
+      onTap: _busy
+          ? null
+          : () => setState(() {
+                if (key == 'mayor') {
+                  _wholesale = !_wholesale; // toggle, producto sigue elegido
+                } else {
+                  _kind = key;
+                  if (key == 'servicio') _wholesale = false;
+                }
+              }),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? cs.primary : cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(999),
         ),
-      );
+        child: Text(label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: selected ? cs.onPrimary : cs.onSurface)),
+      ),
+    );
+  }
+
+  /// Gate del primer envío (pedido PO 2026-07-21): sin tipo elegido no se
+  /// envía la solicitud.
+  void _startSend(String text) {
+    if (_kind.isEmpty) {
+      _toast('Elige Producto, Servicio o Al por mayor para continuar.');
+      return;
+    }
+    _send(text);
+  }
 
   /// El corazón del rediseño: mascota expresiva + pregunta en grande +
   /// botones de ancho completo + tarjeta "Tu solicitud"; al `ready`, el
@@ -854,6 +977,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     );
   }
 
+  /// Campo numérico del presupuesto (Desde / Hasta). Sin controlador: arranca
+  /// vacío y su texto lo conserva su propio State; `onChanged` alimenta el
+  /// string del formulario.
+  Widget _budgetField(String label, ValueChanged<String> onChanged) => TextField(
+        keyboardType: TextInputType.number,
+        enabled: !_busy,
+        onChanged: onChanged,
+        decoration: filledField(context, label),
+      );
+
   /// Opción exclusiva de dos líneas (cuándo / dónde), estilo web: activa =
   /// lavado lila; sin bordes (doctrina).
   Widget _selectTile(String title, String desc, bool selected,
@@ -940,7 +1073,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           ]),
         ),
         const SizedBox(height: 16),
-        _sectionTitle('Rubro específico', required: true),
+        _sectionTitle('Elige uno o más rubros', required: true),
         Text('Para que solo proveedores realmente especializados reciban tu solicitud.',
             style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
         const SizedBox(height: 8),
@@ -1013,6 +1146,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           for (final (value, title, desc, icon) in _serviceUrgencyOptions)
             _selectTile(title, desc, _urgencyLevel == value,
                 () => setState(() => _urgencyLevel = value), icon: icon),
+          const SizedBox(height: 16),
+          _sectionTitle('Presupuesto estimado'),
+          Text('Opcional. Ayuda a los proveedores a saber si encajan.',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: _budgetField('Desde RD\$', (v) => _budgetMin = v)),
+            const SizedBox(width: 10),
+            Expanded(child: _budgetField('Hasta RD\$', (v) => _budgetMax = v)),
+          ]),
         ],
         const SizedBox(height: 18),
         Row(children: [
@@ -1039,31 +1182,4 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         onSeeRequests: () => context.go('/client'),
       );
 
-  Widget _photoStrip() => Align(
-        alignment: Alignment.centerLeft,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-          child: Wrap(spacing: 8, children: [
-            for (var i = 0; i < _photos.length; i++)
-              Stack(children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.file(File(_photos[i].file.path),
-                      width: 64, height: 64, fit: BoxFit.cover),
-                ),
-                Positioned(
-                  top: -6,
-                  right: -6,
-                  child: IconButton(
-                    tooltip: 'Quitar',
-                    icon: const Icon(Icons.cancel, size: 20),
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() => _photos.removeAt(i)),
-                  ),
-                ),
-              ]),
-          ]),
-        ),
-      );
 }
