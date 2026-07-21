@@ -49,6 +49,9 @@ dependencies:
   # un crop). Requiere la UCropActivity en el AndroidManifest.
   image_cropper: ^9.1.0
   shared_preferences: ^2.5.2
+  # Versión/build number de la app para el campo `release` del reporte de
+  # errores (task 12, reporter Flutter → /api/public/hooks/report-error).
+  package_info_plus: ^8.0.0
   flutter_animate: ^4.5.0
   # Reproduce los efectos de sonido de las dos celebraciones deliberadas
   # (oferta aceptada / contacto desbloqueado). Pedido PO 2026-07-21: sonido en

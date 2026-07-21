@@ -7,6 +7,7 @@ abstract final class AppConfig {
   static const turnstileSiteKey = '0x4AAAAAAD2eR3eQ3TC10fVF';
   static const siteUrl = 'https://jayalo.com';
   static const aiEndpoint = '$siteUrl/api/ai/chat-stream';
+  static const reportErrorEndpoint = '$siteUrl/api/public/hooks/report-error';
   static const editorLinkEndpoint = '$siteUrl/api/app/business-editor-link';
   static const walletUrl = '$siteUrl/provider/wallet';
   static const termsUrl = '$siteUrl/terminos';
