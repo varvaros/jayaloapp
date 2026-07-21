@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
@@ -26,14 +28,16 @@ class ProviderOnboardingScreen extends StatefulWidget {
 class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   final _page = PageController();
   int _step = 0;
-  static const _steps = 6;
+  static const _steps = 7;
 
   // Paso 1 — tu negocio
   late final TextEditingController _first;
   late final TextEditingController _last;
   final _name = TextEditingController();
   final _rnc = TextEditingController();
-  bool _formal = false;
+  // Tipo de negocio (paridad web): informal | tecnico | formal.
+  String _businessType = 'informal';
+  final _profession = TextEditingController(); // solo técnico
   String _offers = 'productos'; // productos | servicios | ambos
   bool _wholesale = false;
 
@@ -44,22 +48,30 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   bool _loadingRubros = false;
   String? _rubrosError;
 
-  // Paso 3 — dónde trabajas
-  final _city = TextEditingController();
-  final _sector = TextEditingController();
+  // Paso 3 — dónde trabajas (varias ciudades/sectores, como la web)
+  final List<String> _cities = [];
+  final List<String> _sectors = [];
+  final _cityInput = TextEditingController();
+  final _sectorInput = TextEditingController();
   bool _locating = false;
 
   // Paso 4 — WhatsApp
   final _phone = TextEditingController();
   String? _phoneError;
 
-  // Paso 5 — foto opcional
+  // Paso 5 — cédula (solo informal/técnico; el negocio formal la salta)
+  final _cedulaNumber = TextEditingController();
+  XFile? _cedulaFile;
+
+  // Paso 6 — foto opcional
   String? _logoUrl;
   bool _uploading = false;
 
-  // Paso 6 — términos
+  // Paso 7 — términos
   bool _terms = false;
   bool _busy = false;
+
+  bool get _needsCedula => _businessType != 'formal';
 
   @override
   void initState() {
@@ -84,7 +96,10 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   @override
   void dispose() {
     _page.dispose();
-    for (final c in [_first, _last, _name, _rnc, _city, _sector, _phone]) {
+    for (final c in [
+      _first, _last, _name, _rnc, _profession,
+      _cityInput, _sectorInput, _phone, _cedulaNumber,
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -94,12 +109,17 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
 
   bool _stepValid(int s) => switch (s) {
-        0 => _name.text.trim().isNotEmpty && (!_formal || _rnc.text.trim().isNotEmpty),
+        0 => _name.text.trim().isNotEmpty &&
+            (_businessType != 'formal' || _rnc.text.trim().isNotEmpty),
         1 => _categories.isNotEmpty,
-        2 => _city.text.trim().isNotEmpty,
+        2 => _cities.isNotEmpty,
         3 => isValidPhone(_phone.text) && _phoneError == null,
-        4 => true, // foto opcional
-        5 => _terms,
+        // Cédula: el negocio formal la salta; informal/técnico necesita número
+        // + foto (la config de prod exige foto — `provider_id_photo.required`).
+        4 => !_needsCedula ||
+            (_cedulaNumber.text.trim().isNotEmpty && _cedulaFile != null),
+        5 => true, // foto de negocio opcional
+        6 => _terms,
         _ => false,
       };
 
@@ -174,13 +194,108 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       if (!mounted || marks.isEmpty) return;
       final m = marks.first;
       setState(() {
-        if ((m.locality ?? '').isNotEmpty) _city.text = m.locality!;
-        if ((m.subLocality ?? '').isNotEmpty) _sector.text = m.subLocality!;
+        final city = m.locality ?? '';
+        final sector = m.subLocality ?? '';
+        if (city.isNotEmpty && !_cities.contains(city)) _cities.add(city);
+        if (sector.isNotEmpty && !_sectors.contains(sector)) {
+          _sectors.add(sector);
+        }
       });
     } catch (_) {
       _snack('No pudimos captar tu ubicación — escribe tu ciudad y sector.');
     } finally {
       if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  void _addChip(List<String> list, TextEditingController input) {
+    final v = input.text.trim();
+    if (v.isEmpty || list.contains(v)) {
+      input.clear();
+      return;
+    }
+    setState(() {
+      list.add(v);
+      input.clear();
+    });
+  }
+
+  Future<void> _pickCedula(ImageSource source) async {
+    final picked = await ImagePicker()
+        .pickImage(source: source, maxWidth: 1600, imageQuality: 85);
+    if (picked == null) return;
+    if (mounted) setState(() => _cedulaFile = picked);
+  }
+
+  Future<void> _createRubroDialog() async {
+    if (_categories.isEmpty) return;
+    final nameCtrl = TextEditingController();
+    // Si hay 2 categorías, el proveedor elige a cuál pertenece el rubro nuevo.
+    String catId = _categories.first;
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Crear rubro'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (_categories.length > 1)
+              DropdownButtonFormField<String>(
+                initialValue: catId,
+                decoration: const InputDecoration(labelText: 'Categoría'),
+                items: [
+                  for (final id in _categories)
+                    DropdownMenuItem(
+                      value: id,
+                      child: Text(kCategories
+                          .firstWhere((c) => c.id == id,
+                              orElse: () => (id: id, name: id))
+                          .name),
+                    ),
+                ],
+                onChanged: (v) => setLocal(() => catId = v ?? catId),
+              ),
+            TextField(
+              controller: nameCtrl,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                  labelText: 'Nombre del rubro',
+                  hintText: 'Ej. Bombas de agua'),
+            ),
+          ]),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Crear')),
+          ],
+        ),
+      ),
+    );
+    if (created != true) {
+      nameCtrl.dispose();
+      return;
+    }
+    final name = nameCtrl.text.trim();
+    nameCtrl.dispose();
+    if (name.length < 2) {
+      _snack('Escribe un nombre de rubro válido.');
+      return;
+    }
+    try {
+      final r = await createProviderRubro(categoryId: catId, name: name);
+      final id = r['id'] as String;
+      if (!mounted) return;
+      setState(() {
+        if (!_dbRubros.any((d) => d['id'] == id)) {
+          _dbRubros = [..._dbRubros, r];
+        }
+        if (!_rubros.contains(id)) _rubros.add(id);
+      });
+    } catch (_) {
+      _snack('No se pudo crear el rubro. Intenta de nuevo.');
     }
   }
 
@@ -222,32 +337,55 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     setState(() => _busy = true);
     final phoneE164 = normalizePhone(_phone.text);
     try {
-      await completeProviderOnboarding(
+      final businessId = await completeProviderOnboarding(
         firstName: _first.text.trim(),
         lastName: _last.text.trim(),
         phone: phoneE164,
         business: {
-          'business_type': _formal ? 'formal' : 'informal',
+          'business_type': _businessType,
           'offers': _offers,
           'category_id': _categories.isNotEmpty ? _categories.first : '',
           'category_ids': _categories,
           'rubros': _rubros,
           'name': _name.text.trim(),
           'is_wholesale': _wholesale,
-          'rnc': _formal ? _rnc.text.trim() : '',
+          'rnc': _businessType == 'formal' ? _rnc.text.trim() : '',
           'description': '',
           'whatsapp': phoneE164,
           'country': 'República Dominicana',
-          'city': _city.text.trim(),
-          'sector': _sector.text.trim(),
+          // Varias ciudades/sectores se guardan unidos por ", " (como la web).
+          'city': _cities.join(', '),
+          'sector': _sectors.join(', '),
           'address': '',
-          'profession': '',
+          'profession':
+              _businessType == 'tecnico' ? _profession.text.trim() : '',
           'experience_years': '',
           'logo_url': _logoUrl ?? '',
           'owner_photo_url': '',
         },
         termsVersion: AppConfig.termsVersion,
       );
+      // Cédula (informal/técnico): se escribe DESPUÉS de crear el negocio
+      // (necesita el business_id). No es atómico con el negocio a propósito; si
+      // fallara, el negocio ya existe y la RPC de onboarding no debe revertirse.
+      if (_needsCedula && _cedulaNumber.text.trim().isNotEmpty) {
+        try {
+          var path = '';
+          if (_cedulaFile != null) {
+            path = await uploadIdDocPhoto(_cedulaFile!.path, businessId);
+          }
+          await saveIdDoc(
+            businessId: businessId,
+            idNumber: _cedulaNumber.text.trim(),
+            idPhotoPath: path,
+          );
+        } catch (_) {
+          if (mounted) {
+            _snack(
+                'Negocio creado, pero no pudimos guardar tu cédula. Complétala en Mi negocio para poder ofertar.');
+          }
+        }
+      }
       await roleStore.refresh(); // → redirect a /provider
     } catch (e) {
       if (mounted) _snack(onboardingErrorCopy(e));
@@ -293,6 +431,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
             _stepCategories(),
             _stepLocation(),
             _stepWhatsapp(),
+            _stepCedula(),
             _stepPhoto(),
             _stepTerms(),
           ],
@@ -344,28 +483,43 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         onChanged: (_) => setState(() {}),
       ),
       const SizedBox(height: 16),
-      SegmentedButton<bool>(
+      Text('Tipo de negocio', style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      SegmentedButton<String>(
         segments: const [
-          ButtonSegment(value: false, label: Text('Informal')),
-          ButtonSegment(value: true, label: Text('Formal (con RNC)')),
+          ButtonSegment(value: 'informal', label: Text('Informal')),
+          ButtonSegment(value: 'tecnico', label: Text('Técnico')),
+          ButtonSegment(value: 'formal', label: Text('Formal')),
         ],
-        selected: {_formal},
-        onSelectionChanged: (s) => setState(() => _formal = s.first),
+        selected: {_businessType},
+        onSelectionChanged: (s) => setState(() => _businessType = s.first),
       ),
       const SizedBox(height: 4),
       Text(
-        _formal
-            ? 'Negocio registrado con RNC.'
-            : 'Aún sin RNC — la mayoría empieza así.',
+        switch (_businessType) {
+          'formal' => 'Negocio registrado con RNC.',
+          'tecnico' => 'Ofreces un oficio o servicio técnico.',
+          _ => 'Aún sin RNC — la mayoría empieza así.',
+        },
         style: Theme.of(context).textTheme.bodySmall,
       ),
-      if (_formal) ...[
+      if (_businessType == 'formal') ...[
         const SizedBox(height: 8),
         TextField(
           controller: _rnc,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(labelText: 'RNC'),
           onChanged: (_) => setState(() {}),
+        ),
+      ],
+      if (_businessType == 'tecnico') ...[
+        const SizedBox(height: 8),
+        TextField(
+          controller: _profession,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+              labelText: 'Profesión / oficio (opcional)',
+              hintText: 'Ej. Plomero, electricista'),
         ),
       ],
       const SizedBox(height: 16),
@@ -445,12 +599,27 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
               }),
             ),
         ]),
+      // Crear un rubro propio si no está en la lista (como la web). Va por la
+      // RPC `create_provider_rubro` — RLS bloquea el INSERT directo.
+      if (_categories.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: _createRubroDialog,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Crear un rubro'),
+          ),
+        ),
+      ],
     ]);
   }
 
   Widget _stepLocation() {
     return _pad([
       Text('Dónde trabajas', style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 4),
+      const Text('Puedes agregar varias ciudades y sectores donde atiendes.'),
       const SizedBox(height: 12),
       OutlinedButton.icon(
         onPressed: _locating ? null : _useLocation,
@@ -460,18 +629,118 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         label: const Text('Usar mi ubicación'),
       ),
       const SizedBox(height: 12),
-      TextField(
-        controller: _city,
-        textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(labelText: 'Ciudad'),
-        onChanged: (_) => setState(() {}),
+      _chipField(
+        controller: _cityInput,
+        label: 'Ciudad',
+        list: _cities,
       ),
       const SizedBox(height: 8),
-      TextField(
-        controller: _sector,
-        textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(labelText: 'Sector (opcional)'),
+      _chipField(
+        controller: _sectorInput,
+        label: 'Sector (opcional)',
+        list: _sectors,
       ),
+    ]);
+  }
+
+  /// Campo de texto + "Agregar" que acumula valores como chips removibles
+  /// (para las varias ciudades/sectores).
+  Widget _chipField({
+    required TextEditingController controller,
+    required String label,
+    required List<String> list,
+  }) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(
+          child: TextField(
+            controller: controller,
+            textCapitalization: TextCapitalization.words,
+            textInputAction: TextInputAction.done,
+            decoration: InputDecoration(labelText: label),
+            onSubmitted: (_) => _addChip(list, controller),
+          ),
+        ),
+        const SizedBox(width: 8),
+        FilledButton(
+          onPressed: () => _addChip(list, controller),
+          child: const Text('Agregar'),
+        ),
+      ]),
+      if (list.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 4, children: [
+          for (final v in list)
+            InputChip(
+              label: Text(v),
+              onDeleted: () => setState(() => list.remove(v)),
+            ),
+        ]),
+      ],
+    ]);
+  }
+
+  Widget _stepCedula() {
+    if (!_needsCedula) {
+      return _pad([
+        Text('Identificación', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 12),
+        const Text(
+            'Tu negocio es formal (con RNC), así que no necesitas registrar tu cédula. Continúa.'),
+      ]);
+    }
+    final cs = Theme.of(context).colorScheme;
+    return _pad([
+      Text('Tu cédula (privada)', style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 4),
+      const Text(
+          'Como proveedor informal o técnico, necesitas registrar tu cédula para poder enviar ofertas. Solo el equipo de Jayalo la ve.'),
+      const SizedBox(height: 16),
+      TextField(
+        controller: _cedulaNumber,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(
+            labelText: 'Número de cédula', hintText: '000-0000000-0'),
+        onChanged: (_) => setState(() {}),
+      ),
+      const SizedBox(height: 16),
+      Text('Foto de la cédula', style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: 8),
+      if (_cedulaFile != null)
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.file(File(_cedulaFile!.path),
+              height: 160, width: double.infinity, fit: BoxFit.cover),
+        )
+      else
+        Container(
+          height: 120,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+              child: Text('Sin foto',
+                  style: TextStyle(color: cs.onSurfaceVariant))),
+        ),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => _pickCedula(ImageSource.camera),
+            icon: const Icon(Icons.photo_camera_outlined),
+            label: const Text('Cámara'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => _pickCedula(ImageSource.gallery),
+            icon: const Icon(Icons.photo_library_outlined),
+            label: const Text('Galería'),
+          ),
+        ),
+      ]),
     ]);
   }
 
@@ -565,8 +834,8 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
           const SizedBox(height: 4),
           Text(catNames),
-          Text('${_city.text.trim()}'
-              '${_sector.text.trim().isEmpty ? '' : ' · ${_sector.text.trim()}'}'),
+          Text('${_cities.join(', ')}'
+              '${_sectors.isEmpty ? '' : ' · ${_sectors.join(', ')}'}'),
           Text('WhatsApp: ${normalizePhone(_phone.text)}'),
           if (_wholesale) ...[
             const SizedBox(height: 8),

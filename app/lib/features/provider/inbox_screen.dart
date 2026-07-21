@@ -10,6 +10,7 @@ import '../client/my_requests_screen.dart' show timeAgo;
 import '../shell/floating_nav_bar.dart';
 import '../shell/home_scroll.dart';
 import '../shared/brand_kit.dart';
+import '../shared/celebration.dart';
 import '../shared/violet_header.dart';
 
 /// Signature de las fuentes de datos del inbox: `providerInbox` (Para ti,
@@ -218,6 +219,11 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     if (mounted) {
       if (res.newBalance != null) setState(() => _balance = res.newBalance);
       if (res.already) _snack('Ya tenías este contacto desbloqueado.');
+    }
+    // Celebrar solo el desbloqueo fresco (con `already` no hubo cobro nuevo).
+    if (mounted && !res.already) {
+      await showUnlockCelebration(context); // 🔓 candado abriéndose
+      if (!mounted) return;
     }
     _refetch();
     await _showInterestContactSheet(row);

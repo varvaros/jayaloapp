@@ -9,6 +9,7 @@ import '../client/my_requests_screen.dart' show timeAgo;
 import '../client/request_status_screen.dart' show offerPriceLabel;
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../shared/celebration.dart';
 import '../shared/violet_header.dart';
 
 int estimatedUnlockCost(Map<String, dynamic> o) {
@@ -316,6 +317,8 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                   final res = await unlockOffer(o['id'] as String, cost);
                   if (!mounted) return;
                   if (res.ok) {
+                    await showUnlockCelebration(context); // 🔓 candado abriéndose
+                    if (!mounted) return;
                     await _refetch();
                     final refreshed = _offers.firstWhere(
                         (x) => x['id'] == o['id'],

@@ -215,6 +215,21 @@ void main() {
       await tester.pumpAndSettle();
       expect(confirmed, 0);
     });
+
+    testWidgets('tono pagado (default): candado + copy de desbloqueo',
+        (tester) async {
+      await tester
+          .pumpWidget(host(HoldToConfirmButton(onConfirmed: () async {})));
+      expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+      expect(find.text('Mantén presionado para desbloquear'), findsOneWidget);
+    });
+
+    testWidgets('tono gratis: cotejo + copy de aceptar', (tester) async {
+      await tester.pumpWidget(host(HoldToConfirmButton(
+          tone: HoldToConfirmTone.free, onConfirmed: () async {})));
+      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+      expect(find.text('Mantén presionado para aceptar'), findsOneWidget);
+    });
   });
 
   group('ErrorRetry', () {

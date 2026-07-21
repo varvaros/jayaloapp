@@ -196,7 +196,10 @@ Future<List<Map<String, dynamic>>> providerInbox({
 Future<Map<String, dynamic>?> requestById(String id) async => await supa
     .from('customer_requests')
     .select(
-      'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at',
+      // image_url/image_urls: el detalle del proveedor pinta la foto del
+      // cliente en el panel ámbar (igual que el detalle del cliente). Sin
+      // estas columnas el panel SIEMPRE caía al ícono — "llegan sin imágenes".
+      'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at,image_url,image_urls',
     )
     .eq('id', id)
     .maybeSingle();
@@ -222,6 +225,17 @@ Future<void> makeOffer({
   double? priceMax,
   required String message,
   List<String> imageUrls = const [],
+  String pricingMode = 'fixed',
+  bool offersShipping = false,
+  double? shippingPrice,
+  bool offersInstallation = false,
+  double? installationPrice,
+  bool requiresEvaluation = false,
+  double? evaluationPrice,
+  double? hourlyRate,
+  double? estimatedHours,
+  String availabilityNote = '',
+  String estimatedDuration = '',
 }) async {
   final uid = supa.auth.currentUser!.id;
   await supa.from('provider_offers').insert({
@@ -235,11 +249,23 @@ Future<void> makeOffer({
     'message': message,
     'status': 'pending',
     'image_urls': imageUrls,
-    'offers_shipping': false,
-    'offers_installation': false,
-    'requires_evaluation': false,
-    'pricing_mode': price != null ? 'fixed' : 'range',
-    'hourly_rate': null,
+    // Logística de producto (paridad web RequestRespondSection.tsx:952-957): el
+    // precio solo se guarda si el toggle está activo Y el costo > 0 (0 = gratis).
+    'offers_shipping': offersShipping,
+    'shipping_price':
+        offersShipping && (shippingPrice ?? 0) > 0 ? shippingPrice : null,
+    'offers_installation': offersInstallation,
+    'installation_price':
+        offersInstallation && (installationPrice ?? 0) > 0 ? installationPrice : null,
+    'requires_evaluation': requiresEvaluation,
+    'evaluation_price':
+        requiresEvaluation && (evaluationPrice ?? 0) > 0 ? evaluationPrice : null,
+    'pricing_mode': pricingMode,
+    // Por hora (servicio): tarifa + horas solo aplican en ese modo.
+    'hourly_rate': pricingMode == 'hourly' ? hourlyRate : null,
+    'estimated_hours': pricingMode == 'hourly' ? estimatedHours : null,
+    'availability_note': availabilityNote,
+    'estimated_duration': estimatedDuration,
   });
 }
 
@@ -459,6 +485,59 @@ Future<String> completeProviderOnboarding({
           )
           as Map<String, dynamic>;
   return res['business_id'] as String;
+}
+
+/// Crea (o reutiliza) un rubro dentro de una categoría — RPC SECURITY DEFINER
+/// `create_provider_rubro` (migración `create_provider_rubro_rpc`). `rubros`
+/// tiene RLS que bloquea el INSERT directo de `authenticated`, así que va por
+/// la RPC (espeja el server fn `createProviderRubro` de la web: deduplica
+/// case-insensitive dentro de la categoría, marca sort_order 999).
+Future<Map<String, dynamic>> createProviderRubro({
+  required String categoryId,
+  required String name,
+}) async {
+  final res =
+      await supa.rpc('create_provider_rubro',
+              params: {'_category_id': categoryId, '_name': name})
+          as Map<String, dynamic>;
+  return res; // {id, name, category_id, created}
+}
+
+/// Sube la foto de la cédula al bucket PRIVADO `business-id-docs` y devuelve el
+/// PATH de storage (no URL pública — se ve con signed URL). El path espeja la
+/// web (`IdDocSection`): `{uid}/{businessId}-cedula-{ts}.{ext}`.
+Future<String> uploadIdDocPhoto(String filePath, String businessId) async {
+  final uid = supa.auth.currentUser!.id;
+  final dot = filePath.lastIndexOf('.');
+  final ext =
+      (dot == -1 ? '' : filePath.substring(dot + 1).toLowerCase()).isEmpty
+      ? 'jpg'
+      : filePath.substring(dot + 1).toLowerCase();
+  final path =
+      '$uid/$businessId-cedula-${DateTime.now().millisecondsSinceEpoch}.$ext';
+  await supa.storage.from('business-id-docs').upload(
+        path,
+        File(filePath),
+        fileOptions:
+            FileOptions(upsert: true, contentType: _imageContentType(ext)),
+      );
+  return path;
+}
+
+/// Guarda la cédula del proveedor informal/técnico — upsert directo a
+/// `provider_business_id_docs` (políticas de dueño; la web lo hace igual
+/// client-side). Sin esto el trigger `enforce_business_can_offer` bloquea toda
+/// oferta de ese proveedor.
+Future<void> saveIdDoc({
+  required String businessId,
+  required String idNumber,
+  required String idPhotoPath,
+}) async {
+  await supa.from('provider_business_id_docs').upsert({
+    'business_id': businessId,
+    'id_number': idNumber,
+    'id_photo_path': idPhotoPath,
+  }, onConflict: 'business_id');
 }
 
 /// Los EF devuelven { error } con copy en español en 4xx; FunctionException

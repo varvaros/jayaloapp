@@ -408,16 +408,32 @@ class SkeletonList extends StatelessWidget {
       );
 }
 
-/// Confirmación deliberada de un cobro: mantener presionado (equivalente
-/// nativo del hold-to-confirm de la web). Extraída de `my_offers_screen.dart`
-/// (Task 9) para reusarla también en el desbloqueo de intereses de producto
-/// — mismo gesto de dinero, dos pantallas.
+/// El gesto "mantener presionado" cubre las DOS confirmaciones deliberadas de
+/// la app; el TONO las separa visualmente (doctrina PO 2026-07-20 "hold en
+/// ambos, con distinción visual"):
+///
+///   • [paid] — desbloquear contacto: GASTA créditos → violeta de acción + 🔒.
+///   • [free] — aceptar una oferta: es GRATIS → verde de éxito + ✓.
+///
+/// El default es [paid] para no tocar los desbloqueos ya existentes.
+enum HoldToConfirmTone { paid, free }
+
+/// Confirmación deliberada mantenida (equivalente nativo del hold-to-confirm
+/// de la web). Extraída de `my_offers_screen.dart` (Task 9) para reusarla en
+/// el desbloqueo de intereses de producto y, con [HoldToConfirmTone.free], en
+/// la aceptación de ofertas.
 class HoldToConfirmButton extends StatefulWidget {
   const HoldToConfirmButton(
-      {super.key, required this.onConfirmed, this.label = 'Mantén presionado para desbloquear'});
+      {super.key,
+      required this.onConfirmed,
+      this.tone = HoldToConfirmTone.paid,
+      this.label});
 
   final Future<void> Function() onConfirmed;
-  final String label;
+  final HoldToConfirmTone tone;
+
+  /// Copy del botón; si es null cae al texto por defecto del [tone].
+  final String? label;
 
   @override
   State<HoldToConfirmButton> createState() => _HoldToConfirmButtonState();
@@ -440,35 +456,61 @@ class _HoldToConfirmButtonState extends State<HoldToConfirmButton>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final free = widget.tone == HoldToConfirmTone.free;
+    // El color separa lo pagado (violeta de acción) de lo gratis (verde de
+    // éxito). El texto y el icono lo refuerzan.
+    final fill = free
+        ? (dark ? JayaloColors.dSuccess : JayaloColors.success)
+        : cs.primary;
+    final onFill = free ? Colors.white : cs.onPrimary;
+    final icon = free ? Icons.check_rounded : Icons.lock_outline_rounded;
+    final label = widget.label ??
+        (free
+            ? 'Mantén presionado para aceptar'
+            : 'Mantén presionado para desbloquear');
     return GestureDetector(
       onTapDown: (_) => _c.forward(),
       onTapUp: (_) => _c.reverse(),
       onTapCancel: () => _c.reverse(),
       child: AnimatedBuilder(
         animation: _c,
-        builder: (_, _) => Stack(alignment: Alignment.center, children: [
-          Container(
-            height: 52,
-            decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: .25),
-                borderRadius: BorderRadius.circular(26)),
-          ),
-          FractionallySizedBox(
-            widthFactor: _c.value.clamp(0.001, 1),
-            alignment: Alignment.centerLeft,
-            child: Container(
+        builder: (_, _) {
+          final filled = _c.value > .45;
+          final fg = filled ? onFill : cs.onSurface;
+          return Stack(alignment: Alignment.center, children: [
+            Container(
               height: 52,
               decoration: BoxDecoration(
-                  color: cs.primary, borderRadius: BorderRadius.circular(26)),
+                  color: fill.withValues(alpha: .25),
+                  borderRadius: BorderRadius.circular(26)),
             ),
-          ),
-          IgnorePointer(
-            child: Text(widget.label,
-                style: TextStyle(
-                    color: _c.value > .45 ? cs.onPrimary : cs.onSurface,
-                    fontWeight: FontWeight.w600)),
-          ),
-        ]),
+            FractionallySizedBox(
+              widthFactor: _c.value.clamp(0.001, 1),
+              alignment: Alignment.centerLeft,
+              child: Container(
+                height: 52,
+                decoration: BoxDecoration(
+                    color: fill, borderRadius: BorderRadius.circular(26)),
+              ),
+            ),
+            IgnorePointer(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 18, color: fg),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(label,
+                        textAlign: TextAlign.center,
+                        style:
+                            TextStyle(color: fg, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+            ),
+          ]);
+        },
       ),
     );
   }

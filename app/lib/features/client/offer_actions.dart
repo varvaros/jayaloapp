@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/repos.dart';
+import '../shared/brand_kit.dart';
+import '../shared/celebration.dart';
 import 'request_status_screen.dart' show offerPriceLabel;
 
 void showOfferSheet(BuildContext context, Map<String, dynamic> request,
@@ -79,29 +81,46 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
   }
 
   Future<void> _accept() async {
-    final ok = await showDialog<bool>(
+    // Confirmación mantenida en tono GRATIS (verde + ✓): mismo gesto que el
+    // desbloqueo pagado, distinto color — aceptar no gasta créditos.
+    final ok = await showModalBottomSheet<bool>(
         context: context,
-        builder: (d) => AlertDialog(
-              title: const Text('¿Aceptar esta oferta?'),
-              content: const Text('Solo puedes aceptar UNA oferta por solicitud.'),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(d, false),
-                    child: const Text('Cancelar')),
-                FilledButton(
-                    onPressed: () => Navigator.pop(d, true),
-                    child: const Text('Sí, aceptar')),
-              ],
+        showDragHandle: true,
+        builder: (ctx) => Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('¿Aceptar esta oferta?',
+                        style: Theme.of(ctx).textTheme.titleLarge),
+                    const SizedBox(height: 8),
+                    const Text(
+                        'Solo puedes aceptar UNA oferta por solicitud. Es gratis, '
+                        'pero definitiva: el proveedor podrá desbloquear tu contacto.'),
+                    const SizedBox(height: 16),
+                    HoldToConfirmButton(
+                      tone: HoldToConfirmTone.free,
+                      onConfirmed: () async => Navigator.pop(ctx, true),
+                    ),
+                  ]),
             ));
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     final accepted = await acceptOffer(offerId: widget.offer['id'] as String);
     if (!mounted) return;
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(accepted
-            ? '¡Oferta aceptada! El proveedor será notificado. 🏆'
-            : 'Esta oferta ya no está disponible.')));
+    if (accepted) {
+      final messenger = ScaffoldMessenger.of(context);
+      await showAcceptCelebration(context); // 🎉 confeti + ✓
+      if (!mounted) return;
+      Navigator.pop(context); // cierra la hoja de la oferta
+      messenger.showSnackBar(const SnackBar(
+          content: Text('¡Oferta aceptada! El proveedor será notificado.')));
+    } else {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Esta oferta ya no está disponible.')));
+    }
   }
 
   Future<void> _reject() async {
