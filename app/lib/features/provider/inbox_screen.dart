@@ -382,6 +382,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                       title: r['title'] as String? ?? '',
                       description: r['description'] as String? ?? '',
                       kind: r['kind'] as String?,
+                      imageUrl: r['image_url'] as String?,
                       createdAt: DateTime.parse(r['created_at'] as String),
                       onTap: () => context.go('/provider/request/${r['id']}'),
                     ).cascadeIn(i);
@@ -407,6 +408,7 @@ class _InboxCard extends StatelessWidget {
     required this.kind,
     required this.createdAt,
     required this.onTap,
+    this.imageUrl,
   });
 
   final String title;
@@ -414,6 +416,38 @@ class _InboxCard extends StatelessWidget {
   final String? kind;
   final DateTime createdAt;
   final VoidCallback onTap;
+  final String? imageUrl;
+
+  /// Miniatura de la foto del cliente (nunca ícono roto: cae al ícono si no
+  /// hay foto o falla la URL). Antes la lista era solo-ícono — el PO reportó
+  /// "todas las solicitudes salen sin imágenes" (2026-07-20).
+  Widget _leading(ColorScheme cs) {
+    Widget ph() => Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: .14),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+              kind == 'producto'
+                  ? Icons.inventory_2_outlined
+                  : Icons.handyman_outlined,
+              size: 20,
+              color: cs.primary),
+        );
+    final url = imageUrl;
+    if (url == null || url.isEmpty) return ph();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.network(url,
+          width: 44,
+          height: 44,
+          fit: BoxFit.cover,
+          loadingBuilder: (c, child, p) => p == null ? child : ph(),
+          errorBuilder: (c, e, s) => ph()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -423,20 +457,7 @@ class _InboxCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: cs.primary.withValues(alpha: .14),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-                kind == 'producto'
-                    ? Icons.inventory_2_outlined
-                    : Icons.handyman_outlined,
-                size: 20,
-                color: cs.primary),
-          ),
+          _leading(cs),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

@@ -11,6 +11,7 @@ import '../../push/push_service.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/violet_header.dart';
+import '../verification/id_doc_sheet.dart';
 import '../verification/otp_sheet.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -21,6 +22,8 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool? _verified;
+  Map<String, dynamic>? _biz;
+  bool _hasIdDoc = false;
 
   @override
   void initState() {
@@ -35,7 +38,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {
       // Sin red: la fila simplemente no se muestra hasta reabrir.
     }
+    if (roleStore.value == RoleState.provider) {
+      try {
+        final biz = await myBusinessForVerification();
+        final docs =
+            biz != null ? await hasIdDoc(biz['id'] as String) : false;
+        if (mounted) {
+          setState(() {
+            _biz = biz;
+            _hasIdDoc = docs;
+          });
+        }
+      } catch (_) {
+        // Nudge best-effort: sin red no se muestran las filas de verificación.
+      }
+    }
   }
+
+  /// Validar negocio (informal/técnico): subir la cédula. Cierra el bloqueo de
+  /// `enforce_business_can_offer` — sin cédula no se puede ofertar.
+  Future<void> _validateBusiness() async {
+    final biz = _biz;
+    if (biz == null) return;
+    final saved =
+        await showIdDocSheet(context, businessId: biz['id'] as String);
+    if (saved) _load();
+  }
+
+  /// Validar RNC (negocio formal): confirmar/editar el número (decisión PO
+  /// 2026-07-20: solo el número, sin documento). Update directo a la tabla.
+  Future<void> _validateRnc() async {
+    final biz = _biz;
+    if (biz == null) return;
+    final ctrl = TextEditingController(text: (biz['rnc'] as String?) ?? '');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Validar RNC'),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'RNC del negocio'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Guardar')),
+        ],
+      ),
+    );
+    final rnc = ctrl.text.trim();
+    ctrl.dispose();
+    if (ok != true) return;
+    if (rnc.isEmpty) {
+      _snack('Escribe tu RNC.');
+      return;
+    }
+    try {
+      await updateRnc(biz['id'] as String, rnc);
+      if (!mounted) return;
+      _snack('RNC guardado.');
+      _load();
+    } catch (_) {
+      if (mounted) _snack('No se pudo guardar el RNC.');
+    }
+  }
+
+  void _snack(String m) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _verifyPersonal() async {
     final p = await myProfile();
@@ -119,6 +193,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: 'Sello de WhatsApp del negocio',
             subtitle: 'Confirma el número que ven tus clientes',
             onTap: _verifyBusiness,
+          ),
+        // Validar negocio (cédula) — solo informal/técnico; es lo que destraba
+        // el envío de ofertas (enforce_business_can_offer).
+        if (isProvider &&
+            (_biz?['business_type'] == 'informal' ||
+                _biz?['business_type'] == 'tecnico'))
+          _hasIdDoc
+              ? _SettingsRow(
+                  icon: Icons.verified,
+                  iconColor: green,
+                  title: _biz?['identity_verified_at'] != null
+                      ? 'Negocio verificado ✓'
+                      : 'Cédula enviada (en revisión)',
+                  subtitle: 'Toca para actualizar tu cédula',
+                  onTap: _validateBusiness,
+                )
+              : _SettingsRow(
+                  icon: Icons.badge_outlined,
+                  title: 'Validar negocio (subir cédula)',
+                  subtitle: 'Necesaria para poder enviar ofertas',
+                  onTap: _validateBusiness,
+                ),
+        // Validar RNC — solo negocio formal (confirmar/editar el número).
+        if (isProvider && _biz?['business_type'] == 'formal')
+          _SettingsRow(
+            icon: (_biz?['rnc'] as String?)?.trim().isNotEmpty == true
+                ? Icons.verified_user_outlined
+                : Icons.badge_outlined,
+            iconColor: _biz?['business_verified_at'] != null ? green : null,
+            title: 'Validar RNC',
+            subtitle: (_biz?['rnc'] as String?)?.trim().isNotEmpty == true
+                ? 'RNC: ${_biz!['rnc']} · toca para editar'
+                : 'Confirma el RNC de tu negocio',
+            onTap: _validateRnc,
           ),
         const SectionHeader(text: 'Información'),
         _SettingsRow(

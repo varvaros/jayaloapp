@@ -46,6 +46,12 @@ class _ProviderRequestDetailScreenState
   final _installation = TextEditingController();
   bool _requiresEvaluation = false;
   final _evaluation = TextEditingController();
+  // Producto: detalles (marca/color/garantía/tiempo de entrega) — paridad web.
+  final _brand = TextEditingController();
+  final _warranty = TextEditingController();
+  final _delivery = TextEditingController();
+  final List<String> _colors = [];
+  final _colorInput = TextEditingController();
   final List<XFile> _photos = [];
 
   /// Modos de precio del formulario de SERVICIO (paridad web: fijo / rango /
@@ -69,6 +75,7 @@ class _ProviderRequestDetailScreenState
     for (final c in [
       _price, _min, _max, _hourly, _hours,
       _availability, _duration, _shipping, _installation, _evaluation,
+      _brand, _warranty, _delivery, _colorInput,
     ]) {
       c.dispose();
     }
@@ -137,6 +144,10 @@ class _ProviderRequestDetailScreenState
       evaluationPrice: double.tryParse(_evaluation.text),
       availabilityNote: _availability.text,
       estimatedDuration: _duration.text,
+      brand: isService ? '' : _brand.text,
+      colors: isService ? const [] : _colors,
+      warranty: isService ? '' : _warranty.text,
+      deliveryTime: isService ? '' : _delivery.text,
     );
 
     setState(() => _busy = true);
@@ -164,6 +175,10 @@ class _ProviderRequestDetailScreenState
         estimatedHours: hrs,
         availabilityNote: isService ? _availability.text.trim() : '',
         estimatedDuration: isService ? _duration.text.trim() : '',
+        productBrand: isService ? '' : _brand.text.trim(),
+        productColors: isService ? const [] : _colors,
+        productWarranty: isService ? '' : _warranty.text.trim(),
+        deliveryTime: isService ? '' : _delivery.text.trim(),
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -220,13 +235,10 @@ class _ProviderRequestDetailScreenState
   List<Widget> _pricingFields(BuildContext context) {
     if (!_isService) {
       return [
-        SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(value: true, label: Text('Precio fijo')),
-            ButtonSegment(value: false, label: Text('Rango')),
-          ],
-          selected: {_fixed},
-          onSelectionChanged: (s) => setState(() => _fixed = s.first),
+        PillSegmented(
+          options: const ['Precio fijo', 'Rango'],
+          index: _fixed ? 0 : 1,
+          onChanged: (i) => setState(() => _fixed = i == 0),
         ),
         const SizedBox(height: 12),
         if (_fixed)
@@ -314,6 +326,60 @@ class _ProviderRequestDetailScreenState
           cost: _evaluation,
           costLabel: 'Costo de evaluación (RD\$)',
         ),
+      ];
+
+  Widget _txtField(TextEditingController c, String label) =>
+      TextField(controller: c, decoration: filledField(context, label));
+
+  void _addColor() {
+    final v = _colorInput.text.trim();
+    if (v.isEmpty || _colors.contains(v)) {
+      _colorInput.clear();
+      return;
+    }
+    setState(() {
+      _colors.add(v);
+      _colorInput.clear();
+    });
+  }
+
+  /// Detalles del producto (marca/color/garantía/tiempo de entrega) — paridad
+  /// web. La web los gatea por categoría (`activeDetails`); en la app se
+  /// muestran para todo producto y son OPCIONALES.
+  List<Widget> _productDetails(BuildContext context) => [
+        Text('Detalles del producto (opcional)',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: jayaloHead(context))),
+        const SizedBox(height: 8),
+        _txtField(_brand, 'Marca'),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _colorInput,
+              textInputAction: TextInputAction.done,
+              decoration: filledField(context, 'Color'),
+              onSubmitted: (_) => _addColor(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(onPressed: _addColor, child: const Text('Agregar')),
+        ]),
+        if (_colors.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            for (final c in _colors)
+              InputChip(
+                  label: Text(c),
+                  onDeleted: () => setState(() => _colors.remove(c))),
+          ]),
+        ],
+        const SizedBox(height: 8),
+        _txtField(_warranty, 'Garantía (ej. 6 meses)'),
+        const SizedBox(height: 8),
+        _txtField(_delivery, 'Tiempo de entrega (ej. Hoy, 2 días)'),
       ];
 
   Widget _toggleRow({
@@ -540,6 +606,8 @@ class _ProviderRequestDetailScreenState
           ] else ...[
             const SizedBox(height: 12),
             ..._productExtras(context),
+            const SizedBox(height: 18),
+            ..._productDetails(context),
           ],
           const SizedBox(height: 16),
           Text(

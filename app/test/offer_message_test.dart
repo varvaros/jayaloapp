@@ -27,6 +27,27 @@ void main() {
       expect(composeOfferMessage(isService: false), '');
     });
 
+    test('producto: detalles (marca/color/garantía/entrega) + logística', () {
+      final m = composeOfferMessage(
+        isService: false,
+        brand: 'Bosch',
+        colors: ['Rojo', 'Azul'],
+        warranty: '1 año',
+        deliveryTime: '2 días',
+        offersShipping: true,
+        shippingPrice: 0,
+      );
+      expect(m,
+          'Marca: Bosch · Color: Rojo, Azul · Garantía: 1 año · Entrega: 2 días · Envío gratis');
+    });
+
+    test('servicio: los detalles de producto NO aplican', () {
+      expect(
+          composeOfferMessage(
+              isService: true, brand: 'Bosch', colors: ['Rojo']),
+          '');
+    });
+
     test('servicio: disponibilidad + duración + evaluación', () {
       final m = composeOfferMessage(
         isService: true,

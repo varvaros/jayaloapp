@@ -419,8 +419,11 @@ class _RequestCard extends StatelessWidget {
       tint: bg,
       padding: const EdgeInsets.all(11),
       margin: margin ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Row(children: [
           _thumb(context, tinted, tone),
           const SizedBox(width: 13),
           Expanded(
@@ -453,8 +456,67 @@ class _RequestCard extends StatelessWidget {
             ),
           ),
           Icon(Icons.chevron_right, size: 20, color: fg.withValues(alpha: .4)),
+          ]),
+          const SizedBox(height: 10),
+          _phaseTimeline(context, tone, tinted),
         ],
       ),
+    );
+  }
+
+  /// Timeline horizontal de 5 pasos (Esperando → Ofertas → Aceptada → Contacto
+  /// → Completa) bajo cada solicitud (pedido PO 2026-07-20). El tramo alcanzado
+  /// se colorea con la tinta de la FASE actual (ámbar/lila/naranja/verde/gris),
+  /// así "cambia de color según el estado"; lo pendiente queda tenue.
+  Widget _phaseTimeline(BuildContext context, StatusTone tone, bool tinted) {
+    final cs = Theme.of(context).colorScheme;
+    final active = tone.ink;
+    final muted = tinted
+        ? tone.ink.withValues(alpha: .28)
+        : cs.onSurfaceVariant.withValues(alpha: .35);
+    const labels = ['Esperando', 'Ofertas', 'Aceptada', 'Contacto', 'Completa'];
+    final current = phase.index;
+
+    Widget seg(bool show, bool done) => Expanded(
+          child: show
+              ? Container(height: 2, color: done ? active : muted)
+              : const SizedBox(),
+        );
+    Widget dot(bool done, bool isCurrent) => Container(
+          width: isCurrent ? 13 : 10,
+          height: isCurrent ? 13 : 10,
+          decoration: BoxDecoration(
+            color: done ? active : Colors.transparent,
+            border: Border.all(color: done ? active : muted, width: 2),
+            shape: BoxShape.circle,
+          ),
+        );
+
+    return Row(
+      children: [
+        for (var i = 0; i < labels.length; i++)
+          Expanded(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Row(children: [
+                seg(i > 0, i <= current),
+                dot(i <= current, i == current),
+                seg(i < labels.length - 1, i < current),
+              ]),
+              const SizedBox(height: 4),
+              Text(
+                labels[i],
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 8.5,
+                  height: 1.1,
+                  color: i <= current ? active : muted,
+                  fontWeight: i == current ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ]),
+          ),
+      ],
     );
   }
 

@@ -1,10 +1,9 @@
-import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/brand.dart';
 import '../../core/config.dart';
@@ -14,64 +13,60 @@ import '../../domain/catalog.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
 import '../shared/brand_kit.dart';
+import '../shared/violet_header.dart';
 
-/// Alta de proveedor (spec §7): 6 pasos que SOLO recolectan; la única
-/// escritura es la RPC atómica complete_provider_onboarding al final
-/// (ADR-0029) — abandonar en cualquier paso deja cero residuo en la BD.
-/// Sin OTP en el flujo (decisión PO §10.2: el sello va después, como la web).
+/// Alta de proveedor (spec §7): pasos que SOLO recolectan; la única escritura
+/// es la RPC atómica `complete_provider_onboarding` al final (ADR-0029) —
+/// abandonar en cualquier paso deja cero residuo en la BD. Sin OTP en el flujo
+/// (el sello va después). Diseño de la app: header violeta + campos rellenos +
+/// tipografía ligera (PO 2026-07-20: "la pantalla de registro debe tener el
+/// diseño de la app"). NO pide cédula/foto/logo — eso se completa después con
+/// el aviso de "completa tu perfil" (PO 2026-07-20).
 class ProviderOnboardingScreen extends StatefulWidget {
   const ProviderOnboardingScreen({super.key});
   @override
-  State<ProviderOnboardingScreen> createState() => _ProviderOnboardingScreenState();
+  State<ProviderOnboardingScreen> createState() =>
+      _ProviderOnboardingScreenState();
 }
 
 class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   final _page = PageController();
   int _step = 0;
-  static const _steps = 7;
+  static const _steps = 4;
+  static const _titles = ['Tu negocio', 'Qué vendes y dónde', 'Tu WhatsApp', 'Revisar'];
 
   // Paso 1 — tu negocio
   late final TextEditingController _first;
   late final TextEditingController _last;
   final _name = TextEditingController();
   final _rnc = TextEditingController();
-  // Tipo de negocio (paridad web): informal | tecnico | formal.
-  String _businessType = 'informal';
+  String _businessType = 'informal'; // informal | tecnico | formal
   final _profession = TextEditingController(); // solo técnico
   String _offers = 'productos'; // productos | servicios | ambos
   bool _wholesale = false;
 
-  // Paso 2 — qué vendes
+  // Paso 2 — qué vendes y dónde
   final List<String> _categories = [];
   final List<String> _rubros = [];
   List<Map<String, dynamic>> _dbRubros = [];
   bool _loadingRubros = false;
   String? _rubrosError;
-
-  // Paso 3 — dónde trabajas (varias ciudades/sectores, como la web)
   final List<String> _cities = [];
   final List<String> _sectors = [];
   final _cityInput = TextEditingController();
   final _sectorInput = TextEditingController();
+  final _address = TextEditingController();
   bool _locating = false;
 
-  // Paso 4 — WhatsApp
+  // Paso 3 — WhatsApp (chequeo de "ocupado" inmediato, con rebote)
   final _phone = TextEditingController();
   String? _phoneError;
+  bool _checkingPhone = false;
+  Timer? _phoneDebounce;
 
-  // Paso 5 — cédula (solo informal/técnico; el negocio formal la salta)
-  final _cedulaNumber = TextEditingController();
-  XFile? _cedulaFile;
-
-  // Paso 6 — foto opcional
-  String? _logoUrl;
-  bool _uploading = false;
-
-  // Paso 7 — términos
+  // Paso 4 — términos
   bool _terms = false;
   bool _busy = false;
-
-  bool get _needsCedula => _businessType != 'formal';
 
   @override
   void initState() {
@@ -89,16 +84,18 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       final ph = p?['phone'] as String?;
       if (ph != null && ph.isNotEmpty && mounted && _phone.text.isEmpty) {
         setState(() => _phone.text = ph);
+        _checkPhone();
       }
     }).catchError((_) => null);
   }
 
   @override
   void dispose() {
+    _phoneDebounce?.cancel();
     _page.dispose();
     for (final c in [
       _first, _last, _name, _rnc, _profession,
-      _cityInput, _sectorInput, _phone, _cedulaNumber,
+      _cityInput, _sectorInput, _address, _phone,
     ]) {
       c.dispose();
     }
@@ -111,21 +108,16 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   bool _stepValid(int s) => switch (s) {
         0 => _name.text.trim().isNotEmpty &&
             (_businessType != 'formal' || _rnc.text.trim().isNotEmpty),
-        1 => _categories.isNotEmpty,
-        2 => _cities.isNotEmpty,
-        3 => isValidPhone(_phone.text) && _phoneError == null,
-        // Cédula: el negocio formal la salta; informal/técnico necesita número
-        // + foto (la config de prod exige foto — `provider_id_photo.required`).
-        4 => !_needsCedula ||
-            (_cedulaNumber.text.trim().isNotEmpty && _cedulaFile != null),
-        5 => true, // foto de negocio opcional
-        6 => _terms,
+        1 => _categories.isNotEmpty && _cities.isNotEmpty,
+        2 => isValidPhone(_phone.text) && _phoneError == null && !_checkingPhone,
+        3 => _terms,
         _ => false,
       };
 
   void _next() {
     if (!_stepValid(_step)) return;
-    _page.nextPage(duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    _page.nextPage(
+        duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
   }
 
   void _back() {
@@ -133,27 +125,32 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       context.go('/onboarding');
       return;
     }
-    _page.previousPage(duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    _page.previousPage(
+        duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
   }
 
-  Future<void> _toggleCategory(String id) async {
+  // ── Categorías / rubros ────────────────────────────────────────────────────
+
+  Future<void> _addCategory(String id) async {
+    if (_categories.contains(id) || _categories.length >= 2) return;
+    setState(() => _categories.add(id));
+    await _loadRubros();
+  }
+
+  void _removeCategory(String id) {
     setState(() {
-      if (_categories.contains(id)) {
-        _categories.remove(id);
-        _rubros.removeWhere((r) =>
-            _dbRubros.any((d) => d['id'] == r && d['category_id'] == id));
-      } else if (_categories.length < 2) {
-        _categories.add(id);
-      }
+      _categories.remove(id);
+      _rubros.removeWhere((r) =>
+          _dbRubros.any((d) => d['id'] == r && d['category_id'] == id));
     });
     if (_categories.isEmpty) {
       setState(() {
         _dbRubros = [];
         _rubrosError = null;
       });
-      return;
+    } else {
+      _loadRubros();
     }
-    await _loadRubros();
   }
 
   Future<void> _loadRubros() async {
@@ -165,9 +162,6 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       final rows = await rubrosForCategories(List.of(_categories));
       if (mounted) setState(() => _dbRubros = rows);
     } catch (e) {
-      // Antes esto era un catch silencioso: si la consulta fallaba, los rubros
-      // simplemente no aparecían y el usuario no tenía forma de saber por qué
-      // (el PO reportó "no vi rubro" en el E2E). Ahora se dice y se reintenta.
       debugPrint('[onboarding] rubros fallaron: $e');
       if (mounted) {
         setState(() => _rubrosError = 'No pudimos cargar los rubros.');
@@ -177,6 +171,68 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     }
   }
 
+  Future<void> _createRubroDialog() async {
+    if (_categories.isEmpty) return;
+    final nameCtrl = TextEditingController();
+    String catId = _categories.first;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Crear rubro'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (_categories.length > 1)
+              DropdownButtonFormField<String>(
+                initialValue: catId,
+                decoration: const InputDecoration(labelText: 'Categoría'),
+                items: [
+                  for (final id in _categories)
+                    DropdownMenuItem(value: id, child: Text(_catName(id))),
+                ],
+                onChanged: (v) => setLocal(() => catId = v ?? catId),
+              ),
+            TextField(
+              controller: nameCtrl,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                  labelText: 'Nombre del rubro', hintText: 'Ej. Bombas de agua'),
+            ),
+          ]),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Crear')),
+          ],
+        ),
+      ),
+    );
+    final name = nameCtrl.text.trim();
+    nameCtrl.dispose();
+    if (ok != true) return;
+    if (name.length < 2) return _snack('Escribe un nombre de rubro válido.');
+    try {
+      final r = await createProviderRubro(categoryId: catId, name: name);
+      final id = r['id'] as String;
+      if (!mounted) return;
+      setState(() {
+        if (!_dbRubros.any((d) => d['id'] == id)) _dbRubros = [..._dbRubros, r];
+        if (!_rubros.contains(id)) _rubros.add(id);
+      });
+    } catch (_) {
+      _snack('No se pudo crear el rubro. Intenta de nuevo.');
+    }
+  }
+
+  String _catName(String id) => kCategories
+      .firstWhere((c) => c.id == id, orElse: () => (id: id, name: id))
+      .name;
+
+  // ── Ubicación ──────────────────────────────────────────────────────────────
+
   Future<void> _useLocation() async {
     setState(() => _locating = true);
     try {
@@ -184,12 +240,14 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
         _snack('Sin permiso de ubicación — escribe tu ciudad y sector.');
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium));
+          locationSettings:
+              const LocationSettings(accuracy: LocationAccuracy.medium));
       final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
       if (!mounted || marks.isEmpty) return;
       final m = marks.first;
@@ -199,6 +257,10 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         if (city.isNotEmpty && !_cities.contains(city)) _cities.add(city);
         if (sector.isNotEmpty && !_sectors.contains(sector)) {
           _sectors.add(sector);
+        }
+        final street = m.thoroughfare ?? '';
+        if (street.isNotEmpty && _address.text.trim().isEmpty) {
+          _address.text = street;
         }
       });
     } catch (_) {
@@ -220,124 +282,45 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     });
   }
 
-  Future<void> _pickCedula(ImageSource source) async {
-    final picked = await ImagePicker()
-        .pickImage(source: source, maxWidth: 1600, imageQuality: 85);
-    if (picked == null) return;
-    if (mounted) setState(() => _cedulaFile = picked);
-  }
+  // ── WhatsApp: chequeo inmediato (rebote de 500 ms) ─────────────────────────
 
-  Future<void> _createRubroDialog() async {
-    if (_categories.isEmpty) return;
-    final nameCtrl = TextEditingController();
-    // Si hay 2 categorías, el proveedor elige a cuál pertenece el rubro nuevo.
-    String catId = _categories.first;
-    final created = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Crear rubro'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (_categories.length > 1)
-              DropdownButtonFormField<String>(
-                initialValue: catId,
-                decoration: const InputDecoration(labelText: 'Categoría'),
-                items: [
-                  for (final id in _categories)
-                    DropdownMenuItem(
-                      value: id,
-                      child: Text(kCategories
-                          .firstWhere((c) => c.id == id,
-                              orElse: () => (id: id, name: id))
-                          .name),
-                    ),
-                ],
-                onChanged: (v) => setLocal(() => catId = v ?? catId),
-              ),
-            TextField(
-              controller: nameCtrl,
-              autofocus: true,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                  labelText: 'Nombre del rubro',
-                  hintText: 'Ej. Bombas de agua'),
-            ),
-          ]),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancelar')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Crear')),
-          ],
-        ),
-      ),
-    );
-    if (created != true) {
-      nameCtrl.dispose();
-      return;
-    }
-    final name = nameCtrl.text.trim();
-    nameCtrl.dispose();
-    if (name.length < 2) {
-      _snack('Escribe un nombre de rubro válido.');
-      return;
-    }
-    try {
-      final r = await createProviderRubro(categoryId: catId, name: name);
-      final id = r['id'] as String;
-      if (!mounted) return;
-      setState(() {
-        if (!_dbRubros.any((d) => d['id'] == id)) {
-          _dbRubros = [..._dbRubros, r];
-        }
-        if (!_rubros.contains(id)) _rubros.add(id);
-      });
-    } catch (_) {
-      _snack('No se pudo crear el rubro. Intenta de nuevo.');
-    }
+  void _onPhoneChanged(String _) {
+    setState(() => _phoneError = null);
+    _phoneDebounce?.cancel();
+    _phoneDebounce = Timer(const Duration(milliseconds: 500), _checkPhone);
   }
 
   Future<void> _checkPhone() async {
     final raw = _phone.text.trim();
     if (raw.isEmpty) return;
     if (!isValidPhone(raw)) {
-      setState(() => _phoneError = 'Escribe un número válido (ej. 809-555-1234).');
+      if (mounted) {
+        setState(() => _phoneError = 'Escribe un número válido (ej. 809-555-1234).');
+      }
       return;
     }
-    setState(() => _phoneError = null);
+    setState(() => _checkingPhone = true);
     try {
       final digits = normalizePhone(raw).replaceAll(RegExp(r'\D'), '');
-      if (await isWhatsappTakenRemote(digits) && mounted) {
-        setState(() => _phoneError =
-            'Este WhatsApp ya está registrado en otro usuario. Usa otro número.');
-      }
+      final taken = await isWhatsappTakenRemote(digits);
+      if (!mounted) return;
+      setState(() => _phoneError = taken
+          ? 'Este WhatsApp ya está registrado en otro usuario. Usa otro número.'
+          : null);
     } catch (_) {
       // La RPC valida igual al cierre (slug whatsapp_taken).
+    } finally {
+      if (mounted) setState(() => _checkingPhone = false);
     }
   }
 
-  Future<void> _pickPhoto(ImageSource source) async {
-    final picked = await ImagePicker()
-        .pickImage(source: source, maxWidth: 1200, imageQuality: 85);
-    if (picked == null) return;
-    setState(() => _uploading = true);
-    try {
-      final url = await uploadBusinessLogo(picked.path);
-      if (mounted) setState(() => _logoUrl = url);
-    } catch (_) {
-      _snack('No pudimos subir la foto. Puedes seguir sin ella y agregarla después.');
-    } finally {
-      if (mounted) setState(() => _uploading = false);
-    }
-  }
+  // ── Cierre ─────────────────────────────────────────────────────────────────
 
   Future<void> _finish() async {
     setState(() => _busy = true);
     final phoneE164 = normalizePhone(_phone.text);
     try {
-      final businessId = await completeProviderOnboarding(
+      await completeProviderOnboarding(
         firstName: _first.text.trim(),
         lastName: _last.text.trim(),
         phone: phoneE164,
@@ -353,39 +336,18 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           'description': '',
           'whatsapp': phoneE164,
           'country': 'República Dominicana',
-          // Varias ciudades/sectores se guardan unidos por ", " (como la web).
+          // Varias ciudades/sectores se guardan unidas por ", " (como la web).
           'city': _cities.join(', '),
           'sector': _sectors.join(', '),
-          'address': '',
+          'address': _address.text.trim(),
           'profession':
               _businessType == 'tecnico' ? _profession.text.trim() : '',
           'experience_years': '',
-          'logo_url': _logoUrl ?? '',
+          'logo_url': '',
           'owner_photo_url': '',
         },
         termsVersion: AppConfig.termsVersion,
       );
-      // Cédula (informal/técnico): se escribe DESPUÉS de crear el negocio
-      // (necesita el business_id). No es atómico con el negocio a propósito; si
-      // fallara, el negocio ya existe y la RPC de onboarding no debe revertirse.
-      if (_needsCedula && _cedulaNumber.text.trim().isNotEmpty) {
-        try {
-          var path = '';
-          if (_cedulaFile != null) {
-            path = await uploadIdDocPhoto(_cedulaFile!.path, businessId);
-          }
-          await saveIdDoc(
-            businessId: businessId,
-            idNumber: _cedulaNumber.text.trim(),
-            idPhotoPath: path,
-          );
-        } catch (_) {
-          if (mounted) {
-            _snack(
-                'Negocio creado, pero no pudimos guardar tu cédula. Complétala en Mi negocio para poder ofertar.');
-          }
-        }
-      }
       await roleStore.refresh(); // → redirect a /provider
     } catch (e) {
       if (mounted) _snack(onboardingErrorCopy(e));
@@ -394,63 +356,67 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     }
   }
 
+  // ── Build ──────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    // El botón ATRÁS del sistema debe retroceder de paso, no minimizar la app:
-    // con context.go() no hay pila que popear, así que Android salía de Jayalo,
-    // MIUI mataba el proceso y al reabrir el formulario empezaba de cero
-    // (verificado con el PO en el device 2026-07-17). Doctrina del proyecto:
-    // nunca perder lo que el usuario ya tecleó.
+    // El botón ATRÁS del sistema debe retroceder de paso, no minimizar la app
+    // (con context.go() no hay pila que popear; MIUI mataba el proceso y se
+    // perdía lo tecleado — verificado con el PO en device 2026-07-17).
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         _back();
       },
-      child: _buildScaffold(context),
-    );
-  }
-
-  Widget _buildScaffold(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Tu negocio (${_step + 1}/$_steps)'),
-        leading: BackButton(onPressed: _back),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(4),
-          child: LinearProgressIndicator(value: (_step + 1) / _steps),
-        ),
-      ),
-      body: SafeArea(
-        child: PageView(
-          controller: _page,
-          physics: const NeverScrollableScrollPhysics(),
-          onPageChanged: (i) => setState(() => _step = i),
-          children: [
-            _stepBusiness(),
-            _stepCategories(),
-            _stepLocation(),
-            _stepWhatsapp(),
-            _stepCedula(),
-            _stepPhoto(),
-            _stepTerms(),
-          ],
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-          child: _step == _steps - 1
-              ? FilledButton(
-                  onPressed: (_stepValid(_step) && !_busy) ? _finish : null,
-                  child: _busy
-                      ? const JayaloSpinner(size: 18)
-                      : const Text('Crear mi negocio'),
-                )
-              : FilledButton(
-                  onPressed: _stepValid(_step) ? _next : null,
-                  child: const Text('Siguiente'),
+      child: Scaffold(
+        body: Column(children: [
+          VioletHeader(
+            leading: HeaderCircleButton(
+                icon: Icons.arrow_back, tooltip: 'Atrás', onTap: _back),
+            title: '${_titles[_step]} · ${_step + 1}/$_steps',
+            below: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: (_step + 1) / _steps,
+                  minHeight: 6,
+                  backgroundColor: Colors.white24,
+                  valueColor: const AlwaysStoppedAnimation(Colors.white),
                 ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: PageView(
+              controller: _page,
+              physics: const NeverScrollableScrollPhysics(),
+              onPageChanged: (i) => setState(() => _step = i),
+              children: [
+                _stepBusiness(),
+                _stepSell(),
+                _stepWhatsapp(),
+                _stepConfirm(),
+              ],
+            ),
+          ),
+        ]),
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+            child: _step == _steps - 1
+                ? FilledButton(
+                    onPressed: (_stepValid(_step) && !_busy) ? _finish : null,
+                    child: _busy
+                        ? const JayaloSpinner(size: 18)
+                        : const Text('Crear mi negocio'),
+                  )
+                : FilledButton(
+                    onPressed: _stepValid(_step) ? _next : null,
+                    child: const Text('Siguiente'),
+                  ),
+          ),
         ),
       ),
     );
@@ -459,81 +425,73 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   Widget _pad(List<Widget> children) =>
       ListView(padding: const EdgeInsets.all(20), children: children);
 
+  Widget _sectionTitle(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(t,
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: jayaloHead(context))),
+      );
+
+  Widget _field(TextEditingController c, String label,
+          {String? hint,
+          TextInputType? keyboard,
+          bool caps = false,
+          ValueChanged<String>? onChanged}) =>
+      TextField(
+        controller: c,
+        keyboardType: keyboard,
+        textCapitalization:
+            caps ? TextCapitalization.words : TextCapitalization.none,
+        decoration: filledField(context, label, hint: hint),
+        onChanged: onChanged ?? (_) => setState(() {}),
+      );
+
+  // ── Paso 1: tu negocio ─────────────────────────────────────────────────────
+
   Widget _stepBusiness() {
     return _pad([
-      Text('Tu negocio', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 12),
-      TextField(
-        controller: _first,
-        textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(labelText: 'Tu nombre'),
+      _field(_first, 'Tu nombre', caps: true),
+      const SizedBox(height: 10),
+      _field(_last, 'Tu apellido', caps: true),
+      const SizedBox(height: 10),
+      _field(_name, 'Nombre del negocio',
+          hint: 'Ej. Repuestos El Primo', caps: true),
+      const SizedBox(height: 18),
+      _sectionTitle('Tipo de negocio'),
+      PillSegmented(
+        options: const ['Informal', 'Técnico', 'Formal'],
+        index: const ['informal', 'tecnico', 'formal'].indexOf(_businessType),
+        onChanged: (i) => setState(
+            () => _businessType = ['informal', 'tecnico', 'formal'][i]),
       ),
-      const SizedBox(height: 8),
-      TextField(
-        controller: _last,
-        textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(labelText: 'Tu apellido'),
-      ),
-      const SizedBox(height: 16),
-      TextField(
-        controller: _name,
-        textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(
-            labelText: 'Nombre del negocio', hintText: 'Ej. Repuestos El Primo'),
-        onChanged: (_) => setState(() {}),
-      ),
-      const SizedBox(height: 16),
-      Text('Tipo de negocio', style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 8),
-      SegmentedButton<String>(
-        segments: const [
-          ButtonSegment(value: 'informal', label: Text('Informal')),
-          ButtonSegment(value: 'tecnico', label: Text('Técnico')),
-          ButtonSegment(value: 'formal', label: Text('Formal')),
-        ],
-        selected: {_businessType},
-        onSelectionChanged: (s) => setState(() => _businessType = s.first),
-      ),
-      const SizedBox(height: 4),
+      const SizedBox(height: 6),
       Text(
         switch (_businessType) {
           'formal' => 'Negocio registrado con RNC.',
           'tecnico' => 'Ofreces un oficio o servicio técnico.',
           _ => 'Aún sin RNC — la mayoría empieza así.',
         },
-        style: Theme.of(context).textTheme.bodySmall,
+        style: TextStyle(
+            fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
       if (_businessType == 'formal') ...[
-        const SizedBox(height: 8),
-        TextField(
-          controller: _rnc,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'RNC'),
-          onChanged: (_) => setState(() {}),
-        ),
+        const SizedBox(height: 10),
+        _field(_rnc, 'RNC', keyboard: TextInputType.number),
       ],
       if (_businessType == 'tecnico') ...[
-        const SizedBox(height: 8),
-        TextField(
-          controller: _profession,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-              labelText: 'Profesión / oficio (opcional)',
-              hintText: 'Ej. Plomero, electricista'),
-        ),
+        const SizedBox(height: 10),
+        _field(_profession, 'Profesión / oficio (opcional)',
+            hint: 'Ej. Plomero, electricista', caps: true),
       ],
-      const SizedBox(height: 16),
-      Text('¿Qué ofreces?', style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 8),
-      SegmentedButton<String>(
-        segments: const [
-          ButtonSegment(value: 'productos', label: Text('Productos')),
-          ButtonSegment(value: 'servicios', label: Text('Servicios')),
-          ButtonSegment(value: 'ambos', label: Text('Ambos')),
-        ],
-        selected: {_offers},
-        onSelectionChanged: (s) => setState(() {
-          _offers = s.first;
+      const SizedBox(height: 18),
+      _sectionTitle('¿Qué ofreces?'),
+      PillSegmented(
+        options: const ['Productos', 'Servicios', 'Ambos'],
+        index: const ['productos', 'servicios', 'ambos'].indexOf(_offers),
+        onChanged: (i) => setState(() {
+          _offers = ['productos', 'servicios', 'ambos'][i];
           if (_offers == 'servicios') _wholesale = false;
         }),
       ),
@@ -547,80 +505,73 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     ]);
   }
 
-  Widget _stepCategories() {
+  // ── Paso 2: qué vendes y dónde ─────────────────────────────────────────────
+
+  Widget _stepSell() {
     return _pad([
-      Text('Qué vendes', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 4),
-      const Text('Elige hasta 2 categorías — así te llegan las solicitudes correctas.'),
-      const SizedBox(height: 12),
-      Wrap(spacing: 8, runSpacing: 4, children: [
-        for (final c in kCategories)
-          FilterChip(
-            label: Text(c.name),
-            selected: _categories.contains(c.id),
-            onSelected: (_categories.length < 2 || _categories.contains(c.id))
-                ? (_) => _toggleCategory(c.id)
-                : null,
-          ),
-      ]),
-      // La sección de rubros SIEMPRE es visible (antes solo aparecía si la
-      // consulta traía datos: si el usuario no elegía categoría, o la query
-      // fallaba, no había ni rastro de que los rubros existieran).
-      const SizedBox(height: 24),
-      Text('¿Algo más específico? (opcional)',
-          style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 4),
-      Text('Los rubros ayudan a que te lleguen solicitudes más precisas.',
-          style: Theme.of(context).textTheme.bodySmall),
-      const SizedBox(height: 8),
+      _sectionTitle('Categorías (hasta 2)'),
+      _dropdownAdder(
+        hint: _categories.length >= 2
+            ? 'Máximo 2 categorías'
+            : 'Elige una categoría',
+        options: [for (final c in kCategories) (id: c.id, name: c.name)],
+        selected: _categories,
+        enabled: _categories.length < 2,
+        onAdd: _addCategory,
+      ),
+      if (_categories.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        _chips(_categories.map((id) => (id: id, label: _catName(id))).toList(),
+            onRemove: _removeCategory),
+      ],
+      const SizedBox(height: 18),
+      _sectionTitle('Rubros (opcional)'),
       if (_categories.isEmpty)
-        const Text('Elige una categoría arriba y aquí te mostramos sus rubros.')
+        _hint('Elige una categoría para ver sus rubros.')
       else if (_loadingRubros)
         const Padding(
-          padding: EdgeInsets.all(12),
-          child: Center(child: JayaloSpinner(size: 24)),
-        )
+            padding: EdgeInsets.all(8),
+            child: Center(child: JayaloSpinner(size: 22)))
       else if (_rubrosError != null)
         Row(children: [
           Expanded(child: Text(_rubrosError!)),
           TextButton(onPressed: _loadRubros, child: const Text('Reintentar')),
         ])
-      else if (_dbRubros.isEmpty)
-        const Text('Esta categoría no tiene rubros; puedes continuar sin elegir ninguno.')
-      else
-        Wrap(spacing: 8, runSpacing: 4, children: [
-          for (final r in _dbRubros)
-            FilterChip(
-              label: Text(r['name'] as String),
-              selected: _rubros.contains(r['id']),
-              onSelected: (_) => setState(() {
-                final id = r['id'] as String;
-                _rubros.contains(id) ? _rubros.remove(id) : _rubros.add(id);
-              }),
-            ),
-        ]),
-      // Crear un rubro propio si no está en la lista (como la web). Va por la
-      // RPC `create_provider_rubro` — RLS bloquea el INSERT directo.
-      if (_categories.isNotEmpty) ...[
-        const SizedBox(height: 12),
+      else ...[
+        _dropdownAdder(
+          hint: 'Elige un rubro',
+          options: [
+            for (final r in _dbRubros)
+              (id: r['id'] as String, name: r['name'] as String)
+          ],
+          selected: _rubros,
+          onAdd: (id) => setState(() {
+            if (!_rubros.contains(id)) _rubros.add(id);
+          }),
+        ),
+        if (_rubros.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _chips(
+            _rubros.map((id) {
+              final r = _dbRubros.firstWhere((d) => d['id'] == id,
+                  orElse: () => {'name': id});
+              return (id: id, label: r['name'] as String);
+            }).toList(),
+            onRemove: (id) => setState(() => _rubros.remove(id)),
+          ),
+        ],
+        const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
+          child: TextButton.icon(
             onPressed: _createRubroDialog,
             icon: const Icon(Icons.add, size: 18),
             label: const Text('Crear un rubro'),
           ),
         ),
       ],
-    ]);
-  }
-
-  Widget _stepLocation() {
-    return _pad([
-      Text('Dónde trabajas', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 4),
-      const Text('Puedes agregar varias ciudades y sectores donde atiendes.'),
-      const SizedBox(height: 12),
+      const Divider(height: 32),
+      _sectionTitle('Dónde trabajas'),
       OutlinedButton.icon(
         onPressed: _locating ? null : _useLocation,
         icon: _locating
@@ -629,22 +580,63 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         label: const Text('Usar mi ubicación'),
       ),
       const SizedBox(height: 12),
+      _chipField(controller: _cityInput, label: 'Ciudad', list: _cities),
+      const SizedBox(height: 10),
       _chipField(
-        controller: _cityInput,
-        label: 'Ciudad',
-        list: _cities,
-      ),
-      const SizedBox(height: 8),
-      _chipField(
-        controller: _sectorInput,
-        label: 'Sector (opcional)',
-        list: _sectors,
-      ),
+          controller: _sectorInput, label: 'Sector (opcional)', list: _sectors),
+      const SizedBox(height: 10),
+      _field(_address, 'Dirección (opcional)',
+          hint: 'Calle, número, referencia', caps: true),
     ]);
   }
 
-  /// Campo de texto + "Agregar" que acumula valores como chips removibles
-  /// (para las varias ciudades/sectores).
+  Widget _hint(String t) => Text(t,
+      style: TextStyle(
+          fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant));
+
+  Widget _dropdownAdder({
+    required String hint,
+    required List<({String id, String name})> options,
+    required List<String> selected,
+    required void Function(String id) onAdd,
+    bool enabled = true,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final available = options.where((o) => !selected.contains(o.id)).toList();
+    final off = !enabled || available.isEmpty;
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          value: null,
+          hint: Text(hint,
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 15)),
+          icon: const Icon(Icons.expand_more),
+          items: [
+            for (final o in available)
+              DropdownMenuItem(
+                  value: o.id,
+                  child: Text(o.name, overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: off ? null : (v) => v == null ? null : onAdd(v),
+        ),
+      ),
+    );
+  }
+
+  Widget _chips(List<({String id, String label})> items,
+          {required void Function(String id) onRemove}) =>
+      Wrap(spacing: 8, runSpacing: 4, children: [
+        for (final it in items)
+          InputChip(label: Text(it.label), onDeleted: () => onRemove(it.id)),
+      ]);
+
   Widget _chipField({
     required TextEditingController controller,
     required String label,
@@ -657,7 +649,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
             controller: controller,
             textCapitalization: TextCapitalization.words,
             textInputAction: TextInputAction.done,
-            decoration: InputDecoration(labelText: label),
+            decoration: filledField(context, label),
             onSubmitted: (_) => _addChip(list, controller),
           ),
         ),
@@ -669,163 +661,52 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       ]),
       if (list.isNotEmpty) ...[
         const SizedBox(height: 8),
-        Wrap(spacing: 8, runSpacing: 4, children: [
-          for (final v in list)
-            InputChip(
-              label: Text(v),
-              onDeleted: () => setState(() => list.remove(v)),
-            ),
-        ]),
+        _chips(list.map((v) => (id: v, label: v)).toList(),
+            onRemove: (v) => setState(() => list.remove(v))),
       ],
     ]);
   }
 
-  Widget _stepCedula() {
-    if (!_needsCedula) {
-      return _pad([
-        Text('Identificación', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        const Text(
-            'Tu negocio es formal (con RNC), así que no necesitas registrar tu cédula. Continúa.'),
-      ]);
-    }
-    final cs = Theme.of(context).colorScheme;
-    return _pad([
-      Text('Tu cédula (privada)', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 4),
-      const Text(
-          'Como proveedor informal o técnico, necesitas registrar tu cédula para poder enviar ofertas. Solo el equipo de Jayalo la ve.'),
-      const SizedBox(height: 16),
-      TextField(
-        controller: _cedulaNumber,
-        keyboardType: TextInputType.number,
-        decoration: const InputDecoration(
-            labelText: 'Número de cédula', hintText: '000-0000000-0'),
-        onChanged: (_) => setState(() {}),
-      ),
-      const SizedBox(height: 16),
-      Text('Foto de la cédula', style: Theme.of(context).textTheme.titleSmall),
-      const SizedBox(height: 8),
-      if (_cedulaFile != null)
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.file(File(_cedulaFile!.path),
-              height: 160, width: double.infinity, fit: BoxFit.cover),
-        )
-      else
-        Container(
-          height: 120,
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Center(
-              child: Text('Sin foto',
-                  style: TextStyle(color: cs.onSurfaceVariant))),
-        ),
-      const SizedBox(height: 8),
-      Row(children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => _pickCedula(ImageSource.camera),
-            icon: const Icon(Icons.photo_camera_outlined),
-            label: const Text('Cámara'),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => _pickCedula(ImageSource.gallery),
-            icon: const Icon(Icons.photo_library_outlined),
-            label: const Text('Galería'),
-          ),
-        ),
-      ]),
-    ]);
-  }
+  // ── Paso 3: WhatsApp ───────────────────────────────────────────────────────
 
   Widget _stepWhatsapp() {
     return _pad([
-      Text('Tu WhatsApp', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 4),
-      const Text('Los clientes te contactan por aquí cuando desbloquean tu oferta.'),
-      const SizedBox(height: 12),
+      _hint('Los clientes te contactan por aquí cuando desbloquean tu oferta.'),
+      const SizedBox(height: 14),
       TextField(
         controller: _phone,
         keyboardType: TextInputType.phone,
-        decoration: InputDecoration(
-          labelText: 'WhatsApp del negocio',
-          hintText: '809-555-1234',
+        onChanged: _onPhoneChanged,
+        decoration: filledField(context, 'WhatsApp del negocio',
+                hint: '809-555-1234')
+            .copyWith(
           errorText: _phoneError,
           errorMaxLines: 3,
+          suffixIcon: _checkingPhone
+              ? const Padding(
+                  padding: EdgeInsets.all(14), child: JayaloSpinner(size: 16))
+              : (_phoneError == null && isValidPhone(_phone.text)
+                  ? Icon(Icons.check_circle,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? JayaloColors.dSuccess
+                          : JayaloColors.success)
+                  : null),
         ),
-        onChanged: (_) => setState(() => _phoneError = null),
-        onTapOutside: (_) {
-          FocusScope.of(context).unfocus();
-          _checkPhone();
-        },
-        onEditingComplete: () {
-          FocusScope.of(context).unfocus();
-          _checkPhone();
-        },
       ),
       const SizedBox(height: 8),
-      Text(
-        'Después de crear tu negocio podrás confirmarlo por SMS para ganar el sello de verificado.',
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
+      _hint(
+          'Después de crear tu negocio podrás confirmarlo por SMS para ganar el sello de verificado.'),
     ]);
   }
 
-  Widget _stepPhoto() {
-    return _pad([
-      Text('Foto de tu negocio (opcional)', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 4),
-      const Text('Un logo o una foto del local da confianza. Puedes agregarla después.'),
-      const SizedBox(height: 16),
-      if (_logoUrl != null)
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.network(_logoUrl!, height: 160, fit: BoxFit.cover),
-        ),
-      if (_uploading) const Padding(
-        padding: EdgeInsets.all(12),
-        child: Center(child: JayaloSpinner(size: 24)),
-      ),
-      const SizedBox(height: 12),
-      Row(children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: _uploading ? null : () => _pickPhoto(ImageSource.camera),
-            icon: const Icon(Icons.photo_camera_outlined),
-            label: const Text('Cámara'),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: _uploading ? null : () => _pickPhoto(ImageSource.gallery),
-            icon: const Icon(Icons.photo_library_outlined),
-            label: const Text('Galería'),
-          ),
-        ),
-      ]),
-      const SizedBox(height: 8),
-      Center(
-        child: TextButton(onPressed: _next, child: const Text('Después')),
-      ),
-    ]);
-  }
+  // ── Paso 4: revisar + aviso de completar perfil ────────────────────────────
 
-  Widget _stepTerms() {
+  Widget _stepConfirm() {
     final cs = Theme.of(context).colorScheme;
-    final catNames = _categories
-        .map((id) => kCategories.firstWhere((c) => c.id == id,
-            orElse: () => (id: id, name: id)).name)
-        .join(', ');
+    final tone = Theme.of(context).brightness == Brightness.dark
+        ? JayaloStatus.pendingDark
+        : JayaloStatus.pendingLight;
     return _pad([
-      Text('Revisa y confirma', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 12),
       JayaloCard(
         margin: EdgeInsets.zero,
         padding: const EdgeInsets.all(16),
@@ -833,7 +714,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           Text(_name.text.trim(),
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
           const SizedBox(height: 4),
-          Text(catNames),
+          Text(_categories.map(_catName).join(', ')),
           Text('${_cities.join(', ')}'
               '${_sectors.isEmpty ? '' : ' · ${_sectors.join(', ')}'}'),
           Text('WhatsApp: ${normalizePhone(_phone.text)}'),
@@ -846,6 +727,25 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
                     ? JayaloStatus.respondedDark
                     : JayaloStatus.respondedLight),
           ],
+        ]),
+      ),
+      const SizedBox(height: 12),
+      // Aviso de "completa tu perfil" (PO 2026-07-20): el registro ya no pide
+      // cédula/foto; se completan después para poder ofertar / ganar el sello.
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+            color: tone.bg, borderRadius: BorderRadius.circular(16)),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(Icons.badge_outlined, size: 20, color: tone.ink),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+                _businessType == 'formal'
+                    ? 'Después podrás completar tu perfil (foto, descripción) para dar más confianza.'
+                    : 'Después completa tu perfil (cédula y foto) para poder enviar ofertas y ganar el sello de verificado.',
+                style: TextStyle(fontSize: 13, color: tone.ink)),
+          ),
         ]),
       ),
       const SizedBox(height: 12),
@@ -870,8 +770,8 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         ]),
       ),
       const SizedBox(height: 4),
-      Text('Empiezas con 0 créditos: ofertar es GRATIS; solo pagas al desbloquear un contacto.',
-          style: Theme.of(context).textTheme.bodySmall),
+      _hint(
+          'Empiezas con 0 créditos: ofertar es GRATIS; solo pagas al desbloquear un contacto.'),
     ]);
   }
 }

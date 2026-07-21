@@ -162,6 +162,18 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
       (o) => o['status'] == 'accepted' || o['status'] == 'completed',
     );
     final cheapest = _cheapestOfferId(offers);
+    // Estado de verificación de los negocios que ofertaron (para el badge rojo
+    // "Negocio sin verificar"). Best-effort: si falla, no se muestra el badge.
+    Map<String, bool> verified = {};
+    try {
+      verified = await businessesVerified([
+        for (final o in offers)
+          if (o['business_id'] != null) o['business_id'] as String,
+      ]);
+    } catch (_) {
+      verified = {};
+    }
+    if (!context.mounted) return;
     await showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -223,6 +235,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
                         return _OfferCard(
                           offer: o,
                           cheapest: o['id'] == cheapest,
+                          unverified: verified[o['business_id']] == false,
                           statusChip: offerStatusChip(ctx, o, hasAccepted),
                           onTap: () => showOfferSheet(
                             ctx,
@@ -635,6 +648,7 @@ class _OfferCard extends StatelessWidget {
     required this.cheapest,
     required this.statusChip,
     required this.onTap,
+    this.unverified = false,
   });
 
   final Map<String, dynamic> offer;
@@ -642,9 +656,15 @@ class _OfferCard extends StatelessWidget {
   final Widget statusChip;
   final VoidCallback onTap;
 
+  /// El negocio del proveedor aún no está verificado por Jayalo — se avisa al
+  /// cliente con un badge rojo (decisión PO 2026-07-20: ofertar ya no exige
+  /// verificación, la transparencia pasa a este aviso).
+  final bool unverified;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final message = offer['message'] as String? ?? '';
     return JayaloCard(
       onTap: onTap,
@@ -673,6 +693,16 @@ class _OfferCard extends StatelessWidget {
               statusChip,
             ],
           ),
+          if (unverified) ...[
+            const SizedBox(height: 6),
+            StatusChip(
+              label: 'Negocio sin verificar',
+              icon: Icons.gpp_maybe_outlined,
+              tone: dark
+                  ? (bg: const Color(0x33F14E46), ink: const Color(0xFFF6A7A2))
+                  : (bg: const Color(0xFFFDE8E8), ink: const Color(0xFFC0261C)),
+            ),
+          ],
           if (message.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(

@@ -49,6 +49,19 @@ Stream<List<Map<String, dynamic>>> offersStream(String requestId) => supa
     .stream(primaryKey: ['id'])
     .eq('request_id', requestId);
 
+/// Bandera de verificación por negocio (RPC `businesses_verified`): el cliente
+/// no puede leer las columnas de verificación (RLS), así que la señal pública
+/// "verificado" viene por esta RPC. Devuelve business_id → bool.
+Future<Map<String, bool>> businessesVerified(List<String> businessIds) async {
+  if (businessIds.isEmpty) return {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa.rpc('businesses_verified', params: {'_ids': businessIds}),
+  );
+  return {
+    for (final r in rows) r['business_id'] as String: r['verified'] as bool,
+  };
+}
+
 OfferLite offerLite(Map<String, dynamic> o) => OfferLite(
   status: o['status'] as String,
   unlockedAt: o['unlocked_at'] == null
@@ -236,6 +249,10 @@ Future<void> makeOffer({
   double? estimatedHours,
   String availabilityNote = '',
   String estimatedDuration = '',
+  String productBrand = '',
+  List<String> productColors = const [],
+  String productWarranty = '',
+  String deliveryTime = '',
 }) async {
   final uid = supa.auth.currentUser!.id;
   await supa.from('provider_offers').insert({
@@ -266,6 +283,12 @@ Future<void> makeOffer({
     'estimated_hours': pricingMode == 'hourly' ? estimatedHours : null,
     'availability_note': availabilityNote,
     'estimated_duration': estimatedDuration,
+    // Detalles del producto (paridad web): solo se guardan si vienen.
+    'product_brand': productBrand.trim().isEmpty ? null : productBrand.trim(),
+    'product_colors': productColors.isEmpty ? null : productColors,
+    'product_warranty':
+        productWarranty.trim().isEmpty ? null : productWarranty.trim(),
+    'delivery_time': deliveryTime.trim().isEmpty ? null : deliveryTime.trim(),
   });
 }
 
@@ -538,6 +561,36 @@ Future<void> saveIdDoc({
     'id_number': idNumber,
     'id_photo_path': idPhotoPath,
   }, onConflict: 'business_id');
+}
+
+/// Contexto de verificación del negocio del proveedor (para Ajustes): tipo,
+/// RNC y los sellos (identidad/negocio) que la web fija al aprobar.
+Future<Map<String, dynamic>?> myBusinessForVerification() async {
+  final uid = supa.auth.currentUser!.id;
+  return await supa
+      .from('provider_businesses')
+      .select('id,business_type,rnc,identity_verified_at,business_verified_at')
+      .eq('user_id', uid)
+      .limit(1)
+      .maybeSingle();
+}
+
+/// Confirma/actualiza el RNC del negocio formal — update directo (el dueño
+/// tiene policy UPDATE + grant de columna `rnc`; no necesita RPC).
+Future<void> updateRnc(String businessId, String rnc) async {
+  await supa
+      .from('provider_businesses')
+      .update({'rnc': rnc}).eq('id', businessId);
+}
+
+/// ¿Ya subió la cédula (número no vacío)? — controla si puede ofertar.
+Future<bool> hasIdDoc(String businessId) async {
+  final row = await supa
+      .from('provider_business_id_docs')
+      .select('id_number')
+      .eq('business_id', businessId)
+      .maybeSingle();
+  return (row?['id_number'] as String?)?.trim().isNotEmpty ?? false;
 }
 
 /// Los EF devuelven { error } con copy en español en 4xx; FunctionException
@@ -1127,7 +1180,7 @@ Future<List<Map<String, dynamic>>> allOpenRequests({String? kind}) async {
   final uid = supa.auth.currentUser!.id;
   var q = supa
       .from('customer_requests')
-      .select('id,title,description,kind,urgency,zone,created_at')
+      .select('id,title,description,kind,urgency,zone,created_at,image_url')
       .eq('status', 'open')
       .neq('user_id', uid);
   if (kind != null) q = q.eq('kind', kind);

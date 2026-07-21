@@ -17,9 +17,20 @@ String composeOfferMessage({
   double? evaluationPrice,
   String availabilityNote = '',
   String estimatedDuration = '',
+  String brand = '',
+  List<String> colors = const [],
+  String warranty = '',
+  String deliveryTime = '',
 }) {
   final parts = <String>[];
   if (!isService) {
+    // Detalles del producto (marca/color/garantía/entrega) — paridad web.
+    if (brand.trim().isNotEmpty) parts.add('Marca: ${brand.trim()}');
+    if (colors.isNotEmpty) parts.add('Color: ${colors.join(', ')}');
+    if (warranty.trim().isNotEmpty) parts.add('Garantía: ${warranty.trim()}');
+    if (deliveryTime.trim().isNotEmpty) {
+      parts.add('Entrega: ${deliveryTime.trim()}');
+    }
     if (offersShipping) {
       parts.add((shippingPrice != null && shippingPrice > 0)
           ? 'Envío: ${fmtRD(shippingPrice)}'
