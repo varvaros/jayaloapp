@@ -21,10 +21,12 @@ String composeOfferMessage({
   List<String> colors = const [],
   String warranty = '',
   String deliveryTime = '',
+  String condition = '',
 }) {
   final parts = <String>[];
   if (!isService) {
-    // Detalles del producto (marca/color/garantía/entrega) — paridad web.
+    // Detalles del producto (estado/marca/color/garantía/entrega) — paridad web.
+    if (condition.trim().isNotEmpty) parts.add('Estado: ${condition.trim()}');
     if (brand.trim().isNotEmpty) parts.add('Marca: ${brand.trim()}');
     if (colors.isNotEmpty) parts.add('Color: ${colors.join(', ')}');
     if (warranty.trim().isNotEmpty) parts.add('Garantía: ${warranty.trim()}');

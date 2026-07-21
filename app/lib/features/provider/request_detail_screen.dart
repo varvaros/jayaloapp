@@ -10,10 +10,35 @@ import '../../data/repos.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/offer_message.dart';
 import '../../domain/pricing.dart';
+import '../shared/celebration.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 
 const _maxOfferPhotos = 5;
+
+// Presets iguales a la web (RequestRespondSection.tsx): color, garantía,
+// disponibilidad y estado — para que la oferta de la app calce con la web.
+const _colorPresets = <(String, Color)>[
+  ('Negro', Color(0xFF111111)),
+  ('Blanco', Color(0xFFF5F5F5)),
+  ('Gris', Color(0xFF9CA3AF)),
+  ('Rojo', Color(0xFFDC2626)),
+  ('Azul', Color(0xFF2563EB)),
+  ('Verde', Color(0xFF16A34A)),
+  ('Amarillo', Color(0xFFFACC15)),
+  ('Beige', Color(0xFFE7D4B5)),
+  ('Marrón', Color(0xFF7C4A2A)),
+  ('Rosa', Color(0xFFEC4899)),
+];
+const _warrantyPresets = <String>[
+  'Sin garantía', '3 días', '7 días', '15 días', '1 mes',
+  '3 meses', '6 meses', '1 año', '2 años', '5 años', '10 años',
+];
+const _availabilityDays = <String>[
+  'Hoy', 'Mañana', 'Esta semana', 'Fin de semana',
+  'Próxima semana', 'A coordinar',
+];
+const _conditionOptions = <String>['Nuevo', 'Usado'];
 
 class ProviderRequestDetailScreen extends StatefulWidget {
   const ProviderRequestDetailScreen({super.key, required this.requestId});
@@ -46,12 +71,13 @@ class _ProviderRequestDetailScreenState
   final _installation = TextEditingController();
   bool _requiresEvaluation = false;
   final _evaluation = TextEditingController();
-  // Producto: detalles (marca/color/garantía/tiempo de entrega) — paridad web.
+  // Producto: detalles (marca/estado/color/garantía/tiempo de entrega) — con
+  // selectores tipo web. _warranty/_delivery guardan la etiqueta elegida.
   final _brand = TextEditingController();
   final _warranty = TextEditingController();
   final _delivery = TextEditingController();
+  String _condition = ''; // Nuevo | Usado (sin columna: va al mensaje)
   final List<String> _colors = [];
-  final _colorInput = TextEditingController();
   final List<XFile> _photos = [];
 
   /// Modos de precio del formulario de SERVICIO (paridad web: fijo / rango /
@@ -75,7 +101,7 @@ class _ProviderRequestDetailScreenState
     for (final c in [
       _price, _min, _max, _hourly, _hours,
       _availability, _duration, _shipping, _installation, _evaluation,
-      _brand, _warranty, _delivery, _colorInput,
+      _brand, _warranty, _delivery,
     ]) {
       c.dispose();
     }
@@ -148,6 +174,7 @@ class _ProviderRequestDetailScreenState
       colors: isService ? const [] : _colors,
       warranty: isService ? '' : _warranty.text,
       deliveryTime: isService ? '' : _delivery.text,
+      condition: isService ? '' : _condition,
     );
 
     setState(() => _busy = true);
@@ -181,8 +208,8 @@ class _ProviderRequestDetailScreenState
         deliveryTime: isService ? '' : _delivery.text.trim(),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('¡Oferta enviada! Te avisamos si te aceptan. 🚀')));
+      await showOfferSentCelebration(context); // 🎉 mascota + confeti
+      if (!mounted) return;
       context.go('/provider');
     } catch (e) {
       if (mounted) _showSubmitError(e);
@@ -331,55 +358,121 @@ class _ProviderRequestDetailScreenState
   Widget _txtField(TextEditingController c, String label) =>
       TextField(controller: c, decoration: filledField(context, label));
 
-  void _addColor() {
-    final v = _colorInput.text.trim();
-    if (v.isEmpty || _colors.contains(v)) {
-      _colorInput.clear();
-      return;
-    }
-    setState(() {
-      _colors.add(v);
-      _colorInput.clear();
-    });
+  Widget _sectionLabel(String t) => Text(t,
+      style: TextStyle(
+          fontSize: 13, fontWeight: FontWeight.w600, color: jayaloHead(context)));
+
+  /// Chips de selección única (garantía, disponibilidad, estado). Tocar el
+  /// activo lo deselecciona.
+  Widget _chipSelect(
+      List<String> options, String current, ValueChanged<String> onSelect) {
+    final cs = Theme.of(context).colorScheme;
+    return Wrap(spacing: 8, runSpacing: 8, children: [
+      for (final o in options)
+        GestureDetector(
+          onTap: () => onSelect(current == o ? '' : o),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+            decoration: BoxDecoration(
+              color: current == o ? cs.primary : cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(o,
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: current == o ? cs.onPrimary : cs.onSurface)),
+          ),
+        ),
+    ]);
   }
 
-  /// Detalles del producto (marca/color/garantía/tiempo de entrega) — paridad
-  /// web. La web los gatea por categoría (`activeDetails`); en la app se
-  /// muestran para todo producto y son OPCIONALES.
+  /// Círculos de color multi-selección (paridad web COLOR_PRESETS).
+  Widget _colorSwatches() {
+    final cs = Theme.of(context).colorScheme;
+    return Wrap(spacing: 12, runSpacing: 10, children: [
+      for (final (label, color) in _colorPresets)
+        GestureDetector(
+          onTap: () => setState(() => _colors.contains(label)
+              ? _colors.remove(label)
+              : _colors.add(label)),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: _colors.contains(label)
+                        ? cs.primary
+                        : cs.outlineVariant,
+                    width: _colors.contains(label) ? 3 : 1),
+              ),
+              child: _colors.contains(label)
+                  ? Icon(Icons.check,
+                      size: 16,
+                      color: color.computeLuminance() > .6
+                          ? Colors.black54
+                          : Colors.white)
+                  : null,
+            ),
+            const SizedBox(height: 3),
+            Text(label,
+                style: TextStyle(fontSize: 9.5, color: cs.onSurfaceVariant)),
+          ]),
+        ),
+    ]);
+  }
+
+  Future<void> _pickDelivery() async {
+    final now = DateTime.now();
+    final d = await showDatePicker(
+        context: context,
+        initialDate: now,
+        firstDate: now,
+        lastDate: now.add(const Duration(days: 365)));
+    if (d == null) return;
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(d.year, d.month, d.day);
+    final days = target.difference(today).inDays;
+    setState(() => _delivery.text =
+        days <= 0 ? 'Hoy' : (days == 1 ? '1 día' : '$days días'));
+  }
+
+  /// Detalles del producto con selectores (paridad web): estado (nuevo/usado),
+  /// color (círculos), garantía (chips) y tiempo de entrega (calendario).
   List<Widget> _productDetails(BuildContext context) => [
-        Text('Detalles del producto (opcional)',
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: jayaloHead(context))),
+        _sectionLabel('Detalles del producto (opcional)'),
         const SizedBox(height: 8),
         _txtField(_brand, 'Marca'),
+        const SizedBox(height: 14),
+        _sectionLabel('Estado'),
         const SizedBox(height: 8),
-        Row(children: [
-          Expanded(
-            child: TextField(
-              controller: _colorInput,
-              textInputAction: TextInputAction.done,
-              decoration: filledField(context, 'Color'),
-              onSubmitted: (_) => _addColor(),
-            ),
+        _chipSelect(_conditionOptions, _condition,
+            (v) => setState(() => _condition = v)),
+        const SizedBox(height: 14),
+        _sectionLabel('Color'),
+        const SizedBox(height: 8),
+        _colorSwatches(),
+        const SizedBox(height: 14),
+        _sectionLabel('Garantía'),
+        const SizedBox(height: 8),
+        _chipSelect(_warrantyPresets, _warranty.text,
+            (v) => setState(() => _warranty.text = v)),
+        const SizedBox(height: 14),
+        _sectionLabel('Tiempo de entrega'),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: _pickDelivery,
+            icon: const Icon(Icons.event_outlined, size: 18),
+            label: Text(_delivery.text.isEmpty
+                ? 'Elegir fecha de entrega'
+                : 'Entrega: ${_delivery.text}'),
           ),
-          const SizedBox(width: 8),
-          FilledButton(onPressed: _addColor, child: const Text('Agregar')),
-        ]),
-        if (_colors.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 4, children: [
-            for (final c in _colors)
-              InputChip(
-                  label: Text(c),
-                  onDeleted: () => setState(() => _colors.remove(c))),
-          ]),
-        ],
-        const SizedBox(height: 8),
-        _txtField(_warranty, 'Garantía (ej. 6 meses)'),
-        const SizedBox(height: 8),
-        _txtField(_delivery, 'Tiempo de entrega (ej. Hoy, 2 días)'),
+        ),
       ];
 
   Widget _toggleRow({
@@ -599,9 +692,12 @@ class _ProviderRequestDetailScreenState
           const SizedBox(height: 8),
           ..._pricingFields(context),
           if (_isService) ...[
-            const SizedBox(height: 12),
-            _textField(_availability, 'Disponibilidad (ej: Lun a Vie)'),
+            const SizedBox(height: 14),
+            _sectionLabel('Disponibilidad'),
             const SizedBox(height: 8),
+            _chipSelect(_availabilityDays, _availability.text,
+                (v) => setState(() => _availability.text = v)),
+            const SizedBox(height: 12),
             _textField(_duration, 'Duración estimada (ej: 2 días)'),
           ] else ...[
             const SizedBox(height: 12),

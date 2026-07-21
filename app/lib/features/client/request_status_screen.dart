@@ -158,16 +158,26 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
     Map<String, dynamic> req,
     List<Map<String, dynamic>> offers,
   ) async {
-    final hasAccepted = offers.any(
+    // Re-fetch fresco al abrir: con realtime el stream ya trae live, pero pedir
+    // la lista actual garantiza que "ver ofertas" nunca salga vacío por un
+    // desfase del stream (bug PO 2026-07-20).
+    var list = offers;
+    try {
+      list = await offersForRequest(req['id'] as String);
+    } catch (_) {
+      // Sin red: se usa lo que trajo el stream.
+    }
+    if (!context.mounted) return;
+    final hasAccepted = list.any(
       (o) => o['status'] == 'accepted' || o['status'] == 'completed',
     );
-    final cheapest = _cheapestOfferId(offers);
+    final cheapest = _cheapestOfferId(list);
     // Estado de verificación de los negocios que ofertaron (para el badge rojo
     // "Negocio sin verificar"). Best-effort: si falla, no se muestra el badge.
     Map<String, bool> verified = {};
     try {
       verified = await businessesVerified([
-        for (final o in offers)
+        for (final o in list)
           if (o['business_id'] != null) o['business_id'] as String,
       ]);
     } catch (_) {
@@ -217,7 +227,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
               ),
             ),
             Expanded(
-              child: offers.isEmpty
+              child: list.isEmpty
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(24),
@@ -229,9 +239,9 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      itemCount: offers.length,
+                      itemCount: list.length,
                       itemBuilder: (_, i) {
-                        final o = offers[i];
+                        final o = list[i];
                         return _OfferCard(
                           offer: o,
                           cheapest: o['id'] == cheapest,

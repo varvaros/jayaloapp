@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/client/request_success_view.dart';
+import 'package:jayalo_app/features/shared/celebration.dart' show ConfettiBurst;
 import 'package:jayalo_app/features/shared/jayalo_loader.dart';
 
 /// Contrato del éxito al publicar (spec solicitud-gamificada): mensaje claro

@@ -17,9 +17,11 @@ library;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/brand.dart';
 import '../../core/motion.dart';
+import 'jayalo_loader.dart';
 
 /// Overlay del candado abriéndose (desbloqueo pagado).
 Future<void> showUnlockCelebration(BuildContext context) =>
@@ -376,4 +378,162 @@ class _UnlockPainter extends CustomPainter {
   @override
   bool shouldRepaint(_UnlockPainter old) =>
       old.t != t || old.color != color;
+}
+
+// ---------------------------------------------------------------------------
+// Oferta enviada (proveedor): la MASCOTA celebrando + confeti, un poco más
+// grande que el éxito de crear solicitud (pedido PO 2026-07-20).
+// ---------------------------------------------------------------------------
+
+Future<void> showOfferSentCelebration(BuildContext context) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    barrierColor: Colors.black.withValues(alpha: .40),
+    barrierLabel: 'Oferta enviada',
+    transitionDuration: JayaloMotion.fast,
+    transitionBuilder: (_, anim, _, child) =>
+        FadeTransition(opacity: anim, child: child),
+    pageBuilder: (_, _, _) => const _OfferSentOverlay(),
+  );
+}
+
+class _OfferSentOverlay extends StatefulWidget {
+  const _OfferSentOverlay();
+  @override
+  State<_OfferSentOverlay> createState() => _OfferSentOverlayState();
+}
+
+class _OfferSentOverlayState extends State<_OfferSentOverlay> {
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    // Deja terminar el confeti (1.8 s) antes de cerrar y navegar.
+    final ms = JayaloMotion.reduced(context) ? 700 : 2000;
+    Future.delayed(Duration(milliseconds: ms), () {
+      if (mounted) Navigator.of(context).maybePop();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final reduced = JayaloMotion.reduced(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (mounted) Navigator.of(context).maybePop();
+      },
+      child: Stack(children: [
+        if (!reduced)
+          const Positioned.fill(child: IgnorePointer(child: ConfettiBurst())),
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // Más grande que el éxito de solicitud (96) — pedido PO.
+              JayaloMascotFace(size: 128, mood: MascotMood.celebrate)
+                  .animate()
+                  .scale(
+                      begin: const Offset(.7, .7),
+                      end: const Offset(1, 1),
+                      duration: 260.ms,
+                      curve: Curves.easeOutBack),
+              const SizedBox(height: 18),
+              Text('¡Oferta enviada!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w500,
+                      color: jayaloHead(context))),
+              const SizedBox(height: 8),
+              Text('Te avisamos si te aceptan.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Confeti propio (sin dependencias): ~40 partículas de la paleta cayendo con
+/// giro, entrada escalonada y fundido, una sola vez, ~1.8 s. Se movió aquí
+/// desde `request_success_view.dart` para reusarlo también en la oferta enviada.
+class ConfettiBurst extends StatefulWidget {
+  const ConfettiBurst({super.key});
+  @override
+  State<ConfettiBurst> createState() => _ConfettiBurstState();
+}
+
+class _ConfettiBurstState extends State<ConfettiBurst>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1800))
+    ..forward();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) => CustomPaint(
+            painter: _ConfettiPainter(
+                _c.value, Theme.of(context).colorScheme.primary),
+            size: Size.infinite),
+      );
+}
+
+class _ConfettiPainter extends CustomPainter {
+  _ConfettiPainter(this.t, this.primary);
+  final double t;
+  final Color primary;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rnd = math.Random(7); // semilla fija: la misma lluvia, solo avanza t
+    final colors = [
+      primary,
+      const Color(0xFFEF9F27),
+      const Color(0xFFD4537E),
+      const Color(0xFF1D9E75),
+    ];
+    for (var i = 0; i < 40; i++) {
+      final x = rnd.nextDouble() * size.width;
+      final drift = (rnd.nextDouble() - .5) * 90;
+      final y0 = size.height * (.02 + rnd.nextDouble() * .2);
+      final dist = size.height * (.35 + rnd.nextDouble() * .35);
+      final spinSeed = rnd.nextDouble() * 6.3;
+      final spinDir = rnd.nextBool() ? 6 : -6;
+      final s = 6.0 + rnd.nextDouble() * 6;
+      final delay = rnd.nextDouble() * .35;
+      final tl = ((t - delay) / (1 - delay)).clamp(0.0, 1.0);
+      if (tl <= 0) continue;
+      final fall = Curves.easeIn.transform(tl);
+      final fade = (1 - Curves.easeIn.transform(tl)).clamp(0.0, 1.0);
+      final paint = Paint()
+        ..color = colors[i % colors.length].withValues(alpha: fade);
+      canvas.save();
+      canvas.translate(x + drift * tl, y0 + dist * fall);
+      canvas.rotate(spinSeed + tl * spinDir);
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromCenter(center: Offset.zero, width: s, height: s * .6),
+              const Radius.circular(2)),
+          paint);
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ConfettiPainter old) => old.t != t;
 }
