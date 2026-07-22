@@ -14,6 +14,7 @@ import '../../domain/ai_turns.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/request_progress.dart';
 import '../../domain/request_seed.dart';
+import '../../domain/wholesale.dart';
 import '../shell/floating_nav_bar.dart';
 import '../verification/verify_banner.dart';
 import 'request_success_view.dart';
@@ -117,6 +118,13 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   Set<String> _selectedRubros = {};
   Map<String, String> _rubroNames = {};
   int _aiAnswered = 0;
+
+  // Detalles de mayoreo (obligatorios cuando la solicitud es al por mayor —
+  // paridad web requests/new.tsx). Slugs de `domain/wholesale.dart`.
+  String _wsQuantity = '';
+  String _wsSplit = '';
+  String _wsPackaging = '';
+  String _wsNote = '';
 
   @override
   void initState() {
@@ -391,6 +399,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   Future<void> _submit() async {
     final r = _ready!;
     final isService = _kind == 'servicio';
+    // Combina el "al por mayor" que dijo la IA con el toggle manual — mismo
+    // criterio que ya usa esta pantalla para el chip/persistencia (L432/1108).
+    final effectiveWholesale = r.wholesale || _wholesale;
     if (!isService && !_wantsNew && !_wantsUsed) {
       _toast('Indica si lo quieres nuevo o usado.');
       return;
@@ -406,6 +417,26 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       }
       if (_serviceModality == 'event' && _serviceEventDate == null) {
         _toast('Indica la fecha del evento.');
+        return;
+      }
+    }
+    if (!isService && effectiveWholesale) {
+      final qty = int.tryParse(_wsQuantity.trim());
+      if (qty == null || qty <= 0) {
+        _toast('Indica la cantidad que necesitas (al por mayor).');
+        return;
+      }
+      if (_wsSplit.isEmpty) {
+        _toast('Elige cómo dividir el pedido.');
+        return;
+      }
+      if (_wsPackaging.isEmpty) {
+        _toast('Elige el empaque o presentación.');
+        return;
+      }
+      if ((_wsPackaging == 'otro' || _wsSplit == 'cantidades_especificas') &&
+          _wsNote.trim().isEmpty) {
+        _toast('Especifica el detalle del empaque/cantidades.');
         return;
       }
     }
@@ -442,7 +473,19 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           urgencyLevel: _urgencyLevel,
           serviceEventDate: _serviceEventDate,
           budgetMin: isService ? _parseMoney(_budgetMin) : null,
-          budgetMax: isService ? _parseMoney(_budgetMax) : null);
+          budgetMax: isService ? _parseMoney(_budgetMax) : null,
+          wholesaleQuantity: (!isService && effectiveWholesale)
+              ? int.tryParse(_wsQuantity.trim())
+              : null,
+          wholesaleSplit: (!isService && effectiveWholesale) ? _wsSplit : null,
+          wholesalePackaging:
+              (!isService && effectiveWholesale) ? _wsPackaging : null,
+          wholesaleNote: (!isService &&
+                  effectiveWholesale &&
+                  (_wsPackaging == 'otro' ||
+                      _wsSplit == 'cantidades_especificas'))
+              ? _wsNote.trim()
+              : null);
       if (!mounted) return;
       setState(() => _submitted = true);
     } catch (_) {
@@ -1080,6 +1123,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   Widget _finalForm(ColorScheme cs) {
     final r = _ready!;
     final isService = _kind == 'servicio';
+    final effectiveWholesale = r.wholesale || _wholesale;
     return Column(
       key: const ValueKey('form-final'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1153,6 +1197,53 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               _withInstallation, (v) => setState(() => _withInstallation = v)),
           _checkTile('Requiere evaluación', 'El precio depende de revisar en sitio.',
               _requiresEvaluation, (v) => setState(() => _requiresEvaluation = v)),
+          if (effectiveWholesale) ...[
+            const SizedBox(height: 16),
+            _sectionTitle('Detalles de mayoreo', required: true),
+            const SizedBox(height: 6),
+            _sectionTitle('Cantidad que necesitas', required: true),
+            const SizedBox(height: 6),
+            TextField(
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(hintText: 'Ej. 200'),
+              onChanged: (v) => _wsQuantity = v,
+            ),
+            const SizedBox(height: 16),
+            _sectionTitle('¿Cómo necesitas dividir el pedido?', required: true),
+            const SizedBox(height: 6),
+            Wrap(spacing: 8, runSpacing: 6, children: [
+              for (final (slug, label) in kWholesaleSplitOptions)
+                ChoiceChip(
+                  label: Text(label),
+                  selected: _wsSplit == slug,
+                  onSelected: (_) => setState(() => _wsSplit = slug),
+                ),
+            ]),
+            const SizedBox(height: 16),
+            _sectionTitle('¿Necesitas algún tipo de empaque o presentación?',
+                required: true),
+            const SizedBox(height: 6),
+            Wrap(spacing: 8, runSpacing: 6, children: [
+              for (final (slug, label) in kWholesalePackagingOptions)
+                ChoiceChip(
+                  label: Text(label),
+                  selected: _wsPackaging == slug,
+                  onSelected: (_) => setState(() => _wsPackaging = slug),
+                ),
+            ]),
+            if (_wsPackaging == 'otro' ||
+                _wsSplit == 'cantidades_especificas') ...[
+              const SizedBox(height: 8),
+              TextField(
+                decoration:
+                    const InputDecoration(hintText: 'Especifica el detalle'),
+                onChanged: (v) => _wsNote = v,
+              ),
+            ],
+            const SizedBox(height: 4),
+            Text('Se enviará priorizando a proveedores mayoristas.',
+                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          ],
           const SizedBox(height: 16),
           _sectionTitle('¿Cuándo quieres comprar?'),
           const SizedBox(height: 6),

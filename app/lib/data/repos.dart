@@ -264,6 +264,13 @@ Future<void> submitRequest({
   // requests/new.tsx). Se guarda solo si es > 0.
   num? budgetMin,
   num? budgetMax,
+  // Detalles de mayoreo (obligatorios en el form final cuando wholesale=true
+  // y kind='producto'; paridad web requests/new.tsx). NULL en cualquier otro
+  // caso — la restricción CHECK en la BD exige justo esto.
+  int? wholesaleQuantity,
+  String? wholesaleSplit,
+  String? wholesalePackaging,
+  String? wholesaleNote,
 }) async {
   final uid = supa.auth.currentUser!.id;
   final isService = kind == 'servicio';
@@ -298,6 +305,10 @@ Future<void> submitRequest({
     'is_recurring': false,
     'recurrence_note': '',
     'is_wholesale': !isService && wholesale,
+    'wholesale_quantity': (!isService && wholesale) ? wholesaleQuantity : null,
+    'wholesale_split': (!isService && wholesale) ? wholesaleSplit : null,
+    'wholesale_packaging': (!isService && wholesale) ? wholesalePackaging : null,
+    'wholesale_note': (!isService && wholesale) ? wholesaleNote : null,
     'target_business_id': null,
   });
   requestsChanged.value++;
