@@ -509,7 +509,8 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
 
   Widget _stepSell() {
     return _pad([
-      _sectionTitle('Categorías (hasta 2)'),
+      // Copy pedido PO 2026-07-21: instrucción explícita en vez de etiqueta.
+      _sectionTitle('Selecciona hasta 2 categorías'),
       _dropdownAdder(
         hint: _categories.length >= 2
             ? 'Máximo 2 categorías'
@@ -525,7 +526,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
             onRemove: _removeCategory),
       ],
       const SizedBox(height: 18),
-      _sectionTitle('Rubros (opcional)'),
+      _sectionTitle('Puedes seleccionar varios rubros'),
       if (_categories.isEmpty)
         _hint('Elige una categoría para ver sus rubros.')
       else if (_loadingRubros)

@@ -18,10 +18,15 @@ Deno.serve(async (req) => {
       return json({ error: "No se pudo resolver el usuario" }, 500);
     }
 
+    // `?from=app`: marca a la web que la sesión llegó DESDE la app nativa, para
+    // que el wallet muestre el botón "Volver a la app" (deep link jayalo://wallet)
+    // e intente el retorno automático tras recargar. Supabase preserva el query
+    // en el 302 de /auth/v1/verify (no forma parte del match del allowlist); la
+    // ruta base /provider/wallet ya está permitida porque el handoff funciona.
     const { data, error } = await admin.auth.admin.generateLink({
       type: "magiclink",
       email: userRes.user.email,
-      options: { redirectTo: `${SITE_URL}/provider/wallet` },
+      options: { redirectTo: `${SITE_URL}/provider/wallet?from=app` },
     });
     if (error || !data?.properties?.action_link) {
       return json({ error: error?.message ?? "No se pudo generar el enlace" }, 500);

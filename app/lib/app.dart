@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -110,12 +113,57 @@ ThemeData jayaloTheme(Brightness b) {
   );
 }
 
-class JayaloApp extends StatelessWidget {
+class JayaloApp extends StatefulWidget {
   const JayaloApp({super.key, required this.router});
   final GoRouter router;
   @override
+  State<JayaloApp> createState() => _JayaloAppState();
+}
+
+class _JayaloAppState extends State<JayaloApp> {
+  // Para el snackbar global del retorno de PayPal (fuera de cualquier Scaffold).
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  StreamSubscription<Uri>? _linkSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _initDeepLinks();
+  }
+
+  /// Deep link de retorno de la recarga por PayPal (jayalo://wallet): trae la
+  /// app al frente (lo hace el intent), va a "Mis ofertas" (que re-lee el
+  /// saldo) y avisa. El pago sigue ocurriendo 100% en la web.
+  Future<void> _initDeepLinks() async {
+    try {
+      final links = AppLinks();
+      final initial = await links.getInitialLink(); // arranque en frío
+      if (initial != null) _handleLink(initial);
+      _linkSub = links.uriLinkStream.listen(_handleLink, onError: (_) {});
+    } catch (_) {
+      // Sin deep links la app funciona igual (solo no auto-refresca al volver).
+    }
+  }
+
+  void _handleLink(Uri uri) {
+    if (uri.scheme != 'jayalo' || !mounted) return;
+    widget.router.go('/provider/offers');
+    _messengerKey.currentState
+      ?..clearSnackBars()
+      ..showSnackBar(const SnackBar(
+          content: Text('¡Listo! Tus créditos ya están disponibles.')));
+  }
+
+  @override
+  void dispose() {
+    _linkSub?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => MaterialApp.router(
         title: 'Jayalo',
+        scaffoldMessengerKey: _messengerKey,
         theme: jayaloTheme(Brightness.light),
         darkTheme: jayaloTheme(Brightness.dark),
         // FIJADO A CLARO (decisión PO 2026-07-19): el rediseño cálido (arena,
@@ -126,6 +174,6 @@ class JayaloApp extends StatelessWidget {
         // oscuro azul viejo.
         themeMode: ThemeMode.light,
         scrollBehavior: const JayaloScrollBehavior(),
-        routerConfig: router,
+        routerConfig: widget.router,
       );
 }

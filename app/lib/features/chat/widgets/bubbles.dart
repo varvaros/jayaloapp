@@ -81,30 +81,37 @@ Widget buildBubble(BuildContext context, ChatMessage m,
   } else if (m.kind == 'quick') {
     final p = parseQuick(m.body);
     if (p == null) return const SizedBox.shrink();
+    // Quick del PROVEEDOR (own): burbuja violeta + letras BLANCAS (pedido PO
+    // 2026-07-22: sobre la lavanda clara la pregunta prediseñada se perdía).
+    // El del cliente conserva la burbuja clara con tinta oscura.
+    final quickBg = own ? cs.primary : bubbleColor;
+    final quickInk = own ? Colors.white : pal.ink;
     inner = Container(
       padding: const EdgeInsets.all(10),
       constraints:
           BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.72),
       decoration: BoxDecoration(
-          color: bubbleColor, borderRadius: BorderRadius.circular(14)),
+          color: quickBg, borderRadius: BorderRadius.circular(14)),
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(p.question,
-                style: TextStyle(fontWeight: FontWeight.w600, color: pal.ink)),
+                style: TextStyle(fontWeight: FontWeight.w600, color: quickInk)),
             const SizedBox(height: 6),
             Wrap(spacing: 6, runSpacing: 6, children: [
               for (final opt in p.options)
                 OutlinedButton(
                   style: OutlinedButton.styleFrom(
                       visualDensity: VisualDensity.compact,
-                      side: BorderSide(color: cs.primary.withValues(alpha: .5)),
+                      side: BorderSide(
+                          color: quickInk.withValues(alpha: own ? .6 : .5)),
                       backgroundColor: p.selected == opt
-                          ? cs.primary
+                          ? (own ? Colors.white : cs.primary)
                           : Colors.transparent,
-                      foregroundColor:
-                          p.selected == opt ? cs.onPrimary : cs.primary),
+                      foregroundColor: p.selected == opt
+                          ? (own ? cs.primary : cs.onPrimary)
+                          : quickInk),
                   onPressed: (!own && canAnswerQuick && p.selected == null)
                       ? () => onQuickAnswer(m, opt)
                       : null,
@@ -118,8 +125,11 @@ Widget buildBubble(BuildContext context, ChatMessage m,
                   child: Text('Respondido: ${p.selected}',
                       style: TextStyle(
                           fontSize: 11,
-                          color: pal.ink.withValues(alpha: .7)))),
-            Text(timeStr, style: TextStyle(fontSize: 10, color: stampColor)),
+                          color: quickInk.withValues(alpha: .7)))),
+            Text(timeStr,
+                style: TextStyle(
+                    fontSize: 10,
+                    color: own ? Colors.white.withValues(alpha: .7) : stampColor)),
           ]),
     );
   } else {
@@ -149,7 +159,8 @@ Widget buildBubble(BuildContext context, ChatMessage m,
                         fontWeight: FontWeight.w600,
                         color: pal.ink)),
               ]),
-            Text(m.body, style: TextStyle(fontSize: 13.5, color: pal.ink)),
+            // +1pt (pedido PO 2026-07-22: mensajes del chat más grandes).
+            Text(m.body, style: TextStyle(fontSize: 14.5, color: pal.ink)),
             Text(timeStr, style: TextStyle(fontSize: 10, color: stampColor)),
           ]),
     );

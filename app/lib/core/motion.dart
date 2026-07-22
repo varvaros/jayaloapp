@@ -95,9 +95,9 @@ abstract final class JayaloMotion {
   static const pressedScale = .98;
 
   /// Mantener presionado para confirmar una decisión definitiva (aceptar una
-  /// oferta, desbloquear un contacto). PO 2026-07-21: 3.5 s — barrera
+  /// oferta, desbloquear un contacto). PO 2026-07-22: 2.5 s — barrera
   /// deliberada pero no eterna; evita aceptaciones/cobros por reflejo.
-  static const holdConfirm = Duration(milliseconds: 3500);
+  static const holdConfirm = Duration(milliseconds: 2500);
 
   /// Accesibilidad: con "reducir animaciones" del sistema el movimiento se
   /// apaga (mismo criterio que JayaloLoader).

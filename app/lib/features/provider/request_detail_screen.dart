@@ -105,6 +105,10 @@ class _ProviderRequestDetailScreenState
   /// proveedor la ve para decidir si le conviene ofertar. No expone contacto.
   Map<String, dynamic>? _custRep;
 
+  /// Cuántas ofertas ha recibido esta solicitud (FOMO, pedido PO 2026-07-21):
+  /// solo el número, no se pueden ver. 0 = no se muestra.
+  int _offerCount = 0;
+
   bool get _editing => widget.editOfferId != null;
 
   /// Modos de precio del formulario de SERVICIO (paridad web: fijo / rango /
@@ -129,6 +133,13 @@ class _ProviderRequestDetailScreenState
             .catchError((_) => null);
       }
     });
+    // FOMO: cuántas ofertas ya tiene esta solicitud (best-effort, solo el
+    // número — no se pueden ver las ofertas).
+    offerCountsForRequests([widget.requestId])
+        .then((m) => mounted
+            ? setState(() => _offerCount = m[widget.requestId] ?? 0)
+            : null)
+        .catchError((_) {});
     if (_editing) {
       // Modo edición: no hace falta el chequeo "¿ya ofertó?"; traemos la fila
       // COMPLETA de la oferta y prefijamos el formulario.
@@ -1357,23 +1368,34 @@ class _ProviderRequestDetailScreenState
                 children: [
                   Text(req['title'] as String,
                       style: TextStyle(
-                          // +1pt (pedido PO).
-                          fontSize: 22,
+                          // +2pt (pedido PO 2026-07-22: otro punto).
+                          fontSize: 23,
                           height: 1.2,
                           fontWeight: FontWeight.w600,
                           color: jayaloHead(context))),
-                  if (req['is_wholesale'] == true)
-                    Align(
-                        alignment: Alignment.centerLeft,
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: StatusChip(
+                  if (req['is_wholesale'] == true || _offerCount > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Wrap(spacing: 8, runSpacing: 8, children: [
+                        if (req['is_wholesale'] == true)
+                          StatusChip(
                               label: 'Al por mayor',
                               icon: Icons.storefront_outlined,
                               tone: dark
                                   ? JayaloStatus.respondedDark
                                   : JayaloStatus.respondedLight),
-                        )),
+                        // FOMO (pedido PO 2026-07-21): competencia ya presente.
+                        if (_offerCount > 0)
+                          StatusChip(
+                              label: _offerCount == 1
+                                  ? '1 oferta ya'
+                                  : '$_offerCount ofertas ya',
+                              icon: Icons.local_fire_department,
+                              tone: dark
+                                  ? JayaloStatus.pendingDark
+                                  : JayaloStatus.pendingLight),
+                      ]),
+                    ),
                   if (bullets.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Text('Detalles',

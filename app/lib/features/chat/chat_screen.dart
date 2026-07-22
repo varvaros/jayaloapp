@@ -11,6 +11,7 @@ import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
 import 'widgets/bubbles.dart';
 import 'widgets/chat_dialogs.dart';
+import 'funnel_status_store.dart';
 import '../shared/brand_kit.dart';
 import 'widgets/composer.dart';
 import 'widgets/rating_form.dart';
@@ -396,14 +397,33 @@ class _ChatScreenState extends State<ChatScreen> {
         await _sendRaw('address', body);
       case PlusAction.sendPhoto:
         await _pickAndSendPhoto();
+      case PlusAction.sendStoreItem:
+        await _pickAndSendStoreItem();
       case PlusAction.improveOffer:
         _openImproveOffer(); // Task 10
     }
   }
 
   Future<void> _pickAndSendPhoto() async {
-    final picked = await ImagePicker().pickImage(
-        source: ImageSource.gallery, maxWidth: 1200, imageQuality: 85);
+    // Cámara o galería (pedido PO 2026-07-21: "imágenes del dispositivo").
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Tomar foto'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera)),
+          ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Elegir de la galería'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery)),
+        ]),
+      ),
+    );
+    if (source == null || !mounted) return;
+    final picked = await ImagePicker()
+        .pickImage(source: source, maxWidth: 1200, imageQuality: 85);
     if (picked == null) return;
     final size = await picked.length();
     if (!mounted) return;
@@ -422,6 +442,157 @@ class _ChatScreenState extends State<ChatScreen> {
     } finally {
       if (mounted) setState(() => _uploadingImage = false);
     }
+  }
+
+  /// "De mi tienda" (pedido PO 2026-07-21): el proveedor elige un producto o
+  /// servicio de su tienda y lo comparte en el chat — foto (`kind 'image'`,
+  /// body = URL, mismo formato que la web) + un texto con los detalles
+  /// ([storeItemChatCaption]). Las fotos ya viven en Storage (public read):
+  /// no hay que subir nada.
+  Future<void> _pickAndSendStoreItem() async {
+    List<Map<String, dynamic>> items = const [];
+    try {
+      final bid = await myBusinessId();
+      if (bid != null) items = await myStoreProducts(bid);
+    } catch (_) {}
+    if (!mounted) return;
+    if (items.isEmpty) {
+      _snack('Aún no tienes productos o servicios en tu tienda.');
+      return;
+    }
+    final (productos, servicios) = partitionStoreItems(items);
+    final it = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        Widget row(Map<String, dynamic> p) {
+          final urls =
+              (p['image_urls'] as List?)?.cast<String>() ?? const <String>[];
+          final price = catalogPriceLabel(
+              price: p['price'] as num?,
+              priceMin: p['price_min'] as num?,
+              priceMax: p['price_max'] as num?);
+          return ListTile(
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: urls.isEmpty
+                  ? Container(
+                      width: 44,
+                      height: 44,
+                      color: cs.surfaceContainerHighest,
+                      child: Icon(Icons.storefront_outlined,
+                          size: 20, color: cs.primary))
+                  : Image.network(urls.first,
+                      width: 44,
+                      height: 44,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Container(
+                          width: 44,
+                          height: 44,
+                          color: cs.surfaceContainerHighest)),
+            ),
+            title: Text(p['name'] as String? ?? 'Sin nombre',
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(price, style: const TextStyle(fontSize: 12)),
+            onTap: () => Navigator.pop(ctx, p),
+          );
+        }
+
+        Widget header(String t) => Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              child: Text(t,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurfaceVariant)),
+            );
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(ctx).height * .7),
+            child: ListView(shrinkWrap: true, children: [
+              if (productos.isNotEmpty) header('PRODUCTOS'),
+              ...productos.map(row),
+              if (servicios.isNotEmpty) header('SERVICIOS'),
+              ...servicios.map(row),
+            ]),
+          ),
+        );
+      },
+    );
+    if (it == null || !mounted) return;
+    setState(() => _uploadingImage = true);
+    try {
+      final urls =
+          (it['image_urls'] as List?)?.cast<String>() ?? const <String>[];
+      if (urls.isNotEmpty) await _sendRaw('image', urls.first);
+      final price = catalogPriceLabel(
+          price: it['price'] as num?,
+          priceMin: it['price_min'] as num?,
+          priceMax: it['price_max'] as num?);
+      await _sendRaw('text', storeItemChatCaption(it, priceLabel: price));
+    } catch (_) {
+      _snack('No se pudo enviar el artículo.');
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
+  }
+
+  /// Selector del estado de embudo (privado del proveedor, pedido PO
+  /// 2026-07-22): hoja con los chips; local, no toca la BD.
+  Future<void> _pickFunnelStatus() async {
+    await funnelStatusStore.ensureLoaded();
+    if (!mounted) return;
+    final current = funnelStatusStore.statusKey(widget.conversationId);
+    final picked = await showModalBottomSheet<String?>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text('Estado del cliente',
+                  style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 4),
+              Text('Solo para ti — el cliente no lo ve.',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: [
+                  for (final s in funnelStatuses)
+                    ChoiceChip(
+                      selected: current == s.key,
+                      onSelected: (_) => Navigator.pop(ctx, s.key),
+                      avatar: Text(s.emoji, style: const TextStyle(fontSize: 14)),
+                      label: Text(s.label),
+                      selectedColor: s.color.withValues(alpha: .22),
+                      side: BorderSide(
+                          color: current == s.key ? s.color : cs.outlineVariant),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (current != null)
+                TextButton.icon(
+                  onPressed: () => Navigator.pop(ctx, ''),
+                  icon: const Icon(Icons.close, size: 18),
+                  label: const Text('Quitar estado'),
+                ),
+            ]),
+          ),
+        );
+      },
+    );
+    if (picked == null || !mounted) return; // cerró sin elegir
+    await funnelStatusStore.setStatus(
+        widget.conversationId, picked.isEmpty ? null : picked);
   }
 
   Future<void> _sendQuickItem(QuickItem item) async {
@@ -524,7 +695,9 @@ class _ChatScreenState extends State<ChatScreen> {
           leading: HeaderCircleButton(
               icon: Icons.arrow_back_ios_new,
               tooltip: 'Atrás',
-              onTap: () => context.pop()),
+              // A la LISTA de conversaciones (pedido PO 2026-07-21), no al
+              // home ni a lo que hubiera debajo en la pila.
+              onTap: () => context.go('/messages')),
         ),
         Expanded(
           child: Center(
@@ -543,7 +716,9 @@ class _ChatScreenState extends State<ChatScreen> {
           leading: HeaderCircleButton(
               icon: Icons.arrow_back_ios_new,
               tooltip: 'Atrás',
-              onTap: () => context.pop()),
+              // A la LISTA de conversaciones (pedido PO 2026-07-21), no al
+              // home ni a lo que hubiera debajo en la pila.
+              onTap: () => context.go('/messages')),
         ),
         const Expanded(child: JayaloLoaderBlock()),
       ]));
@@ -620,7 +795,8 @@ class _ChatScreenState extends State<ChatScreen> {
       leading: HeaderCircleButton(
           icon: Icons.arrow_back_ios_new,
           tooltip: 'Atrás',
-          onTap: () => context.pop()),
+          // A la LISTA de conversaciones (pedido PO 2026-07-21).
+          onTap: () => context.go('/messages')),
       title: _peerName ?? (conv['product_name'] as String? ?? 'Acuerdo'),
       subtitle: conv['product_name'] as String?,
       titleAlign: HeaderTitleAlign.center,
@@ -674,6 +850,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     _snack('No se pudo marcar. Intenta de nuevo.');
                   }
                 }
+              case 'funnel':
+                await _pickFunnelStatus();
               case 'report':
                 final r = await showReportDialog(context, reportedName: _peerName);
                 if (!mounted) return;
@@ -700,6 +878,9 @@ class _ChatScreenState extends State<ChatScreen> {
               const PopupMenuItem(value: 'complete', child: Text('Marcar como completado')),
               const PopupMenuItem(value: 'lost', child: Text('Marcar como perdido')),
             ],
+            // Estado de embudo (privado del proveedor, pedido PO 2026-07-22).
+            if (_isProvider)
+              const PopupMenuItem(value: 'funnel', child: Text('Estado del cliente')),
             const PopupMenuItem(value: 'report', child: Text('Denunciar cuenta')),
           ],
         ),

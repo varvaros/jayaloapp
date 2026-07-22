@@ -500,38 +500,96 @@ class _HoldToConfirmButtonState extends State<HoldToConfirmButton>
       child: AnimatedBuilder(
         animation: _c,
         builder: (_, _) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: Stack(alignment: Alignment.center, children: [
-              Container(height: 58, color: fill), // base sólida
-              FractionallySizedBox(
-                widthFactor: _c.value.clamp(0.0, 1),
-                alignment: Alignment.centerLeft,
-                child: Container(height: 58, color: light), // se llena claro
-              ),
-              IgnorePointer(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 19, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(label,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700)),
+          final t = _c.value.clamp(0.0, 1.0);
+          // Aro de progreso ALREDEDOR del botón (pedido PO 2026-07-21): se
+          // pinta fuera del ClipRRect y recorre el perímetro al ritmo del
+          // relleno; el Padding deja el hueco para que respire.
+          return CustomPaint(
+            foregroundPainter:
+                _HoldRingPainter(progress: t, color: fill),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Stack(children: [
+                  Container(height: 58, color: fill), // base sólida
+                  // ANCLADO a la izquierda (pedido PO): antes el Stack con
+                  // alignment center centraba la caja que crece y el relleno
+                  // parecía expandirse del centro hacia los lados.
+                  Positioned.fill(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: t,
+                        heightFactor: 1,
+                        child: Container(color: light), // se llena claro
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(icon, size: 19, color: Colors.white),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(label,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
               ),
-            ]),
+            ),
           );
         },
       ),
     );
   }
+}
+
+/// Borde de progreso del [HoldToConfirmButton]: traza el perímetro redondeado
+/// (arranca arriba a la izquierda, en sentido horario) en proporción al hold.
+/// Vive FUERA del botón — el Padding del botón le deja un hueco de 4px.
+class _HoldRingPainter extends CustomPainter {
+  const _HoldRingPainter({required this.progress, required this.color});
+
+  final double progress;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0) return;
+    const stroke = 2.5;
+    final rrect = RRect.fromRectAndRadius(
+      (Offset.zero & size).deflate(stroke / 2),
+      const Radius.circular(20),
+    );
+    final path = Path()..addRRect(rrect);
+    for (final metric in path.computeMetrics()) {
+      canvas.drawPath(
+        metric.extractPath(0, metric.length * progress),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke
+          ..strokeCap = StrokeCap.round
+          ..color = color,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_HoldRingPainter old) =>
+      old.progress != progress || old.color != color;
 }
 
 /// Segmentado CÁLIDO a ancho completo (estilo `.seg` del mockup): pista arena
@@ -609,33 +667,39 @@ class PillSegmented extends StatelessWidget {
   }
 }
 
-/// Sticker "Al por mayor" para pegar en la esquina de la miniatura de una
-/// solicitud (pedido PO): distingue de un vistazo las solicitudes mayoristas.
-/// Se posiciona dentro de un `Stack` (por eso vive en un `Positioned` propio).
-class WholesaleSticker extends StatelessWidget {
-  const WholesaleSticker({super.key});
+/// Cinta diagonal "POR MAYOR" que cruza la esquina de la miniatura de una
+/// solicitud (pedido PO 2026-07-21, referencia: ribbon "NEW" de esquina).
+/// Reemplaza al sticker-pastilla anterior. Va DENTRO del `Stack` de la
+/// miniatura y se recorta a su mismo radio; usa el [Banner] nativo de
+/// Flutter (el del listón "DEBUG"), así que no hay geometría a mano.
+class WholesaleRibbon extends StatelessWidget {
+  const WholesaleRibbon({super.key, required this.radius});
+
+  /// Radio de la miniatura sobre la que se posa (para que el recorte calce).
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-      decoration: BoxDecoration(
-        color: const Color(0xFF6D28D9), // violeta pleno, alto contraste
-        borderRadius: BorderRadius.circular(7),
-        boxShadow: const [
-          BoxShadow(color: Color(0x33000000), blurRadius: 4, offset: Offset(0, 1)),
-        ],
-      ),
-      child: const Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.inventory_2, size: 9, color: Colors.white),
-        SizedBox(width: 3),
-        Text('Por mayor',
-            style: TextStyle(
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: const Banner(
+            message: 'POR MAYOR',
+            // Esquina superior DERECHA del placeholder — el lado que da al
+            // título (pedido PO 2026-07-22; antes topStart/izquierda).
+            location: BannerLocation.topEnd,
+            color: Color(0xFF6D28D9), // violeta pleno, alto contraste
+            textStyle: TextStyle(
                 color: Colors.white,
-                fontSize: 8.5,
-                height: 1.1,
-                fontWeight: FontWeight.w700)),
-      ]),
+                fontSize: 6.5,
+                height: 1,
+                fontWeight: FontWeight.w900,
+                letterSpacing: .3),
+            child: SizedBox.expand(),
+          ),
+        ),
+      ),
     );
   }
 }

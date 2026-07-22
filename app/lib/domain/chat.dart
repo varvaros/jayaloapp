@@ -269,3 +269,28 @@ const chatEmojis = <String>[
   '❤️','🔥','✨','🎉','💯','✅','❌','⚠️','📦','🚚',
   '💰','💵','🛒','🏷️','📍','📞','💬','⏰','📷','🎁',
 ];
+
+/// Caption de un producto/servicio de MI TIENDA enviado al chat (pedido PO
+/// 2026-07-21: el proveedor comparte artículos "que carguen con algunos
+/// detalles"). Mismo patrón que `PortfolioChatButton` de la web: la IMAGEN va
+/// en un mensaje `kind 'image'` (body = URL) y los detalles en un `text`
+/// aparte — este es ese texto. Puro para poder testearlo sin Flutter.
+String storeItemChatCaption(
+  Map<String, dynamic> item, {
+  required String priceLabel,
+}) {
+  final isService = item['kind'] == 'servicio';
+  final name = (item['name'] as String? ?? '').trim();
+  final desc = (item['description'] as String? ?? '').trim();
+  final condition = item['condition'] as String?;
+  final lines = <String>[
+    '${isService ? '🛠️' : '🛍️'} De mi tienda: $name',
+    'Precio: $priceLabel',
+    if (!isService && condition == 'nuevo') 'Estado: Nuevo',
+    if (!isService && condition == 'usado') 'Estado: Usado',
+    if (item['offers_shipping'] == true) '🚚 Con envío disponible',
+    if (item['offers_installation'] == true) '🔧 Con instalación',
+    if (desc.isNotEmpty) desc.length > 240 ? desc.substring(0, 240) : desc,
+  ];
+  return lines.join('\n');
+}

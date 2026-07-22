@@ -146,6 +146,24 @@ Future<Map<String, String>> myOfferedRequestStatuses(
   };
 }
 
+/// Cuántas ofertas ha recibido cada solicitud (FOMO para el proveedor, pedido
+/// PO 2026-07-21): SOLO el número, nunca las ofertas — la RLS impide leer las
+/// ofertas ajenas, así que se pasa por la RPC SECURITY DEFINER
+/// `offer_counts_for_requests`, que devuelve únicamente el agregado. Devuelve
+/// un mapa requestId→conteo; las solicitudes sin ofertas simplemente no
+/// aparecen (se tratan como 0). Best-effort en quien llama.
+Future<Map<String, int>> offerCountsForRequests(List<String> requestIds) async {
+  if (requestIds.isEmpty) return {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa.rpc('offer_counts_for_requests',
+        params: {'p_request_ids': requestIds}),
+  );
+  return {
+    for (final r in rows)
+      r['request_id'] as String: (r['offer_count'] as num).toInt(),
+  };
+}
+
 /// Solicitudes ABIERTAS (de otros) a las que este proveedor ya ofertó — para
 /// que una oferta hecha en OTRO rubro también aparezca en "Para ti" (pedido
 /// PO: "si alguien ofertó en otro rubro, esa oferta pasa a Para ti").
@@ -1114,6 +1132,22 @@ Future<List<Map<String, dynamic>>> conversationsList() async =>
     List<Map<String, dynamic>>.from(
       await supa.rpc('get_my_conversations_list'),
     );
+
+/// De un set de conversaciones, cuáles tienen AL MENOS un mensaje MÍO (para el
+/// chip "Nueva" = nunca has hablado, pedido PO 2026-07-22). Una sola query
+/// batched sobre las conversaciones ya cargadas; RLS limita a las propias.
+Future<Set<String>> conversationsWithMyMessages(List<String> convIds) async {
+  if (convIds.isEmpty) return {};
+  final uid = supa.auth.currentUser!.id;
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('conversation_messages')
+        .select('conversation_id')
+        .eq('sender_id', uid)
+        .inFilter('conversation_id', convIds),
+  );
+  return {for (final r in rows) r['conversation_id'] as String};
+}
 
 Future<Map<String, dynamic>?> fetchConversation(String id) async => await supa
     .from('conversations')

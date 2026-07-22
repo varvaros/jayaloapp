@@ -87,7 +87,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
     supa
         .from('customer_requests')
         .select(
-            'id,title,status,kind,bullets,user_id,created_at,image_urls,budget_min,budget_max')
+            'id,title,status,kind,bullets,user_id,created_at,image_urls,budget_min,budget_max,is_wholesale')
         .eq('id', widget.requestId)
         .single()
         .then((r) => mounted ? setState(() => _request = r) : null);
@@ -537,6 +537,22 @@ class _DetailSheet extends StatelessWidget {
                     StatusChip(label: _phaseTitle[phase]!, tone: tone),
                   ],
                 ),
+                // Pill "Al por mayor" dentro de la solicitud (pedido PO
+                // 2026-07-22): chip violeta debajo del estado, no toca la
+                // etiqueta de la lista. Solo en productos mayoristas.
+                if (request['is_wholesale'] == true) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: StatusChip(
+                      label: 'Al por mayor',
+                      icon: Icons.inventory_2_outlined,
+                      tone: Theme.of(context).brightness == Brightness.dark
+                          ? JayaloStatus.respondedDark
+                          : JayaloStatus.respondedLight,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 Row(
                   children: [

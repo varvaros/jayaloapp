@@ -449,7 +449,9 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
           const SizedBox(height: 10),
           HoldToConfirmButton(
             tone: HoldToConfirmTone.free,
-            label: 'Aceptar esta oferta',
+            // "Mantener para aceptar" (pedido PO 2026-07-21): el label enseña
+            // el gesto — antes decía "Aceptar esta oferta" y parecía un tap.
+            label: 'Mantener para aceptar',
             onConfirmed: _accept,
           ),
           TextButton(
@@ -484,12 +486,10 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
     final accepted = await acceptOffer(offerId: widget.offer['id'] as String);
     if (!mounted) return;
     if (accepted) {
-      await showAcceptCelebration(context); // 🎉 violeta + cotejo + confeti
-      if (!mounted) return;
-      // Recordatorio de reputación (pedido PO 2026-07-21): el cliente acaba de
-      // comprometer a un proveedor — se le pide cuidar el trato, y se le avisa
-      // que también será valorado.
-      await _showReputationReminder();
+      // 🎉 violeta + cotejo + confeti, con el aviso de reputación DENTRO de la
+      // misma ventana violeta (pedido PO 2026-07-22): al terminar la animación
+      // aparece el texto + "Lo entiendo", que cierra la celebración.
+      await showAcceptCelebration(context, footer: _reputationFooter);
       if (!mounted) return;
       Navigator.pop(context); // cierra la hoja de la oferta
     } else {
@@ -499,57 +499,53 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
     }
   }
 
-  /// Recordatorio de buen trato tras aceptar (pedido PO 2026-07-21).
-  Future<void> _showReputationReminder() => showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        useRootNavigator: true,
-        isScrollControlled: true,
-        builder: (ctx) {
-          final cs = Theme.of(ctx).colorScheme;
-          return Padding(
-            padding: EdgeInsets.only(
-                left: 24,
-                right: 24,
-                bottom: MediaQuery.paddingOf(ctx).bottom + 24),
-            child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: cs.primary.withValues(alpha: .12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.volunteer_activism_outlined,
-                        color: cs.primary, size: 26),
-                  ),
-                  const SizedBox(height: 14),
-                  Text('Cuida tu reputación',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: jayaloHead(ctx))),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Los proveedores son personas ocupadas que hacen un esfuerzo '
-                    'por atenderte. Trátalos con respeto y responde a tiempo: al '
-                    'finalizar, ellos también te valorarán.',
+  /// Aviso de buen trato tras aceptar (pedido PO 2026-07-22): va DENTRO de la
+  /// ventana violeta de la celebración, debajo de la animación. Blanco sobre
+  /// violeta; `dismiss` cierra la celebración.
+  Widget _reputationFooter(VoidCallback dismiss) => ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Cuida tu reputación',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        fontSize: 14.5, height: 1.45, color: cs.onSurfaceVariant),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white)),
+                const SizedBox(height: 10),
+                Text(
+                  'Los proveedores son personas ocupadas que hacen un esfuerzo '
+                  'por atenderte. Trátalos con respeto y responde a tiempo: al '
+                  'finalizar, ellos también te valorarán.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 14.5,
+                      height: 1.45,
+                      color: Colors.white.withValues(alpha: .92)),
+                ),
+                const SizedBox(height: 22),
+                // Botón blanco (contraste sobre el violeta), texto violeta.
+                FilledButton(
+                  onPressed: dismiss,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: _brandViolet(context),
+                    minimumSize: const Size.fromHeight(48),
                   ),
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Lo entiendo'),
-                  ),
-                ]),
-          );
-        },
+                  child: const Text('Lo entiendo',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ]),
+        ),
       );
+
+  Color _brandViolet(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? JayaloColors.dPrimary
+          : JayaloColors.primary;
 
   Future<void> _reject() async {
     final ctrl = TextEditingController();

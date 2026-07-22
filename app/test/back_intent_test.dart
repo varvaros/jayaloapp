@@ -30,6 +30,26 @@ void main() {
       );
     });
 
+    test('dentro de una conversación: ATRÁS va a la lista de conversaciones',
+        () {
+      expect(
+        backActionFor(
+            location: '/messages/abc-123', homePath: '/client', atTop: true),
+        BackAction.goMessages,
+      );
+      expect(
+        backActionFor(
+            location: '/messages/abc-123', homePath: '/provider', atTop: false),
+        BackAction.goMessages,
+      );
+      // La LISTA (/messages, sin id) no es una conversación: sigue la regla
+      // general (fuera del home → home).
+      expect(
+        backActionFor(location: '/messages', homePath: '/client', atTop: true),
+        BackAction.goHome,
+      );
+    });
+
     test('en el home con scroll: ATRÁS sube al tope', () {
       expect(
         backActionFor(location: '/client', homePath: '/client', atTop: false),

@@ -23,6 +23,10 @@ class BackGuard extends StatelessWidget {
     switch (backActionFor(location: loc, homePath: home, atTop: atTop)) {
       case BackAction.goHome:
         context.go(home);
+      case BackAction.goMessages:
+        // Desde una conversación se vuelve a la LISTA de conversaciones
+        // (pedido PO 2026-07-21), no al home.
+        context.go('/messages');
       case BackAction.scrollTop:
         c.animateTo(0,
             duration: const Duration(milliseconds: 350),

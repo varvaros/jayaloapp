@@ -38,6 +38,8 @@ dependencies:
   google_sign_in: 6.2.2
   go_router: ^17.3.0
   url_launcher: ^6.3.2
+  # Deep link de retorno tras recargar por PayPal en la web (jayalo://wallet).
+  app_links: ^6.3.2
   http: ^1.6.0
   webview_flutter: ^4.14.1
   firebase_core: ^4.12.1
@@ -79,18 +81,19 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
 
-# Ícono de la app (isotipo de la marca — PO 2026-07-19): genera el mipmap
+# Ícono de la app (isotipo TV de la marca — 2026-07-21): genera el mipmap
 # legacy Y el adaptativo de Android (`dart run flutter_launcher_icons`).
-# `icon_foreground.png` es el mismo isotipo recortado a su contenido real y
-# reescalado a ~62% del lienzo — la "zona segura" que los launchers no
-# recortan al aplicar su máscara (círculo/squircle/gota…); `icon.png` es el
-# original sin recortar, usado en el mipmap plano (sin máscara) como
-# fallback. Fondo blanco: mismo contraste que trae el asset de origen.
+# `icon_foreground.png` es el isotipo recortado (fondo lila quitado) y
+# reescalado a ~66.6% del lienzo — la "zona segura": el launcher aplica un
+# zoom ~1.5× al drawable adaptativo, así que a 66.6% la mascota se muestra
+# A SANGRE COMPLETA (cuerpo llenando lados y base, sin márgenes laterales)
+# con las antenas intactas, sobre el fondo lila. `icon.png` es la imagen
+# plana completa, usada en el mipmap sin máscara como fallback.
 flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/icon/icon.png"
-  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_background: "#E0CFE5"
   adaptive_icon_foreground: "assets/icon/icon_foreground.png"
 
 # For information on the generic Dart part of this file, see the

@@ -128,7 +128,10 @@ Future<void> startUnlockFlow(
                 child: const Text('Saldo insuficiente — Recargar'),
               )
             else
-              HoldToConfirmButton(onConfirmed: () async {
+              HoldToConfirmButton(
+                  // Copy + costo en el propio botón (pedido PO 2026-07-22).
+                  label: 'Mantener para desbloquear · $cost crédito${cost == 1 ? '' : 's'}',
+                  onConfirmed: () async {
                 Navigator.pop(ctx);
                 final res = await unlockOffer(offer['id'] as String, cost);
                 if (!context.mounted) return;

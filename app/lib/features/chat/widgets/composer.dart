@@ -3,7 +3,14 @@ import '../../../domain/chat.dart';
 import '../quick_replies_store.dart';
 import '../../shared/jayalo_loader.dart';
 
-enum PlusAction { sendAddress, improveOffer, sendContact, sendLocation, sendPhoto }
+enum PlusAction {
+  sendAddress,
+  improveOffer,
+  sendContact,
+  sendLocation,
+  sendPhoto,
+  sendStoreItem,
+}
 
 class ChatComposer extends StatefulWidget {
   const ChatComposer({
@@ -52,6 +59,10 @@ class _ChatComposerState extends State<ChatComposer> {
   void _openPlusMenu() {
     final items = widget.isProvider
         ? const [
+            // Foto del dispositivo + artículos de la tienda (pedido PO
+            // 2026-07-21): el proveedor muestra su mercancía en el chat.
+            (PlusAction.sendPhoto, Icons.add_photo_alternate_outlined, 'Enviar foto'),
+            (PlusAction.sendStoreItem, Icons.storefront_outlined, 'De mi tienda'),
             (PlusAction.sendAddress, Icons.place_outlined, 'Enviar dirección del local'),
             (PlusAction.improveOffer, Icons.bolt_outlined, 'Mejorar oferta (bajar precio)'),
           ]

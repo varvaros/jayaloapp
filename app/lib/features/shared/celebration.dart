@@ -28,9 +28,16 @@ import 'jayalo_loader.dart';
 Future<void> showUnlockCelebration(BuildContext context) =>
     _showCelebration(context, _CelebrationKind.unlock);
 
-/// Overlay de confeti + cotejo (oferta aceptada, gratis).
-Future<void> showAcceptCelebration(BuildContext context) =>
-    _showCelebration(context, _CelebrationKind.accept);
+/// Overlay de confeti + cotejo (oferta aceptada, gratis). `footer` (pedido PO
+/// 2026-07-22): contenido que aparece DENTRO de la misma ventana violeta,
+/// debajo de la animación (ej. el aviso de "Cuida tu reputación" + su botón).
+/// Cuando se pasa, la celebración NO se auto-cierra: espera a que el footer la
+/// cierre con el callback `dismiss`.
+Future<void> showAcceptCelebration(
+  BuildContext context, {
+  Widget Function(VoidCallback dismiss)? footer,
+}) =>
+    _showCelebration(context, _CelebrationKind.accept, footer: footer);
 
 enum _CelebrationKind { unlock, accept }
 
@@ -38,7 +45,11 @@ enum _CelebrationKind { unlock, accept }
 /// círculo del cotejo y explota el confetti; ícono blanco, letra blanca" —
 /// para aceptar Y para desbloquear. Pantalla completa violeta que baja desde
 /// el tope (reemplaza el modal blanco con zoom de la iteración anterior).
-Future<void> _showCelebration(BuildContext context, _CelebrationKind kind) {
+Future<void> _showCelebration(
+  BuildContext context,
+  _CelebrationKind kind, {
+  Widget Function(VoidCallback dismiss)? footer,
+}) {
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -47,7 +58,7 @@ Future<void> _showCelebration(BuildContext context, _CelebrationKind kind) {
         kind == _CelebrationKind.accept ? 'Oferta aceptada' : 'Contacto desbloqueado',
     transitionDuration: const Duration(milliseconds: 420),
     transitionBuilder: _slideFromTopTransition,
-    pageBuilder: (_, _, _) => _CelebrationOverlay(kind: kind),
+    pageBuilder: (_, _, _) => _CelebrationOverlay(kind: kind, footer: footer),
   );
 }
 
@@ -98,8 +109,9 @@ class _CelebrationCard extends StatelessWidget {
 }
 
 class _CelebrationOverlay extends StatefulWidget {
-  const _CelebrationOverlay({required this.kind});
+  const _CelebrationOverlay({required this.kind, this.footer});
   final _CelebrationKind kind;
+  final Widget Function(VoidCallback dismiss)? footer;
   @override
   State<_CelebrationOverlay> createState() => _CelebrationOverlayState();
 }
@@ -109,10 +121,16 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
   late final AnimationController _ctrl = AnimationController(vsync: this)
     ..addStatusListener((s) {
       if (s == AnimationStatus.completed && mounted) {
-        Navigator.of(context).maybePop();
+        // Con footer NO se auto-cierra: revela el aviso y espera su botón.
+        if (widget.footer != null) {
+          setState(() => _revealed = true);
+        } else {
+          Navigator.of(context).maybePop();
+        }
       }
     });
   bool _started = false;
+  bool _revealed = false;
 
   @override
   void didChangeDependencies() {
@@ -147,7 +165,14 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
   }
 
   void _skip() {
-    if (mounted) Navigator.of(context).maybePop();
+    if (!mounted) return;
+    // Con footer, tocar adelanta la animación para mostrar el aviso (no cierra
+    // — el cierre es responsabilidad del botón del footer).
+    if (widget.footer != null) {
+      if (!_revealed) setState(() => _revealed = true);
+      return;
+    }
+    Navigator.of(context).maybePop();
   }
 
   @override
@@ -163,43 +188,59 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
       child: Container(
         color: violet,
         alignment: Alignment.center,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 280,
-              height: 280,
-              child: AnimatedBuilder(
-                animation: _ctrl,
-                builder: (_, _) => accept
-                    ? CustomPaint(
-                        painter: _AcceptPainter(
-                            t: _ctrl.value, reduced: reduced, bg: violet),
-                        size: const Size(280, 280),
-                      )
-                    : _UnlockLockAnimation(t: _ctrl.value, reduced: reduced),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 280,
+                height: 280,
+                child: AnimatedBuilder(
+                  animation: _ctrl,
+                  builder: (_, _) => accept
+                      ? CustomPaint(
+                          painter: _AcceptPainter(
+                              t: _ctrl.value, reduced: reduced, bg: violet),
+                          size: const Size(280, 280),
+                        )
+                      : _UnlockLockAnimation(t: _ctrl.value, reduced: reduced),
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              accept ? '¡Oferta aceptada!' : '¡Contacto desbloqueado!',
-              textAlign: TextAlign.center,
-              // Misma tipografía de marca que el resto de títulos (hereda la
-              // familia del textTheme); blanca sobre el violeta. Pedido PO.
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-            )
-                .animate()
-                .fadeIn(duration: JayaloMotion.base, delay: 350.ms)
-                .slideY(
-                    begin: .25,
-                    end: 0,
-                    duration: JayaloMotion.base,
-                    delay: 350.ms,
-                    curve: JayaloMotion.enter),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                accept ? '¡Oferta aceptada!' : '¡Contacto desbloqueado!',
+                textAlign: TextAlign.center,
+                // Misma tipografía de marca que el resto de títulos (hereda la
+                // familia del textTheme); blanca sobre el violeta. Pedido PO.
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+              )
+                  .animate()
+                  .fadeIn(duration: JayaloMotion.base, delay: 350.ms)
+                  .slideY(
+                      begin: .25,
+                      end: 0,
+                      duration: JayaloMotion.base,
+                      delay: 350.ms,
+                      curve: JayaloMotion.enter),
+              // Aviso dentro de la misma ventana violeta (pedido PO 2026-07-22):
+              // aparece cuando termina (o se adelanta) la animación.
+              if (_revealed && widget.footer != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 24),
+                  child: widget.footer!(() {
+                    if (mounted) Navigator.of(context).maybePop();
+                  }),
+                ).animate().fadeIn(duration: JayaloMotion.base).slideY(
+                      begin: .15,
+                      end: 0,
+                      duration: JayaloMotion.base,
+                      curve: JayaloMotion.enter,
+                    ),
+            ],
+          ),
         ),
       ),
     );

@@ -85,6 +85,11 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   /// 'accepted'/'completed' = "Aceptada". Se recalcula en cada `_runFetch`.
   Map<String, String> _offeredStatuses = {};
 
+  /// Cuántas ofertas ha recibido cada solicitud (FOMO, pedido PO 2026-07-21):
+  /// solo el número, no las ofertas. Sin entrada = 0. Se recalcula en cada
+  /// `_runFetch`.
+  Map<String, int> _offerCounts = {};
+
   late Future<List<Map<String, dynamic>>> _load = _runFetch();
 
   @override
@@ -118,15 +123,21 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
       } catch (_) {}
     }
     // ¿A cuáles de estas solicitudes ya ofertó y en qué estado? (badge
-    // "Ya ofertaste"/"Aceptada").
+    // "Ya ofertaste"/"Aceptada"). Y cuántas ofertas ha recibido CADA una
+    // (FOMO): ambas por el mismo conjunto de ids de marketplace.
+    final ids = [
+      for (final r in items)
+        if (r['source'] != 'store') r['id'] as String,
+    ];
     try {
-      final ids = [
-        for (final r in items)
-          if (r['source'] != 'store') r['id'] as String,
-      ];
       _offeredStatuses = await myOfferedRequestStatuses(ids);
     } catch (_) {
       _offeredStatuses = {};
+    }
+    try {
+      _offerCounts = await offerCountsForRequests(ids);
+    } catch (_) {
+      _offerCounts = {};
     }
     return items;
   }
@@ -194,6 +205,9 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   void _offerRechargeSheet() {
     showModalBottomSheet(
       context: context,
+      // Por el navigator RAÍZ: si no, el sheet queda DEBAJO de la navbar
+      // flotante del shell y tapa el botón (bug PO 2026-07-21).
+      useRootNavigator: true,
       showDragHandle: true,
       builder: (ctx) => Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -222,9 +236,16 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   void _showUnlockSheet(Map<String, dynamic> row) {
     showModalBottomSheet(
       context: context,
+      // Por el navigator RAÍZ: si no, el sheet queda DEBAJO de la navbar
+      // flotante del shell y tapa el botón (bug PO 2026-07-21).
+      useRootNavigator: true,
       showDragHandle: true,
+      // Sube la hoja ~30% de la pantalla (pedido PO 2026-07-22: quedaba muy
+      // abajo) — el relleno inferior la despega del borde.
+      isScrollControlled: true,
       builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        padding: EdgeInsets.fromLTRB(
+            20, 0, 20, 24 + MediaQuery.sizeOf(ctx).height * .30),
         child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -280,6 +301,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
       if (!mounted) return;
       showModalBottomSheet(
         context: context,
+        useRootNavigator: true,
         showDragHandle: true,
         builder: (ctx) => Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -308,6 +330,9 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     if (!mounted) return;
     showModalBottomSheet(
       context: context,
+      // Por el navigator RAÍZ: si no, el sheet queda DEBAJO de la navbar
+      // flotante del shell y tapa el botón (bug PO 2026-07-21).
+      useRootNavigator: true,
       showDragHandle: true,
       builder: (ctx) => Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -427,6 +452,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                       imageUrl: r['image_url'] as String?,
                       wholesale: r['is_wholesale'] == true,
                       offerStatus: _offeredStatuses[r['id']],
+                      offerCount: _offerCounts[r['id']] ?? 0,
                       createdAt: DateTime.parse(r['created_at'] as String),
                       // push (no go): apila el detalle para que el atrás
                       // vuelva a la bandeja (el go reemplazaba la pila y la
@@ -462,6 +488,7 @@ class _InboxCard extends StatelessWidget {
     this.imageUrl,
     this.wholesale = false,
     this.offerStatus,
+    this.offerCount = 0,
   });
 
   final String title;
@@ -479,6 +506,10 @@ class _InboxCard extends StatelessWidget {
   /// ofertó). Pinta el badge: 'pending' → "Ya ofertaste" (verde);
   /// 'accepted'/'completed' → "Aceptada" (ámbar, ¡hay dinero esperando!).
   final String? offerStatus;
+
+  /// Cuántas ofertas ha recibido la solicitud EN TOTAL (FOMO, pedido PO
+  /// 2026-07-21): solo el número, no se pueden ver. 0 = no se muestra chip.
+  final int offerCount;
 
   /// Miniatura de la foto del cliente (nunca ícono roto: cae al ícono si no
   /// hay foto o falla la URL). Antes la lista era solo-ícono — el PO reportó
@@ -524,7 +555,7 @@ class _InboxCard extends StatelessWidget {
             children: [
               _leading(cs),
               if (wholesale)
-                const Positioned(top: -6, left: -6, child: WholesaleSticker()),
+                const WholesaleRibbon(radius: 12),
             ],
           ),
           const SizedBox(width: 12),
@@ -535,10 +566,10 @@ class _InboxCard extends StatelessWidget {
                 Text(title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    // +1pt sobre el tamaño base del cuerpo (pedido PO: subir un
-                    // punto a los títulos de solicitudes).
+                    // +2pt sobre el cuerpo (pedido PO 2026-07-22: otro punto
+                    // sobre el +1 anterior).
                     style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w600)),
+                        fontSize: 16, fontWeight: FontWeight.w600)),
                 if (description.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(description,
@@ -548,35 +579,51 @@ class _InboxCard extends StatelessWidget {
                           fontSize: 13, color: cs.onSurfaceVariant)),
                 ],
                 const SizedBox(height: 4),
-                Row(children: [
-                  Text(timeAgo(createdAt),
-                      style:
-                          TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-                  if (offerStatus != null && offerStatus != 'rejected') ...[
-                    const SizedBox(width: 8),
-                    Builder(builder: (context) {
-                      // Colores del badge (pedido PO 2026-07-21/22): "Ya
-                      // ofertaste" = ÁMBAR (esperando); "Aceptada" = VERDE (te
-                      // eligieron); "Desbloqueado" = VIOLETA (ya pagaste el
-                      // contacto).
-                      final unlocked = offerStatus == 'unlocked' ||
-                          offerStatus == 'completed';
-                      final accepted = offerStatus == 'accepted';
-                      final (label, icon, state) = unlocked
-                          ? ('Desbloqueado', Icons.lock_open, 'unlocked')
-                          : accepted
-                              ? ('Aceptada', Icons.emoji_events_outlined,
-                                  'accepted')
-                              : ('Ya ofertaste', Icons.check_circle_outline,
-                                  'pending');
-                      return StatusChip(
-                        label: label,
-                        icon: icon,
-                        tone: offerBadgeTone(context, state),
-                      );
-                    }),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(timeAgo(createdAt),
+                        style: TextStyle(
+                            fontSize: 11, color: cs.onSurfaceVariant)),
+                    // FOMO (pedido PO 2026-07-21): cuántas ofertas ya recibió
+                    // esta solicitud — solo el número, no se pueden ver. Chip
+                    // ámbar con llama = competencia/urgencia. 0 → no se muestra.
+                    if (offerCount > 0)
+                      StatusChip(
+                        label: offerCount == 1
+                            ? '1 oferta'
+                            : '$offerCount ofertas',
+                        icon: Icons.local_fire_department,
+                        tone: Theme.of(context).brightness == Brightness.dark
+                            ? JayaloStatus.pendingDark
+                            : JayaloStatus.pendingLight,
+                      ),
+                    if (offerStatus != null && offerStatus != 'rejected')
+                      Builder(builder: (context) {
+                        // Colores del badge (pedido PO 2026-07-21/22): "Ya
+                        // ofertaste" = ÁMBAR (esperando); "Aceptada" = VERDE (te
+                        // eligieron); "Desbloqueado" = VIOLETA (ya pagaste el
+                        // contacto).
+                        final unlocked = offerStatus == 'unlocked' ||
+                            offerStatus == 'completed';
+                        final accepted = offerStatus == 'accepted';
+                        final (label, icon, state) = unlocked
+                            ? ('Desbloqueado', Icons.lock_open, 'unlocked')
+                            : accepted
+                                ? ('Aceptada', Icons.emoji_events_outlined,
+                                    'accepted')
+                                : ('Ya ofertaste', Icons.check_circle_outline,
+                                    'pending');
+                        return StatusChip(
+                          label: label,
+                          icon: icon,
+                          tone: offerBadgeTone(context, state),
+                        );
+                      }),
                   ],
-                ]),
+                ),
               ],
             ),
           ),
@@ -588,9 +635,9 @@ class _InboxCard extends StatelessWidget {
 
 /// Tarjeta de un interés de producto (Task 9): un comprador tocó "Me
 /// interesa" en TU producto — otra cosa que una solicitud del marketplace,
-/// así que se tiñe distinto (ámbar mientras hay dinero esperando desbloqueo,
-/// verde cuando ya se desbloqueó — mismo lenguaje de color que
-/// `MyOffersScreen`) y lleva su propia acción: "Conversar · N crédito(s)" o
+/// así que se tiñe distinto (violeta mientras hay dinero esperando desbloqueo
+/// — pedido PO 2026-07-22, antes ámbar; verde cuando ya se desbloqueó) y lleva
+/// su propia acción: "Conversar · N crédito(s)" o
 /// "Abrir chat" si ya se pagó.
 class _InterestCard extends StatelessWidget {
   const _InterestCard({required this.row, required this.onAction});
@@ -604,7 +651,7 @@ class _InterestCard extends StatelessWidget {
     final unlocked = row['unlocked'] == true;
     final tone = unlocked
         ? (dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight)
-        : (dark ? JayaloStatus.acceptedDark : JayaloStatus.acceptedLight);
+        : (dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight);
     final title = (row['title'] as String?) ?? 'Producto';
     final message = (row['description'] as String?) ?? '';
     final imageUrl = row['image_url'] as String?;

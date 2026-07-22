@@ -7,6 +7,7 @@ import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/violet_header.dart';
+import 'funnel_status_store.dart';
 
 const _tabs = [
   ('abierto', 'Abierto'),
@@ -37,10 +38,15 @@ class ConversationsScreen extends StatefulWidget {
     super.key,
     this.leading = const HeaderAvatar(),
     this.actions = const [HeaderBell()],
+    this.loadConversations = conversationsList,
   });
 
   final Widget leading;
   final List<Widget> actions;
+
+  /// Inyectable para el test de regresión del refresh al volver del chat —
+  /// el real toca Supabase, que no se inicializa en los widget-tests.
+  final Future<List<Map<String, dynamic>>> Function() loadConversations;
 
   @override
   State<ConversationsScreen> createState() => _ConversationsScreenState();
@@ -52,21 +58,85 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   String _tab = 'abierto';
   String _q = '';
 
+  /// Refresh al VOLVER a esta pantalla (badges/último mensaje). No puede
+  /// depender del future de `context.push`: el atrás del chat hace
+  /// `go('/messages')` (pedido PO 2026-07-21) y en go_router un `go` REMUEVE
+  /// la ruta apilada SIN completar su future (solo `pop` lo completa) — el
+  /// `await push` de antes se quedaba colgado y la lista nunca refrescaba
+  /// (bug PO: "el contador de pendientes no desaparece al entrar"). En su
+  /// lugar se escucha el `routeInformationProvider` del router (el delegate
+  /// NO sirve: su uri no se mueve con pushes imperativos): cuando la lista
+  /// vuelve a ser la ruta actual (por pop O por go), se recarga.
+  GoRouter? _router;
+  bool _wasCurrent = false;
+
+  /// Mi user id (para saber en qué conversaciones soy el PROVEEDOR: el estado
+  /// de embudo es solo mío y solo aplica a esas). En los widget-tests Supabase
+  /// no está inicializado → guarda en try/catch (queda null, sin funnel).
+  String? _uid;
+
   @override
   void initState() {
     super.initState();
+    try {
+      _uid = supa.auth.currentUser?.id;
+    } catch (_) {}
     _load();
+    // Estado de embudo (local): repintar la lista cuando cambie desde el chat.
+    funnelStatusStore.ensureLoaded();
+    funnelStatusStore.addListener(_onFunnelChanged);
   }
+
+  void _onFunnelChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // maybeOf: los widget-tests del header montan la pantalla sin router.
+    final router = GoRouter.maybeOf(context);
+    if (router != null && !identical(router, _router)) {
+      _router?.routeInformationProvider.removeListener(_onRouteChanged);
+      _router = router..routeInformationProvider.addListener(_onRouteChanged);
+      _wasCurrent = _isCurrent;
+    }
+  }
+
+  bool get _isCurrent =>
+      _router?.routeInformationProvider.value.uri.path == '/messages';
+
+  void _onRouteChanged() {
+    final now = _isCurrent;
+    if (now && !_wasCurrent && mounted) _load();
+    _wasCurrent = now;
+  }
+
+  @override
+  void dispose() {
+    _router?.routeInformationProvider.removeListener(_onRouteChanged);
+    funnelStatusStore.removeListener(_onFunnelChanged);
+    super.dispose();
+  }
+
+  /// Conversaciones donde YA envié algún mensaje (para el chip "Nueva").
+  Set<String> _talked = {};
 
   Future<void> _load() async {
     setState(() => _error = false);
     try {
-      final rows = await conversationsList();
+      final rows = await widget.loadConversations();
       // Contador EXACTO del badge de la barra: aquí ya tenemos el unread real
       // de cada conversación, sin un fetch extra.
       messagesBadge.set(
           rows.fold<int>(0, (s, c) => s + ((c['unread_count'] as int?) ?? 0)));
       if (mounted) setState(() => _all = rows);
+      // "Nueva" = nunca has hablado (best-effort; si falla, no se muestra chip).
+      try {
+        final ids = [for (final c in rows) c['id'] as String];
+        final talked = await conversationsWithMyMessages(ids);
+        if (mounted) setState(() => _talked = talked);
+      } catch (_) {}
     } catch (_) {
       if (mounted) setState(() => _error = true);
     }
@@ -159,24 +229,34 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                           .colorScheme
                           .outlineVariant
                           .withValues(alpha: .5)),
-                  itemBuilder: (context, i) =>
-                      _ConversationRow(c: filtered[i], onOpen: _open)
-                          .cascadeIn(i),
+                  itemBuilder: (context, i) => _ConversationRow(
+                        c: filtered[i],
+                        onOpen: _open,
+                        isNew: !_talked.contains(filtered[i]['id']),
+                        // Estado de embudo SOLO en las conversaciones donde soy
+                        // el proveedor (es mi herramienta privada).
+                        funnel: filtered[i]['provider_user_id'] == _uid
+                            ? funnelStatusByKey(
+                                funnelStatusStore.statusKey(filtered[i]['id'] as String))
+                            : null,
+                      ).cascadeIn(i),
                 ),
               ),
       ),
     ]);
   }
 
-  Future<void> _open(Map<String, dynamic> c) async {
+  void _open(Map<String, dynamic> c) {
     // Task I-2: pasa peer_name/avatar ya resueltos en esta lista para que
     // ChatScreen no tenga que llamar de nuevo al RPC agregado
     // `conversationsList()` solo para esos dos campos.
-    await context.push('/messages/${c['id']}', extra: {
+    // El refresh al volver lo hace el listener del router (_onRouteChanged):
+    // aquí NO se puede esperar el future del push — con el atrás del chat en
+    // `go('/messages')` ese future no se completa nunca.
+    context.push('/messages/${c['id']}', extra: {
       'peer_name': c['peer_name'],
       'peer_avatar_url': c['peer_avatar_url'],
     });
-    _load(); // refresh al volver del chat (badges/último mensaje)
   }
 }
 
@@ -223,9 +303,17 @@ class _SearchPill extends StatelessWidget {
 /// reconoce por ser plana, no una pila de tarjetas). Con no-leídos respira un
 /// tinte tenue y suma el badge violeta; al día, va limpia sobre el blanco.
 class _ConversationRow extends StatelessWidget {
-  const _ConversationRow({required this.c, required this.onOpen});
+  const _ConversationRow(
+      {required this.c, required this.onOpen, this.isNew = false, this.funnel});
   final Map<String, dynamic> c;
-  final Future<void> Function(Map<String, dynamic>) onOpen;
+  final void Function(Map<String, dynamic>) onOpen;
+
+  /// "Nueva": el usuario nunca ha enviado un mensaje en esta conversación.
+  final bool isNew;
+
+  /// Estado de embudo (privado del proveedor) o null. Tiene prioridad sobre
+  /// el chip "Nueva".
+  final FunnelStatus? funnel;
 
   @override
   Widget build(BuildContext context) {
@@ -281,6 +369,41 @@ class _ConversationRow extends StatelessWidget {
                                       : FontWeight.w500,
                                   fontSize: 14,
                                   color: tinted ? jayaloHead(context) : fg))),
+                      // Estado de embudo (privado del proveedor) tiene
+                      // prioridad; si no, "Nueva" = nunca has hablado aquí.
+                      if (funnel != null) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: funnel!.color.withValues(alpha: .18),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                                color: funnel!.color.withValues(alpha: .55)),
+                          ),
+                          child: Text('${funnel!.emoji} ${funnel!.label}',
+                              style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: funnel!.color)),
+                        ),
+                      ] else if (isNew) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: cs.primary,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text('Nueva',
+                              style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white)),
+                        ),
+                      ],
                     ]),
                     const SizedBox(height: 2),
                     Text(
