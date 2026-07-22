@@ -7,6 +7,7 @@ import '../features/chat/conversations_screen.dart';
 import '../features/client/catalog_screen.dart';
 import '../features/client/create_request_screen.dart';
 import '../features/client/my_requests_screen.dart';
+import '../features/client/other_request_screen.dart';
 import '../features/client/product_detail_screen.dart';
 import '../features/client/provider_store_screen.dart';
 import '../features/admin/quick_register_screen.dart';
@@ -147,6 +148,11 @@ GoRouter buildRouter() => GoRouter(
                 builder: (_, s) => BackGuard(
                     child:
                         RequestStatusScreen(requestId: s.pathParameters['id']!))),
+            GoRoute(
+                path: '/client/other-request/:id',
+                builder: (_, s) => BackGuard(
+                    child: OtherRequestScreen(
+                        requestId: s.pathParameters['id']!))),
             // Task 6 (2026-07-18): solo el listado. El cableado de la
             // pestaña en la barra flotante es una tarea posterior — hoy se
             // llega navegando a esta ruta directamente (mismo patrón que
