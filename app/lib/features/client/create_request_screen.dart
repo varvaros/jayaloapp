@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/ai_client.dart';
@@ -131,6 +132,24 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     if (row == null || !mounted) return;
     final seed = RequestSeed.fromRow(row);
     setState(() => _input.text = seed.title);
+
+    final url = seed.imageUrl;
+    if (url == null) return;
+    try {
+      final bytes = await http.readBytes(Uri.parse(url));
+      final png = url.toLowerCase().contains('.png');
+      final mime = png ? 'image/png' : 'image/jpeg';
+      final ext = png ? 'png' : 'jpg';
+      final f = File(
+          '${Directory.systemTemp.path}/seed_'
+          '${DateTime.now().millisecondsSinceEpoch}.$ext');
+      await f.writeAsBytes(bytes);
+      final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
+      if (!mounted) return;
+      setState(() => _photos.add(_PendingPhoto(XFile(f.path), dataUrl)));
+    } catch (_) {
+      // Best-effort: si la descarga falla, se sigue solo con el título.
+    }
   }
 
   /// `force` es SOLO para las continuaciones internas (el auto-"ok" del
