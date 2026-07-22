@@ -32,16 +32,44 @@ String timeAgo(DateTime d) {
 };
 
 class MyRequestsScreen extends StatefulWidget {
-  const MyRequestsScreen({super.key});
+  const MyRequestsScreen({
+    super.key,
+    this.myFetch,
+    this.othersFetch,
+    this.actions = const [HeaderBell()],
+  });
+
+  /// Inyectables para tests (por defecto los fetch reales).
+  final Future<List<(Map<String, dynamic>, RequestPhase, int)>> Function()?
+      myFetch;
+  final Future<List<Map<String, dynamic>>> Function()? othersFetch;
+
+  /// Igual patrón que `CatalogView`/`ProviderInboxView`: `HeaderBell` toca
+  /// `notifCountStore`, cuyo constructor accede a `supa` SIN try/catch (a
+  /// diferencia de `profileStore`, escrito a propósito para no tocar Supabase
+  /// en su constructor) — revienta en widget-tests si Supabase no está
+  /// inicializado. Inyectable para poder pasar `const []` en tests.
+  final List<Widget> actions;
+
   @override
   State<MyRequestsScreen> createState() => _MyRequestsScreenState();
 }
 
 class _MyRequestsScreenState extends State<MyRequestsScreen> {
-  late Future<List<(Map<String, dynamic>, RequestPhase, int)>> _load = _fetch();
+  late Future<List<(Map<String, dynamic>, RequestPhase, int)>> _load =
+      _fetchMine();
   int _seenTick = requestsChanged.value;
   // Coordina "un solo row de swipe abierto a la vez".
   final ValueNotifier<Object?> _openRow = ValueNotifier(null);
+
+  bool _others = false; // false = Mías, true = De otros
+  Future<List<Map<String, dynamic>>>? _othersLoad;
+
+  Future<List<Map<String, dynamic>>> _fetchOthers() =>
+      (widget.othersFetch ?? allOpenRequests)();
+
+  Future<List<(Map<String, dynamic>, RequestPhase, int)>> _fetchMine() =>
+      (widget.myFetch ?? _fetch)();
 
   /// El buscador del header se esconde al bajar por la lista y reaparece al
   /// volver al tope (pedido PO). Mientras está escondido, una flecha permite
@@ -151,7 +179,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     if (mounted) {
       setState(() {
         _seenTick = requestsChanged.value;
-        _load = _fetch();
+        _load = _fetchMine();
       });
     }
   }
@@ -159,7 +187,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   void _refetchIfStale() {
     if (_seenTick != requestsChanged.value) {
       _seenTick = requestsChanged.value;
-      _load = _fetch();
+      _load = _fetchMine();
     }
   }
 
@@ -212,7 +240,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
               leading: const HeaderLeading(),
               title: 'Jayalo',
               titleAlign: HeaderTitleAlign.center,
-              actions: const [HeaderBell()],
+              actions: widget.actions,
               greeting: ListenableBuilder(
                 listenable: profileStore,
                 builder: (context, _) => HeaderGreeting(
@@ -234,8 +262,51 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
               ),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: HeaderSegmented(
+              options: const ['Mías', 'De otros'],
+              index: _others ? 1 : 0,
+              onChanged: (i) => setState(() {
+                _others = i == 1;
+                if (_others) _othersLoad ??= _fetchOthers();
+              }),
+            ),
+          ),
           Expanded(
-            child: NotificationListener<ScrollNotification>(
+            child: _others
+                ? FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _othersLoad,
+                    builder: (context, snap) {
+                      if (!snap.hasData) return const JayaloLoaderBlock();
+                      final list = snap.data!;
+                      if (list.isEmpty) {
+                        return const EmptyState(
+                          message:
+                              'Todavía no hay solicitudes de otros usuarios.',
+                        );
+                      }
+                      return ListView.builder(
+                        padding: EdgeInsets.only(
+                            top: 8,
+                            bottom: 8 + navBarReservedSpace(context)),
+                        itemCount: list.length,
+                        itemBuilder: (_, i) {
+                          final r = list[i];
+                          return _OtherRequestCard(
+                            title: r['title'] as String? ?? 'Solicitud',
+                            createdAt: DateTime.parse(r['created_at'] as String),
+                            imageUrl: _firstImage(r),
+                            kind: r['kind'] as String?,
+                            wholesale: r['is_wholesale'] == true,
+                            onTap: () => context
+                                .push('/client/other-request/${r['id']}'),
+                          ).cascadeIn(i);
+                        },
+                      );
+                    },
+                  )
+                : NotificationListener<ScrollNotification>(
               onNotification: _onListScroll,
               child: RefreshIndicator(
               // onRefresh espera Future<void>; setState para no devolver Future.
@@ -470,7 +541,7 @@ class _RequestCard extends StatelessWidget {
           Stack(clipBehavior: Clip.none, children: [
             _thumb(context, tinted, tone),
             if (wholesale)
-              const Positioned(top: -6, left: -6, child: WholesaleSticker()),
+              const WholesaleRibbon(radius: 16),
           ]),
           const SizedBox(width: 13),
           Expanded(
@@ -483,8 +554,8 @@ class _RequestCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    // +1pt (pedido PO: subir un punto a los títulos).
-                    fontSize: 15,
+                    // +2pt (pedido PO 2026-07-22: otro punto sobre el +1).
+                    fontSize: 16,
                     height: 1.3,
                     fontWeight: FontWeight.w600,
                     color: fg,
@@ -623,4 +694,81 @@ class _RequestCard extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Card de una solicitud AJENA (pestaña "De otros"): foto + título + "hace X"
+/// + cinta POR MAYOR. SIN timeline de fase ni swipe (eso es de las propias).
+class _OtherRequestCard extends StatelessWidget {
+  const _OtherRequestCard({
+    required this.title,
+    required this.createdAt,
+    required this.imageUrl,
+    required this.kind,
+    required this.wholesale,
+    required this.onTap,
+  });
+
+  final String title;
+  final DateTime createdAt;
+  final String? imageUrl;
+  final String? kind;
+  final bool wholesale;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    Widget thumb() {
+      const box = 56.0;
+      final holder = Container(
+        width: box,
+        height: box,
+        decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(14)),
+        child: Icon(kind == 'servicio' ? Icons.handyman_outlined
+            : Icons.inventory_2_outlined, color: cs.onSurfaceVariant),
+      );
+      if (imageUrl == null || imageUrl!.isEmpty) return holder;
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Image.network(imageUrl!, width: box, height: box,
+            fit: BoxFit.cover, errorBuilder: (_, _, _) => holder),
+      );
+    }
+
+    return JayaloCard(
+      onTap: onTap,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(children: [
+        Stack(clipBehavior: Clip.none, children: [
+          thumb(),
+          if (wholesale) const WholesaleRibbon(radius: 14),
+        ]),
+        const SizedBox(width: 13),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 16,
+                      height: 1.3,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface)),
+              const SizedBox(height: 3),
+              Text(timeAgo(createdAt),
+                  style: TextStyle(
+                      fontSize: 11.5, color: cs.onSurfaceVariant)),
+            ],
+          ),
+        ),
+        Icon(Icons.chevron_right, size: 20,
+            color: cs.onSurfaceVariant.withValues(alpha: .4)),
+      ]),
+    );
+  }
 }
