@@ -135,8 +135,10 @@ GoRouter buildRouter() => GoRouter(
                                   child: MediaQuery.removePadding(
                                     context: context,
                                     removeTop: true,
-                                    child: const BackGuard(
-                                        child: CreateRequestScreen()),
+                                    child: BackGuard(
+                                        child: CreateRequestScreen(
+                                            seedFrom: state.uri
+                                                .queryParameters['seedFrom'])),
                                   ),
                                 ),
                               )))),

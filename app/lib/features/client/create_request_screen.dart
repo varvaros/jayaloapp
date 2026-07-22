@@ -12,6 +12,7 @@ import '../../data/repos.dart';
 import '../../domain/ai_turns.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/request_progress.dart';
+import '../../domain/request_seed.dart';
 import '../shell/floating_nav_bar.dart';
 import '../verification/verify_banner.dart';
 import 'request_success_view.dart';
@@ -66,7 +67,8 @@ class _PendingPhoto {
 }
 
 class CreateRequestScreen extends StatefulWidget {
-  const CreateRequestScreen({super.key});
+  const CreateRequestScreen({super.key, this.seedFrom});
+  final String? seedFrom;
   @override
   State<CreateRequestScreen> createState() => _CreateRequestScreenState();
 }
@@ -114,6 +116,22 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   Set<String> _selectedRubros = {};
   Map<String, String> _rubroNames = {};
   int _aiAnswered = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.seedFrom != null) {
+      // fire-and-forget: prefija el input; la foto se adjunta en Task 5.
+      _applySeed(widget.seedFrom!);
+    }
+  }
+
+  Future<void> _applySeed(String seedFrom) async {
+    final row = await requestById(seedFrom);
+    if (row == null || !mounted) return;
+    final seed = RequestSeed.fromRow(row);
+    setState(() => _input.text = seed.title);
+  }
 
   /// `force` es SOLO para las continuaciones internas (el auto-"ok" del
   /// routing): se disparan dentro del `try` del envío anterior, cuando `_busy`
@@ -568,15 +586,19 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             ),
             const SizedBox(height: 12),
             // Tipo de solicitud DEBAJO de la barra (pedido PO). Sin default.
-            // "Al por mayor" SOLO aparece con Producto seleccionado (pedido PO
-            // 2026-07-21): es un extra del producto, no un tercer tipo.
+            // Flujo (PO 2026-07-22): inicial Producto|Servicio; al elegir
+            // Producto se OCULTA Servicio y aparece "Al por mayor"; al elegir
+            // Servicio se oculta Producto. Tocar el tipo elegido de nuevo lo
+            // deselecciona y vuelve a los dos botones.
             Row(children: [
-              Expanded(child: _kindPill('producto', 'Producto')),
-              const SizedBox(width: 8),
-              Expanded(child: _kindPill('servicio', 'Servicio')),
+              if (_kind != 'servicio') Expanded(child: _kindPill('producto', 'Producto')),
               if (_kind == 'producto') ...[
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Expanded(child: _kindPill('mayor', 'Al por mayor')),
+              ],
+              if (_kind != 'producto') ...[
+                if (_kind != 'servicio') const SizedBox(width: 10),
+                Expanded(child: _kindPill('servicio', 'Servicio')),
               ],
             ]),
             if (_photos.isNotEmpty) ...[
@@ -646,6 +668,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           : () => setState(() {
                 if (key == 'mayor') {
                   _wholesale = !_wholesale; // toggle, producto sigue elegido
+                } else if (_kind == key) {
+                  _kind = ''; // deseleccionar → vuelve a los dos botones
+                  _wholesale = false;
                 } else {
                   _kind = key;
                   if (key == 'servicio') _wholesale = false;
@@ -654,7 +679,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
           color: selected ? cs.primary : cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(999),
@@ -663,7 +688,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             textAlign: TextAlign.center,
             maxLines: 1,
             style: TextStyle(
-                fontSize: 12.5,
+                fontSize: 14.5,
                 fontWeight: FontWeight.w600,
                 color: selected ? cs.onPrimary : cs.onSurface)),
       ),
