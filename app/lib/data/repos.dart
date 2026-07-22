@@ -386,7 +386,7 @@ Future<Map<String, dynamic>?> requestById(String id) async => await supa
       // image_url/image_urls: el detalle del proveedor pinta la foto del
       // cliente en el panel ámbar (igual que el detalle del cliente). Sin
       // estas columnas el panel SIEMPRE caía al ícono — "llegan sin imágenes".
-      'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at,image_url,image_urls,budget_min,budget_max',
+      'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at,image_url,image_urls,budget_min,budget_max,wholesale_quantity,wholesale_split,wholesale_packaging,wholesale_note',
     )
     .eq('id', id)
     .maybeSingle();

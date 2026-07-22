@@ -12,6 +12,7 @@ import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
 import '../../domain/offer_message.dart';
 import '../../domain/pricing.dart';
+import '../../domain/wholesale.dart';
 import '../shared/celebration.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
@@ -1396,6 +1397,28 @@ class _ProviderRequestDetailScreenState
                                   : JayaloStatus.pendingLight),
                       ]),
                     ),
+                  if (req['is_wholesale'] == true) ...[
+                    const SizedBox(height: 8),
+                    if (req['wholesale_quantity'] != null)
+                      Text('Cantidad: ${req['wholesale_quantity']}',
+                          style: TextStyle(
+                              fontSize: 13, color: cs.onSurfaceVariant)),
+                    if (req['wholesale_split'] != null)
+                      Text(
+                          'División: ${wholesaleSplitLabel(req['wholesale_split'] as String?)}',
+                          style: TextStyle(
+                              fontSize: 13, color: cs.onSurfaceVariant)),
+                    if (req['wholesale_packaging'] != null)
+                      Text(
+                          'Empaque: ${wholesalePackagingLabel(req['wholesale_packaging'] as String?)}',
+                          style: TextStyle(
+                              fontSize: 13, color: cs.onSurfaceVariant)),
+                    if ((req['wholesale_note'] as String?)?.isNotEmpty ==
+                        true)
+                      Text('Detalle: ${req['wholesale_note']}',
+                          style: TextStyle(
+                              fontSize: 13, color: cs.onSurfaceVariant)),
+                  ],
                   if (bullets.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Text('Detalles',
