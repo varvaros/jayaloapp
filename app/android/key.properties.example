@@ -1,0 +1,12 @@
+# Plantilla del keystore de subida (upload key) de Jayalo.
+#
+# COPIAR a android/key.properties (gitignoreado) y rellenar con los valores
+# reales tras generar el keystore. Ver docs/build-release.md para el comando
+# keytool. NUNCA commitear el key.properties real ni el .jks.
+#
+# storeFile: ruta ABSOLUTA al .jks (recomendado fuera del repo), p. ej.
+#   C:\\Users\\ac\\keys\\jayalo-upload.jks   (usar dobles barras en Windows)
+storeFile=RUTA_ABSOLUTA_AL_KEYSTORE.jks
+storePassword=CAMBIAR
+keyAlias=upload
+keyPassword=CAMBIAR

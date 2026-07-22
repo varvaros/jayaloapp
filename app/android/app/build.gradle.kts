@@ -1,8 +1,24 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("com.google.gms.google-services")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Credenciales de firma del release, cargadas desde android/key.properties
+// (gitignoreado — NUNCA se commitea). Si el archivo no existe (una máquina de
+// dev sin el keystore de subida), el build de release cae a las debug keys para
+// que `flutter run --release` siga funcionando sin romperse. La firma real solo
+// aplica cuando key.properties está presente (CI de publicación / máquina del PO).
+// Ver docs/build-release.md para generar el keystore y el key.properties.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+val hasReleaseSigning = keystorePropertiesFile.exists()
+if (hasReleaseSigning) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -27,11 +43,42 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        // Solo se declara si hay key.properties; si no, no existe la config
+        // "release" y el buildType cae a debug (abajo).
+        if (hasReleaseSigning) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = keystoreProperties["storeFile"]?.let { file(it as String) }
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Firma con el keystore de subida cuando está disponible; si no,
+            // debug keys (para que el release siga compilando en dev).
+            // ⚠️ El keystore de release tiene un SHA-1 DISTINTO al de debug:
+            // hay que registrarlo en Firebase + Google Cloud Console o
+            // Google Sign-In deja de funcionar en el APK firmado de producción.
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+
+            // R8 (ofusca + optimiza la capa Kotlin/Java) + shrink de recursos.
+            // No toca el código Dart: eso se ofusca con `flutter build
+            // --obfuscate` (ver scripts/build-release-apk.ps1). Las reglas de
+            // keep están en proguard-rules.pro.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
