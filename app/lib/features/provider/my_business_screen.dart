@@ -7,6 +7,7 @@ import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../shared/network_image.dart';
 import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
 
@@ -367,7 +368,8 @@ class _BusinessHeaderCard extends StatelessWidget {
         CircleAvatar(
           radius: 28,
           backgroundColor: cs.surfaceContainerHighest,
-          backgroundImage: logoUrl != null ? NetworkImage(logoUrl) : null,
+          backgroundImage:
+              logoUrl != null ? jayaloAvatarImage(logoUrl, 56, context) : null,
           child: logoUrl == null
               ? Icon(Icons.storefront_outlined, color: cs.onSurfaceVariant)
               : null,

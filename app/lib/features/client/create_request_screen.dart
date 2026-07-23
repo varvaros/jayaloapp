@@ -121,6 +121,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   bool _busy = false;
   bool _correcting = false;
   bool _submitted = false;
+  // Token de idempotencia de ESTA solicitud: se fija al ABRIR el compositor (al
+  // crear el State) y se reusa en cada reintento de `_submit`. Si el ack de red
+  // del primer envío se pierde y el usuario reintenta, el servidor rechaza el 2º
+  // INSERT con el mismo token (índice `uq_customer_requests_client_idempotency`)
+  // → sin solicitud duplicada ni doble fan-out de notificaciones.
+  final String _clientRequestId = newRequestClientId();
   List<String> _categories = [];
   List<String> _rubros = [];
   final List<_PendingPhoto> _photos = [];
@@ -508,6 +514,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         wholesale: r.wholesale || _wholesale,
         categories: _categories,
         rubros: _selectedRubros.toList(),
+        clientRequestId: _clientRequestId,
         imageUrls: imageUrls,
         condition: conditionValue,
         urgency: _urgency,

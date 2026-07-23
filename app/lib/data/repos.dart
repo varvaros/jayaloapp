@@ -51,14 +51,29 @@ class MessagesBadgeStore extends ChangeNotifier {
   }
 
   /// Recuenta desde el servidor (best-effort: nunca rompe la barra).
+  ///
+  /// Antes traía TODA la lista de conversaciones (`conversationsList()` = RPC
+  /// agregado con 4 LATERAL por conversación) solo para sumar `unread_count`, y
+  /// esto corre al montar el shell y en CADA `resumed`. Ahora un COUNT directo
+  /// sobre `notifications` (índice parcial `(user_id, kind) WHERE read_at IS
+  /// NULL`): el badge = nº de notificaciones `message_new` sin leer. Es
+  /// equivalente a la suma vieja — el `unread_count` de la RPC es, por
+  /// conversación, ese mismo conteo correlacionado por link, y cada
+  /// notificación `message_new` apunta a una conversación del usuario — pero con
+  /// payload O(1) en vez de O(nº de chats). Auditoría de rendimiento 2026-07-22.
   Future<void> refresh() async {
     try {
-      final rows = await conversationsList();
-      final total = rows.fold<int>(
-        0,
-        (s, c) => s + ((c['unread_count'] as int?) ?? 0),
-      );
-      set(total);
+      final uid = supa.auth.currentUser?.id;
+      if (uid == null) return;
+      final res = await supa
+          .from('notifications')
+          .select('id')
+          .eq('user_id', uid)
+          .eq('kind', 'message_new')
+          .isFilter('read_at', null)
+          .limit(1)
+          .count(CountOption.exact);
+      set(res.count);
     } catch (_) {}
   }
 }
@@ -244,6 +259,22 @@ Future<Map<String, String>> rubroNames(List<String> ids) async {
   return {for (final r in rows) r['id'] as String: r['name'] as String};
 }
 
+final _reqIdRng = Random.secure();
+
+/// UUID v4 para el token de idempotencia de una solicitud. Se genera UNA vez al
+/// abrir el compositor y se reusa en todos los reintentos, para que un ack de red
+/// perdido no cree una solicitud duplicada (lo valida el índice parcial
+/// `uq_customer_requests_client_idempotency`). Sin dependencia nueva: `dart:math`
+/// (ya importado). RFC 4122 v4 (bits de versión/variante fijados).
+String newRequestClientId() {
+  final b = List<int>.generate(16, (_) => _reqIdRng.nextInt(256));
+  b[6] = (b[6] & 0x0f) | 0x40; // versión 4
+  b[8] = (b[8] & 0x3f) | 0x80; // variante 10xx
+  final h = b.map((x) => x.toRadixString(16).padLeft(2, '0')).toList();
+  return '${h[0]}${h[1]}${h[2]}${h[3]}-${h[4]}${h[5]}-${h[6]}${h[7]}-'
+      '${h[8]}${h[9]}-${h[10]}${h[11]}${h[12]}${h[13]}${h[14]}${h[15]}';
+}
+
 /// Insert de solicitud — campos y gates EXACTOS del form final de la web
 /// (requests/new.tsx `submit()` L586-608). Lo del turno `routing` viaja en
 /// `categories`/`rubros`; el resto viene del FORMULARIO final:
@@ -259,6 +290,11 @@ Future<void> submitRequest({
   required bool wholesale,
   required List<String> categories,
   required List<String> rubros,
+  // Token de idempotencia generado por la app al ABRIR el compositor y reusado
+  // en cada reintento (ver `newRequestClientId` y create_request_screen). El
+  // índice parcial `uq_customer_requests_client_idempotency` rechaza el 2º INSERT
+  // con el mismo token → sin solicitud duplicada ni doble fan-out de push.
+  required String clientRequestId,
   List<String> imageUrls = const [],
   String condition = '',
   String urgency = 'Normal - 24 horas',
@@ -286,8 +322,10 @@ Future<void> submitRequest({
 }) async {
   final uid = supa.auth.currentUser!.id;
   final isService = kind == 'servicio';
-  await supa.from('customer_requests').insert({
+  try {
+    await supa.from('customer_requests').insert({
     'user_id': uid,
+    'client_request_id': clientRequestId,
     'kind': kind,
     'title': title,
     'description': bullets.join(' • '),
@@ -328,7 +366,15 @@ Future<void> submitRequest({
         : null,
     'wholesale_note': (!isService && wholesale) ? wholesaleNote : null,
     'target_business_id': null,
-  });
+    });
+  } on PostgrestException catch (e) {
+    // 23505 = choque con `uq_customer_requests_client_idempotency`: el primer
+    // intento SÍ creó la solicitud y su ack de red se perdió; este es el
+    // reintento con el MISMO token. Idempotente: no es error — la solicitud ya
+    // existe, así que se trata como éxito (no se re-inserta, no se re-dispara el
+    // fan-out de notificaciones a proveedores).
+    if (e.code != '23505') rethrow;
+  }
   requestsChanged.value++;
 }
 
@@ -369,12 +415,18 @@ Future<void> submitReview({
   required int rating,
   String comment = '',
 }) async {
-  await supa.from('business_reviews').insert({
+  // upsert (no insert): una reseña VIGENTE por (negocio, reseñador). Re-reseñar
+  // EDITA la existente en vez de acumular filas que sesgarían el promedio de
+  // reputación (`get_business_ratings`). Requiere el índice UNIQUE
+  // `uq_business_reviews_one_per_reviewer` (migración 20260722180100) para que el
+  // `onConflict` resuelva; hasta que esa migración esté aplicada, NO liberar una
+  // build que ejerza este camino. `business_reviews` hoy solo la escribe la web.
+  await supa.from('business_reviews').upsert({
     'business_id': businessId,
     'reviewer_id': supa.auth.currentUser!.id,
     'rating': rating,
     'comment': comment,
-  });
+  }, onConflict: 'business_id,reviewer_id');
 }
 
 // ── Proveedor: bandeja, ofertas, wallet y desbloqueo ────────────────────────
@@ -507,7 +559,8 @@ Future<void> makeOffer({
   String deliveryTime = '',
 }) async {
   final uid = supa.auth.currentUser!.id;
-  await supa.from('provider_offers').insert({
+  try {
+    await supa.from('provider_offers').insert({
     'user_id': uid,
     'business_id': businessId,
     'request_id': request['id'],
@@ -535,7 +588,16 @@ Future<void> makeOffer({
       productWarranty: productWarranty,
       deliveryTime: deliveryTime,
     ),
-  });
+    });
+  } on PostgrestException catch (e) {
+    // 23505 = choque con el índice UNIQUE parcial
+    // `uq_provider_offers_active_per_request_user`: el proveedor YA tiene una
+    // oferta VIVA en esta solicitud (reintento tras un ack de red perdido o
+    // doble envío). Idempotente: no es error — la oferta ya existe, se retorna
+    // en silencio para que la UI muestre éxito, no un fallo.
+    if (e.code == '23505') return;
+    rethrow;
+  }
 }
 
 /// Edita una oferta PENDIENTE propia (RLS: dueño). No toca

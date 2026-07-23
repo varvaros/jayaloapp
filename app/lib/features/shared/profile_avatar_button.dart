@@ -11,6 +11,8 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'network_image.dart';
+
 import '../../core/config.dart';
 import '../../core/motion.dart';
 import '../../core/session_state.dart';
@@ -367,7 +369,8 @@ class _ProfileMenuHeaderState extends State<_ProfileMenuHeader> {
                     CircleAvatar(
                       radius: 66,
                       backgroundColor: cs.primaryContainer,
-                      backgroundImage: url != null ? NetworkImage(url) : null,
+                      backgroundImage:
+                          url != null ? jayaloAvatarImage(url, 132, context) : null,
                       child: _uploadingAvatar
                           ? const SizedBox(
                               width: 32,
@@ -520,7 +523,8 @@ class _ProfileAvatarButtonState extends State<ProfileAvatarButton> {
             onPressed: _openMenu,
             icon: CircleAvatar(
               radius: 16,
-              backgroundImage: url != null ? NetworkImage(url) : null,
+              backgroundImage:
+                  url != null ? jayaloAvatarImage(url, 32, context) : null,
               child: url == null ? Text(_store.initial) : null,
             ),
           );

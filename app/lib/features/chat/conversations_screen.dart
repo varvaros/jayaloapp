@@ -6,6 +6,7 @@ import '../../domain/chat_time.dart';
 import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../shared/network_image.dart';
 import '../shared/violet_header.dart';
 import 'funnel_status_store.dart';
 
@@ -340,7 +341,7 @@ class _ConversationRow extends StatelessWidget {
               CircleAvatar(
                 radius: 23,
                 backgroundImage: c['peer_avatar_url'] != null
-                    ? NetworkImage(c['peer_avatar_url'] as String)
+                    ? jayaloAvatarImage(c['peer_avatar_url'] as String, 46, context)
                     : null,
                 child: c['peer_avatar_url'] == null
                     ? const Icon(Icons.person_outline)

@@ -463,7 +463,8 @@ class _BusinessCard extends StatelessWidget {
         CircleAvatar(
           radius: 24,
           backgroundColor: cs.surfaceContainerHighest,
-          backgroundImage: logoUrl != null ? NetworkImage(logoUrl) : null,
+          backgroundImage:
+              logoUrl != null ? jayaloAvatarImage(logoUrl, 48, context) : null,
           child: logoUrl == null
               ? Icon(
                   revealed ? Icons.storefront_outlined : Icons.help_outline,

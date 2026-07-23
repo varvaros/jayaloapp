@@ -229,7 +229,7 @@ Widget buildBubble(
       ? CircleAvatar(
           radius: 16,
           backgroundImage: peerAvatarUrl != null
-              ? NetworkImage(peerAvatarUrl)
+              ? jayaloAvatarImage(peerAvatarUrl, 32, context)
               : null,
           child: peerAvatarUrl == null
               ? const Icon(Icons.person_outline, size: 16)
