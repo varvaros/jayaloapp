@@ -808,21 +808,21 @@ class _InterestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
     final unlocked = row['unlocked'] == true;
-    final tone = unlocked
-        ? (dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight)
-        : (dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight);
+    // Mismo diseño que la tarjeta de oferta aceptada (pedido PO 2026-07-22):
+    // fondo BLANCO y botón VERDE de aceptar oferta (JayaloColors.success).
+    final green = dark ? JayaloColors.dSuccess : JayaloColors.success;
     final title = (row['title'] as String?) ?? 'Producto';
     final message = (row['description'] as String?) ?? '';
     final imageUrl = row['image_url'] as String?;
     final createdAt = DateTime.parse(row['created_at'] as String);
     return JayaloCard(
-      tint: tone.bg,
       onTap: onAction,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _thumb(imageUrl, tone),
+          _thumb(imageUrl, green),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -830,7 +830,7 @@ class _InterestCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.favorite, size: 13, color: tone.ink),
+                    Icon(Icons.favorite, size: 13, color: green),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
@@ -838,7 +838,7 @@ class _InterestCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: tone.ink,
+                          color: green,
                         ),
                       ),
                     ),
@@ -851,7 +851,7 @@ class _InterestCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: tone.ink,
+                    color: jayaloHead(context),
                   ),
                 ),
                 if (message.isNotEmpty) ...[
@@ -862,7 +862,7 @@ class _InterestCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 12,
-                      color: tone.ink.withValues(alpha: .8),
+                      color: cs.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -871,7 +871,7 @@ class _InterestCard extends StatelessWidget {
                   timeAgo(createdAt),
                   style: TextStyle(
                     fontSize: 11,
-                    color: tone.ink.withValues(alpha: .7),
+                    color: cs.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -881,8 +881,8 @@ class _InterestCard extends StatelessWidget {
           FilledButton(
             onPressed: onAction,
             style: FilledButton.styleFrom(
-              backgroundColor: tone.ink,
-              foregroundColor: tone.bg,
+              backgroundColor: green,
+              foregroundColor: Colors.white,
             ),
             child: Text(
               unlocked
@@ -898,16 +898,16 @@ class _InterestCard extends StatelessWidget {
 
   /// Miniatura con placeholder/error builder (nunca un ícono roto si la
   /// URL falla o el producto no tiene fotos).
-  Widget _thumb(String? url, StatusTone tone) {
+  Widget _thumb(String? url, Color accent) {
     const box = 44.0;
     Widget placeholder() => Container(
       width: box,
       height: box,
       decoration: BoxDecoration(
-        color: tone.ink.withValues(alpha: .14),
+        color: accent.withValues(alpha: .14),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Icon(Icons.inventory_2_outlined, size: 20, color: tone.ink),
+      child: Icon(Icons.inventory_2_outlined, size: 20, color: accent),
     );
     if (url == null || url.isEmpty) return placeholder();
     return ClipRRect(
