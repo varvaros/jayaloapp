@@ -1,8 +1,9 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../../core/brand.dart';
 import '../../data/repos.dart';
-import '../../domain/response_time.dart';
 import '../shared/brand_kit.dart';
 import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
@@ -41,10 +42,9 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
   List<Map<String, dynamic>> _productos = const [];
   List<Map<String, dynamic>> _servicios = const [];
   List<Map<String, dynamic>> _portfolio = const [];
-  // Reputación bajo el nombre (adornos, no bloquean la tienda si fallan):
-  // rating del negocio + copy de tiempo de respuesta (null si <5 muestras).
-  BusinessRating? _rating;
-  String? _responseCopy;
+  // Bloque de confianza bajo el nombre (adorno, no bloquea la tienda si falla):
+  // rating, trabajos completados, tiempo de respuesta, miembro-desde y sellos.
+  BusinessStorefrontStats? _stats;
   // Orden por defecto (productos primero); se recalcula tras cargar según el
   // tipo de negocio.
   List<_Section> _sections = const [
@@ -65,12 +65,10 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       // (sin él se cae al orden por defecto).
       final typeF =
           providerBusinessType(widget.businessId).catchError((_) => null);
-      // Reputación: adornos bajo el nombre. Si la RPC falla, la línea
+      // Bloque de confianza: adorno bajo el nombre. Si la RPC falla, el bloque
       // simplemente no aparece — nunca se tira la tienda a la pantalla de error.
-      final ratingF = businessRatings([widget.businessId])
-          .catchError((_) => <String, BusinessRating>{});
-      final responseF = businessResponseTimes([widget.businessId])
-          .catchError((_) => <String, BusinessResponseTime>{});
+      final statsF = businessStorefrontStats(widget.businessId)
+          .catchError((_) => null);
       final results = await Future.wait([
         myStoreProducts(widget.businessId),
         myPortfolioItems(widget.businessId),
@@ -78,10 +76,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       final (prod, serv) = partitionStoreItems(results[0]);
       final portfolio = results[1];
       final type = await typeF;
-      final rating = (await ratingF)[widget.businessId];
-      final rt = (await responseF)[widget.businessId];
-      final responseCopy =
-          rt == null ? null : responseTimeCopy(rt.medianMinutes, rt.samples);
+      final stats = await statsF;
       // Perfil de servicios: técnico, o (heurística de respaldo) sin productos
       // pero con servicios/trabajos publicados.
       final servicesFirst = type == 'tecnico' ||
@@ -91,8 +86,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
         _productos = prod;
         _servicios = serv;
         _portfolio = portfolio;
-        _rating = rating;
-        _responseCopy = responseCopy;
+        _stats = stats;
         _sections = servicesFirst
             ? const [_Section.servicios, _Section.trabajos, _Section.productos]
             : const [_Section.productos, _Section.servicios, _Section.trabajos];
@@ -110,51 +104,158 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
         _Section.trabajos => 'Trabajos',
       };
 
-  /// Fila de reputación bajo el nombre: estrella + nota (si hay reseñas) y/o
-  /// "Regularmente responde en ~X" (si supera el umbral de muestras). Devuelve
-  /// `null` si no hay nada que mostrar — un proveedor nuevo no enseña un "0.0"
-  /// ni una promesa de respuesta sin datos. Va sobre el header violeta, así que
-  /// el texto es blanco (la estrella conserva su ámbar de marca).
-  Widget? _reputationStrip() {
-    final r = _rating;
-    final hasRating = r != null && r.avg > 0 && r.count > 0;
-    final copy = _responseCopy;
-    if (!hasRating && copy == null) return null;
-    return Padding(
-      padding: const EdgeInsets.only(left: 4),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (hasRating) ...[
-          const Icon(Icons.star_rounded, size: 15, color: Color(0xFFF5C542)),
-          const SizedBox(width: 3),
-          Text(r.avg.toStringAsFixed(1),
-              style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white)),
-          const SizedBox(width: 4),
-          Text('(${r.count})',
-              style: TextStyle(
-                  fontSize: 12, color: Colors.white.withValues(alpha: .78))),
-        ],
-        if (hasRating && copy != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text('·',
-                style: TextStyle(
-                    fontSize: 12, color: Colors.white.withValues(alpha: .55))),
+  String _fmtResp(double minutes) {
+    final m = minutes.round();
+    if (m < 60) return '~$m min';
+    final h = (m / 60).round();
+    if (h < 24) return '~$h h';
+    final d = (h / 24).round();
+    return '~$d ${d == 1 ? 'día' : 'días'}';
+  }
+
+  /// Bloque de confianza bajo el nombre (paridad con la tienda web): avatar
+  /// BLUREADO del proveedor (identidad anónima hasta desbloquear) + grid de
+  /// rating / trabajos completados / tiempo de respuesta / miembro-desde +
+  /// sellos de verificación. `null` mientras carga o si no hay datos.
+  Widget? _repCard() {
+    final s = _stats;
+    if (s == null) return null;
+    final cs = Theme.of(context).colorScheme;
+    final hasRating = s.avgRating != null && s.reviewsCount > 0;
+    final badges = <(IconData, String)>[
+      if (s.identityVerified || s.businessVerified || s.whatsappVerified)
+        (Icons.verified_outlined, 'Proveedor verificado'),
+      if (s.identityVerified) (Icons.badge_outlined, 'Identidad verificada'),
+      if (s.businessVerified) (Icons.apartment_outlined, 'RNC verificado'),
+      if (s.whatsappVerified) (Icons.chat_outlined, 'WhatsApp verificado'),
+    ];
+    return JayaloCard(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          // Avatar BLUREADO: placeholder casi imperceptible (no hay foto real
+          // hasta desbloquear), mismo trato que el avatar del cliente.
+          ClipOval(
+            child: ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+              child: Container(
+                width: 46,
+                height: 46,
+                color: cs.primary.withValues(alpha: .35),
+                child: Icon(Icons.person, size: 28, color: cs.primary),
+              ),
+            ),
           ),
-        if (copy != null) ...[
-          Icon(Icons.schedule_rounded,
-              size: 13, color: Colors.white.withValues(alpha: .85)),
-          const SizedBox(width: 4),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.alias,
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: jayaloHead(context))),
+                Text('Nombre y foto al desbloquear',
+                    style:
+                        TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+        ]),
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(
+            child: _statCell(
+              hasRating ? s.avgRating!.toStringAsFixed(1) : 'Nuevo',
+              hasRating
+                  ? '${s.reviewsCount} reseña${s.reviewsCount == 1 ? '' : 's'}'
+                  : 'sin reseñas aún',
+              star: hasRating,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _statCell('${s.completedJobs}',
+                s.completedJobs == 1 ? 'trabajo completado' : 'trabajos completados'),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: _statCell(
+              s.medianResponseMinutes != null
+                  ? _fmtResp(s.medianResponseMinutes!)
+                  : '—',
+              'tiempo de respuesta',
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _statCell(
+              s.memberSinceYear?.toString() ?? '—',
+              'miembro desde',
+            ),
+          ),
+        ]),
+        if (badges.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Divider(height: 1, color: cs.outlineVariant.withValues(alpha: .5)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 14,
+            runSpacing: 8,
+            children: [
+              for (final (icon, label) in badges)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(icon, size: 15, color: JayaloColors.success),
+                  const SizedBox(width: 5),
+                  Text(label,
+                      style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: JayaloColors.success)),
+                ]),
+            ],
+          ),
+        ],
+      ]),
+    );
+  }
+
+  /// Celda de un indicador del grid: cifra grande (con estrella opcional) + una
+  /// etiqueta corta debajo, sobre una píldora tenue.
+  Widget _statCell(String value, String label, {bool star = false}) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: .5),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(children: [
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          if (star) ...[
+            const Icon(Icons.star_rounded, size: 16, color: Color(0xFFF5A623)),
+            const SizedBox(width: 3),
+          ],
           Flexible(
-            child: Text(copy,
+            child: Text(value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                    fontSize: 11.5, color: Colors.white.withValues(alpha: .85))),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: jayaloHead(context))),
           ),
-        ],
+        ]),
+        const SizedBox(height: 2),
+        Text(label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 10.5, color: cs.onSurfaceVariant)),
       ]),
     );
   }
@@ -162,7 +263,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
   @override
   Widget build(BuildContext context) {
     final section = _sections[_tab];
-    final reputation = _reputationStrip();
+    final repCard = _repCard();
     return Scaffold(
       body: Column(children: [
         VioletHeader(
@@ -173,22 +274,13 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
           ),
           title: widget.alias,
           subtitle: 'Tienda del proveedor',
-          below: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (reputation != null) ...[
-                reputation,
-                const SizedBox(height: 12),
-              ],
-              HeaderSegmented(
-                options: [for (final s in _sections) _sectionLabel(s)],
-                index: _tab,
-                onChanged: (i) => setState(() => _tab = i),
-              ),
-            ],
+          below: HeaderSegmented(
+            options: [for (final s in _sections) _sectionLabel(s)],
+            index: _tab,
+            onChanged: (i) => setState(() => _tab = i),
           ),
         ),
+        ?repCard,
         Expanded(
           child: _loading
               ? const JayaloLoaderBlock()

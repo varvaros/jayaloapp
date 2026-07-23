@@ -1949,33 +1949,43 @@ Future<Map<String, BusinessRating>> businessRatings(
   };
 }
 
-// ── Tiempo de respuesta del proveedor (tienda) ────────────────────────────
+// ── Indicadores de confianza de la tienda (paridad con la web) ─────────────
 
-/// Mediana (minutos) de las últimas 20 respuestas del proveedor en chat, más el
-/// número de muestras que la respaldan. La UI decide si mostrar la línea según
-/// el umbral (`response_time.dart`). Interfaz por lote a propósito (espeja
-/// `businessRatings`), aunque la tienda pida un solo negocio.
-typedef BusinessResponseTime = ({double? medianMinutes, int samples});
+/// Bloque de reputación de la tienda anónima: rating, trabajos completados,
+/// tiempo de respuesta (promedio solicitud→oferta, como la web), año de alta y
+/// sellos de verificación. Todo agregado/booleano — cero PII.
+typedef BusinessStorefrontStats = ({
+  double? avgRating,
+  int reviewsCount,
+  int completedJobs,
+  double? medianResponseMinutes,
+  int? memberSinceYear,
+  bool identityVerified,
+  bool businessVerified,
+  bool whatsappVerified,
+});
 
-/// Trae el tiempo de respuesta de varios negocios en UNA llamada vía la RPC
-/// `get_business_response_times`. De-duplica ids y no llama a la red con lista
-/// vacía. Un negocio sin muestras vuelve como `(null, 0)`.
-Future<Map<String, BusinessResponseTime>> businessResponseTimes(
-  List<String> businessIds,
+/// Trae el bloque de confianza de un negocio en UNA llamada vía la RPC
+/// `get_business_storefront_stats`. `null` si no hay fila (negocio inexistente).
+Future<BusinessStorefrontStats?> businessStorefrontStats(
+  String businessId,
 ) async {
-  final ids = businessIds.toSet().toList();
-  if (ids.isEmpty) return {};
   final rows = List<Map<String, dynamic>>.from(
-    await supa
-        .rpc('get_business_response_times', params: {'_business_ids': ids}),
+    await supa.rpc('get_business_storefront_stats',
+        params: {'_business_id': businessId}),
   );
-  return {
-    for (final r in rows)
-      r['business_id'] as String: (
-        medianMinutes: (r['median_response_minutes'] as num?)?.toDouble(),
-        samples: (r['response_samples'] as num?)?.toInt() ?? 0,
-      ),
-  };
+  if (rows.isEmpty) return null;
+  final r = rows.first;
+  return (
+    avgRating: (r['avg_rating'] as num?)?.toDouble(),
+    reviewsCount: (r['reviews_count'] as num?)?.toInt() ?? 0,
+    completedJobs: (r['completed_jobs'] as num?)?.toInt() ?? 0,
+    medianResponseMinutes: (r['median_response_minutes'] as num?)?.toDouble(),
+    memberSinceYear: (r['member_since_year'] as num?)?.toInt(),
+    identityVerified: r['identity_verified'] == true,
+    businessVerified: r['business_verified'] == true,
+    whatsappVerified: r['whatsapp_verified'] == true,
+  );
 }
 
 // ── Opiniones con texto (Mi tienda) ────────────────────────────────────────
