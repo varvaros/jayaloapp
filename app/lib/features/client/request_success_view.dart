@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/brand.dart';
-import '../shared/brand_kit.dart';
-import '../shared/celebration.dart' show ConfettiBurst;
+import '../shared/celebration.dart' show ConfettiBurst, JayiCelebration;
 
 /// Éxito al publicar una solicitud (spec 2026-07-19-solicitud-gamificada):
 /// mascota celebrando + confeti breve + botón para ver la solicitud ya en la
@@ -20,16 +18,10 @@ class RequestPublishedView extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            // La mascota CELEBRANDO (ojo feliz "∩", sonrisón, saltitos y
-            // antenas vibrando) — entra con un pop y sigue de fiesta mientras
-            // cae el confeti.
-            const JayaloMascotFace(size: 96, mood: MascotMood.celebrate)
-                .animate()
-                .scale(
-                    begin: const Offset(.7, .7),
-                    end: const Offset(1, 1),
-                    duration: 250.ms,
-                    curve: Curves.easeOutBack),
+            // Jayi CELEBRANDO en Lottie (salto con parpadeo, antenas y brazos)
+            // sobre el fondo claro — sigue de fiesta mientras cae el confeti.
+            const JayiCelebration(
+                size: 130, semanticsLabel: '¡Solicitud publicada!'),
             const SizedBox(height: 20),
             Text('¡Tu solicitud está publicada!',
                 textAlign: TextAlign.center,

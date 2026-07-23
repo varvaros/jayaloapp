@@ -26,6 +26,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:lottie/lottie.dart';
 
 import '../../core/brand.dart';
 import '../../core/motion.dart';
@@ -39,8 +40,7 @@ import 'jayalo_loader.dart';
 Future<void> showUnlockCelebration(
   BuildContext context, {
   Widget Function(VoidCallback dismiss)? footer,
-}) =>
-    _showCelebration(context, _CelebrationKind.unlock, footer: footer);
+}) => _showCelebration(context, _CelebrationKind.unlock, footer: footer);
 
 /// Overlay de confeti + cotejo (oferta aceptada, gratis). `footer` (pedido PO
 /// 2026-07-22): contenido que aparece DENTRO de la misma ventana violeta,
@@ -50,8 +50,7 @@ Future<void> showUnlockCelebration(
 Future<void> showAcceptCelebration(
   BuildContext context, {
   Widget Function(VoidCallback dismiss)? footer,
-}) =>
-    _showCelebration(context, _CelebrationKind.accept, footer: footer);
+}) => _showCelebration(context, _CelebrationKind.accept, footer: footer);
 
 enum _CelebrationKind { unlock, accept }
 
@@ -68,8 +67,9 @@ Future<void> _showCelebration(
     context: context,
     barrierDismissible: false,
     barrierColor: Colors.transparent, // el violeta cubre todo: sin velo extra
-    barrierLabel:
-        kind == _CelebrationKind.accept ? 'Oferta aceptada' : 'Contacto desbloqueado',
+    barrierLabel: kind == _CelebrationKind.accept
+        ? 'Oferta aceptada'
+        : 'Contacto desbloqueado',
     transitionDuration: const Duration(milliseconds: 420),
     transitionBuilder: _slideFromTopTransition,
     pageBuilder: (_, _, _) => _CelebrationOverlay(kind: kind, footer: footer),
@@ -78,13 +78,20 @@ Future<void> _showCelebration(
 
 /// Entrada de las celebraciones: el panel violeta BAJA desde arriba de la
 /// pantalla (ease-out, frena al llegar) y al cerrarse vuelve a subir.
-Widget _slideFromTopTransition(BuildContext context, Animation<double> anim,
-    Animation<double> secondaryAnimation, Widget child) {
+Widget _slideFromTopTransition(
+  BuildContext context,
+  Animation<double> anim,
+  Animation<double> secondaryAnimation,
+  Widget child,
+) {
   final offset = Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero)
-      .animate(CurvedAnimation(
+      .animate(
+        CurvedAnimation(
           parent: anim,
           curve: JayaloMotion.enter,
-          reverseCurve: JayaloMotion.exit));
+          reverseCurve: JayaloMotion.exit,
+        ),
+      );
   return SlideTransition(position: offset, child: child);
 }
 
@@ -92,10 +99,19 @@ Widget _slideFromTopTransition(BuildContext context, Animation<double> anim,
 /// un ZOOM IN (con un pequeño rebote) y sale con ZOOM OUT, acompañado de un
 /// fundido del fondo. `easeOutBack` da el pop de entrada; al revertir la ruta,
 /// la escala baja de vuelta = zoom out.
-Widget _zoomModalTransition(BuildContext context, Animation<double> anim,
-    Animation<double> secondaryAnimation, Widget child) {
-  final scale = Tween<double>(begin: .82, end: 1).animate(CurvedAnimation(
-      parent: anim, curve: Curves.easeOutBack, reverseCurve: Curves.easeIn));
+Widget _zoomModalTransition(
+  BuildContext context,
+  Animation<double> anim,
+  Animation<double> secondaryAnimation,
+  Widget child,
+) {
+  final scale = Tween<double>(begin: .82, end: 1).animate(
+    CurvedAnimation(
+      parent: anim,
+      curve: Curves.easeOutBack,
+      reverseCurve: Curves.easeIn,
+    ),
+  );
   return FadeTransition(
     opacity: anim,
     child: ScaleTransition(scale: scale, child: child),
@@ -177,8 +193,8 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
     _ctrl.duration = reduced
         ? const Duration(milliseconds: 600)
         : (accept
-            ? const Duration(milliseconds: 3000)
-            : const Duration(milliseconds: 2600));
+              ? const Duration(milliseconds: 3000)
+              : const Duration(milliseconds: 2600));
     _ctrl.forward();
     // Sonido de la celebración (pedido PO 2026-07-21: sonido en ambas). El
     // audio es decorativo — playSfx nunca lanza.
@@ -215,10 +231,10 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
     // amarillo que aparece en overlays sin Material ancestro.
     final titleStyle = accept
         ? Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-              decoration: TextDecoration.none,
-            )
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            decoration: TextDecoration.none,
+          )
         : const TextStyle(
             fontFamily: 'Nunito',
             fontVariations: [FontVariation('wght', 800)],
@@ -235,82 +251,117 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
       // Material transparente da el DefaultTextStyle sano (sin subrayados).
       child: Material(
         type: MaterialType.transparency,
-        child: Container(
-          color: violet,
-          alignment: Alignment.center,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 280,
-                  height: 280,
-                  // La MISMA mascota blanca (ojo/boca violeta) + confeti para
-                  // AMBAS celebraciones (pedido PO 2026-07-23: unificar aceptar
-                  // con desbloquear). Antes aceptar dibujaba un cotejo.
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ColoredBox(color: violet), // pantalla COMPLETA violeta
+            // UNA sola explosión de confeti a PANTALLA COMPLETA que cae con
+            // física real hasta salir por abajo (pedido PO 2026-07-23). Detrás
+            // del contenido y sin robar toques.
+            if (!reduced)
+              Positioned.fill(
+                child: IgnorePointer(
                   child: AnimatedBuilder(
                     animation: _ctrl,
-                    builder: (_, _) =>
-                        _UnlockMascotBurst(t: _ctrl.value, reduced: reduced),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  accept ? '¡Oferta aceptada!' : '¡Contacto desbloqueado!',
-                  textAlign: TextAlign.center,
-                  style: titleStyle,
-                )
-                    .animate()
-                    .fadeIn(duration: JayaloMotion.base, delay: 350.ms)
-                    .slideY(
-                        begin: .25,
-                        end: 0,
-                        duration: JayaloMotion.base,
-                        delay: 350.ms,
-                        curve: JayaloMotion.enter),
-                // Mensaje juguetón de la mascota (pedido PO 2026-07-22): corto
-                // y rápido, para no retrasar el acceso al contacto.
-                if (!accept)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(32, 10, 32, 0),
-                    child: Text(
-                      '¡Yeiii! ¡Ahora sí! ¡Ahora ve por esa venta!',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: 'Nunito',
-                        fontVariations: const [FontVariation('wght', 700)],
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15.5,
-                        height: 1.35,
-                        color: Colors.white.withValues(alpha: .92),
-                        decoration: TextDecoration.none,
+                    builder: (_, _) => CustomPaint(
+                      painter: _ConfettiField(
+                        seconds:
+                            (_ctrl.lastElapsedDuration ?? Duration.zero)
+                                .inMicroseconds /
+                            1e6,
+                        bits: _celebBits,
+                        flash: true,
                       ),
                     ),
-                  )
-                      .animate()
-                      .fadeIn(duration: JayaloMotion.base, delay: 600.ms)
-                      .slideY(
-                          begin: .3,
+                  ),
+                ),
+              ),
+            Center(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // La mascota Jayi celebrando (Lottie), variante BLANCA para
+                    // resaltar sobre el violeta a pantalla completa.
+                    SizedBox(
+                      width: 230,
+                      height: 230,
+                      child: JayiCelebration(
+                        onViolet: true,
+                        size: 230,
+                        semanticsLabel: accept
+                            ? 'Oferta aceptada'
+                            : 'Contacto desbloqueado',
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                          accept
+                              ? '¡Oferta aceptada!'
+                              : '¡Contacto desbloqueado!',
+                          textAlign: TextAlign.center,
+                          style: titleStyle,
+                        )
+                        .animate()
+                        .fadeIn(duration: JayaloMotion.base, delay: 350.ms)
+                        .slideY(
+                          begin: .25,
                           end: 0,
                           duration: JayaloMotion.base,
-                          delay: 600.ms,
-                          curve: JayaloMotion.enter),
-                // Aviso dentro de la misma ventana violeta (pedido PO
-                // 2026-07-22): aparece cuando termina (o se adelanta) la
-                // animación.
-                if (_revealed && widget.footer != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 24),
-                    child: widget.footer!(_dismissOnce),
-                  ).animate().fadeIn(duration: JayaloMotion.base).slideY(
-                        begin: .15,
-                        end: 0,
-                        duration: JayaloMotion.base,
-                        curve: JayaloMotion.enter,
-                      ),
-              ],
+                          delay: 350.ms,
+                          curve: JayaloMotion.enter,
+                        ),
+                    // Mensaje juguetón de la mascota (pedido PO 2026-07-22): corto
+                    // y rápido, para no retrasar el acceso al contacto.
+                    if (!accept)
+                      Padding(
+                            padding: const EdgeInsets.fromLTRB(32, 10, 32, 0),
+                            child: Text(
+                              '¡Yeiii! ¡Ahora sí! ¡Ahora ve por esa venta!',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontFamily: 'Nunito',
+                                fontVariations: const [
+                                  FontVariation('wght', 700),
+                                ],
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15.5,
+                                height: 1.35,
+                                color: Colors.white.withValues(alpha: .92),
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                          )
+                          .animate()
+                          .fadeIn(duration: JayaloMotion.base, delay: 600.ms)
+                          .slideY(
+                            begin: .3,
+                            end: 0,
+                            duration: JayaloMotion.base,
+                            delay: 600.ms,
+                            curve: JayaloMotion.enter,
+                          ),
+                    // Aviso dentro de la misma ventana violeta (pedido PO
+                    // 2026-07-22): aparece cuando termina (o se adelanta) la
+                    // animación.
+                    if (_revealed && widget.footer != null)
+                      Padding(
+                            padding: const EdgeInsets.only(top: 24),
+                            child: widget.footer!(_dismissOnce),
+                          )
+                          .animate()
+                          .fadeIn(duration: JayaloMotion.base)
+                          .slideY(
+                            begin: .15,
+                            end: 0,
+                            duration: JayaloMotion.base,
+                            curve: JayaloMotion.enter,
+                          ),
+                  ],
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -319,21 +370,97 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
 
 Color _brandPrimary(BuildContext context) =>
     Theme.of(context).brightness == Brightness.dark
-        ? JayaloColors.dPrimary
-        : JayaloColors.primary;
+    ? JayaloColors.dPrimary
+    : JayaloColors.primary;
+
+/// La mascota **Jayi celebrando** (salto con squash, parpadeo, antenas y brazos
+/// animados) — animación Lottie exportada del SVG de Adobe Animate del PO y
+/// convertida con el conversor propio (pedido PO 2026-07-23). Reemplaza al
+/// [JayaloMascotFace] en modo `celebrate` de las pantallas de éxito.
+///
+/// [onViolet] elige la variante de color, con el mismo criterio que antes
+/// invertía `bodyColor`/`inkColor`:
+///   • `false` (por defecto) → Jayi violeta, para fondos claros (tarjeta de
+///     "oferta enviada", éxito de crear solicitud).
+///   • `true` → Jayi blanca con ojo/boca violeta, para el fondo violeta de la
+///     celebración a pantalla completa (aceptar / desbloquear).
+///
+/// Con "reducir animaciones" del sistema queda quieta en el primer frame (pose
+/// de reposo, brazos arriba).
+class JayiCelebration extends StatelessWidget {
+  const JayiCelebration({
+    super.key,
+    this.onViolet = false,
+    this.size = 160,
+    this.semanticsLabel,
+  });
+
+  final bool onViolet;
+  final double size;
+  final String? semanticsLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduced = JayaloMotion.reduced(context);
+    final asset = onViolet
+        ? 'assets/anim/jayi_celebrando_blanco.json'
+        : 'assets/anim/jayi_celebrando.json';
+    return Semantics(
+      label: semanticsLabel,
+      image: true,
+      child: Lottie.asset(
+        asset,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        repeat: !reduced,
+        animate: !reduced,
+      ),
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Confeti compartido de las celebraciones (aceptar y desbloquear).
 // ---------------------------------------------------------------------------
 
 class _Bit {
-  const _Bit(this.angle, this.speed, this.size, this.color, this.spin, this.rect);
+  const _Bit(
+    this.angle,
+    this.speed,
+    this.size,
+    this.color,
+    this.spin,
+    this.shape, {
+    this.swayFreq = 0,
+    this.swayPhase = 0,
+  });
   final double angle; // dirección de disparo (rad)
-  final double speed; // 0..1, qué tan lejos llega
+  final double speed; // 0..1, velocidad inicial del estallido
   final double size; // lado/diámetro en px
   final Color color;
-  final double spin; // giro por unidad de t
-  final bool rect; // rectángulo vs círculo
+  final double spin; // giro por segundo
+  final int shape; // 0 = serpentina, 1 = círculo, 2 = estrella
+  final double swayFreq; // rad/s del vaivén tipo hoja al flotar
+  final double swayPhase;
+}
+
+/// Estrella de 5 puntas (radio exterior 1, interior 1/2.5) construida UNA vez y
+/// escalada por pieza — el confeti mezcla serpentinas, círculos y estrellas.
+final Path _confettiStar = _buildStar();
+Path _buildStar() {
+  const points = 5;
+  const ext = 1.0;
+  const intR = 1.0 / 2.5;
+  final step = 2 * math.pi / points;
+  final half = step / 2;
+  final p = Path()..moveTo(ext, 0);
+  for (var a = 0.0; a < 2 * math.pi - 1e-6; a += step) {
+    p.lineTo(math.cos(a) * ext, math.sin(a) * ext);
+    p.lineTo(math.cos(a + half) * intR, math.sin(a + half) * intR);
+  }
+  p.close();
+  return p;
 }
 
 /// Paleta festiva anclada a la marca (nada de arcoíris de payaso). Sobre el
@@ -348,113 +475,133 @@ const _confettiPalette = <Color>[
   Color(0xFFEE6C9B), // rosa suave
 ];
 
-final List<_Bit> _confettiBits = _buildBits();
+/// Paleta para el confeti sobre fondo CLARO (tarjeta de oferta enviada, éxito
+/// de crear solicitud): el violeta de marca sí se lee, más dorado, rosa y verde.
+const _cardConfettiPalette = <Color>[
+  JayaloColors.primary, // violeta de marca
+  Color(0xFFF2B705), // dorado
+  Color(0xFFEE6C9B), // rosa
+  JayaloColors.success, // verde
+];
 
-List<_Bit> _buildBits() {
-  final rnd = math.Random(7); // semilla fija → determinista (y testeable)
-  // Ráfaga más tupida (PO 2026-07-21: "confetti de mayor duración" — junto con
-  // la ventana de aceptar ampliada a 3 s, cae más y por más tiempo).
-  return List.generate(46, (i) {
+final List<_Bit> _celebBits = _buildFieldBits(150, _confettiPalette, 7);
+final List<_Bit> _cardBits = _buildFieldBits(80, _cardConfettiPalette, 11);
+
+/// Piezas de una explosión: dirección radial + velocidad inicial, forma, giro y
+/// un vaivén de "hoja que cae" propio de cada una (semilla fija → determinista).
+List<_Bit> _buildFieldBits(int count, List<Color> palette, int seed) {
+  final rnd = math.Random(seed);
+  return List.generate(count, (i) {
     final angle = rnd.nextDouble() * math.pi * 2;
-    final speed = 0.45 + rnd.nextDouble() * 0.55;
-    final size = 6.0 + rnd.nextDouble() * 7.0;
-    final color = _confettiPalette[i % _confettiPalette.length];
-    final spin = (rnd.nextDouble() * 2 - 1) * math.pi * 3;
-    return _Bit(angle, speed, size, color, spin, rnd.nextBool());
+    final speed = 0.35 + rnd.nextDouble() * 0.9; // magnitud del estallido
+    final size = 6.0 + rnd.nextDouble() * 12.0; // de chispas a serpentinas
+    final color = palette[i % palette.length];
+    final spin =
+        (rnd.nextDouble() * 2 - 1) * (2 + rnd.nextDouble() * 3); // rad/s
+    return _Bit(
+      angle,
+      speed,
+      size,
+      color,
+      spin,
+      rnd.nextInt(3),
+      swayFreq: 2.0 + rnd.nextDouble() * 2.5,
+      swayPhase: rnd.nextDouble() * 6.3,
+    );
   });
 }
 
-/// Ráfaga radial de [_confettiBits] con gravedad y fundido, avanzada a [ct]
-/// (0..1 ya con curva aplicada). Compartida por el cotejo de aceptar y la
-/// celebración de desbloqueo de la mascota.
-void _paintConfettiBurst(Canvas canvas, Size size, double ct) {
-  if (ct <= 0) return;
-  final c = size.center(Offset.zero);
-  for (final b in _confettiBits) {
-    final dist = b.speed * size.width * 0.72 * ct;
-    final gravity = size.height * 0.35 * ct * ct;
-    final pos = Offset(
-      c.dx + math.cos(b.angle) * dist,
-      c.dy + math.sin(b.angle) * dist + gravity - size.height * 0.04,
-    );
-    final fade = ct < 0.6 ? 1.0 : (1 - (ct - 0.6) / 0.4).clamp(0.0, 1.0);
-    if (fade <= 0) continue;
-    final paint = Paint()..color = b.color.withValues(alpha: fade);
-    canvas.save();
-    canvas.translate(pos.dx, pos.dy);
-    canvas.rotate(b.spin * ct);
-    if (b.rect) {
-      canvas.drawRect(
-          Rect.fromCenter(
-              center: Offset.zero, width: b.size, height: b.size * 0.5),
-          paint);
-    } else {
-      canvas.drawCircle(Offset.zero, b.size * 0.4, paint);
-    }
-    canvas.restore();
-  }
-}
+/// UNA sola explosión de confeti con FÍSICA por tiempo real (pedido PO
+/// 2026-07-23: "una sola explosión que explota, cae hasta salir de la pantalla,
+/// flotando con física"):
+///
+///   • Estallido: cada pieza sale del centro con velocidad inicial radial.
+///   • Arrastre de aire (drag lineal, cte [_k]): frena el estallido en ~0.4 s;
+///     el desplazamiento integra a `v0·(1-e^{-k·t})/k` → el spread llega a un
+///     límite y se detiene (deja de "volar").
+///   • Gravedad → velocidad TERMINAL [_vt]: pasado el estallido todas caen a
+///     ritmo parejo (flotan hacia abajo) hasta SALIR por el borde inferior.
+///   • Vaivén lateral tipo hoja mientras flota + giro (aleteo de las planas).
+///
+/// Sin fundido: nada se desvanece en el aire — las piezas se van solo al cruzar
+/// el borde de abajo. Se avanza con [seconds] = tiempo real transcurrido.
+class _ConfettiField extends CustomPainter {
+  _ConfettiField({
+    required this.seconds,
+    required this.bits,
+    this.flash = false,
+  });
+  final double seconds;
+  final List<_Bit> bits;
+  final bool flash; // destello blanco inicial (solo sobre el fondo violeta)
 
-// ---------------------------------------------------------------------------
-// La mascota celebrando (desbloqueo pagado).
-//
-// Rediseño PO 2026-07-22: el candado de glifos Material se reemplaza por la
-// MASCOTA en modo celebrate + la misma ráfaga de confeti del cotejo — la
-// continuación natural del "¡PUM!" del hold (la mascota explotó en la hoja y
-// reaparece aquí festejando). Reduce-motion: mascota quieta, sin confeti.
-// ---------------------------------------------------------------------------
-
-/// La mascota entra con un pop (0 → 0.16) mientras el confeti explota de una;
-/// el resto de la ventana la lleva su propio motor de `celebrate` (saltitos,
-/// antenas). Recibe [t] 0..1 del controlador de la celebración.
-class _UnlockMascotBurst extends StatelessWidget {
-  const _UnlockMascotBurst({required this.t, required this.reduced});
-  final double t;
-  final bool reduced;
-
-  @override
-  Widget build(BuildContext context) {
-    final appear = reduced
-        ? 1.0
-        : Curves.easeOutBack.transform((t / 0.16).clamp(0.0, 1.0));
-    final violet = _brandPrimary(context);
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        if (!reduced)
-          Positioned.fill(
-              child: CustomPaint(painter: _UnlockBurstPainter(t))),
-        Transform.scale(
-          scale: appear,
-          // Mascota BLANCA con ojo/boca violeta (pedido PO 2026-07-22): sobre
-          // el fondo violeta a pantalla completa el cuerpo violeta de siempre
-          // se perdía; invertido, la mascota resalta.
-          child: JayaloMascotFace(
-              size: 150,
-              mood: MascotMood.celebrate,
-              bodyColor: Colors.white,
-              inkColor: violet,
-              semanticsLabel: 'Contacto desbloqueado'),
-        ),
-      ],
-    );
-  }
-}
-
-/// El confeti de la celebración de desbloqueo: la misma ráfaga compartida,
-/// disparada desde el arranque (t 0 → 0.75) — el eco del "¡PUM!" de la hoja.
-class _UnlockBurstPainter extends CustomPainter {
-  _UnlockBurstPainter(this.t);
-  final double t;
+  static const double _k = 2.8; // arrastre del aire (1/s)
 
   @override
   void paint(Canvas canvas, Size size) {
-    final ct = Curves.easeOut.transform((t / 0.75).clamp(0.0, 1.0));
-    _paintConfettiBurst(canvas, size, ct);
+    if (seconds <= 0) return;
+    final ox = size.width / 2;
+    final oy = size.height * 0.42; // el estallido nace donde está la mascota
+    final ex = (1 - math.exp(-_k * seconds)) / _k; // ∫ del decaimiento del drag
+    final vt = size.height * 0.62; // velocidad terminal de caída (px/s)
+    final swayIn = 1 - math.exp(-_k * seconds); // el vaivén entra al frenar
+
+    // Destello inicial: anillo blanco que se expande y se apaga (~0.35 s).
+    if (flash) {
+      final ring = (seconds / 0.35).clamp(0.0, 1.0);
+      if (ring < 1) {
+        final rr = Curves.easeOut.transform(ring);
+        canvas.drawCircle(
+          Offset(ox, oy),
+          size.shortestSide * (0.05 + rr * 0.5),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(0.5, 7 * (1 - rr))
+            ..color = Colors.white.withValues(alpha: 0.45 * (1 - rr)),
+        );
+      }
+    }
+
+    for (final b in bits) {
+      // Velocidades iniciales del estallido (px/s), radiales desde el centro.
+      final v0x = math.cos(b.angle) * b.speed * size.width * 2.2;
+      final v0y = math.sin(b.angle) * b.speed * size.height * 1.1;
+      // Posición integrando drag (horizontal) + drag→terminal (vertical).
+      final sway =
+          size.width *
+          0.03 *
+          math.sin(seconds * b.swayFreq + b.swayPhase) *
+          swayIn;
+      final px = ox + v0x * ex + sway;
+      final py = oy + vt * seconds + (v0y - vt) * ex;
+      if (py - b.size > size.height) continue; // ya salió por abajo
+      final paint = Paint()..color = b.color; // SIN fundido
+      canvas.save();
+      canvas.translate(px, py);
+      canvas.rotate(b.spin * seconds);
+      switch (b.shape) {
+        case 1: // círculo
+          canvas.drawCircle(Offset.zero, b.size * 0.45, paint);
+        case 2: // estrella
+          canvas.scale(b.size * 0.62);
+          canvas.drawPath(_confettiStar, paint);
+        default: // serpentina que aletea (voltea sobre su eje) al caer
+          canvas.scale(1, math.cos(b.spin * seconds * 1.6));
+          canvas.drawRect(
+            Rect.fromCenter(
+              center: Offset.zero,
+              width: b.size * 1.3,
+              height: b.size * 0.45,
+            ),
+            paint,
+          );
+      }
+      canvas.restore();
+    }
   }
 
   @override
-  bool shouldRepaint(_UnlockBurstPainter old) => old.t != t;
+  bool shouldRepaint(_ConfettiField old) => old.seconds != seconds;
 }
 
 // ---------------------------------------------------------------------------
@@ -497,8 +644,10 @@ class HoldMascotLayer extends StatefulWidget {
 
 class _HoldMascotLayerState extends State<HoldMascotLayer>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _pum =
-      AnimationController(vsync: this, duration: JayaloMotion.mascotPum);
+  late final AnimationController _pum = AnimationController(
+    vsync: this,
+    duration: JayaloMotion.mascotPum,
+  );
   bool _fired = false;
 
   @override
@@ -545,7 +694,8 @@ class _HoldMascotLayerState extends State<HoldMascotLayer>
         // (t==0) parte de _restScale y de ahí se infla.
         double scale;
         if (t < .4) {
-          scale = _restScale +
+          scale =
+              _restScale +
               (1.0 - _restScale) * Curves.easeOut.transform(t / .4); // suave
         } else if (t < .8) {
           scale = 1.0 + .55 * ((t - .4) / .4); // sigue inflando
@@ -561,9 +711,14 @@ class _HoldMascotLayerState extends State<HoldMascotLayer>
         var wobble = Offset.zero;
         var jitter = 0.0;
         if (b == 0 && t > .4) {
-          final amp = t < .8 ? 1.6 * ((t - .4) / .4) : 1.6 + 1.9 * ((t - .8) / .2);
-          wobble = Offset(math.sin(t * math.pi * 2 * 45),
-                  math.cos(t * math.pi * 2 * 38)) *
+          final amp = t < .8
+              ? 1.6 * ((t - .4) / .4)
+              : 1.6 + 1.9 * ((t - .8) / .2);
+          wobble =
+              Offset(
+                math.sin(t * math.pi * 2 * 45),
+                math.cos(t * math.pi * 2 * 38),
+              ) *
               amp;
           jitter = math.sin(t * math.pi * 2 * 33) * .015 * (amp / 1.6);
         }
@@ -584,11 +739,18 @@ class _HoldMascotLayerState extends State<HoldMascotLayer>
                 child: CustomPaint(
                   size: const Size(300, 300),
                   painter: _PumPainter(
-                      t: b, color: Theme.of(context).colorScheme.primary),
+                    t: b,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               ),
-            _mascot(context,
-                scale: scale, opacity: opacity, wobble: wobble, jitter: jitter),
+            _mascot(
+              context,
+              scale: scale,
+              opacity: opacity,
+              wobble: wobble,
+              jitter: jitter,
+            ),
           ],
         );
       },
@@ -597,11 +759,13 @@ class _HoldMascotLayerState extends State<HoldMascotLayer>
 
   /// La mascota (halo + cara feliz) en su posición de la hoja, con la
   /// transformación dada. Compartida por el reposo, el hold y reduce-motion.
-  Widget _mascot(BuildContext context,
-      {required double scale,
-      double opacity = 1,
-      Offset wobble = Offset.zero,
-      double jitter = 0}) {
+  Widget _mascot(
+    BuildContext context, {
+    required double scale,
+    double opacity = 1,
+    Offset wobble = Offset.zero,
+    double jitter = 0,
+  }) {
     if (opacity <= 0) return const SizedBox.shrink();
     return Align(
       alignment: widget.alignment,
@@ -618,15 +782,16 @@ class _HoldMascotLayerState extends State<HoldMascotLayer>
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: RadialGradient(colors: [
-                    Colors.white.withValues(alpha: .85),
-                    Colors.white.withValues(alpha: 0),
-                  ]),
+                  gradient: RadialGradient(
+                    colors: [
+                      Colors.white.withValues(alpha: .85),
+                      Colors.white.withValues(alpha: 0),
+                    ],
+                  ),
                 ),
                 child: const Padding(
                   padding: EdgeInsets.all(14),
-                  child:
-                      JayaloMascotFace(size: 92, mood: MascotMood.happy),
+                  child: JayaloMascotFace(size: 92, mood: MascotMood.happy),
                 ),
               ),
             ),
@@ -661,7 +826,13 @@ class _PumPainter extends CustomPainter {
       final size = 5.0 + rnd.nextDouble() * 6.0;
       final spin = (rnd.nextDouble() * 2 - 1) * math.pi * 3;
       return _Bit(
-          angle, speed, size, palette[i % palette.length], spin, rnd.nextBool());
+        angle,
+        speed,
+        size,
+        palette[i % palette.length],
+        spin,
+        rnd.nextInt(3),
+      );
     });
   }
 
@@ -673,12 +844,13 @@ class _PumPainter extends CustomPainter {
     // Onda expansiva: crece y se apaga.
     final ring = Curves.easeOutCubic.transform(t);
     canvas.drawCircle(
-        c,
-        base * (0.9 + ring * 1.9),
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(0.5, base * 0.12 * (1 - ring))
-          ..color = color.withValues(alpha: 0.5 * (1 - ring)));
+      c,
+      base * (0.9 + ring * 1.9),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(0.5, base * 0.12 * (1 - ring))
+        ..color = color.withValues(alpha: 0.5 * (1 - ring)),
+    );
 
     // Partículas radiales con leve gravedad y fundido.
     final pt = Curves.easeOut.transform(t);
@@ -694,13 +866,21 @@ class _PumPainter extends CustomPainter {
       canvas.save();
       canvas.translate(pos.dx, pos.dy);
       canvas.rotate(bit.spin * pt);
-      if (bit.rect) {
-        canvas.drawRect(
+      switch (bit.shape) {
+        case 1: // círculo
+          canvas.drawCircle(Offset.zero, bit.size * 0.4, paint);
+        case 2: // estrella
+          canvas.scale(bit.size * 0.55);
+          canvas.drawPath(_confettiStar, paint);
+        default: // rectángulo
+          canvas.drawRect(
             Rect.fromCenter(
-                center: Offset.zero, width: bit.size, height: bit.size * 0.5),
-            paint);
-      } else {
-        canvas.drawCircle(Offset.zero, bit.size * 0.4, paint);
+              center: Offset.zero,
+              width: bit.size,
+              height: bit.size * 0.5,
+            ),
+            paint,
+          );
       }
       canvas.restore();
     }
@@ -759,10 +939,11 @@ class _RatingThanksOverlayState extends State<_RatingThanksOverlay> {
       star = star
           .animate()
           .scale(
-              begin: const Offset(.3, .3),
-              end: const Offset(1, 1),
-              duration: 480.ms,
-              curve: Curves.elasticOut)
+            begin: const Offset(.3, .3),
+            end: const Offset(1, 1),
+            duration: 480.ms,
+            curve: Curves.elasticOut,
+          )
           .then()
           .shimmer(duration: 900.ms, color: Colors.white);
     }
@@ -776,28 +957,43 @@ class _RatingThanksOverlayState extends State<_RatingThanksOverlay> {
           child: SizedBox(
             width: 280,
             height: 220,
-            child: Stack(alignment: Alignment.center, children: [
-              if (!reduced)
-                const Positioned.fill(
-                    child: IgnorePointer(child: ConfettiBurst())),
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  star,
-                  const SizedBox(height: 12),
-                  Text('¡Gracias por tu calificación!',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                if (!reduced)
+                  const Positioned.fill(
+                    child: IgnorePointer(child: ConfettiBurst()),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      star,
+                      const SizedBox(height: 12),
+                      Text(
+                        '¡Gracias por tu calificación!',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w600,
-                          color: jayaloHead(context))),
-                  const SizedBox(height: 4),
-                  Text('Tu opinión ayuda a la comunidad.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
-                ]),
-              ),
-            ]),
+                          color: jayaloHead(context),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tu opinión ayuda a la comunidad.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -854,34 +1050,46 @@ class _OfferSentOverlayState extends State<_OfferSentOverlay> {
           child: SizedBox(
             width: 300,
             height: 300,
-            child: Stack(alignment: Alignment.center, children: [
-              if (!reduced)
-                const Positioned.fill(
-                    child: IgnorePointer(child: ConfettiBurst())),
-              Padding(
-                padding: const EdgeInsets.all(28),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  JayaloMascotFace(size: 120, mood: MascotMood.celebrate)
-                      .animate()
-                      .scale(
-                          begin: const Offset(.7, .7),
-                          end: const Offset(1, 1),
-                          duration: 260.ms,
-                          curve: Curves.easeOutBack),
-                  const SizedBox(height: 18),
-                  Text('¡Oferta enviada!',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                if (!reduced)
+                  const Positioned.fill(
+                    child: IgnorePointer(child: ConfettiBurst()),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const JayiCelebration(
+                        size: 150,
+                        semanticsLabel: 'Oferta enviada',
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        '¡Oferta enviada!',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w500,
-                          color: jayaloHead(context))),
-                  const SizedBox(height: 8),
-                  Text('Te avisamos si te aceptan.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
-                ]),
-              ),
-            ]),
+                          color: jayaloHead(context),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Te avisamos si te aceptan.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -889,9 +1097,10 @@ class _OfferSentOverlayState extends State<_OfferSentOverlay> {
   }
 }
 
-/// Confeti propio (sin dependencias): ~40 partículas de la paleta cayendo con
-/// giro, entrada escalonada y fundido, una sola vez, ~1.8 s. Se movió aquí
-/// desde `request_success_view.dart` para reusarlo también en la oferta enviada.
+/// Confeti propio (sin dependencias) para fondos CLAROS: UNA explosión desde el
+/// centro con física real ([_ConfettiField], paleta [_cardBits]) que cae hasta
+/// salir del área, sin desvanecerse. Se usa en la tarjeta de "oferta enviada" y
+/// en el éxito de crear solicitud.
 class ConfettiBurst extends StatefulWidget {
   const ConfettiBurst({super.key});
   @override
@@ -900,9 +1109,12 @@ class ConfettiBurst extends StatefulWidget {
 
 class _ConfettiBurstState extends State<ConfettiBurst>
     with SingleTickerProviderStateMixin {
+  // Ventana suficiente para que la explosión caiga y SALGA del área (tarjeta o
+  // pantalla): no se desvanece en el aire, se va al cruzar el borde de abajo.
   late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1800))
-    ..forward();
+    vsync: this,
+    duration: const Duration(milliseconds: 2200),
+  )..forward();
 
   @override
   void dispose() {
@@ -912,55 +1124,13 @@ class _ConfettiBurstState extends State<ConfettiBurst>
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) => CustomPaint(
-            painter: _ConfettiPainter(
-                _c.value, Theme.of(context).colorScheme.primary),
-            size: Size.infinite),
-      );
-}
-
-class _ConfettiPainter extends CustomPainter {
-  _ConfettiPainter(this.t, this.primary);
-  final double t;
-  final Color primary;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rnd = math.Random(7); // semilla fija: la misma lluvia, solo avanza t
-    final colors = [
-      primary,
-      const Color(0xFFEF9F27),
-      const Color(0xFFD4537E),
-      const Color(0xFF1D9E75),
-    ];
-    for (var i = 0; i < 40; i++) {
-      final x = rnd.nextDouble() * size.width;
-      final drift = (rnd.nextDouble() - .5) * 90;
-      final y0 = size.height * (.02 + rnd.nextDouble() * .2);
-      final dist = size.height * (.35 + rnd.nextDouble() * .35);
-      final spinSeed = rnd.nextDouble() * 6.3;
-      final spinDir = rnd.nextBool() ? 6 : -6;
-      final s = 6.0 + rnd.nextDouble() * 6;
-      final delay = rnd.nextDouble() * .35;
-      final tl = ((t - delay) / (1 - delay)).clamp(0.0, 1.0);
-      if (tl <= 0) continue;
-      final fall = Curves.easeIn.transform(tl);
-      final fade = (1 - Curves.easeIn.transform(tl)).clamp(0.0, 1.0);
-      final paint = Paint()
-        ..color = colors[i % colors.length].withValues(alpha: fade);
-      canvas.save();
-      canvas.translate(x + drift * tl, y0 + dist * fall);
-      canvas.rotate(spinSeed + tl * spinDir);
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromCenter(center: Offset.zero, width: s, height: s * .6),
-              const Radius.circular(2)),
-          paint);
-      canvas.restore();
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _ConfettiPainter old) => old.t != t;
+    animation: _c,
+    builder: (context, _) => CustomPaint(
+      painter: _ConfettiField(
+        seconds: (_c.lastElapsedDuration ?? Duration.zero).inMicroseconds / 1e6,
+        bits: _cardBits,
+      ),
+      size: Size.infinite,
+    ),
+  );
 }

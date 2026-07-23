@@ -58,6 +58,12 @@ dependencies:
   # errores (task 12, reporter Flutter → /api/public/hooks/report-error).
   package_info_plus: ^8.0.0
   flutter_animate: ^4.5.0
+  # Reproduce las animaciones Lottie de la mascota Jayi (exportadas del SVG de
+  # Adobe Animate del PO → conversor propio). Hoy: la celebración del salto
+  # (`jayi_celebrando`) en las pantallas de éxito. Reemplaza al CustomPainter
+  # `MascotMood.celebrate` en esos overlays; el resto de la mascota sigue en
+  # `JayaloMascotFace`.
+  lottie: ^3.3.2
   # Reproduce los efectos de sonido de las dos celebraciones deliberadas
   # (oferta aceptada / contacto desbloqueado). Pedido PO 2026-07-21: sonido en
   # ambas. Solo se usa para SFX cortos empaquetados como asset.
@@ -115,6 +121,10 @@ flutter:
     - assets/images/mascot.png
     - assets/sounds/oferta_aceptada.mp3
     - assets/sounds/desbloqueo.mp3
+    # Animaciones Lottie de Jayi celebrando (violeta para fondos claros; blanca
+    # para el fondo violeta de la celebración a pantalla completa).
+    - assets/anim/jayi_celebrando.json
+    - assets/anim/jayi_celebrando_blanco.json
 
   # Nunito (variable, eje wght 200-1000; OFL, de google/fonts): la tipografía
   # redondeada de la marca en la web (`--font-rounded`). En la app se usa en
