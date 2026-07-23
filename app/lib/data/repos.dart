@@ -55,7 +55,9 @@ class MessagesBadgeStore extends ChangeNotifier {
     try {
       final rows = await conversationsList();
       final total = rows.fold<int>(
-          0, (s, c) => s + ((c['unread_count'] as int?) ?? 0));
+        0,
+        (s, c) => s + ((c['unread_count'] as int?) ?? 0),
+      );
       set(total);
     } catch (_) {}
   }
@@ -129,7 +131,8 @@ Future<Set<String>> myOfferedRequestIds(List<String> requestIds) async {
 /// **'unlocked'** ("Desbloqueado", cuando ya se pagó el contacto — pedido PO
 /// 2026-07-22). `unlocked_at != null` gana sobre el status.
 Future<Map<String, String>> myOfferedRequestStatuses(
-    List<String> requestIds) async {
+  List<String> requestIds,
+) async {
   if (requestIds.isEmpty) return {};
   final uid = supa.auth.currentUser!.id;
   final rows = List<Map<String, dynamic>>.from(
@@ -141,8 +144,9 @@ Future<Map<String, String>> myOfferedRequestStatuses(
   );
   return {
     for (final r in rows)
-      r['request_id'] as String:
-          (r['unlocked_at'] != null ? 'unlocked' : r['status'] as String),
+      r['request_id'] as String: (r['unlocked_at'] != null
+          ? 'unlocked'
+          : r['status'] as String),
   };
 }
 
@@ -155,8 +159,10 @@ Future<Map<String, String>> myOfferedRequestStatuses(
 Future<Map<String, int>> offerCountsForRequests(List<String> requestIds) async {
   if (requestIds.isEmpty) return {};
   final rows = List<Map<String, dynamic>>.from(
-    await supa.rpc('offer_counts_for_requests',
-        params: {'p_request_ids': requestIds}),
+    await supa.rpc(
+      'offer_counts_for_requests',
+      params: {'p_request_ids': requestIds},
+    ),
   );
   return {
     for (final r in rows)
@@ -168,8 +174,7 @@ Future<Map<String, int>> offerCountsForRequests(List<String> requestIds) async {
 /// que una oferta hecha en OTRO rubro también aparezca en "Para ti" (pedido
 /// PO: "si alguien ofertó en otro rubro, esa oferta pasa a Para ti").
 /// Mismas columnas que [allOpenRequests] para que la tarjeta pinte igual.
-Future<List<Map<String, dynamic>>> myOfferedOpenRequests(
-    {String? kind}) async {
+Future<List<Map<String, dynamic>>> myOfferedOpenRequests({String? kind}) async {
   final uid = supa.auth.currentUser!.id;
   final offers = List<Map<String, dynamic>>.from(
     await supa.from('provider_offers').select('request_id').eq('user_id', uid),
@@ -179,7 +184,8 @@ Future<List<Map<String, dynamic>>> myOfferedOpenRequests(
   var q = supa
       .from('customer_requests')
       .select(
-          'id,title,description,kind,urgency,zone,is_wholesale,created_at,image_url')
+        'id,title,description,kind,urgency,zone,is_wholesale,created_at,image_url',
+      )
       .eq('status', 'open')
       .inFilter('id', ids);
   if (kind != null) q = q.eq('kind', kind);
@@ -194,7 +200,9 @@ Future<List<Map<String, dynamic>>> myOfferedOpenRequests(
 /// filtro por `business_id` (no `user_id`) hace la regla POR NEGOCIO, que es la
 /// unidad que oferta. La RLS ya deja al dueño leer sus propias ofertas.
 Future<Map<String, dynamic>?> myOfferForRequest(
-    String requestId, String businessId) async {
+  String requestId,
+  String businessId,
+) async {
   final rows = List<Map<String, dynamic>>.from(
     await supa
         .from('provider_offers')
@@ -257,6 +265,10 @@ Future<void> submitRequest({
   bool withShipping = false,
   bool withInstallation = false,
   bool requiresEvaluation = false,
+  // Requisitos transversales (aplican a producto Y servicio, pedido PO
+  // 2026-07-22): comprobante fiscal (NCF) y suplidor del Estado.
+  bool requiresFiscalReceipt = false,
+  bool requiresStateSupplier = false,
   String serviceModality = '',
   String urgencyLevel = '',
   DateTime? serviceEventDate,
@@ -287,6 +299,8 @@ Future<void> submitRequest({
     'with_shipping': isService ? false : withShipping,
     'with_installation': isService ? false : withInstallation,
     'requires_evaluation': requiresEvaluation,
+    'requires_fiscal_receipt': requiresFiscalReceipt,
+    'requires_state_supplier': requiresStateSupplier,
     'condition': isService ? '' : condition,
     'urgency': urgency,
     'status': 'open',
@@ -298,16 +312,20 @@ Future<void> submitRequest({
         ? serviceEventDate.toUtc().toIso8601String()
         : null,
     'urgency_level': isService ? urgencyLevel : '',
-    'budget_min':
-        isService && budgetMin != null && budgetMin > 0 ? budgetMin : null,
-    'budget_max':
-        isService && budgetMax != null && budgetMax > 0 ? budgetMax : null,
+    'budget_min': isService && budgetMin != null && budgetMin > 0
+        ? budgetMin
+        : null,
+    'budget_max': isService && budgetMax != null && budgetMax > 0
+        ? budgetMax
+        : null,
     'is_recurring': false,
     'recurrence_note': '',
     'is_wholesale': !isService && wholesale,
     'wholesale_quantity': (!isService && wholesale) ? wholesaleQuantity : null,
     'wholesale_split': (!isService && wholesale) ? wholesaleSplit : null,
-    'wholesale_packaging': (!isService && wholesale) ? wholesalePackaging : null,
+    'wholesale_packaging': (!isService && wholesale)
+        ? wholesalePackaging
+        : null,
     'wholesale_note': (!isService && wholesale) ? wholesaleNote : null,
     'target_business_id': null,
   });
@@ -438,14 +456,17 @@ Map<String, dynamic> _offerFields({
   // Logística de producto (paridad web RequestRespondSection.tsx:952-957): el
   // precio solo se guarda si el toggle está activo Y el costo > 0 (0 = gratis).
   'offers_shipping': offersShipping,
-  'shipping_price':
-      offersShipping && (shippingPrice ?? 0) > 0 ? shippingPrice : null,
+  'shipping_price': offersShipping && (shippingPrice ?? 0) > 0
+      ? shippingPrice
+      : null,
   'offers_installation': offersInstallation,
-  'installation_price':
-      offersInstallation && (installationPrice ?? 0) > 0 ? installationPrice : null,
+  'installation_price': offersInstallation && (installationPrice ?? 0) > 0
+      ? installationPrice
+      : null,
   'requires_evaluation': requiresEvaluation,
-  'evaluation_price':
-      requiresEvaluation && (evaluationPrice ?? 0) > 0 ? evaluationPrice : null,
+  'evaluation_price': requiresEvaluation && (evaluationPrice ?? 0) > 0
+      ? evaluationPrice
+      : null,
   'pricing_mode': pricingMode,
   // Por hora (servicio): tarifa + horas solo aplican en ese modo.
   'hourly_rate': pricingMode == 'hourly' ? hourlyRate : null,
@@ -455,8 +476,9 @@ Map<String, dynamic> _offerFields({
   // Detalles del producto (paridad web): solo se guardan si vienen.
   'product_brand': productBrand.trim().isEmpty ? null : productBrand.trim(),
   'product_colors': productColors.isEmpty ? null : productColors,
-  'product_warranty':
-      productWarranty.trim().isEmpty ? null : productWarranty.trim(),
+  'product_warranty': productWarranty.trim().isEmpty
+      ? null
+      : productWarranty.trim(),
   'delivery_time': deliveryTime.trim().isEmpty ? null : deliveryTime.trim(),
 };
 
@@ -541,28 +563,33 @@ Future<void> updateOffer({
   String productWarranty = '',
   String deliveryTime = '',
 }) async {
-  await supa.from('provider_offers').update(_offerFields(
-    price: price,
-    priceMin: priceMin,
-    priceMax: priceMax,
-    message: message,
-    imageUrls: imageUrls,
-    pricingMode: pricingMode,
-    offersShipping: offersShipping,
-    shippingPrice: shippingPrice,
-    offersInstallation: offersInstallation,
-    installationPrice: installationPrice,
-    requiresEvaluation: requiresEvaluation,
-    evaluationPrice: evaluationPrice,
-    hourlyRate: hourlyRate,
-    estimatedHours: estimatedHours,
-    availabilityNote: availabilityNote,
-    estimatedDuration: estimatedDuration,
-    productBrand: productBrand,
-    productColors: productColors,
-    productWarranty: productWarranty,
-    deliveryTime: deliveryTime,
-  )).eq('id', offerId);
+  await supa
+      .from('provider_offers')
+      .update(
+        _offerFields(
+          price: price,
+          priceMin: priceMin,
+          priceMax: priceMax,
+          message: message,
+          imageUrls: imageUrls,
+          pricingMode: pricingMode,
+          offersShipping: offersShipping,
+          shippingPrice: shippingPrice,
+          offersInstallation: offersInstallation,
+          installationPrice: installationPrice,
+          requiresEvaluation: requiresEvaluation,
+          evaluationPrice: evaluationPrice,
+          hourlyRate: hourlyRate,
+          estimatedHours: estimatedHours,
+          availabilityNote: availabilityNote,
+          estimatedDuration: estimatedDuration,
+          productBrand: productBrand,
+          productColors: productColors,
+          productWarranty: productWarranty,
+          deliveryTime: deliveryTime,
+        ),
+      )
+      .eq('id', offerId);
 }
 
 /// Fila COMPLETA de una oferta propia (todas las columnas) para prefijar el
@@ -744,7 +771,8 @@ Future<void> setWhatsappRevealEnabled(bool enabled) async {
   final uid = supa.auth.currentUser!.id;
   await supa
       .from('profiles')
-      .update({'whatsapp_reveal_enabled': enabled}).eq('user_id', uid);
+      .update({'whatsapp_reveal_enabled': enabled})
+      .eq('user_id', uid);
 }
 
 /// Respuestas rápidas del chat personalizadas por el usuario (jsonb
@@ -770,11 +798,13 @@ Future<void> saveCustomQuickReplies({
 }) async {
   final uid = supa.auth.currentUser!.id;
   final current = await fetchCustomQuickReplies() ?? <String, dynamic>{};
-  current[provider ? 'provider' : 'customer'] =
-      items.map((e) => e.toJson()).toList();
+  current[provider ? 'provider' : 'customer'] = items
+      .map((e) => e.toJson())
+      .toList();
   await supa
       .from('profiles')
-      .update({'custom_quick_replies': current}).eq('user_id', uid);
+      .update({'custom_quick_replies': current})
+      .eq('user_id', uid);
 }
 
 /// Restaura los defaults de un rol quitando su clave del jsonb (así el usuario
@@ -818,12 +848,15 @@ Future<void> inviteProviderQuick({
   String city = '',
 }) async {
   try {
-    await supa.functions.invoke('admin-invite-provider', body: {
-      'email': email,
-      'businessName': businessName,
-      'whatsapp': whatsapp,
-      'city': city,
-    });
+    await supa.functions.invoke(
+      'admin-invite-provider',
+      body: {
+        'email': email,
+        'businessName': businessName,
+        'whatsapp': whatsapp,
+        'city': city,
+      },
+    );
   } on FunctionException catch (e) {
     final d = e.details;
     final msg = (d is Map && d['error'] != null)
@@ -916,8 +949,10 @@ Future<Map<String, dynamic>> createProviderRubro({
   required String name,
 }) async {
   final res =
-      await supa.rpc('create_provider_rubro',
-              params: {'_category_id': categoryId, '_name': name})
+      await supa.rpc(
+            'create_provider_rubro',
+            params: {'_category_id': categoryId, '_name': name},
+          )
           as Map<String, dynamic>;
   return res; // {id, name, category_id, created}
 }
@@ -934,11 +969,15 @@ Future<String> uploadIdDocPhoto(String filePath, String businessId) async {
       : filePath.substring(dot + 1).toLowerCase();
   final path =
       '$uid/$businessId-cedula-${DateTime.now().millisecondsSinceEpoch}.$ext';
-  await supa.storage.from('business-id-docs').upload(
+  await supa.storage
+      .from('business-id-docs')
+      .upload(
         path,
         File(filePath),
-        fileOptions:
-            FileOptions(upsert: true, contentType: _imageContentType(ext)),
+        fileOptions: FileOptions(
+          upsert: true,
+          contentType: _imageContentType(ext),
+        ),
       );
   return path;
 }
@@ -976,7 +1015,8 @@ Future<Map<String, dynamic>?> myBusinessForVerification() async {
 Future<void> updateRnc(String businessId, String rnc) async {
   await supa
       .from('provider_businesses')
-      .update({'rnc': rnc}).eq('id', businessId);
+      .update({'rnc': rnc})
+      .eq('id', businessId);
 }
 
 /// ¿Ya subió la cédula (número no vacío)? — controla si puede ofertar.
@@ -1088,8 +1128,13 @@ Future<String> updateMyAvatar(String filePath) async {
   final dot = filePath.lastIndexOf('.');
   final ext = dot == -1 ? 'jpg' : filePath.substring(dot + 1).toLowerCase();
   final path = '$uid/avatar-${DateTime.now().millisecondsSinceEpoch}.$ext';
-  await supa.storage.from('business-logos').upload(path, File(filePath),
-      fileOptions: const FileOptions(upsert: true));
+  await supa.storage
+      .from('business-logos')
+      .upload(
+        path,
+        File(filePath),
+        fileOptions: const FileOptions(upsert: true),
+      );
   final url = supa.storage.from('business-logos').getPublicUrl(path);
   await supa.from('profiles').update({'avatar_url': url}).eq('user_id', uid);
   return url;
@@ -1606,22 +1651,24 @@ bool businessVerifiedFrom(Map<String, dynamic> businessRow) =>
 /// `null` si el proveedor todavía no tiene negocio creado (no debería pasar
 /// en esta pantalla, pero la ruta no lo garantiza).
 Future<
-    ({
-      String id,
-      String name,
-      String? logoUrl,
-      bool verified,
-      String? categoryId,
-      String? city,
-      bool wholesale,
-      String? description,
-    })?>
+  ({
+    String id,
+    String name,
+    String? logoUrl,
+    bool verified,
+    String? categoryId,
+    String? city,
+    bool wholesale,
+    String? description,
+  })?
+>
 myBusinessProfile() async {
   final uid = supa.auth.currentUser!.id;
   final biz = await supa
       .from('provider_businesses')
       .select(
-          'id,name,logo_url,business_verified_at,category_id,city,is_wholesale,description')
+        'id,name,logo_url,business_verified_at,category_id,city,is_wholesale,description',
+      )
       .eq('user_id', uid)
       .limit(1)
       .maybeSingle();
@@ -1653,7 +1700,8 @@ Future<List<Map<String, dynamic>>> allOpenRequests({String? kind}) async {
   var q = supa
       .from('customer_requests')
       .select(
-          'id,title,description,kind,urgency,zone,is_wholesale,created_at,image_url')
+        'id,title,description,kind,urgency,zone,is_wholesale,created_at,image_url',
+      )
       .eq('status', 'open')
       .neq('user_id', uid);
   if (kind != null) q = q.eq('kind', kind);
@@ -1700,15 +1748,17 @@ Future<List<Map<String, dynamic>>> catalogProducts({
         .from('provider_businesses')
         .select('id')
         .eq('is_wholesale', true);
-    wholesaleBizIds = List<Map<String, dynamic>>.from(biz)
-        .map((b) => b['id'] as String)
-        .toList();
+    wholesaleBizIds = List<Map<String, dynamic>>.from(
+      biz,
+    ).map((b) => b['id'] as String).toList();
     // Sin negocios mayoristas no hay productos que mostrar (evita un
     // `in.()` vacío, que PostgREST rechaza).
     if (wholesaleBizIds.isEmpty) return const [];
   }
-  var q =
-      supa.from('provider_products').select(catalogProductCols).eq('kind', kind);
+  var q = supa
+      .from('provider_products')
+      .select(catalogProductCols)
+      .eq('kind', kind);
   if (wholesaleBizIds != null) q = q.inFilter('business_id', wholesaleBizIds);
   if (categoryId != null) q = q.eq('category_id', categoryId);
   if (rubro != null) q = q.ilike('rubro', rubro);
@@ -1816,7 +1866,8 @@ Future<void> saveProductToStore({
 /// los trae. `provider_business_rubros` guarda `rubro_id` (uuid) → se resuelve
 /// a `rubros.name` (que es lo que la web pone en `provider_products.rubro`).
 Future<({String? categoryId, String? rubro})> myBusinessCategoryRubro(
-    String businessId) async {
+  String businessId,
+) async {
   final cat = await supa
       .from('provider_business_categories')
       .select('category_id')
@@ -1846,7 +1897,8 @@ Future<({String? categoryId, String? rubro})> myBusinessCategoryRubro(
 /// Parte una lista mezclada en (productos, servicios). `kind == 'servicio'` va a
 /// servicios; cualquier otro valor (incluido null) cuenta como producto.
 (List<Map<String, dynamic>>, List<Map<String, dynamic>>) partitionStoreItems(
-    List<Map<String, dynamic>> items) {
+  List<Map<String, dynamic>> items,
+) {
   final productos = <Map<String, dynamic>>[];
   final servicios = <Map<String, dynamic>>[];
   for (final i in items) {
@@ -1881,7 +1933,8 @@ typedef BusinessRating = ({double avg, int count});
 /// Trae la reputación de varios negocios en UNA llamada. De-duplica ids y no
 /// llama a la red con lista vacía.
 Future<Map<String, BusinessRating>> businessRatings(
-    List<String> businessIds) async {
+  List<String> businessIds,
+) async {
   final ids = businessIds.toSet().toList();
   if (ids.isEmpty) return {};
   final rows = List<Map<String, dynamic>>.from(
@@ -1892,6 +1945,35 @@ Future<Map<String, BusinessRating>> businessRatings(
       r['business_id'] as String: (
         avg: (r['avg_rating'] as num?)?.toDouble() ?? 0,
         count: (r['reviews_count'] as num?)?.toInt() ?? 0,
+      ),
+  };
+}
+
+// ── Tiempo de respuesta del proveedor (tienda) ────────────────────────────
+
+/// Mediana (minutos) de las últimas 20 respuestas del proveedor en chat, más el
+/// número de muestras que la respaldan. La UI decide si mostrar la línea según
+/// el umbral (`response_time.dart`). Interfaz por lote a propósito (espeja
+/// `businessRatings`), aunque la tienda pida un solo negocio.
+typedef BusinessResponseTime = ({double? medianMinutes, int samples});
+
+/// Trae el tiempo de respuesta de varios negocios en UNA llamada vía la RPC
+/// `get_business_response_times`. De-duplica ids y no llama a la red con lista
+/// vacía. Un negocio sin muestras vuelve como `(null, 0)`.
+Future<Map<String, BusinessResponseTime>> businessResponseTimes(
+  List<String> businessIds,
+) async {
+  final ids = businessIds.toSet().toList();
+  if (ids.isEmpty) return {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .rpc('get_business_response_times', params: {'_business_ids': ids}),
+  );
+  return {
+    for (final r in rows)
+      r['business_id'] as String: (
+        medianMinutes: (r['median_response_minutes'] as num?)?.toDouble(),
+        samples: (r['response_samples'] as num?)?.toInt() ?? 0,
       ),
   };
 }
@@ -1911,7 +1993,7 @@ BusinessReview parseBusinessReview(Map<String, dynamic> row) {
     comment: raw.isEmpty ? null : raw,
     createdAt:
         DateTime.tryParse(row['created_at'] as String? ?? '')?.toLocal() ??
-            DateTime.fromMillisecondsSinceEpoch(0),
+        DateTime.fromMillisecondsSinceEpoch(0),
   );
 }
 
@@ -1931,7 +2013,9 @@ Future<List<BusinessReview>> businessReviews(String businessId) async {
 /// sin mutar la entrada: un negocio sin reseñas queda sin `avg_rating` (la
 /// tarjeta oculta la estrella).
 List<Map<String, dynamic>> mergeCatalogRatings(
-    List<Map<String, dynamic>> items, Map<String, BusinessRating> ratings) {
+  List<Map<String, dynamic>> items,
+  Map<String, BusinessRating> ratings,
+) {
   return [
     for (final it in items)
       if (it['business_id'] is String && ratings[it['business_id']] != null)
@@ -1957,19 +2041,21 @@ Future<List<Map<String, dynamic>>> catalogProductsWithRatings({
   bool wholesale = false,
 }) async {
   final items = await catalogProducts(
-      kind: kind,
-      search: search,
-      categoryId: categoryId,
-      rubro: rubro,
-      wholesale: wholesale);
+    kind: kind,
+    search: search,
+    categoryId: categoryId,
+    rubro: rubro,
+    wholesale: wholesale,
+  );
   final ids = <String>{
     for (final it in items)
       if (it['business_id'] is String) it['business_id'] as String,
   }.toList();
   // La reputación es un adorno (spec §2): si la RPC por lote falla, se ocultan
   // las estrellas — NO se tira todo el catálogo a la pantalla de error.
-  final ratings = await businessRatings(ids)
-      .catchError((_) => <String, BusinessRating>{});
+  final ratings = await businessRatings(
+    ids,
+  ).catchError((_) => <String, BusinessRating>{});
   return mergeCatalogRatings(items, ratings);
 }
 

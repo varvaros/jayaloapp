@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/brand.dart';
 import '../../data/repos.dart';
+import '../../domain/response_time.dart';
 import '../shared/brand_kit.dart';
 import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
@@ -40,6 +41,10 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
   List<Map<String, dynamic>> _productos = const [];
   List<Map<String, dynamic>> _servicios = const [];
   List<Map<String, dynamic>> _portfolio = const [];
+  // Reputación bajo el nombre (adornos, no bloquean la tienda si fallan):
+  // rating del negocio + copy de tiempo de respuesta (null si <5 muestras).
+  BusinessRating? _rating;
+  String? _responseCopy;
   // Orden por defecto (productos primero); se recalcula tras cargar según el
   // tipo de negocio.
   List<_Section> _sections = const [
@@ -60,6 +65,12 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       // (sin él se cae al orden por defecto).
       final typeF =
           providerBusinessType(widget.businessId).catchError((_) => null);
+      // Reputación: adornos bajo el nombre. Si la RPC falla, la línea
+      // simplemente no aparece — nunca se tira la tienda a la pantalla de error.
+      final ratingF = businessRatings([widget.businessId])
+          .catchError((_) => <String, BusinessRating>{});
+      final responseF = businessResponseTimes([widget.businessId])
+          .catchError((_) => <String, BusinessResponseTime>{});
       final results = await Future.wait([
         myStoreProducts(widget.businessId),
         myPortfolioItems(widget.businessId),
@@ -67,6 +78,10 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       final (prod, serv) = partitionStoreItems(results[0]);
       final portfolio = results[1];
       final type = await typeF;
+      final rating = (await ratingF)[widget.businessId];
+      final rt = (await responseF)[widget.businessId];
+      final responseCopy =
+          rt == null ? null : responseTimeCopy(rt.medianMinutes, rt.samples);
       // Perfil de servicios: técnico, o (heurística de respaldo) sin productos
       // pero con servicios/trabajos publicados.
       final servicesFirst = type == 'tecnico' ||
@@ -76,6 +91,8 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
         _productos = prod;
         _servicios = serv;
         _portfolio = portfolio;
+        _rating = rating;
+        _responseCopy = responseCopy;
         _sections = servicesFirst
             ? const [_Section.servicios, _Section.trabajos, _Section.productos]
             : const [_Section.productos, _Section.servicios, _Section.trabajos];
@@ -93,9 +110,59 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
         _Section.trabajos => 'Trabajos',
       };
 
+  /// Fila de reputación bajo el nombre: estrella + nota (si hay reseñas) y/o
+  /// "Regularmente responde en ~X" (si supera el umbral de muestras). Devuelve
+  /// `null` si no hay nada que mostrar — un proveedor nuevo no enseña un "0.0"
+  /// ni una promesa de respuesta sin datos. Va sobre el header violeta, así que
+  /// el texto es blanco (la estrella conserva su ámbar de marca).
+  Widget? _reputationStrip() {
+    final r = _rating;
+    final hasRating = r != null && r.avg > 0 && r.count > 0;
+    final copy = _responseCopy;
+    if (!hasRating && copy == null) return null;
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (hasRating) ...[
+          const Icon(Icons.star_rounded, size: 15, color: Color(0xFFF5C542)),
+          const SizedBox(width: 3),
+          Text(r.avg.toStringAsFixed(1),
+              style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white)),
+          const SizedBox(width: 4),
+          Text('(${r.count})',
+              style: TextStyle(
+                  fontSize: 12, color: Colors.white.withValues(alpha: .78))),
+        ],
+        if (hasRating && copy != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text('·',
+                style: TextStyle(
+                    fontSize: 12, color: Colors.white.withValues(alpha: .55))),
+          ),
+        if (copy != null) ...[
+          Icon(Icons.schedule_rounded,
+              size: 13, color: Colors.white.withValues(alpha: .85)),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(copy,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 11.5, color: Colors.white.withValues(alpha: .85))),
+          ),
+        ],
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final section = _sections[_tab];
+    final reputation = _reputationStrip();
     return Scaffold(
       body: Column(children: [
         VioletHeader(
@@ -106,10 +173,20 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
           ),
           title: widget.alias,
           subtitle: 'Tienda del proveedor',
-          below: HeaderSegmented(
-            options: [for (final s in _sections) _sectionLabel(s)],
-            index: _tab,
-            onChanged: (i) => setState(() => _tab = i),
+          below: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (reputation != null) ...[
+                reputation,
+                const SizedBox(height: 12),
+              ],
+              HeaderSegmented(
+                options: [for (final s in _sections) _sectionLabel(s)],
+                index: _tab,
+                onChanged: (i) => setState(() => _tab = i),
+              ),
+            ],
           ),
         ),
         Expanded(

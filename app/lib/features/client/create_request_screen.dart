@@ -33,31 +33,59 @@ const _urgencyOptions = [
   (
     'No voy a comprar, solo quiero saber precio',
     'Solo quiero cotizar',
-    'Solo estoy cotizando.'
+    'Solo estoy cotizando.',
   ),
 ];
 
 /// SERVICE_MODALITY_OPTIONS de la web: (valor, título, descripción, icono).
 const _serviceModalityOptions = [
-  ('on_site', 'En mi ubicación', 'El proveedor va a donde estoy.',
-      Icons.place_outlined),
-  ('at_provider', 'En local del proveedor', 'Yo voy a su taller / oficina.',
-      Icons.storefront_outlined),
-  ('remote', 'Remoto / online', 'Se puede hacer a distancia.',
-      Icons.laptop_mac_outlined),
-  ('event', 'Evento puntual', 'Servicio para una fecha específica.',
-      Icons.celebration_outlined),
+  (
+    'on_site',
+    'En mi ubicación',
+    'El proveedor va a donde estoy.',
+    Icons.place_outlined,
+  ),
+  (
+    'at_provider',
+    'En local del proveedor',
+    'Yo voy a su taller / oficina.',
+    Icons.storefront_outlined,
+  ),
+  (
+    'remote',
+    'Remoto / online',
+    'Se puede hacer a distancia.',
+    Icons.laptop_mac_outlined,
+  ),
+  (
+    'event',
+    'Evento puntual',
+    'Servicio para una fecha específica.',
+    Icons.celebration_outlined,
+  ),
 ];
 
 /// URGENCY_LEVEL_OPTIONS de la web para servicios.
 const _serviceUrgencyOptions = [
   ('emergency', 'Urgente (hoy)', 'Es una emergencia.', Icons.priority_high),
-  ('this_week', 'Esta semana', 'Cuando puedas en los próximos días.',
-      Icons.date_range_outlined),
-  ('flexible', 'Flexible', 'No tengo prisa, busco buen precio.',
-      Icons.spa_outlined),
-  ('specific_date', 'Fecha específica', 'Tengo una fecha concreta en mente.',
-      Icons.event_available_outlined),
+  (
+    'this_week',
+    'Esta semana',
+    'Cuando puedas en los próximos días.',
+    Icons.date_range_outlined,
+  ),
+  (
+    'flexible',
+    'Flexible',
+    'No tengo prisa, busco buen precio.',
+    Icons.spa_outlined,
+  ),
+  (
+    'specific_date',
+    'Fecha específica',
+    'Tengo una fecha concreta en mente.',
+    Icons.event_available_outlined,
+  ),
 ];
 
 /// Foto pendiente de una solicitud: el `dataUrl` base64 viaja a la IA en cada
@@ -108,6 +136,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   bool _withShipping = false;
   bool _withInstallation = false;
   bool _requiresEvaluation = false;
+  // Requisitos transversales (producto y servicio, pedido PO 2026-07-22).
+  bool _requiresFiscalReceipt = false;
+  bool _requiresStateSupplier = false;
   String _urgency = 'Normal - 24 horas'; // default de la web
   String _serviceModality = '';
   String _urgencyLevel = '';
@@ -149,8 +180,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       final mime = png ? 'image/png' : 'image/jpeg';
       final ext = png ? 'png' : 'jpg';
       final f = File(
-          '${Directory.systemTemp.path}/seed_'
-          '${DateTime.now().millisecondsSinceEpoch}.$ext');
+        '${Directory.systemTemp.path}/seed_'
+        '${DateTime.now().millisecondsSinceEpoch}.$ext',
+      );
       await f.writeAsBytes(bytes);
       final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
       if (!mounted) return;
@@ -188,18 +220,21 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       // el WebView del CAPTCHA se quitó: se pintaba negro en MIUI y colgaba
       // el flujo completo de crear solicitud.
       final turn = await _ai.sendTurn(
-          messages: _messages,
-          kind: _kind,
-          wholesale: _wholesale,
-          accessToken: supa.auth.currentSession?.accessToken,
-          imageDataUrl: _photos.isNotEmpty ? _photos[0].dataUrl : null,
-          imageDataUrl2: _photos.length > 1 ? _photos[1].dataUrl : null);
+        messages: _messages,
+        kind: _kind,
+        wholesale: _wholesale,
+        accessToken: supa.auth.currentSession?.accessToken,
+        imageDataUrl: _photos.isNotEmpty ? _photos[0].dataUrl : null,
+        imageDataUrl2: _photos.length > 1 ? _photos[1].dataUrl : null,
+      );
       _messages.add(AiMessage('assistant', jsonEncode(_turnToJson(turn))));
       await _handleTurn(turn);
     } on AiHttpException catch (e) {
-      _toast(e.status == 429
-          ? 'Un momento… demasiadas solicitudes. Espera 1 minuto.'
-          : e.message);
+      _toast(
+        e.status == 429
+            ? 'Un momento… demasiadas solicitudes. Espera 1 minuto.'
+            : e.message,
+      );
       setState(() {
         _messages.removeLast();
         if (record) {
@@ -224,8 +259,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// Elige y valida una foto; la agrega a `_photos` (con su base64 cacheado).
   /// Devuelve true si se agregó.
   Future<bool> _pickPhoto(ImageSource source) async {
-    final picked = await ImagePicker()
-        .pickImage(source: source, maxWidth: 1200, imageQuality: 85);
+    final picked = await ImagePicker().pickImage(
+      source: source,
+      maxWidth: 1200,
+      imageQuality: 85,
+    );
     if (picked == null) return false;
     // Recorte tras tomar/elegir la foto (pedido PO): el usuario ajusta el
     // encuadre antes de adjuntarla. Si cancela el crop, no se adjunta nada.
@@ -233,10 +271,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     if (cropped == null) return false;
     final bytes = await cropped.readAsBytes();
     final res = validatePickedImage(
-        sizeBytes: bytes.length,
-        path: cropped.path,
-        currentCount: _photos.length,
-        maxCount: _maxRequestPhotos);
+      sizeBytes: bytes.length,
+      path: cropped.path,
+      currentCount: _photos.length,
+      maxCount: _maxRequestPhotos,
+    );
     if (res is ImagePickError) {
       _toast(res.message);
       return false;
@@ -286,16 +325,21 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (_) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
               leading: const Icon(Icons.photo_camera_outlined),
               title: const Text('Tomar foto'),
-              onTap: () => Navigator.pop(context, ImageSource.camera)),
-          ListTile(
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('Elegir de la galería'),
-              onTap: () => Navigator.pop(context, ImageSource.gallery)),
-        ]),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
+        ),
       ),
     );
     if (source != null) await _pickPhoto(source);
@@ -364,36 +408,36 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   }
 
   Map<String, dynamic> _turnToJson(AiTurn t) => switch (t) {
-        AiQuestion q => {
-            'type': 'question',
-            'question': q.question,
-            'options': q.options,
-            'allowOther': q.allowOther
-          },
-        AiImageRequest i => {
-            'type': 'image_request',
-            'message': i.message,
-            'hint': i.hint
-          },
-        AiRouting r => {
-            'type': 'routing',
-            'message': r.message,
-            'categories': r.categories,
-            'rubros': r.rubros
-          },
-        AiReady r => {
-            'type': 'ready',
-            'title': r.title,
-            'bullets': r.bullets,
-            if (r.wholesale) 'wholesale': true
-          },
-        AiKindSwitch k => {
-            'type': 'kind_switch',
-            'message': k.message,
-            'suggested_kind': k.suggestedKind,
-            'options': k.options
-          },
-      };
+    AiQuestion q => {
+      'type': 'question',
+      'question': q.question,
+      'options': q.options,
+      'allowOther': q.allowOther,
+    },
+    AiImageRequest i => {
+      'type': 'image_request',
+      'message': i.message,
+      'hint': i.hint,
+    },
+    AiRouting r => {
+      'type': 'routing',
+      'message': r.message,
+      'categories': r.categories,
+      'rubros': r.rubros,
+    },
+    AiReady r => {
+      'type': 'ready',
+      'title': r.title,
+      'bullets': r.bullets,
+      if (r.wholesale) 'wholesale': true,
+    },
+    AiKindSwitch k => {
+      'type': 'kind_switch',
+      'message': k.message,
+      'suggested_kind': k.suggestedKind,
+      'options': k.options,
+    },
+  };
 
   /// Gates idénticos al `submit()` de la web (requests/new.tsx L520-570).
   Future<void> _submit() async {
@@ -447,45 +491,51 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     final conditionValue = _wantsNew && _wantsUsed
         ? 'ambos'
         : _wantsNew
-            ? 'nuevo'
-            : _wantsUsed
-                ? 'usado'
-                : '';
+        ? 'nuevo'
+        : _wantsUsed
+        ? 'usado'
+        : '';
     setState(() => _busy = true);
     try {
       // Subir las fotos a Storage antes de insertar (nunca base64 en la BD).
-      final imageUrls =
-          await Future.wait(_photos.map((p) => uploadRequestImage(p.file.path)));
+      final imageUrls = await Future.wait(
+        _photos.map((p) => uploadRequestImage(p.file.path)),
+      );
       await submitRequest(
-          title: r.title,
-          bullets: r.bullets,
-          kind: _kind,
-          wholesale: r.wholesale || _wholesale,
-          categories: _categories,
-          rubros: _selectedRubros.toList(),
-          imageUrls: imageUrls,
-          condition: conditionValue,
-          urgency: _urgency,
-          withShipping: _withShipping,
-          withInstallation: _withInstallation,
-          requiresEvaluation: _requiresEvaluation,
-          serviceModality: _serviceModality,
-          urgencyLevel: _urgencyLevel,
-          serviceEventDate: _serviceEventDate,
-          budgetMin: isService ? _parseMoney(_budgetMin) : null,
-          budgetMax: isService ? _parseMoney(_budgetMax) : null,
-          wholesaleQuantity: (!isService && effectiveWholesale)
-              ? int.tryParse(_wsQuantity.trim())
-              : null,
-          wholesaleSplit: (!isService && effectiveWholesale) ? _wsSplit : null,
-          wholesalePackaging:
-              (!isService && effectiveWholesale) ? _wsPackaging : null,
-          wholesaleNote: (!isService &&
-                  effectiveWholesale &&
-                  (_wsPackaging == 'otro' ||
-                      _wsSplit == 'cantidades_especificas'))
-              ? _wsNote.trim()
-              : null);
+        title: r.title,
+        bullets: r.bullets,
+        kind: _kind,
+        wholesale: r.wholesale || _wholesale,
+        categories: _categories,
+        rubros: _selectedRubros.toList(),
+        imageUrls: imageUrls,
+        condition: conditionValue,
+        urgency: _urgency,
+        withShipping: _withShipping,
+        withInstallation: _withInstallation,
+        requiresEvaluation: _requiresEvaluation,
+        requiresFiscalReceipt: _requiresFiscalReceipt,
+        requiresStateSupplier: _requiresStateSupplier,
+        serviceModality: _serviceModality,
+        urgencyLevel: _urgencyLevel,
+        serviceEventDate: _serviceEventDate,
+        budgetMin: isService ? _parseMoney(_budgetMin) : null,
+        budgetMax: isService ? _parseMoney(_budgetMax) : null,
+        wholesaleQuantity: (!isService && effectiveWholesale)
+            ? int.tryParse(_wsQuantity.trim())
+            : null,
+        wholesaleSplit: (!isService && effectiveWholesale) ? _wsSplit : null,
+        wholesalePackaging: (!isService && effectiveWholesale)
+            ? _wsPackaging
+            : null,
+        wholesaleNote:
+            (!isService &&
+                effectiveWholesale &&
+                (_wsPackaging == 'otro' ||
+                    _wsSplit == 'cantidades_especificas'))
+            ? _wsNote.trim()
+            : null,
+      );
       if (!mounted) return;
       setState(() => _submitted = true);
     } catch (_) {
@@ -511,83 +561,91 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   Widget build(BuildContext context) {
     final started = _messages.isNotEmpty;
     return Scaffold(
-      body: Column(children: [
-        // Header violeta: "Crear solicitud" centrado, SIN campana (pedido PO
-        // 2026-07-21: fuera el ícono de notificaciones aquí). Los botones de
-        // tipo (Producto/Servicio/Al por mayor) bajaron al cuerpo, debajo de
-        // la barra de búsqueda (mismo pedido).
-        VioletHeader(
-          leading: HeaderCircleButton(
-            icon: Icons.arrow_back_ios_new,
-            tooltip: 'Atrás',
-            onTap: () => context.pop(),
+      body: Column(
+        children: [
+          // Header violeta: "Crear solicitud" centrado, SIN campana (pedido PO
+          // 2026-07-21: fuera el ícono de notificaciones aquí). Los botones de
+          // tipo (Producto/Servicio/Al por mayor) bajaron al cuerpo, debajo de
+          // la barra de búsqueda (mismo pedido).
+          VioletHeader(
+            leading: HeaderCircleButton(
+              icon: Icons.arrow_back_ios_new,
+              tooltip: 'Atrás',
+              onTap: () => context.pop(),
+            ),
+            title: 'Crear solicitud',
+            titleAlign: HeaderTitleAlign.center,
           ),
-          title: 'Crear solicitud',
-          titleAlign: HeaderTitleAlign.center,
-        ),
-        if (!_submitted)
-          // Nudge de verificación (spec §6.1) — cerrable, nunca bloquea el envío.
-          const VerifyWhatsappBanner(),
-        Expanded(
-          child: _submitted
-              ? _successView()
-              : !started
-                  ? _emptyState()
-                  : _guidedView(),
-        ),
-        // El campo de escribir solo aparece cuando de verdad toca escribir:
-        // corregir, "Otra respuesta…", o una pregunta sin opciones. El campo
-        // del ARRANQUE ya no vive aquí abajo: subió al cuerpo del empty state
-        // con borde violeta (pedido PO 2026-07-21).
-        if (_ready == null &&
-            !_submitted &&
-            started &&
-            (_correcting ||
-                _showOther ||
-                (!_busy &&
-                    _current is AiQuestion &&
-                    (_current as AiQuestion).options.isEmpty)))
-          SafeArea(
-            // '/client/create' es una pestaña del shell: la barra flotante
-            // sigue visible aquí (ver home_shell.dart), pero con
-            // `extendBody: true` el `Scaffold` ya infla
-            // `MediaQuery.paddingOf(context).bottom` al alto COMPLETO de la
-            // barra (ver el doc-comment de `navBarReservedSpace` en
-            // `floating_nav_bar.dart`) — y `SafeArea` lee ese mismo
-            // `MediaQuery`. Sumarle `kNavBarReservedSpace` aquí encima
-            // contaba la barra dos veces (bug C2: 144px de hueco muerto
-            // entre el campo de escribir y la barra). El padding de 12 de
-            // abajo es solo el respiro visual normal del composer.
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: TextField(
-                controller: _input,
-                enabled: !_busy,
-                onSubmitted: _send,
-                decoration: InputDecoration(
-                  hintText: _correcting
-                      ? 'Escribe qué corregir…'
-                      : 'Escribe tu respuesta…',
-                  // "F1 · Rellenos suaves" (elegido por el PO para este grupo).
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  border: OutlineInputBorder(
+          if (!_submitted)
+            // Nudge de verificación (spec §6.1) — cerrable, nunca bloquea el envío.
+            const VerifyWhatsappBanner(),
+          Expanded(
+            child: _submitted
+                ? _successView()
+                : !started
+                ? _emptyState()
+                : _guidedView(),
+          ),
+          // El campo de escribir solo aparece cuando de verdad toca escribir:
+          // corregir, "Otra respuesta…", o una pregunta sin opciones. El campo
+          // del ARRANQUE ya no vive aquí abajo: subió al cuerpo del empty state
+          // con borde violeta (pedido PO 2026-07-21).
+          if (_ready == null &&
+              !_submitted &&
+              started &&
+              (_correcting ||
+                  _showOther ||
+                  (!_busy &&
+                      _current is AiQuestion &&
+                      (_current as AiQuestion).options.isEmpty)))
+            SafeArea(
+              // '/client/create' es una pestaña del shell: la barra flotante
+              // sigue visible aquí (ver home_shell.dart), pero con
+              // `extendBody: true` el `Scaffold` ya infla
+              // `MediaQuery.paddingOf(context).bottom` al alto COMPLETO de la
+              // barra (ver el doc-comment de `navBarReservedSpace` en
+              // `floating_nav_bar.dart`) — y `SafeArea` lee ese mismo
+              // `MediaQuery`. Sumarle `kNavBarReservedSpace` aquí encima
+              // contaba la barra dos veces (bug C2: 144px de hueco muerto
+              // entre el campo de escribir y la barra). El padding de 12 de
+              // abajo es solo el respiro visual normal del composer.
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: TextField(
+                  controller: _input,
+                  enabled: !_busy,
+                  onSubmitted: _send,
+                  decoration: InputDecoration(
+                    hintText: _correcting
+                        ? 'Escribe qué corregir…'
+                        : 'Escribe tu respuesta…',
+                    // "F1 · Rellenos suaves" (elegido por el PO para este grupo).
+                    filled: true,
+                    fillColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(28),
-                      borderSide: BorderSide.none),
-                  // Cámara a la vista (pedido PO: "no está el botón de hacer
-                  // la foto"): el ícono es la cámara y el sheet ofrece
-                  // Tomar foto / Galería.
-                  prefixIcon: IconButton(
+                      borderSide: BorderSide.none,
+                    ),
+                    // Cámara a la vista (pedido PO: "no está el botón de hacer
+                    // la foto"): el ícono es la cámara y el sheet ofrece
+                    // Tomar foto / Galería.
+                    prefixIcon: IconButton(
                       tooltip: 'Tomar o subir foto',
                       icon: const Icon(Icons.photo_camera_outlined),
-                      onPressed: _busy ? null : _showPickSheet),
-                  suffixIcon: IconButton(
-                      icon: const Icon(Icons.send), onPressed: () => _send(_input.text)),
+                      onPressed: _busy ? null : _showPickSheet,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.send),
+                      onPressed: () => _send(_input.text),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-      ]),
+        ],
+      ),
     );
   }
 
@@ -615,45 +673,54 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           // que la pasada de 56 (pedido PO).
           const Center(child: JayaloMascotFace(size: 112)),
           const SizedBox(height: 12),
-            Text('¿Qué quieres jayar hoy?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    color: jayaloHead(context))),
-            const SizedBox(height: 16),
-            // La barra de búsqueda, con BORDE VIOLETA (pedido PO).
-            TextField(
-              controller: _input,
-              enabled: !_busy,
-              onSubmitted: _startSend,
-              decoration: InputDecoration(
-                hintText: '¿Qué estás buscando?',
-                filled: true,
-                fillColor: cs.surface,
-                enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(28),
-                    borderSide: BorderSide(color: cs.primary, width: 1.6)),
-                focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(28),
-                    borderSide: BorderSide(color: cs.primary, width: 2)),
-                prefixIcon: IconButton(
-                    tooltip: 'Tomar o subir foto',
-                    icon: const Icon(Icons.photo_camera_outlined),
-                    onPressed: _busy ? null : _showPickSheet),
-                suffixIcon: IconButton(
-                    icon: const Icon(Icons.send),
-                    onPressed: () => _startSend(_input.text)),
+          Text(
+            '¿Qué quieres jayar hoy?',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+              color: jayaloHead(context),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // La barra de búsqueda, con BORDE VIOLETA (pedido PO).
+          TextField(
+            controller: _input,
+            enabled: !_busy,
+            onSubmitted: _startSend,
+            decoration: InputDecoration(
+              hintText: '¿Qué estás buscando?',
+              filled: true,
+              fillColor: cs.surface,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(28),
+                borderSide: BorderSide(color: cs.primary, width: 1.6),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(28),
+                borderSide: BorderSide(color: cs.primary, width: 2),
+              ),
+              prefixIcon: IconButton(
+                tooltip: 'Tomar o subir foto',
+                icon: const Icon(Icons.photo_camera_outlined),
+                onPressed: _busy ? null : _showPickSheet,
+              ),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.send),
+                onPressed: () => _startSend(_input.text),
               ),
             ),
-            const SizedBox(height: 12),
-            // Tipo de solicitud DEBAJO de la barra (pedido PO). Sin default.
-            // Flujo (PO 2026-07-22): inicial Producto|Servicio; al elegir
-            // Producto se OCULTA Servicio y aparece "Al por mayor"; al elegir
-            // Servicio se oculta Producto. Tocar el tipo elegido de nuevo lo
-            // deselecciona y vuelve a los dos botones.
-            Row(children: [
-              if (_kind != 'servicio') Expanded(child: _kindPill('producto', 'Producto')),
+          ),
+          const SizedBox(height: 12),
+          // Tipo de solicitud DEBAJO de la barra (pedido PO). Sin default.
+          // Flujo (PO 2026-07-22): inicial Producto|Servicio; al elegir
+          // Producto se OCULTA Servicio y aparece "Al por mayor"; al elegir
+          // Servicio se oculta Producto. Tocar el tipo elegido de nuevo lo
+          // deselecciona y vuelve a los dos botones.
+          Row(
+            children: [
+              if (_kind != 'servicio')
+                Expanded(child: _kindPill('producto', 'Producto')),
               if (_kind == 'producto') ...[
                 const SizedBox(width: 10),
                 Expanded(child: _kindPill('mayor', 'Al por mayor')),
@@ -662,53 +729,69 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 if (_kind != 'servicio') const SizedBox(width: 10),
                 Expanded(child: _kindPill('servicio', 'Servicio')),
               ],
-            ]),
-            if (_photos.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Wrap(spacing: 8, alignment: WrapAlignment.center, children: [
-                for (var i = 0; i < _photos.length; i++)
-                  Stack(children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.file(File(_photos[i].file.path),
-                          width: 64, height: 64, fit: BoxFit.cover),
-                    ),
-                    Positioned(
-                      top: -6,
-                      right: -6,
-                      child: IconButton(
-                        tooltip: 'Quitar',
-                        icon: const Icon(Icons.cancel, size: 20),
-                        onPressed: _busy
-                            ? null
-                            : () => setState(() => _photos.removeAt(i)),
-                      ),
-                    ),
-                  ]),
-              ]),
             ],
+          ),
+          if (_photos.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Text('Sube una foto y describe lo que buscas para mejor resultado.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
-            const SizedBox(height: 8),
-            // El botón de HACER la foto, visible desde el arranque
-            // (pedido PO): cámara primero, galería al lado. La foto
-            // viaja con el primer mensaje.
             Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                alignment: WrapAlignment.center,
-                children: [
-                  ActionChip(
-                      avatar: const Icon(Icons.photo_camera_outlined, size: 18),
-                      label: const Text('Tomar foto'),
-                      onPressed: () => _pickPhoto(ImageSource.camera)),
-                  ActionChip(
-                      avatar: const Icon(Icons.photo_library_outlined, size: 18),
-                      label: const Text('Galería'),
-                      onPressed: () => _pickPhoto(ImageSource.gallery)),
-                ]),
+              spacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                for (var i = 0; i < _photos.length; i++)
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.file(
+                          File(_photos[i].file.path),
+                          width: 64,
+                          height: 64,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: -6,
+                        right: -6,
+                        child: IconButton(
+                          tooltip: 'Quitar',
+                          icon: const Icon(Icons.cancel, size: 20),
+                          onPressed: _busy
+                              ? null
+                              : () => setState(() => _photos.removeAt(i)),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 16),
+          Text(
+            'Sube una foto y describe lo que buscas para mejor resultado.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          // El botón de HACER la foto, visible desde el arranque
+          // (pedido PO): cámara primero, galería al lado. La foto
+          // viaja con el primer mensaje.
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            alignment: WrapAlignment.center,
+            children: [
+              ActionChip(
+                avatar: const Icon(Icons.photo_camera_outlined, size: 18),
+                label: const Text('Tomar foto'),
+                onPressed: () => _pickPhoto(ImageSource.camera),
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.photo_library_outlined, size: 18),
+                label: const Text('Galería'),
+                onPressed: () => _pickPhoto(ImageSource.gallery),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -728,16 +811,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       onTap: _busy
           ? null
           : () => setState(() {
-                if (key == 'mayor') {
-                  _wholesale = !_wholesale; // toggle, producto sigue elegido
-                } else if (_kind == key) {
-                  _kind = ''; // deseleccionar → vuelve a los dos botones
-                  _wholesale = false;
-                } else {
-                  _kind = key;
-                  if (key == 'servicio') _wholesale = false;
-                }
-              }),
+              if (key == 'mayor') {
+                _wholesale = !_wholesale; // toggle, producto sigue elegido
+              } else if (_kind == key) {
+                _kind = ''; // deseleccionar → vuelve a los dos botones
+                _wholesale = false;
+              } else {
+                _kind = key;
+                if (key == 'servicio') _wholesale = false;
+              }
+            }),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
@@ -746,13 +829,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           color: selected ? cs.primary : cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(999),
         ),
-        child: Text(label,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            style: TextStyle(
-                fontSize: 14.5,
-                fontWeight: FontWeight.w600,
-                color: selected ? cs.onPrimary : cs.onSurface)),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          style: TextStyle(
+            fontSize: 14.5,
+            fontWeight: FontWeight.w600,
+            color: selected ? cs.onPrimary : cs.onSurface,
+          ),
+        ),
       ),
     );
   }
@@ -774,8 +860,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     final cs = Theme.of(context).colorScheme;
     return ListView(
       controller: _scroll,
-      padding:
-          EdgeInsets.fromLTRB(20, 20, 20, 16 + navBarReservedSpace(context)),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        20,
+        20,
+        16 + navBarReservedSpace(context),
+      ),
       children: [
         Center(
           child: JayaloMascotFace(
@@ -785,8 +875,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             mood: _busy
                 ? MascotMood.thinking
                 : _ready != null
-                    ? MascotMood.happy
-                    : MascotMood.idle,
+                ? MascotMood.happy
+                : MascotMood.idle,
           ),
         ),
         const SizedBox(height: 14),
@@ -794,15 +884,25 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           _finalForm(cs)
         else ...[
           if (_busy)
-            Column(children: [
-              const SizedBox(height: 4),
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                const JayaloSpinner(size: 14),
-                const SizedBox(width: 8),
-                Text('Pensando…',
-                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
-              ]),
-            ])
+            Column(
+              children: [
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const JayaloSpinner(size: 14),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Pensando…',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            )
           else
             _questionArea(cs),
           _buildingCard(cs),
@@ -831,8 +931,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             if (q.allowOther && q.options.isNotEmpty && !_showOther)
               Center(
                 child: TextButton(
-                    onPressed: () => setState(() => _showOther = true),
-                    child: const Text('Otra respuesta…')),
+                  onPressed: () => setState(() => _showOther = true),
+                  child: const Text('Otra respuesta…'),
+                ),
               ),
           ];
         case AiKindSwitch k:
@@ -851,12 +952,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           question = ir.hint.isEmpty ? ir.message : '${ir.message}\n${ir.hint}';
           actions = [
             if (_photos.length < _maxRequestPhotos) ...[
-              _optionButton('Tomar foto',
-                  icon: Icons.photo_camera_outlined,
-                  () => _pickForRequest(ImageSource.camera)),
-              _optionButton('Elegir de la galería',
-                  icon: Icons.photo_library_outlined,
-                  () => _pickForRequest(ImageSource.gallery)),
+              _optionButton(
+                'Tomar foto',
+                icon: Icons.photo_camera_outlined,
+                () => _pickForRequest(ImageSource.camera),
+              ),
+              _optionButton(
+                'Elegir de la galería',
+                icon: Icons.photo_library_outlined,
+                () => _pickForRequest(ImageSource.gallery),
+              ),
             ],
             _optionButton('Seguir sin foto', () => _send('Sigamos sin foto.')),
           ];
@@ -867,22 +972,24 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     return Column(
       key: ValueKey('pregunta-$_pop-$_correcting'),
       children: [
-        Text(question,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: 20,
-                height: 1.3,
-                fontWeight: FontWeight.w500,
-                color: jayaloHead(context))),
+        Text(
+          question,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 20,
+            height: 1.3,
+            fontWeight: FontWeight.w500,
+            color: jayaloHead(context),
+          ),
+        ),
         if (counter != null) ...[
           const SizedBox(height: 6),
-          Text(counter,
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+          Text(
+            counter,
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
         ],
-        if (actions.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          ...actions,
-        ],
+        if (actions.isNotEmpty) ...[const SizedBox(height: 16), ...actions],
       ],
     ).animate().fadeIn(duration: 200.ms);
   }
@@ -905,18 +1012,25 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             onTap: _busy ? null : onTap,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 18, color: cs.primary),
-                  const SizedBox(width: 8),
-                ],
-                Flexible(
-                  child: Text(label,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 18, color: cs.primary),
+                    const SizedBox(width: 8),
+                  ],
+                  Flexible(
+                    child: Text(
+                      label,
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                          fontSize: 14.5, color: jayaloHead(context))),
-                ),
-              ]),
+                        fontSize: 14.5,
+                        color: jayaloHead(context),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -937,99 +1051,148 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     return Container(
       margin: const EdgeInsets.only(top: 22),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.assignment_outlined, size: 16, color: cs.primary),
-          const SizedBox(width: 6),
-          Text('Tu solicitud',
-              style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w500, color: cs.primary)),
-          const Spacer(),
-          Text('$_aiAnswered de ~$total',
-              style: const TextStyle(fontSize: 12, color: ink)),
-        ]),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(99),
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(end: frac),
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut,
-            builder: (_, v, child) => LinearProgressIndicator(
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.assignment_outlined, size: 16, color: cs.primary),
+              const SizedBox(width: 6),
+              Text(
+                'Tu solicitud',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: cs.primary,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$_aiAnswered de ~$total',
+                style: const TextStyle(fontSize: 12, color: ink),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(end: frac),
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              builder: (_, v, child) => LinearProgressIndicator(
                 value: v,
                 minHeight: 6,
                 backgroundColor: Colors.white,
-                color: cs.primary),
+                color: cs.primary,
+              ),
+            ),
           ),
-        ),
-        if (_photos.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Wrap(spacing: 8, children: [
-            for (var i = 0; i < _photos.length; i++)
-              Stack(clipBehavior: Clip.none, children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.file(File(_photos[i].file.path),
-                      width: 52, height: 52, fit: BoxFit.cover),
-                ),
-                Positioned(
-                  top: -10,
-                  right: -10,
-                  child: IconButton(
-                    tooltip: 'Quitar',
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.cancel, size: 18, color: ink),
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() => _photos.removeAt(i)),
+          if (_photos.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (var i = 0; i < _photos.length; i++)
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.file(
+                          File(_photos[i].file.path),
+                          width: 52,
+                          height: 52,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: -10,
+                        right: -10,
+                        child: IconButton(
+                          tooltip: 'Quitar',
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.cancel, size: 18, color: ink),
+                          onPressed: _busy
+                              ? null
+                              : () => setState(() => _photos.removeAt(i)),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ]),
-          ]),
-        ],
-        if (description.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Text(description,
-              style: const TextStyle(fontSize: 13, height: 1.35, color: ink)),
-        ],
-        for (final a in _answers)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Icon(Icons.check_circle, size: 15, color: check),
-              const SizedBox(width: 6),
-              Expanded(
-                  child: Text(a,
+              ],
+            ),
+          ],
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              description,
+              style: const TextStyle(fontSize: 13, height: 1.35, color: ink),
+            ),
+          ],
+          for (final a in _answers)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.check_circle, size: 15, color: check),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      a,
                       style: const TextStyle(
-                          fontSize: 13, height: 1.35, color: ink))),
-            ]),
-          ),
-      ]),
+                        fontSize: 13,
+                        height: 1.35,
+                        color: ink,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
   // ── FORMULARIO FINAL (paridad requests/new.tsx) ────────────────────────
 
   Widget _sectionTitle(String text, {bool required = false}) => Padding(
-        padding: const EdgeInsets.only(bottom: 2),
-        child: Row(children: [
-          Flexible(
-            child: Text(text,
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: jayaloHead(context))),
+    padding: const EdgeInsets.only(bottom: 2),
+    child: Row(
+      children: [
+        Flexible(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: jayaloHead(context),
+            ),
           ),
-          if (required)
-            Text(' *', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-        ]),
-      );
+        ),
+        if (required)
+          Text(
+            ' *',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+      ],
+    ),
+  );
 
   /// Checkbox de dos líneas del form final (Nuevo / Usado / Con envío…),
   /// mismas etiquetas y descripciones que la web.
-  Widget _checkTile(String title, String desc, bool value,
-      ValueChanged<bool> onChanged) {
+  Widget _checkTile(
+    String title,
+    String desc,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
@@ -1041,23 +1204,37 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           onTap: _busy ? null : () => onChanged(!value),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            child: Row(children: [
-              Icon(value ? Icons.check_box : Icons.check_box_outline_blank,
-                  size: 20, color: value ? cs.primary : cs.onSurfaceVariant),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
+            child: Row(
+              children: [
+                Icon(
+                  value ? Icons.check_box : Icons.check_box_outline_blank,
+                  size: 20,
+                  color: value ? cs.primary : cs.onSurfaceVariant,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title,
-                          style: TextStyle(
-                              fontSize: 14, color: jayaloHead(context))),
-                      Text(desc,
-                          style: TextStyle(
-                              fontSize: 12, color: cs.onSurfaceVariant)),
-                    ]),
-              ),
-            ]),
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: jayaloHead(context),
+                        ),
+                      ),
+                      Text(
+                        desc,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1067,7 +1244,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// Campo numérico del presupuesto (Desde / Hasta). Sin controlador: arranca
   /// vacío y su texto lo conserva su propio State; `onChanged` alimenta el
   /// string del formulario.
-  Widget _budgetField(String label, ValueChanged<String> onChanged) => TextField(
+  Widget _budgetField(String label, ValueChanged<String> onChanged) =>
+      TextField(
         keyboardType: TextInputType.number,
         enabled: !_busy,
         onChanged: onChanged,
@@ -1076,8 +1254,13 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   /// Opción exclusiva de dos líneas (cuándo / dónde), estilo web: activa =
   /// lavado lila; sin bordes (doctrina).
-  Widget _selectTile(String title, String desc, bool selected,
-      VoidCallback onTap, {IconData? icon}) {
+  Widget _selectTile(
+    String title,
+    String desc,
+    bool selected,
+    VoidCallback onTap, {
+    IconData? icon,
+  }) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
@@ -1089,28 +1272,40 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           onTap: _busy ? null : onTap,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-            child: Row(children: [
-              if (icon != null) ...[
-                Icon(icon, size: 18, color: cs.primary),
-                const SizedBox(width: 10),
-              ],
-              Expanded(
-                child: Column(
+            child: Row(
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 18, color: cs.primary),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title,
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight:
-                                  selected ? FontWeight.w500 : FontWeight.w400,
-                              color: jayaloHead(context))),
-                      Text(desc,
-                          style: TextStyle(
-                              fontSize: 12, color: cs.onSurfaceVariant)),
-                    ]),
-              ),
-              if (selected) Icon(Icons.check_circle, size: 18, color: cs.primary),
-            ]),
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: selected
+                              ? FontWeight.w500
+                              : FontWeight.w400,
+                          color: jayaloHead(context),
+                        ),
+                      ),
+                      Text(
+                        desc,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (selected)
+                  Icon(Icons.check_circle, size: 18, color: cs.primary),
+              ],
+            ),
           ),
         ),
       ),
@@ -1131,39 +1326,54 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         JayaloCard(
           padding: const EdgeInsets.all(16),
           margin: EdgeInsets.zero,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(Icons.check_circle, size: 18, color: cs.primary),
-              const SizedBox(width: 6),
-              Text('Esto es lo que entendí',
-                  style: TextStyle(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.check_circle, size: 18, color: cs.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Esto es lo que entendí',
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: cs.primary)),
-            ]),
-            const SizedBox(height: 8),
-            Text(r.title,
+                      color: cs.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                r.title,
                 style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: jayaloHead(context))),
-            const SizedBox(height: 8),
-            for (final b in r.bullets) Text('• $b'),
-            if (r.wholesale || _wholesale)
-              Padding(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: jayaloHead(context),
+                ),
+              ),
+              const SizedBox(height: 8),
+              for (final b in r.bullets) Text('• $b'),
+              if (r.wholesale || _wholesale)
+                Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: StatusChip(
-                      label: 'Al por mayor',
-                      icon: Icons.storefront_outlined,
-                      tone: Theme.of(context).brightness == Brightness.dark
-                          ? JayaloStatus.respondedDark
-                          : JayaloStatus.respondedLight)),
-          ]),
+                    label: 'Al por mayor',
+                    icon: Icons.storefront_outlined,
+                    tone: Theme.of(context).brightness == Brightness.dark
+                        ? JayaloStatus.respondedDark
+                        : JayaloStatus.respondedLight,
+                  ),
+                ),
+            ],
+          ),
         ),
         const SizedBox(height: 16),
         _sectionTitle('Elige uno o más rubros', required: true),
-        Text('Para que solo proveedores realmente especializados reciban tu solicitud.',
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        Text(
+          'Para que solo proveedores realmente especializados reciban tu solicitud.',
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
         const SizedBox(height: 8),
         if (_rubroNames.isEmpty && _rubros.isNotEmpty)
           const Padding(
@@ -1171,32 +1381,70 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             child: Center(child: JayaloSpinner(size: 16)),
           )
         else
-          Wrap(spacing: 8, runSpacing: 6, children: [
-            for (final id in _rubros)
-              FilterChip(
-                label: Text(_rubroNames[id] ?? 'Sugerido'),
-                selected: _selectedRubros.contains(id),
-                onSelected: (on) => setState(() {
-                  if (on) {
-                    _selectedRubros.add(id);
-                  } else {
-                    _selectedRubros.remove(id);
-                  }
-                }),
-              ),
-          ]),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              for (final id in _rubros)
+                FilterChip(
+                  label: Text(_rubroNames[id] ?? 'Sugerido'),
+                  selected: _selectedRubros.contains(id),
+                  onSelected: (on) => setState(() {
+                    if (on) {
+                      _selectedRubros.add(id);
+                    } else {
+                      _selectedRubros.remove(id);
+                    }
+                  }),
+                ),
+            ],
+          ),
         const SizedBox(height: 16),
+        // Requisitos transversales (aplican a producto Y servicio, pedido PO
+        // 2026-07-22): van fuera del bloque `if (!isService)`.
+        _checkTile(
+          'Requiere comprobante fiscal',
+          'El proveedor debe poder emitir comprobante fiscal (NCF).',
+          _requiresFiscalReceipt,
+          (v) => setState(() => _requiresFiscalReceipt = v),
+        ),
+        _checkTile(
+          'Requiere ser suplidor del estado',
+          'Necesitas un proveedor registrado como suplidor del Estado.',
+          _requiresStateSupplier,
+          (v) => setState(() => _requiresStateSupplier = v),
+        ),
         if (!isService) ...[
-          _checkTile('Nuevo', 'Producto sin uso previo.', _wantsNew,
-              (v) => setState(() => _wantsNew = v)),
-          _checkTile('Usado', 'Acepto producto de segunda mano.', _wantsUsed,
-              (v) => setState(() => _wantsUsed = v)),
-          _checkTile('Con envío', 'Que coticen también el envío.', _withShipping,
-              (v) => setState(() => _withShipping = v)),
-          _checkTile('Con instalación', 'Que incluyan el costo de instalación.',
-              _withInstallation, (v) => setState(() => _withInstallation = v)),
-          _checkTile('Requiere evaluación', 'El precio depende de revisar en sitio.',
-              _requiresEvaluation, (v) => setState(() => _requiresEvaluation = v)),
+          _checkTile(
+            'Nuevo',
+            'Producto sin uso previo.',
+            _wantsNew,
+            (v) => setState(() => _wantsNew = v),
+          ),
+          _checkTile(
+            'Usado',
+            'Acepto producto de segunda mano.',
+            _wantsUsed,
+            (v) => setState(() => _wantsUsed = v),
+          ),
+          _checkTile(
+            'Con envío',
+            'Que coticen también el envío.',
+            _withShipping,
+            (v) => setState(() => _withShipping = v),
+          ),
+          _checkTile(
+            'Con instalación',
+            'Que incluyan el costo de instalación.',
+            _withInstallation,
+            (v) => setState(() => _withInstallation = v),
+          ),
+          _checkTile(
+            'Requiere evaluación',
+            'El precio depende de revisar en sitio.',
+            _requiresEvaluation,
+            (v) => setState(() => _requiresEvaluation = v),
+          ),
           if (effectiveWholesale) ...[
             const SizedBox(height: 16),
             _sectionTitle('Detalles de mayoreo', required: true),
@@ -1211,110 +1459,152 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             const SizedBox(height: 16),
             _sectionTitle('¿Cómo necesitas dividir el pedido?', required: true),
             const SizedBox(height: 6),
-            Wrap(spacing: 8, runSpacing: 6, children: [
-              for (final (slug, label) in kWholesaleSplitOptions)
-                ChoiceChip(
-                  label: Text(label),
-                  selected: _wsSplit == slug,
-                  onSelected: (_) => setState(() => _wsSplit = slug),
-                ),
-            ]),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                for (final (slug, label) in kWholesaleSplitOptions)
+                  ChoiceChip(
+                    label: Text(label),
+                    selected: _wsSplit == slug,
+                    onSelected: (_) => setState(() => _wsSplit = slug),
+                  ),
+              ],
+            ),
             const SizedBox(height: 16),
-            _sectionTitle('¿Necesitas algún tipo de empaque o presentación?',
-                required: true),
+            _sectionTitle(
+              '¿Necesitas algún tipo de empaque o presentación?',
+              required: true,
+            ),
             const SizedBox(height: 6),
-            Wrap(spacing: 8, runSpacing: 6, children: [
-              for (final (slug, label) in kWholesalePackagingOptions)
-                ChoiceChip(
-                  label: Text(label),
-                  selected: _wsPackaging == slug,
-                  onSelected: (_) => setState(() => _wsPackaging = slug),
-                ),
-            ]),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                for (final (slug, label) in kWholesalePackagingOptions)
+                  ChoiceChip(
+                    label: Text(label),
+                    selected: _wsPackaging == slug,
+                    onSelected: (_) => setState(() => _wsPackaging = slug),
+                  ),
+              ],
+            ),
             if (_wsPackaging == 'otro' ||
                 _wsSplit == 'cantidades_especificas') ...[
               const SizedBox(height: 8),
               TextField(
-                decoration:
-                    const InputDecoration(hintText: 'Especifica el detalle'),
+                decoration: const InputDecoration(
+                  hintText: 'Especifica el detalle',
+                ),
                 onChanged: (v) => _wsNote = v,
               ),
             ],
             const SizedBox(height: 4),
-            Text('Se enviará priorizando a proveedores mayoristas.',
-                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+            Text(
+              'Se enviará priorizando a proveedores mayoristas.',
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+            ),
           ],
           const SizedBox(height: 16),
           _sectionTitle('¿Cuándo quieres comprar?'),
           const SizedBox(height: 6),
           for (final (value, title, desc) in _urgencyOptions)
-            _selectTile(title, desc, _urgency == value,
-                () => setState(() => _urgency = value)),
+            _selectTile(
+              title,
+              desc,
+              _urgency == value,
+              () => setState(() => _urgency = value),
+            ),
         ] else ...[
           _sectionTitle('¿Dónde se hace el servicio?', required: true),
           const SizedBox(height: 6),
           for (final (value, title, desc, icon) in _serviceModalityOptions)
-            _selectTile(title, desc, _serviceModality == value,
-                () => setState(() => _serviceModality = value), icon: icon),
+            _selectTile(
+              title,
+              desc,
+              _serviceModality == value,
+              () => setState(() => _serviceModality = value),
+              icon: icon,
+            ),
           if (_serviceModality == 'event') ...[
             const SizedBox(height: 6),
             _selectTile(
-                _serviceEventDate == null
-                    ? 'Elegir la fecha del evento'
-                    : 'Fecha: ${_serviceEventDate!.day.toString().padLeft(2, '0')}/${_serviceEventDate!.month.toString().padLeft(2, '0')}/${_serviceEventDate!.year}',
-                'Toca para cambiarla.',
-                _serviceEventDate != null, () async {
-              final picked = await showDatePicker(
+              _serviceEventDate == null
+                  ? 'Elegir la fecha del evento'
+                  : 'Fecha: ${_serviceEventDate!.day.toString().padLeft(2, '0')}/${_serviceEventDate!.month.toString().padLeft(2, '0')}/${_serviceEventDate!.year}',
+              'Toca para cambiarla.',
+              _serviceEventDate != null,
+              () async {
+                final picked = await showDatePicker(
                   context: context,
-                  initialDate: _serviceEventDate ??
+                  initialDate:
+                      _serviceEventDate ??
                       DateTime.now().add(const Duration(days: 7)),
                   firstDate: DateTime.now(),
-                  lastDate: DateTime.now().add(const Duration(days: 365)));
-              if (picked != null) {
-                setState(() => _serviceEventDate = picked);
-              }
-            }, icon: Icons.event_outlined),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                );
+                if (picked != null) {
+                  setState(() => _serviceEventDate = picked);
+                }
+              },
+              icon: Icons.event_outlined,
+            ),
           ],
           const SizedBox(height: 16),
           _sectionTitle('¿Cuándo lo necesitas?', required: true),
           const SizedBox(height: 6),
           for (final (value, title, desc, icon) in _serviceUrgencyOptions)
-            _selectTile(title, desc, _urgencyLevel == value,
-                () => setState(() => _urgencyLevel = value), icon: icon),
+            _selectTile(
+              title,
+              desc,
+              _urgencyLevel == value,
+              () => setState(() => _urgencyLevel = value),
+              icon: icon,
+            ),
           const SizedBox(height: 16),
           _sectionTitle('Presupuesto estimado'),
-          Text('Opcional. Ayuda a los proveedores a saber si encajan.',
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+          Text(
+            'Opcional. Ayuda a los proveedores a saber si encajan.',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
           const SizedBox(height: 8),
-          Row(children: [
-            Expanded(child: _budgetField('Desde RD\$', (v) => _budgetMin = v)),
-            const SizedBox(width: 10),
-            Expanded(child: _budgetField('Hasta RD\$', (v) => _budgetMax = v)),
-          ]),
+          Row(
+            children: [
+              Expanded(
+                child: _budgetField('Desde RD\$', (v) => _budgetMin = v),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _budgetField('Hasta RD\$', (v) => _budgetMax = v),
+              ),
+            ],
+          ),
         ],
         const SizedBox(height: 18),
-        Row(children: [
-          FilledButton(
+        Row(
+          children: [
+            FilledButton(
               onPressed: _busy ? null : _submit,
               child: _busy
                   ? const JayaloSpinner(size: 16, color: Colors.white)
-                  : const Text('Enviar solicitud')),
-          const SizedBox(width: 8),
-          TextButton(
+                  : const Text('Enviar solicitud'),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
               onPressed: _busy
                   ? null
                   : () => setState(() {
-                        _ready = null;
-                        _correcting = true;
-                      }),
-              child: const Text('Corregir algo')),
-        ]),
+                      _ready = null;
+                      _correcting = true;
+                    }),
+              child: const Text('Corregir algo'),
+            ),
+          ],
+        ),
       ],
     ).animate().fadeIn(duration: 200.ms);
   }
 
-  Widget _successView() => RequestPublishedView(
-        onSeeRequests: () => context.go('/client'),
-      );
-
+  Widget _successView() =>
+      RequestPublishedView(onSeeRequests: () => context.go('/client'));
 }

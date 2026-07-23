@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Estado de EMBUDO por conversación — herramienta PRIVADA del proveedor
-/// (pedido PO 2026-07-22) para llevar su funnel de ventas. NO se guarda en la
-/// BD (el cliente NUNCA lo ve): vive local en el dispositivo
-/// (SharedPreferences), un estado por conversación. Se pierde al reinstalar y
-/// no sincroniza entre dispositivos — decisión explícita del PO.
+/// (pedido PO 2026-07-22) para llevar su funnel de ventas. Se persiste en la BD
+/// (tabla `provider_funnel_status`, RLS solo-dueño → el cliente NUNCA lo ve),
+/// así sincroniza entre dispositivos y sobrevive a reinstalar. Antes vivía solo
+/// en SharedPreferences (local) — el PO revirtió esa decisión (2026-07-22).
 class FunnelStatus {
   const FunnelStatus(this.key, this.label, this.emoji, this.color);
   final String key;
@@ -35,19 +35,37 @@ FunnelStatus? funnelStatusByKey(String? key) {
 }
 
 class FunnelStatusStore extends ChangeNotifier {
-  static const _prefix = 'funnel_status_';
+  static const _table = 'provider_funnel_status';
   final Map<String, String> _byConv = {};
   bool _loaded = false;
+  String? _loadedForUid;
 
+  SupabaseClient get _db => Supabase.instance.client;
+
+  /// Carga el embudo del proveedor desde la BD (solo sus filas por RLS).
+  /// Best-effort: sin red se arranca vacío. Se recarga si cambia el usuario
+  /// logueado (los datos son por proveedor, no por dispositivo).
   Future<void> ensureLoaded() async {
-    if (_loaded) return;
+    final uid = _db.auth.currentUser?.id;
+    if (_loaded && _loadedForUid == uid) return;
     _loaded = true;
+    _loadedForUid = uid;
+    _byConv.clear();
+    if (uid == null) {
+      notifyListeners();
+      return;
+    }
     try {
-      final sp = await SharedPreferences.getInstance();
-      for (final k in sp.getKeys()) {
-        if (!k.startsWith(_prefix)) continue;
-        final v = sp.getString(k);
-        if (v != null && v.isNotEmpty) _byConv[k.substring(_prefix.length)] = v;
+      final rows = List<Map<String, dynamic>>.from(
+        await _db
+            .from(_table)
+            .select('conversation_id,status')
+            .eq('user_id', uid),
+      );
+      for (final r in rows) {
+        final c = r['conversation_id'] as String?;
+        final s = r['status'] as String?;
+        if (c != null && s != null && s.isNotEmpty) _byConv[c] = s;
       }
     } catch (_) {
       // Best-effort: sin persistencia se arranca vacío.
@@ -58,6 +76,7 @@ class FunnelStatusStore extends ChangeNotifier {
   String? statusKey(String convId) => _byConv[convId];
 
   Future<void> setStatus(String convId, String? key) async {
+    // Optimista en memoria para respuesta inmediata; la BD es la fuente real.
     if (key == null || key.isEmpty) {
       _byConv.remove(convId);
     } else {
@@ -65,11 +84,21 @@ class FunnelStatusStore extends ChangeNotifier {
     }
     notifyListeners();
     try {
-      final sp = await SharedPreferences.getInstance();
+      final uid = _db.auth.currentUser?.id;
+      if (uid == null) return;
       if (key == null || key.isEmpty) {
-        await sp.remove('$_prefix$convId');
+        await _db
+            .from(_table)
+            .delete()
+            .eq('user_id', uid)
+            .eq('conversation_id', convId);
       } else {
-        await sp.setString('$_prefix$convId', key);
+        await _db.from(_table).upsert({
+          'user_id': uid,
+          'conversation_id': convId,
+          'status': key,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        }, onConflict: 'user_id,conversation_id');
       }
     } catch (_) {}
   }
