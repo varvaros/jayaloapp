@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../shared/network_image.dart';
 import '../../../domain/chat.dart';
 import '../../../domain/chat_time.dart';
 
@@ -78,7 +79,7 @@ Widget buildBubble(
       borderRadius: BorderRadius.circular(14),
       child: GestureDetector(
         onTap: () => onImageTap(m.body),
-        child: Image.network(
+        child: JayaloNetworkImage(
           m.body,
           width: 200,
           height: 200,

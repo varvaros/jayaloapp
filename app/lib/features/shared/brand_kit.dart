@@ -10,6 +10,7 @@ library;
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/brand.dart';
@@ -757,7 +758,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
               child: InteractiveViewer(
                 maxScale: 5,
                 child: Center(
-                  child: Image.network(widget.urls[i],
+                  child: JayaloNetworkImage(widget.urls[i],
                       fit: BoxFit.contain,
                       errorBuilder: (_, _, _) => const Icon(
                           Icons.broken_image_outlined,

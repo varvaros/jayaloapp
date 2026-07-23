@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import '../shared/network_image.dart';
 
 import '../../core/brand.dart';
 import '../../data/repos.dart';
@@ -348,7 +349,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
                         onTap: () => showPhotoViewer(context, urls, initialIndex: j),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: Image.network(urls[j],
+                          child: JayaloNetworkImage(urls[j],
                               width: 200,
                               height: 140,
                               fit: BoxFit.cover,

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -357,7 +358,7 @@ class _AmberPanel extends StatelessWidget {
               : GestureDetector(
                   onTap: () => showPhotoViewer(context, images,
                       initialIndex: activeIndex.clamp(0, images.length - 1)),
-                  child: Image.network(main,
+                  child: JayaloNetworkImage(main,
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => Center(
                           child: Icon(fallbackIcon, size: 120, color: am.ink))),
@@ -405,7 +406,7 @@ class _ThumbStrip extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: Image.network(images[i],
+              child: JayaloNetworkImage(images[i],
                   fit: BoxFit.cover,
                   errorBuilder: (_, _, _) => placeholder()),
             ),

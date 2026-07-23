@@ -37,6 +37,9 @@ dependencies:
   supabase_flutter: ^2.16.0
   google_sign_in: 6.2.2
   go_router: ^17.3.0
+  # Caché de imágenes EN DISCO (persiste entre arranques): las fotos ya vistas
+  # cargan al instante en vez de re-descargarse cada vez que se abre la app.
+  cached_network_image: ^3.4.1
   url_launcher: ^6.3.2
   # Deep link de retorno tras recargar por PayPal en la web (jayalo://wallet).
   app_links: ^6.3.2

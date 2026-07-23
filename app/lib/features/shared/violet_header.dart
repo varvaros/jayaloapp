@@ -10,6 +10,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'network_image.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../domain/notifications.dart' show badgeLabel;
@@ -435,7 +436,7 @@ class _HeaderAvatarState extends State<HeaderAvatar> {
                 width: 42,
                 height: 42,
                 child: url != null
-                    ? Image.network(url, fit: BoxFit.cover)
+                    ? JayaloNetworkImage(url, fit: BoxFit.cover)
                     : Center(
                         child: Text(profileStore.initial,
                             style: TextStyle(

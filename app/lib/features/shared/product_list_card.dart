@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'network_image.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
@@ -45,7 +46,7 @@ class ProductListCard extends StatelessWidget {
               height: 104,
               child: img == null
                   ? _imagePlaceholder(cs)
-                  : Image.network(
+                  : JayaloNetworkImage(
                       img,
                       fit: BoxFit.cover,
                       // Fundido suave al cargar (doctrina de movimiento).

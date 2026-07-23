@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -484,7 +485,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: cs.surfaceContainerHighest,
                       child: Icon(Icons.storefront_outlined,
                           size: 20, color: cs.primary))
-                  : Image.network(urls.first,
+                  : JayaloNetworkImage(urls.first,
                       width: 44,
                       height: 44,
                       fit: BoxFit.cover,
@@ -676,7 +677,7 @@ class _ChatScreenState extends State<ChatScreen> {
         builder: (dialogContext) => Dialog.fullscreen(
             backgroundColor: Colors.black,
             child: Stack(children: [
-              Center(child: InteractiveViewer(child: Image.network(src))),
+              Center(child: InteractiveViewer(child: JayaloNetworkImage(src))),
               Positioned(
                   top: 8, right: 8,
                   child: IconButton(

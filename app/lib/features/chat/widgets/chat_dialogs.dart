@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../shared/network_image.dart';
 import '../../../domain/money.dart';
 
 /// Disclaimer de bienvenida (1 vez por conversación).
@@ -52,7 +53,7 @@ void showAgreementDetails(BuildContext context, Map<String, dynamic> conv,
               if (conv['product_image_url'] != null)
                 ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(conv['product_image_url'] as String,
+                    child: JayaloNetworkImage(conv['product_image_url'] as String,
                         height: 140, width: double.infinity, fit: BoxFit.cover)),
               const SizedBox(height: 8),
               row('Producto / servicio', conv['product_name'] as String? ?? '—'),

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
@@ -382,7 +383,7 @@ class _ProviderRequestDetailScreenState
                                   color: cs.surfaceContainerHighest,
                                   child: Icon(Icons.image_outlined,
                                       color: cs.onSurfaceVariant))
-                              : Image.network(first,
+                              : JayaloNetworkImage(first,
                                   width: 54, height: 54, fit: BoxFit.cover,
                                   errorBuilder: (_, _, _) => Container(
                                       width: 54,
@@ -1245,7 +1246,7 @@ class _ProviderRequestDetailScreenState
   Widget _keptThumb(String url, int index) => Stack(children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
-          child: Image.network(url,
+          child: JayaloNetworkImage(url,
               width: 76,
               height: 76,
               fit: BoxFit.cover,
@@ -1322,7 +1323,7 @@ class _ProviderRequestDetailScreenState
                               .ink))
                   : GestureDetector(
                       onTap: () => showPhotoViewer(context, images),
-                      child: Image.network(images.first,
+                      child: JayaloNetworkImage(images.first,
                           fit: BoxFit.cover,
                           errorBuilder: (_, _, _) => Center(
                               child: Icon(
@@ -1344,7 +1345,7 @@ class _ProviderRequestDetailScreenState
                   child: ClipRRect(
                     borderRadius: const BorderRadius.horizontal(
                         left: Radius.circular(16)),
-                    child: Image.network(images[1],
+                    child: JayaloNetworkImage(images[1],
                         width: 76,
                         height: 76,
                         fit: BoxFit.cover,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../shared/network_image.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
@@ -728,7 +729,7 @@ class _RequestCard extends StatelessWidget {
     if (url == null) return placeholder();
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
-      child: Image.network(
+      child: JayaloNetworkImage(
         url,
         width: 54,
         height: 54,
@@ -799,7 +800,7 @@ class _OtherRequestCard extends StatelessWidget {
       if (imageUrl == null || imageUrl!.isEmpty) return holder;
       return ClipRRect(
         borderRadius: BorderRadius.circular(14),
-        child: Image.network(
+        child: JayaloNetworkImage(
           imageUrl!,
           width: box,
           height: box,

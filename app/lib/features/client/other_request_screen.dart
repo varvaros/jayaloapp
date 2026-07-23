@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
@@ -105,7 +106,7 @@ class _OtherRequestScreenState extends State<OtherRequestScreen> {
                 const SizedBox(height: 14),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: Image.network(imgs.first,
+                  child: JayaloNetworkImage(imgs.first,
                       height: 200, width: double.infinity, fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => const SizedBox()),
                 ),

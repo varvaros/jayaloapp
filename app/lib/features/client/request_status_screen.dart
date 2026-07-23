@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
@@ -427,7 +428,7 @@ class _AmberPanel extends StatelessWidget {
                 ? Center(child: Icon(icon, size: 120, color: ph.ink))
                 : GestureDetector(
                     onTap: () => showPhotoViewer(context, images),
-                    child: Image.network(
+                    child: JayaloNetworkImage(
                       images.first,
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) =>
@@ -446,7 +447,7 @@ class _AmberPanel extends StatelessWidget {
                   borderRadius: const BorderRadius.horizontal(
                     left: Radius.circular(16),
                   ),
-                  child: Image.network(
+                  child: JayaloNetworkImage(
                     images[1],
                     width: 76,
                     height: 76,

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
@@ -113,7 +114,7 @@ class _OfferPhotoMarqueeState extends State<_OfferPhotoMarquee> {
           onTap: () => showPhotoViewer(context, widget.urls, initialIndex: i),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(14),
-            child: Image.network(
+            child: JayaloNetworkImage(
               widget.urls[i],
               width: 240,
               height: 150,

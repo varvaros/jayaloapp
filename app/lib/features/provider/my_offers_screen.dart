@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
@@ -187,7 +188,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
               width: 56,
               height: 56,
               child: imgs.isNotEmpty
-                  ? Image.network(
+                  ? JayaloNetworkImage(
                       imgs.first,
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => _acceptedThumbFallback(tone),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../shared/network_image.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -679,7 +680,7 @@ class _InboxCard extends StatelessWidget {
     if (url == null || url.isEmpty) return ph();
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: Image.network(
+      child: JayaloNetworkImage(
         url,
         width: 44,
         height: 44,
@@ -917,7 +918,7 @@ class _InterestCard extends StatelessWidget {
     if (url == null || url.isEmpty) return placeholder();
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: Image.network(
+      child: JayaloNetworkImage(
         url,
         width: box,
         height: box,
