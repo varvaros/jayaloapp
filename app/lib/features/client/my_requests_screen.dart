@@ -640,8 +640,9 @@ class _RequestCard extends StatelessWidget {
   /// Solicitud "al por mayor": sticker en la esquina de la miniatura.
   final bool wholesale;
 
-  /// Tiene ofertas NUEVAS sin ver: punto rojo antes del título + borde grueso
-  /// oscuro, y va primero en la lista (pedido PO 2026-07-23).
+  /// Tiene ofertas NUEVAS sin ver: muestra la etiqueta "Nuevas ofertas" y va
+  /// primero en la lista (pedido PO 2026-07-23). El borde quedó SOLO para las
+  /// ofertas sin abrir dentro del detalle, no acá.
   final bool unseen;
 
   /// Null = margen estándar de lista; se pasa cero cuando el card vive dentro
@@ -666,9 +667,6 @@ class _RequestCard extends StatelessWidget {
     return JayaloCard(
       onTap: onTap,
       tint: bg,
-      // No vista: borde grueso oscuro (la tinta de la fase, ya oscura) para
-      // destacarla; el resto va sin borde (flota por la sombra).
-      border: unseen ? Border.all(color: tone.ink, width: 2) : null,
       padding: const EdgeInsets.all(11),
       margin: margin ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Column(
@@ -690,36 +688,39 @@ class _RequestCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Punto rojo de "ofertas nuevas sin ver".
-                        if (unseen) ...[
-                          Container(
-                            margin: const EdgeInsets.only(top: 6, right: 7),
-                            width: 9,
-                            height: 9,
-                            decoration: BoxDecoration(
-                              color: cs.error,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ],
-                        Expanded(
-                          child: Text(
-                            title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              // +2pt (pedido PO 2026-07-22: otro punto sobre el +1).
-                              fontSize: 16,
-                              height: 1.3,
-                              fontWeight: FontWeight.w600,
-                              color: fg,
-                            ),
+                    // Etiqueta "Nuevas ofertas" (pedido PO 2026-07-23):
+                    // reemplaza al punto rojo — más claro para el usuario. El
+                    // borde quedó SOLO para las ofertas sin abrir en el detalle.
+                    if (unseen) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: cs.error,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Nuevas ofertas',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onError,
                           ),
                         ),
-                      ],
+                      ),
+                      const SizedBox(height: 6),
+                    ],
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        // +2pt (pedido PO 2026-07-22: otro punto sobre el +1).
+                        fontSize: 16,
+                        height: 1.3,
+                        fontWeight: FontWeight.w600,
+                        color: fg,
+                      ),
                     ),
                     const SizedBox(height: 3),
                     Text(
