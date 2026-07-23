@@ -220,9 +220,13 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                   child: FilledButton.icon(
                     onPressed: () => _openOffer(o),
                     style: FilledButton.styleFrom(
-                      // Botón VERDE con texto blanco: destaca sobre el nuevo
-                      // fondo blanco de la tarjeta.
-                      backgroundColor: tone.ink,
+                      // Mismo verde del botón de ACEPTAR oferta
+                      // (HoldToConfirmTone.free → JayaloColors.success), texto
+                      // blanco; destaca sobre el fondo blanco de la tarjeta.
+                      backgroundColor:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? JayaloColors.dSuccess
+                              : JayaloColors.success,
                       foregroundColor: Colors.white,
                       visualDensity: VisualDensity.compact,
                     ),
