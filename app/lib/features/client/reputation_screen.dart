@@ -25,29 +25,31 @@ class _ReputationScreenState extends State<ReputationScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Column(children: [
-          const VioletHeader(
-            leading: HeaderLeading(),
-            title: 'Mi reputación',
-            actions: [HeaderBell()],
+    body: Column(
+      children: [
+        const VioletHeader(
+          leading: HeaderLeading(),
+          title: 'Mi reputación',
+          actions: [HeaderBell()],
+        ),
+        Expanded(
+          child: FutureBuilder<Map<String, dynamic>?>(
+            future: _load,
+            builder: (context, snap) {
+              if (snap.hasError) {
+                return ErrorRetry(onRetry: () async => _refetch());
+              }
+              if (!snap.hasData &&
+                  snap.connectionState != ConnectionState.done) {
+                return const JayaloLoaderBlock();
+              }
+              return ReputationView(data: snap.data ?? const {});
+            },
           ),
-          Expanded(
-            child: FutureBuilder<Map<String, dynamic>?>(
-              future: _load,
-              builder: (context, snap) {
-                if (snap.hasError) {
-                  return ErrorRetry(onRetry: () async => _refetch());
-                }
-                if (!snap.hasData &&
-                    snap.connectionState != ConnectionState.done) {
-                  return const JayaloLoaderBlock();
-                }
-                return ReputationView(data: snap.data ?? const {});
-              },
-            ),
-          ),
-        ]),
-      );
+        ),
+      ],
+    ),
+  );
 }
 
 /// Solo dibuja. Recibe el mapa crudo de `get_customer_reputation`.
@@ -88,7 +90,8 @@ class _ReputationViewState extends State<ReputationView> {
     if (reviews == 0 && purchases == 0 && requests == 0) {
       return EmptyState(
         controller: _scrollController,
-        message: 'Todavía no tienes reputación.\n\n'
+        message:
+            'Todavía no tienes reputación.\n\n'
             'Se construye sola: pide lo que necesitas, completa tus compras '
             'y califica a quien te atendió. Los proveedores la verán y te '
             'responderán con más confianza.',
@@ -99,41 +102,57 @@ class _ReputationViewState extends State<ReputationView> {
       controller: _scrollController,
       padding: EdgeInsets.only(bottom: 24 + navBarReservedSpace(context)),
       children: [
-        const SectionHeader(text: 'CÓMO TE VEN'),
+        const SectionHeader(text: 'TU CALIFICACIÓN'),
         JayaloCard(
-          child: Row(children: [
-            Expanded(
+          child: Row(
+            children: [
+              Expanded(
                 child: MetricTile(
-                    icon: Icons.star_rounded,
-                    value: rating > 0 ? rating.toStringAsFixed(1) : '—',
-                    label: reviews == 1 ? '1 reseña' : '$reviews reseñas')),
-            Expanded(
+                  icon: Icons.star_rounded,
+                  value: rating > 0 ? rating.toStringAsFixed(1) : '—',
+                  label: reviews == 1 ? '1 reseña' : '$reviews reseñas',
+                ),
+              ),
+              Expanded(
                 child: MetricTile(
-                    icon: Icons.shopping_bag_outlined,
-                    value: '$purchases',
-                    label: 'compras completadas')),
-          ]),
+                  icon: Icons.shopping_bag_outlined,
+                  value: '$purchases',
+                  label: 'compras completadas',
+                ),
+              ),
+            ],
+          ),
         ).cascadeIn(0),
         const SectionHeader(text: 'TU ACTIVIDAD'),
         JayaloCard(
-          child: Row(children: [
-            Expanded(
+          child: Row(
+            children: [
+              Expanded(
                 child: MetricTile(
-                    icon: Icons.receipt_long_outlined,
-                    value: '$requests',
-                    label: 'solicitudes hechas')),
-          ]),
+                  icon: Icons.receipt_long_outlined,
+                  value: '$requests',
+                  label: 'solicitudes hechas',
+                ),
+              ),
+            ],
+          ),
         ).cascadeIn(1),
         if (samples >= kMinResponseSamples && minutes != null)
           JayaloCard(
-            child: Row(children: [
-              Icon(Icons.schedule,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
-              const SizedBox(width: 12),
-              Expanded(
+            child: Row(
+              children: [
+                Icon(
+                  Icons.schedule,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
                   child: Text(
-                      'Regularmente respondes en ${_humanMinutes(minutes)}')),
-            ]),
+                    'Regularmente respondes en ${_humanMinutes(minutes)}',
+                  ),
+                ),
+              ],
+            ),
           ).cascadeIn(2),
       ],
     );

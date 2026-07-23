@@ -41,7 +41,7 @@ class MyRequestsScreen extends StatefulWidget {
 
   /// Inyectables para tests (por defecto los fetch reales).
   final Future<List<(Map<String, dynamic>, RequestPhase, int)>> Function()?
-      myFetch;
+  myFetch;
   final Future<List<Map<String, dynamic>>> Function()? othersFetch;
 
   /// Igual patrón que `CatalogView`/`ProviderInboxView`: `HeaderBell` toca
@@ -175,6 +175,32 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     return false;
   }
 
+  /// Botón de filtro (Mías / De otros): violeta con letra blanca. El activo va
+  /// en violeta pleno; el inactivo en violeta translúcido (pedido PO 2026-07-22:
+  /// botones violeta a la izquierda, letras blancas).
+  Widget _filterButton(String label, bool selected, VoidCallback onTap) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: selected ? cs.primary : cs.primary.withValues(alpha: .42),
+      borderRadius: BorderRadius.circular(999),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _reload() {
     if (mounted) {
       setState(() {
@@ -218,8 +244,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     ];
     // Badge de la pestaña "Solicitudes" (cliente): cuántas tienen ofertas por
     // revisar — lo accionable, lo que hace volver a la app.
-    solicitudesBadge.value =
-        rows.where((e) => e.$2 == RequestPhase.withOffers).length;
+    solicitudesBadge.value = rows
+        .where((e) => e.$2 == RequestPhase.withOffers)
+        .length;
     return rows;
   }
 
@@ -264,167 +291,187 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: HeaderSegmented(
-              options: const ['Mías', 'De otros'],
-              index: _others ? 1 : 0,
-              onChanged: (i) => setState(() {
-                _others = i == 1;
-                if (_others) _othersLoad ??= _fetchOthers();
-              }),
+            // Botones violeta alineados a la izquierda (Wrap: si no caben en un
+            // teléfono angosto, bajan a la segunda línea en vez de desbordar).
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _filterButton('Mis solicitudes', !_others, () {
+                  if (_others) setState(() => _others = false);
+                }),
+                _filterButton('Ver solicitudes de usuarios', _others, () {
+                  setState(() {
+                    _others = true;
+                    _othersLoad ??= _fetchOthers();
+                  });
+                }),
+              ],
             ),
           ),
           Expanded(
-            child: _others
-                ? FutureBuilder<List<Map<String, dynamic>>>(
-                    future: _othersLoad,
-                    builder: (context, snap) {
-                      if (!snap.hasData) return const JayaloLoaderBlock();
-                      final list = snap.data!;
-                      if (list.isEmpty) {
-                        return const EmptyState(
-                          message:
-                              'Todavía no hay solicitudes de otros usuarios.',
-                        );
-                      }
-                      return ListView.builder(
-                        padding: EdgeInsets.only(
-                            top: 8,
-                            bottom: 8 + navBarReservedSpace(context)),
-                        itemCount: list.length,
-                        itemBuilder: (_, i) {
-                          final r = list[i];
-                          return _OtherRequestCard(
-                            title: r['title'] as String? ?? 'Solicitud',
-                            createdAt: DateTime.parse(r['created_at'] as String),
-                            imageUrl: _firstImage(r),
-                            kind: r['kind'] as String?,
-                            wholesale: r['is_wholesale'] == true,
-                            onTap: () => context
-                                .push('/client/other-request/${r['id']}'),
-                          ).cascadeIn(i);
-                        },
-                      );
-                    },
-                  )
-                : NotificationListener<ScrollNotification>(
+            // El colapso del header (esconder buscador) escucha el scroll de
+            // CUALQUIERA de las dos pestañas: antes solo envolvía "Mías", por eso
+            // en "De otros" el header no subía con el scroll (bug PO 2026-07-22).
+            child: NotificationListener<ScrollNotification>(
               onNotification: _onListScroll,
-              child: RefreshIndicator(
-              // onRefresh espera Future<void>; setState para no devolver Future.
-              onRefresh: () async {
-                setState(() {
-                  _load = _fetch();
-                });
-              },
-              child: FutureBuilder(
-                future: _load,
-                builder: (context, snap) {
-                  if (!snap.hasData) {
-                    return const JayaloLoaderBlock();
-                  }
-                  final items = snap.data!;
-                  if (items.isEmpty) {
-                    return EmptyState(
-                      controller: homeScrollController,
-                      message:
-                          'Aún no has pedido nada.\n'
-                          'Cuéntanos qué buscas y los proveedores te harán ofertas.',
-                      ctaLabel: 'Crear solicitud',
-                      // push, no go: crear-solicitud es MODAL (sube por encima
-                      // con su CustomTransitionPage); un go la trataría como
-                      // pestaña más — swap instantáneo (gotcha ShellRoute).
-                      onCta: () => context.push('/client/create'),
-                    );
-                  }
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _SecRow(count: items.length),
-                      Expanded(
-                        child: ListView.builder(
-                          controller: homeScrollController,
+              child: _others
+                  ? FutureBuilder<List<Map<String, dynamic>>>(
+                      future: _othersLoad,
+                      builder: (context, snap) {
+                        if (!snap.hasData) return const JayaloLoaderBlock();
+                        final list = snap.data!;
+                        if (list.isEmpty) {
+                          return const EmptyState(
+                            message:
+                                'Todavía no hay solicitudes de otros usuarios.',
+                          );
+                        }
+                        return ListView.builder(
                           padding: EdgeInsets.only(
-                            top: 2,
+                            top: 8,
                             bottom: 8 + navBarReservedSpace(context),
                           ),
-                          itemCount: items.length,
+                          itemCount: list.length,
                           itemBuilder: (_, i) {
-                            final (r, phase, offerCount) = items[i];
-                            final id = r['id'] as String;
-                            // push (no go): apila el detalle SOBRE la lista para
-                            // que su atrás pueda volver. Con go() la pila se
-                            // reemplazaba y el `context.pop()` del detalle
-                            // (flecha) no tenía nada que popear — la flecha "no
-                            // funcionaba". El resto de detalles (chat/catálogo)
-                            // ya usa push por esto mismo.
-                            void open() => context.push('/client/request/$id');
-                            // El swipe (eliminar/editar) solo tiene sentido
-                            // mientras la solicitud está ABIERTA: la RPC de
-                            // borrar solo permite `open`, y editar una ya
-                            // aceptada/completada no aplica. En esas fases el
-                            // card va sin swipe.
-                            final canManage =
-                                phase == RequestPhase.waiting ||
-                                phase == RequestPhase.withOffers;
-                            if (!canManage) {
-                              return _RequestCard(
-                                title: r['title'] as String,
-                                createdAt: DateTime.parse(
-                                  r['created_at'] as String,
-                                ),
-                                phase: phase,
-                                offerCount: offerCount,
-                                imageUrl: _firstImage(r),
-                                kind: r['kind'] as String?,
-                                wholesale: r['is_wholesale'] == true,
-                                onTap: open,
-                              ).cascadeIn(i);
-                            }
-                            final card = _RequestCard(
-                              title: r['title'] as String,
+                            final r = list[i];
+                            return _OtherRequestCard(
+                              title: r['title'] as String? ?? 'Solicitud',
                               createdAt: DateTime.parse(
                                 r['created_at'] as String,
                               ),
-                              phase: phase,
-                              offerCount: offerCount,
                               imageUrl: _firstImage(r),
                               kind: r['kind'] as String?,
                               wholesale: r['is_wholesale'] == true,
-                              onTap: open,
-                              // Sin margen propio: lo aplica el swipe.
-                              margin: EdgeInsets.zero,
-                            );
-                            return SwipeToActions(
-                              id: id,
-                              group: _openRow,
-                              actions: [
-                                SwipeAction(
-                                  icon: Icons.delete_outline,
-                                  label: 'Eliminar',
-                                  color: Theme.of(context).colorScheme.error,
-                                  onTap: () => _deleteRequest(id, offerCount),
-                                ),
-                                SwipeAction(
-                                  icon: Icons.edit_outlined,
-                                  label: 'Editar',
-                                  color: const Color(0xFF378ADD),
-                                  // Editar llega en una sesión próxima
-                                  // (decisión PO); por ahora avisa.
-                                  onTap: () async => showJayaloToast(
-                                    context,
-                                    'Editar solicitud: próximamente.',
-                                  ),
-                                ),
-                              ],
-                              child: card,
+                              onTap: () => context.push(
+                                '/client/other-request/${r['id']}',
+                              ),
                             ).cascadeIn(i);
                           },
-                        ),
+                        );
+                      },
+                    )
+                  : RefreshIndicator(
+                      // onRefresh espera Future<void>; setState para no devolver Future.
+                      onRefresh: () async {
+                        setState(() {
+                          _load = _fetch();
+                        });
+                      },
+                      child: FutureBuilder(
+                        future: _load,
+                        builder: (context, snap) {
+                          if (!snap.hasData) {
+                            return const JayaloLoaderBlock();
+                          }
+                          final items = snap.data!;
+                          if (items.isEmpty) {
+                            return EmptyState(
+                              controller: homeScrollController,
+                              message:
+                                  'Aún no has pedido nada.\n'
+                                  'Cuéntanos qué buscas y los proveedores te harán ofertas.',
+                              ctaLabel: 'Crear solicitud',
+                              // push, no go: crear-solicitud es MODAL (sube por encima
+                              // con su CustomTransitionPage); un go la trataría como
+                              // pestaña más — swap instantáneo (gotcha ShellRoute).
+                              onCta: () => context.push('/client/create'),
+                            );
+                          }
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _SecRow(count: items.length),
+                              Expanded(
+                                child: ListView.builder(
+                                  controller: homeScrollController,
+                                  padding: EdgeInsets.only(
+                                    top: 2,
+                                    bottom: 8 + navBarReservedSpace(context),
+                                  ),
+                                  itemCount: items.length,
+                                  itemBuilder: (_, i) {
+                                    final (r, phase, offerCount) = items[i];
+                                    final id = r['id'] as String;
+                                    // push (no go): apila el detalle SOBRE la lista para
+                                    // que su atrás pueda volver. Con go() la pila se
+                                    // reemplazaba y el `context.pop()` del detalle
+                                    // (flecha) no tenía nada que popear — la flecha "no
+                                    // funcionaba". El resto de detalles (chat/catálogo)
+                                    // ya usa push por esto mismo.
+                                    void open() =>
+                                        context.push('/client/request/$id');
+                                    // El swipe (eliminar/editar) solo tiene sentido
+                                    // mientras la solicitud está ABIERTA: la RPC de
+                                    // borrar solo permite `open`, y editar una ya
+                                    // aceptada/completada no aplica. En esas fases el
+                                    // card va sin swipe.
+                                    final canManage =
+                                        phase == RequestPhase.waiting ||
+                                        phase == RequestPhase.withOffers;
+                                    if (!canManage) {
+                                      return _RequestCard(
+                                        title: r['title'] as String,
+                                        createdAt: DateTime.parse(
+                                          r['created_at'] as String,
+                                        ),
+                                        phase: phase,
+                                        offerCount: offerCount,
+                                        imageUrl: _firstImage(r),
+                                        kind: r['kind'] as String?,
+                                        wholesale: r['is_wholesale'] == true,
+                                        onTap: open,
+                                      ).cascadeIn(i);
+                                    }
+                                    final card = _RequestCard(
+                                      title: r['title'] as String,
+                                      createdAt: DateTime.parse(
+                                        r['created_at'] as String,
+                                      ),
+                                      phase: phase,
+                                      offerCount: offerCount,
+                                      imageUrl: _firstImage(r),
+                                      kind: r['kind'] as String?,
+                                      wholesale: r['is_wholesale'] == true,
+                                      onTap: open,
+                                      // Sin margen propio: lo aplica el swipe.
+                                      margin: EdgeInsets.zero,
+                                    );
+                                    return SwipeToActions(
+                                      id: id,
+                                      group: _openRow,
+                                      actions: [
+                                        SwipeAction(
+                                          icon: Icons.delete_outline,
+                                          label: 'Eliminar',
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.error,
+                                          onTap: () =>
+                                              _deleteRequest(id, offerCount),
+                                        ),
+                                        SwipeAction(
+                                          icon: Icons.edit_outlined,
+                                          label: 'Editar',
+                                          color: const Color(0xFF378ADD),
+                                          // Editar llega en una sesión próxima
+                                          // (decisión PO); por ahora avisa.
+                                          onTap: () async => showJayaloToast(
+                                            context,
+                                            'Editar solicitud: próximamente.',
+                                          ),
+                                        ),
+                                      ],
+                                      child: card,
+                                    ).cascadeIn(i);
+                                  },
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
-                    ],
-                  );
-                },
-              ),
-            ),
+                    ),
             ),
           ),
         ],
@@ -537,45 +584,53 @@ class _RequestCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(children: [
-          Stack(clipBehavior: Clip.none, children: [
-            _thumb(context, tinted, tone),
-            if (wholesale)
-              const WholesaleRibbon(radius: 16),
-          ]),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    // +2pt (pedido PO 2026-07-22: otro punto sobre el +1).
-                    fontSize: 16,
-                    height: 1.3,
-                    fontWeight: FontWeight.w600,
-                    color: fg,
-                  ),
+          Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  _thumb(context, tinted, tone),
+                  if (wholesale) const WholesaleRibbon(radius: 16),
+                ],
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        // +2pt (pedido PO 2026-07-22: otro punto sobre el +1).
+                        fontSize: 16,
+                        height: 1.3,
+                        fontWeight: FontWeight.w600,
+                        color: fg,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      timeAgo(createdAt),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: fg.withValues(alpha: .7),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _pill(label, tone, tinted),
+                  ],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  timeAgo(createdAt),
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: fg.withValues(alpha: .7),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _pill(label, tone, tinted),
-              ],
-            ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: fg.withValues(alpha: .4),
+              ),
+            ],
           ),
-          Icon(Icons.chevron_right, size: 20, color: fg.withValues(alpha: .4)),
-          ]),
           const SizedBox(height: 10),
           _phaseTimeline(context, tone, tinted),
         ],
@@ -597,43 +652,50 @@ class _RequestCard extends StatelessWidget {
     final current = phase.index;
 
     Widget seg(bool show, bool done) => Expanded(
-          child: show
-              ? Container(height: 2, color: done ? active : muted)
-              : const SizedBox(),
-        );
+      child: show
+          ? Container(height: 2, color: done ? active : muted)
+          : const SizedBox(),
+    );
     Widget dot(bool done, bool isCurrent) => Container(
-          width: isCurrent ? 13 : 10,
-          height: isCurrent ? 13 : 10,
-          decoration: BoxDecoration(
-            color: done ? active : Colors.transparent,
-            border: Border.all(color: done ? active : muted, width: 2),
-            shape: BoxShape.circle,
-          ),
-        );
+      width: isCurrent ? 13 : 10,
+      height: isCurrent ? 13 : 10,
+      decoration: BoxDecoration(
+        color: done ? active : Colors.transparent,
+        border: Border.all(color: done ? active : muted, width: 2),
+        shape: BoxShape.circle,
+      ),
+    );
 
     return Row(
       children: [
         for (var i = 0; i < labels.length; i++)
           Expanded(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Row(children: [
-                seg(i > 0, i <= current),
-                dot(i <= current, i == current),
-                seg(i < labels.length - 1, i < current),
-              ]),
-              const SizedBox(height: 4),
-              Text(
-                labels[i],
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 8.5,
-                  height: 1.1,
-                  color: i <= current ? active : muted,
-                  fontWeight: i == current ? FontWeight.w700 : FontWeight.w500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    seg(i > 0, i <= current),
+                    dot(i <= current, i == current),
+                    seg(i < labels.length - 1, i < current),
+                  ],
                 ),
-              ),
-            ]),
+                const SizedBox(height: 4),
+                Text(
+                  labels[i],
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 8.5,
+                    height: 1.1,
+                    color: i <= current ? active : muted,
+                    fontWeight: i == current
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
       ],
     );
@@ -724,51 +786,73 @@ class _OtherRequestCard extends StatelessWidget {
         width: box,
         height: box,
         decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(14)),
-        child: Icon(kind == 'servicio' ? Icons.handyman_outlined
-            : Icons.inventory_2_outlined, color: cs.onSurfaceVariant),
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(
+          kind == 'servicio'
+              ? Icons.handyman_outlined
+              : Icons.inventory_2_outlined,
+          color: cs.onSurfaceVariant,
+        ),
       );
       if (imageUrl == null || imageUrl!.isEmpty) return holder;
       return ClipRRect(
         borderRadius: BorderRadius.circular(14),
-        child: Image.network(imageUrl!, width: box, height: box,
-            fit: BoxFit.cover, errorBuilder: (_, _, _) => holder),
+        child: Image.network(
+          imageUrl!,
+          width: box,
+          height: box,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => holder,
+        ),
       );
     }
 
     return JayaloCard(
       onTap: onTap,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(children: [
-        Stack(clipBehavior: Clip.none, children: [
-          thumb(),
-          if (wholesale) const WholesaleRibbon(radius: 14),
-        ]),
-        const SizedBox(width: 13),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+      child: Row(
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
             children: [
-              Text(title,
+              thumb(),
+              if (wholesale) const WholesaleRibbon(radius: 14),
+            ],
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      fontSize: 16,
-                      height: 1.3,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface)),
-              const SizedBox(height: 3),
-              Text(timeAgo(createdAt),
-                  style: TextStyle(
-                      fontSize: 11.5, color: cs.onSurfaceVariant)),
-            ],
+                    fontSize: 16,
+                    height: 1.3,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  timeAgo(createdAt),
+                  style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
           ),
-        ),
-        Icon(Icons.chevron_right, size: 20,
-            color: cs.onSurfaceVariant.withValues(alpha: .4)),
-      ]),
+          Icon(
+            Icons.chevron_right,
+            size: 20,
+            color: cs.onSurfaceVariant.withValues(alpha: .4),
+          ),
+        ],
+      ),
     );
   }
 }

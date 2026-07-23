@@ -70,33 +70,40 @@ class _MyOffersScreenState extends State<MyOffersScreen>
         .toList();
     final pending = _offers.where((o) => o['status'] == 'pending').toList();
     final rest = _offers
-        .where((o) =>
-            o['status'] == 'rejected' ||
-            o['status'] == 'completed' ||
-            (o['status'] == 'accepted' && o['unlocked_at'] != null))
+        .where(
+          (o) =>
+              o['status'] == 'rejected' ||
+              o['status'] == 'completed' ||
+              (o['status'] == 'accepted' && o['unlocked_at'] != null),
+        )
         .toList();
     return Scaffold(
-      body: Column(children: [
-        const VioletHeader(
-          leading: HeaderAvatar(),
-          title: 'Mis ofertas',
-          actions: [HeaderBell()],
-        ),
-        Expanded(
-          child: _loading
-              ? const JayaloLoaderBlock()
-              : RefreshIndicator(
-                  onRefresh: _refetch,
-                  child: ListView(
+      body: Column(
+        children: [
+          const VioletHeader(
+            leading: HeaderAvatar(),
+            title: 'Mis ofertas',
+            actions: [HeaderBell()],
+          ),
+          Expanded(
+            child: _loading
+                ? const JayaloLoaderBlock()
+                : RefreshIndicator(
+                    onRefresh: _refetch,
+                    child: ListView(
                       padding: EdgeInsets.only(
-                          top: 12, bottom: 12 + navBarReservedSpace(context)),
+                        top: 12,
+                        bottom: 12 + navBarReservedSpace(context),
+                      ),
                       // Cascada de entrada (fade + slide) en cada tarjeta, igual
                       // que Solicitudes y Catálogo: `_ci` es el índice corrido
                       // para escalonar el stagger de arriba hacia abajo.
-                      children: _buildOfferList(toUnlock, pending, rest)),
-                ),
-        ),
-      ]),
+                      children: _buildOfferList(toUnlock, pending, rest),
+                    ),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -110,24 +117,31 @@ class _MyOffersScreenState extends State<MyOffersScreen>
   ) {
     final children = <Widget>[];
     var ci = 0;
-    children.add(_WalletCard(
-            balance: _balance,
-            tone: _balance == 0 ? _red : _green,
-            onRecharge: _openWallet)
-        .cascadeIn(ci++));
+    children.add(
+      _WalletCard(
+        balance: _balance,
+        tone: _balance == 0 ? _red : _green,
+        onRecharge: _openWallet,
+      ).cascadeIn(ci++),
+    );
     if (toUnlock.isNotEmpty) {
       children.add(
-          const SectionHeader(text: '🏆 ¡Te aceptaron! Desbloquea el contacto'));
+        const SectionHeader(text: '🏆 ¡Te aceptaron! Desbloquea el contacto'),
+      );
       for (final o in toUnlock) {
         children.add(_acceptedCard(o).cascadeIn(ci++));
       }
     }
     children.add(SectionHeader(text: 'Pendientes (${pending.length})'));
     if (pending.isEmpty && toUnlock.isEmpty) {
-      children.add(const Padding(
+      children.add(
+        const Padding(
           padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           child: Text(
-              'Oferta desde "Solicitudes" — es gratis y te avisamos si te aceptan.')));
+            'Oferta desde "Solicitudes" — es gratis y te avisamos si te aceptan.',
+          ),
+        ),
+      );
     }
     for (final o in pending) {
       children.add(_offerCard(o).cascadeIn(ci++));
@@ -142,23 +156,25 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     return children;
   }
 
-  /// "O1 · Tarjeta teñida" (elegida por el PO): el momento de dinero del
-  /// proveedor no puede pasar desapercibido. PO 2026-07-21: todas se veían
-  /// IGUALES ("¡Te aceptaron!" sin más) → ahora lleva el TÍTULO de la solicitud
-  /// y una FOTO (la de la propia oferta) para saber de cuál se trata.
+  /// Tarjeta de oferta ACEPTADA, con el mismo patrón que "Interesado en tu
+  /// producto" (pedido PO 2026-07-22): título de la solicitud, botón
+  /// "Conversar · N créditos" (el desbloqueo cuesta lo mismo que conversar) y,
+  /// debajo, el estado "Aceptada". La foto de la oferta identifica de cuál se
+  /// trata. Violeta = el tono de "desbloquear" (el momento de dinero).
   Widget _acceptedCard(Map<String, dynamic> o) {
-    // Violeta (el color de "desbloquear"): el momento de dinero del proveedor,
-    // en el tono de la acción.
-    final tone = Theme.of(context).brightness == Brightness.dark
-        ? JayaloStatus.respondedDark
-        : JayaloStatus.respondedLight;
+    // Verde de "Aceptada" (el mismo de las solicitudes); el violeta queda
+    // reservado para las desbloqueadas (pedido PO 2026-07-22).
+    final tone = offerBadgeTone(context, 'accepted');
     final imgs =
         ((o['image_urls'] as List?)?.cast<String>() ?? const <String>[])
             .where((u) => u.isNotEmpty)
             .toList();
     final title = (o['request_title'] as String? ?? '').trim();
+    final cost = estimatedUnlockCost(o);
+    final price = offerPriceLabel(o);
     return JayaloCard(
-      tint: tone.bg,
+      // Fondo BLANCO (pedido PO 2026-07-22): antes la tarjeta iba teñida de
+      // verde; ahora solo el botón lleva el verde.
       onTap: () => _openOffer(o),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -171,9 +187,11 @@ class _MyOffersScreenState extends State<MyOffersScreen>
               width: 56,
               height: 56,
               child: imgs.isNotEmpty
-                  ? Image.network(imgs.first,
+                  ? Image.network(
+                      imgs.first,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => _acceptedThumbFallback(tone))
+                      errorBuilder: (_, _, _) => _acceptedThumbFallback(tone),
+                    )
                   : _acceptedThumbFallback(tone),
             ),
           ),
@@ -181,35 +199,75 @@ class _MyOffersScreenState extends State<MyOffersScreen>
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(children: [
-                  Icon(Icons.emoji_events, size: 14, color: tone.ink),
-                  const SizedBox(width: 4),
-                  Text('¡Te aceptaron!',
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: tone.ink)),
-                ]),
-                if (title.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: jayaloHead(context))),
-                ],
-                const SizedBox(height: 3),
-                Text('${offerPriceLabel(o)} · Toca para desbloquear',
+                if (title.isNotEmpty)
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 13, color: tone.ink.withValues(alpha: .85))),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: jayaloHead(context),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                // Botón "Conversar · N créditos": desbloquea el contacto (mismo
+                // flujo que toca la tarjeta). Igual estilo que la interest card.
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.icon(
+                    onPressed: () => _openOffer(o),
+                    style: FilledButton.styleFrom(
+                      // Botón VERDE con texto blanco: destaca sobre el nuevo
+                      // fondo blanco de la tarjeta.
+                      backgroundColor: tone.ink,
+                      foregroundColor: Colors.white,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.lock_open, size: 16),
+                    label: Text(
+                      'Conversar · $cost crédito${cost == 1 ? '' : 's'}',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                // "Aceptada" + el PRECIO OFERTADO al lado (pedido PO
+                // 2026-07-22): ver la cifra aceptada motiva a desbloquear. El
+                // precio va más grande — es el protagonista de la fila.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      'Aceptada',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: tone.ink,
+                      ),
+                    ),
+                    if (price.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          price,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: jayaloHead(context),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Icon(Icons.lock_open, size: 22, color: tone.ink),
         ],
       ),
     );
@@ -217,9 +275,9 @@ class _MyOffersScreenState extends State<MyOffersScreen>
 
   /// Miniatura de reemplazo del `_acceptedCard` cuando la oferta no trae foto.
   Widget _acceptedThumbFallback(StatusTone tone) => Container(
-        color: tone.ink.withValues(alpha: .14),
-        child: Icon(Icons.lock_open, size: 24, color: tone.ink),
-      );
+    color: tone.ink.withValues(alpha: .14),
+    child: Icon(Icons.lock_open, size: 24, color: tone.ink),
+  );
 
   Widget _offerCard(Map<String, dynamic> o) {
     final st = o['status'] as String;
@@ -227,7 +285,10 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     // Tonos del badge unificados (pedido PO 2026-07-21): desbloqueada = VIOLETA,
     // aceptada = VERDE, pendiente = ÁMBAR. Ver [offerBadgeTone].
     final (label, tone) = switch (st) {
-      'accepted' when unlocked => ('Desbloqueada', offerBadgeTone(context, 'unlocked')),
+      'accepted' when unlocked => (
+        'Desbloqueada',
+        offerBadgeTone(context, 'unlocked'),
+      ),
       'accepted' => ('Aceptada', offerBadgeTone(context, 'accepted')),
       'completed' => ('Completada', offerBadgeTone(context, 'completed')),
       'rejected' => ('Rechazada', offerBadgeTone(context, 'rejected')),
@@ -249,14 +310,17 @@ class _MyOffersScreenState extends State<MyOffersScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(o['request_title'] as String? ?? '',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  o['request_title'] as String? ?? '',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 2),
-                Text(pending ? '$base · Toca para editar' : base,
-                    style: TextStyle(
-                        fontSize: 13, color: cs.onSurfaceVariant)),
+                Text(
+                  pending ? '$base · Toca para editar' : base,
+                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                ),
               ],
             ),
           ),
@@ -274,11 +338,11 @@ class _MyOffersScreenState extends State<MyOffersScreen>
       // Aún sin aceptar: abrir el formulario para editar o borrar la oferta.
       // push (no go): apila el detalle para que el ATRÁS vuelva aquí (el go
       // reemplazaba la pila y la flecha no funcionaba); al volver se recarga.
-      context
-          .push('/provider/request/${o['request_id']}?edit=${o['id']}')
-          .then((_) {
-        if (mounted) _refetch();
-      });
+      context.push('/provider/request/${o['request_id']}?edit=${o['id']}').then(
+        (_) {
+          if (mounted) _refetch();
+        },
+      );
     } else if (st == 'accepted' && !unlocked) {
       // Flujo compartido (unlock_flow.dart): revelable → hold + costo →
       // celebración → contacto.
@@ -294,8 +358,11 @@ class _MyOffersScreenState extends State<MyOffersScreen>
 /// "W1 · Tarjeta ámbar" (elegida por el PO): el saldo en el tono del dinero,
 /// con el número grande y Recargar a mano.
 class _WalletCard extends StatelessWidget {
-  const _WalletCard(
-      {required this.balance, required this.tone, required this.onRecharge});
+  const _WalletCard({
+    required this.balance,
+    required this.tone,
+    required this.onRecharge,
+  });
   final int? balance;
   final StatusTone tone;
   final VoidCallback onRecharge;
@@ -314,23 +381,32 @@ class _WalletCard extends StatelessWidget {
               color: tone.ink.withValues(alpha: .14),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(Icons.account_balance_wallet_outlined,
-                size: 20, color: tone.ink),
+            child: Icon(
+              Icons.account_balance_wallet_outlined,
+              size: 20,
+              color: tone.ink,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('${balance ?? '—'} crédito${balance == 1 ? '' : 's'}',
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: tone.ink)),
-                Text('Tu saldo para desbloquear contactos',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: tone.ink.withValues(alpha: .8))),
+                Text(
+                  '${balance ?? '—'} crédito${balance == 1 ? '' : 's'}',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: tone.ink,
+                  ),
+                ),
+                Text(
+                  'Tu saldo para desbloquear contactos',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: tone.ink.withValues(alpha: .8),
+                  ),
+                ),
               ],
             ),
           ),
@@ -338,7 +414,9 @@ class _WalletCard extends StatelessWidget {
           FilledButton(
             onPressed: onRecharge,
             style: FilledButton.styleFrom(
-                backgroundColor: tone.ink, foregroundColor: tone.bg),
+              backgroundColor: tone.ink,
+              foregroundColor: tone.bg,
+            ),
             child: const Text('Recargar'),
           ),
         ],
