@@ -34,6 +34,23 @@ String timeAgo(DateTime d) {
   RequestPhase.completed => (Icons.done_all, 'Completada'),
 };
 
+/// Ordena las filas de la lista de solicitudes: las NO VISTAS primero y, dentro
+/// de cada grupo, la más reciente arriba (pedido PO 2026-07-23). Función pura
+/// (público para poder probar el orden sin Supabase).
+void sortRequestRows(
+  List<(Map<String, dynamic>, RequestPhase, int)> rows,
+  Set<String> unseenReqIds,
+) {
+  rows.sort((a, b) {
+    final ua = unseenReqIds.contains(a.$1['id']);
+    final ub = unseenReqIds.contains(b.$1['id']);
+    if (ua != ub) return ua ? -1 : 1;
+    final ca = DateTime.parse(a.$1['created_at'] as String);
+    final cb = DateTime.parse(b.$1['created_at'] as String);
+    return cb.compareTo(ca);
+  });
+}
+
 class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({
     super.key,
@@ -62,6 +79,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   late Future<List<(Map<String, dynamic>, RequestPhase, int)>> _load =
       _fetchMine();
   int _seenTick = requestsChanged.value;
+
+  /// Solicitudes con al menos una oferta NUEVA sin leer (= con notificación
+  /// `offer_new` sin leer). Van PRIMERO en la lista, con punto rojo + borde
+  /// grueso oscuro (pedido PO 2026-07-23). El "leído" es por OFERTA (se marca al
+  /// abrir cada oferta en el detalle): esta solicitud deja de estar sin ver
+  /// cuando ya no le quedan ofertas sin leer.
+  Set<String> _unseenReqIds = {};
   // Coordina "un solo row de swipe abierto a la vez".
   final ValueNotifier<Object?> _openRow = ValueNotifier(null);
 
@@ -222,18 +246,25 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
   Future<List<(Map<String, dynamic>, RequestPhase, int)>> _fetch() async {
     final reqs = await myRequests();
-    if (reqs.isEmpty) return [];
+    if (reqs.isEmpty) {
+      _unseenReqIds = {};
+      return [];
+    }
     final ids = reqs.map((r) => r['id'] as String).toList();
     final offers = List<Map<String, dynamic>>.from(
       await supa
           .from('provider_offers')
-          .select('request_id,status,unlocked_at')
+          // `id` (nuevo): para mapear qué oferta tiene su `offer_new` sin leer.
+          .select('id,request_id,status,unlocked_at')
           .inFilter('request_id', ids),
     );
     final byReq = <String, List<OfferLite>>{};
     for (final o in offers) {
       byReq.putIfAbsent(o['request_id'] as String, () => []).add(offerLite(o));
     }
+    // "No vistas": solicitudes con al menos una oferta cuya notificación
+    // `offer_new` sigue sin leer, mapeadas vía las ofertas ya traídas.
+    _unseenReqIds = await _fetchUnseenRequests(offers);
     final rows = [
       for (final r in reqs)
         (
@@ -245,12 +276,50 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           byReq[r['id']]?.length ?? 0,
         ),
     ];
+    // Orden (pedido PO 2026-07-23): las NO VISTAS primero; dentro de cada grupo,
+    // la más reciente arriba. `myRequests` ya viene por created_at desc, pero lo
+    // dejamos explícito para no depender de ese detalle.
+    sortRequestRows(rows, _unseenReqIds);
     // Badge de la pestaña "Solicitudes" (cliente): cuántas tienen ofertas por
     // revisar — lo accionable, lo que hace volver a la app.
     solicitudesBadge.value = rows
         .where((e) => e.$2 == RequestPhase.withOffers)
         .length;
     return rows;
+  }
+
+  /// Conjunto de request_ids con al menos una oferta cuya `offer_new` sigue SIN
+  /// LEER (best-effort: nunca rompe la lista). El "leído" se marca por oferta en
+  /// el detalle; aquí solo necesitamos si a la solicitud le queda ≥1 sin leer.
+  Future<Set<String>> _fetchUnseenRequests(
+    List<Map<String, dynamic>> offers,
+  ) async {
+    final uid = supa.auth.currentUser?.id;
+    if (uid == null) return {};
+    try {
+      final notifs = List<Map<String, dynamic>>.from(
+        await supa
+            .from('notifications')
+            .select('entity_id')
+            .eq('user_id', uid)
+            .eq('kind', 'offer_new')
+            .isFilter('read_at', null),
+      );
+      final unread = notifs
+          .map((n) => n['entity_id'] as String?)
+          .whereType<String>()
+          .toSet();
+      if (unread.isEmpty) return {};
+      final reqIds = <String>{};
+      for (final o in offers) {
+        final oid = o['id'] as String?;
+        final rid = o['request_id'] as String?;
+        if (oid != null && rid != null && unread.contains(oid)) reqIds.add(rid);
+      }
+      return reqIds;
+    } catch (_) {
+      return {};
+    }
   }
 
   @override
@@ -402,8 +471,17 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                     // (flecha) no tenía nada que popear — la flecha "no
                                     // funcionaba". El resto de detalles (chat/catálogo)
                                     // ya usa push por esto mismo.
-                                    void open() =>
-                                        context.push('/client/request/$id');
+                                    final unseen = _unseenReqIds.contains(id);
+                                    // El "leído" se marca por oferta DENTRO del
+                                    // detalle; al volver, re-fetch para reflejar
+                                    // el punto/orden si ya no quedan sin leer.
+                                    void open() {
+                                      context
+                                          .push('/client/request/$id')
+                                          .then((_) {
+                                        if (mounted && unseen) _reload();
+                                      });
+                                    }
                                     // El swipe (eliminar/editar) solo tiene sentido
                                     // mientras la solicitud está ABIERTA: la RPC de
                                     // borrar solo permite `open`, y editar una ya
@@ -423,6 +501,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                         imageUrl: _firstImage(r),
                                         kind: r['kind'] as String?,
                                         wholesale: r['is_wholesale'] == true,
+                                        unseen: unseen,
                                         onTap: open,
                                       ).cascadeIn(i);
                                     }
@@ -436,6 +515,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                       imageUrl: _firstImage(r),
                                       kind: r['kind'] as String?,
                                       wholesale: r['is_wholesale'] == true,
+                                      unseen: unseen,
                                       onTap: open,
                                       // Sin margen propio: lo aplica el swipe.
                                       margin: EdgeInsets.zero,
@@ -545,6 +625,7 @@ class _RequestCard extends StatelessWidget {
     required this.kind,
     required this.onTap,
     this.wholesale = false,
+    this.unseen = false,
     this.margin,
   });
 
@@ -558,6 +639,10 @@ class _RequestCard extends StatelessWidget {
 
   /// Solicitud "al por mayor": sticker en la esquina de la miniatura.
   final bool wholesale;
+
+  /// Tiene ofertas NUEVAS sin ver: punto rojo antes del título + borde grueso
+  /// oscuro, y va primero en la lista (pedido PO 2026-07-23).
+  final bool unseen;
 
   /// Null = margen estándar de lista; se pasa cero cuando el card vive dentro
   /// de [SwipeToActions] (el swipe aplica el margen exterior).
@@ -581,6 +666,9 @@ class _RequestCard extends StatelessWidget {
     return JayaloCard(
       onTap: onTap,
       tint: bg,
+      // No vista: borde grueso oscuro (la tinta de la fase, ya oscura) para
+      // destacarla; el resto va sin borde (flota por la sombra).
+      border: unseen ? Border.all(color: tone.ink, width: 2) : null,
       padding: const EdgeInsets.all(11),
       margin: margin ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Column(
@@ -602,17 +690,36 @@ class _RequestCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        // +2pt (pedido PO 2026-07-22: otro punto sobre el +1).
-                        fontSize: 16,
-                        height: 1.3,
-                        fontWeight: FontWeight.w600,
-                        color: fg,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Punto rojo de "ofertas nuevas sin ver".
+                        if (unseen) ...[
+                          Container(
+                            margin: const EdgeInsets.only(top: 6, right: 7),
+                            width: 9,
+                            height: 9,
+                            decoration: BoxDecoration(
+                              color: cs.error,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              // +2pt (pedido PO 2026-07-22: otro punto sobre el +1).
+                              fontSize: 16,
+                              height: 1.3,
+                              fontWeight: FontWeight.w600,
+                              color: fg,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 3),
                     Text(

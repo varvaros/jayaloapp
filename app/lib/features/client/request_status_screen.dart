@@ -85,6 +85,11 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
     with TickerProviderStateMixin {
   Map<String, dynamic>? _request;
 
+  /// Ids de las ofertas de esta solicitud cuya notificación `offer_new` sigue
+  /// SIN LEER (= "sin abrir"). Alimentan el número del botón "Ver N ofertas" y
+  /// el borde de cada oferta en la hoja. Se marca leída al abrir cada oferta.
+  Set<String> _unreadOfferIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -95,6 +100,48 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
         .eq('id', widget.requestId)
         .single()
         .then((r) => mounted ? setState(() => _request = r) : null);
+    _loadUnreadOffers();
+  }
+
+  /// Ofertas sin leer del usuario (best-effort). Solo importan las de esta
+  /// solicitud; se filtran al cruzarlas con las ofertas mostradas.
+  Future<void> _loadUnreadOffers() async {
+    try {
+      final uid = supa.auth.currentUser?.id;
+      if (uid == null) return;
+      final notifs = List<Map<String, dynamic>>.from(
+        await supa
+            .from('notifications')
+            .select('entity_id')
+            .eq('user_id', uid)
+            .eq('kind', 'offer_new')
+            .isFilter('read_at', null),
+      );
+      if (!mounted) return;
+      setState(() => _unreadOfferIds = notifs
+          .map((n) => n['entity_id'] as String?)
+          .whereType<String>()
+          .toSet());
+    } catch (_) {}
+  }
+
+  /// Al ABRIR una oferta queda vista: marca su `offer_new` leída (best-effort) y
+  /// quita el borde/número al instante. Cuando la solicitud se queda sin ofertas
+  /// sin leer, su punto rojo de la lista desaparece en el próximo fetch.
+  Future<void> _markOfferSeen(String offerId) async {
+    if (!_unreadOfferIds.contains(offerId)) return;
+    setState(() => _unreadOfferIds = {..._unreadOfferIds}..remove(offerId));
+    try {
+      final uid = supa.auth.currentUser?.id;
+      if (uid == null) return;
+      await supa
+          .from('notifications')
+          .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+          .eq('user_id', uid)
+          .eq('kind', 'offer_new')
+          .eq('entity_id', offerId)
+          .isFilter('read_at', null);
+    } catch (_) {}
   }
 
   /// Atrás robusto: si hay pila (se llegó con push desde la lista), vuelve;
@@ -141,6 +188,9 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
             requestStatus: req['status'] as String,
             offers: offers.map(offerLite).toList(),
           );
+          // Cuántas de las ofertas mostradas siguen sin abrir (número del CTA).
+          final unreadCount =
+              offers.where((o) => _unreadOfferIds.contains(o['id'])).length;
           return Column(
             children: [
               _AmberPanel(request: req, phase: phase, onBack: _goBack),
@@ -149,6 +199,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
                   request: req,
                   phase: phase,
                   offers: offers,
+                  unreadCount: unreadCount,
                   onSeeOffers: () => _showOffers(context, req, offers),
                 ),
               ),
@@ -222,69 +273,123 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
       // abajo y el sheet NUNCA se cerraba (reproducido en el Redmi — "sube
       // pero no baja"). Con altura fija, el arrastre nativo del BottomSheet
       // (asa/encabezado), el tap fuera y el atrás cierran como siempre.
-      builder: (ctx) => SizedBox(
-        height: MediaQuery.of(ctx).size.height * .7,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(22, 4, 22, 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    'Ofertas',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
-                      color: jayaloHead(ctx),
-                    ),
+      builder: (ctx) => _OffersSheet(
+        request: req,
+        offers: list,
+        cheapestId: cheapest,
+        verified: verified,
+        hasAccepted: hasAccepted,
+        initialUnread: _unreadOfferIds,
+        onSeen: _markOfferSeen,
+      ),
+    );
+  }
+}
+
+/// Hoja de ofertas (nivel 3): lista de tarjetas; las que siguen SIN ABRIR
+/// llevan borde. Con estado propio para quitar el borde al instante al tocar
+/// una oferta; avisa al detalle (`onSeen`) para bajar el número del botón y, en
+/// cascada, el punto rojo de la lista de solicitudes.
+class _OffersSheet extends StatefulWidget {
+  const _OffersSheet({
+    required this.request,
+    required this.offers,
+    required this.cheapestId,
+    required this.verified,
+    required this.hasAccepted,
+    required this.initialUnread,
+    required this.onSeen,
+  });
+
+  final Map<String, dynamic> request;
+  final List<Map<String, dynamic>> offers;
+  final String? cheapestId;
+  final Map<String, bool> verified;
+  final bool hasAccepted;
+  final Set<String> initialUnread;
+  final ValueChanged<String> onSeen;
+
+  @override
+  State<_OffersSheet> createState() => _OffersSheetState();
+}
+
+class _OffersSheetState extends State<_OffersSheet> {
+  late Set<String> _unread = {...widget.initialUnread};
+
+  void _open(Map<String, dynamic> o) {
+    final id = o['id'] as String?;
+    if (id != null && _unread.contains(id)) {
+      setState(() => _unread = {..._unread}..remove(id)); // quita el borde ya
+      widget.onSeen(id); // marca leída + baja el número del botón
+    }
+    showOfferSheet(
+      context,
+      widget.request,
+      o,
+      hasAcceptedElsewhere: widget.hasAccepted && o['status'] == 'pending',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = widget.offers;
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * .7,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 4, 22, 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  'Ofertas',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: jayaloHead(context),
                   ),
-                  const Spacer(),
-                  Text(
-                    'Acepta la que más te convenga',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                    ),
+                ),
+                const Spacer(),
+                Text(
+                  'Acepta la que más te convenga',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            Expanded(
-              child: list.isEmpty
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Text(
-                          'Todavía no hay ofertas.\nTe avisaremos con una notificación.',
-                          textAlign: TextAlign.center,
-                        ),
+          ),
+          Expanded(
+            child: list.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'Todavía no hay ofertas.\nTe avisaremos con una notificación.',
+                        textAlign: TextAlign.center,
                       ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      itemCount: list.length,
-                      itemBuilder: (_, i) {
-                        final o = list[i];
-                        return _OfferCard(
-                          offer: o,
-                          cheapest: o['id'] == cheapest,
-                          unverified: verified[o['business_id']] == false,
-                          statusChip: offerStatusChip(ctx, o, hasAccepted),
-                          onTap: () => showOfferSheet(
-                            ctx,
-                            req,
-                            o,
-                            hasAcceptedElsewhere:
-                                hasAccepted && o['status'] == 'pending',
-                          ),
-                        );
-                      },
                     ),
-            ),
-          ],
-        ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    itemCount: list.length,
+                    itemBuilder: (_, i) {
+                      final o = list[i];
+                      return _OfferCard(
+                        offer: o,
+                        cheapest: o['id'] == widget.cheapestId,
+                        unverified: widget.verified[o['business_id']] == false,
+                        unread: _unread.contains(o['id']),
+                        statusChip: offerStatusChip(context, o, widget.hasAccepted),
+                        onTap: () => _open(o),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -490,12 +595,16 @@ class _DetailSheet extends StatelessWidget {
     required this.request,
     required this.phase,
     required this.offers,
+    required this.unreadCount,
     required this.onSeeOffers,
   });
 
   final Map<String, dynamic> request;
   final RequestPhase phase;
   final List<Map<String, dynamic>> offers;
+
+  /// Ofertas sin abrir: número del badge rojo sobre el botón "Ver N ofertas".
+  final int unreadCount;
   final VoidCallback onSeeOffers;
 
   @override
@@ -660,20 +769,28 @@ class _DetailSheet extends StatelessWidget {
               16,
               12 + navBarReservedSpace(context),
             ),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: onSeeOffers,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
+            // Badge rojo con el número de ofertas SIN ABRIR (pedido PO
+            // 2026-07-23), en la esquina del botón — la "notificación" que dice
+            // cuántas faltan por revisar.
+            child: Badge(
+              isLabelVisible: unreadCount > 0,
+              label: Text('$unreadCount'),
+              offset: const Offset(-6, 4),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: onSeeOffers,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
                   ),
-                ),
-                child: Text(
-                  offers.isEmpty
-                      ? 'Ver ofertas'
-                      : 'Ver ${offers.length} oferta${offers.length == 1 ? '' : 's'}',
+                  child: Text(
+                    offers.isEmpty
+                        ? 'Ver ofertas'
+                        : 'Ver ${offers.length} oferta${offers.length == 1 ? '' : 's'}',
+                  ),
                 ),
               ),
             ),
@@ -737,12 +854,17 @@ class _OfferCard extends StatelessWidget {
     required this.statusChip,
     required this.onTap,
     this.unverified = false,
+    this.unread = false,
   });
 
   final Map<String, dynamic> offer;
   final bool cheapest;
   final Widget statusChip;
   final VoidCallback onTap;
+
+  /// La oferta aún no se ha abierto: borde grueso oscuro que lo indica (pedido
+  /// PO 2026-07-23). Se quita al tocarla.
+  final bool unread;
 
   /// El negocio del proveedor aún no está verificado por Jayalo — se avisa al
   /// cliente con un badge rojo (decisión PO 2026-07-20: ofertar ya no exige
@@ -756,6 +878,8 @@ class _OfferCard extends StatelessWidget {
     final message = offer['message'] as String? ?? '';
     return JayaloCard(
       onTap: onTap,
+      // Sin abrir: borde grueso oscuro (violeta de marca) para destacarla.
+      border: unread ? Border.all(color: cs.primary, width: 2) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

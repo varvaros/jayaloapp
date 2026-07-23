@@ -99,6 +99,7 @@ class JayaloCard extends StatefulWidget {
     required this.child,
     this.onTap,
     this.tint,
+    this.border,
     this.padding = const EdgeInsets.all(12),
     this.margin = const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
   });
@@ -106,6 +107,11 @@ class JayaloCard extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
   final Color? tint;
+
+  /// Borde opcional. Por defecto la tarjeta va SIN borde (flota solo por la
+  /// sombra cálida); se pasa uno para destacarla — p. ej. una solicitud con
+  /// ofertas nuevas sin ver, que va con borde grueso oscuro + punto rojo.
+  final BoxBorder? border;
   final EdgeInsetsGeometry padding;
 
   /// Margen exterior estándar de lista; pásalo en cero cuando la tarjeta vive
@@ -145,7 +151,9 @@ class _JayaloCardState extends State<JayaloCard> {
               decoration: BoxDecoration(
                 color: widget.tint ?? cs.surfaceContainerLowest,
                 borderRadius: BorderRadius.circular(kCardRadius),
-                // Sin borde: la tarjeta flota solo por la sombra cálida.
+                // Por defecto sin borde (flota solo por la sombra cálida); con
+                // `border` se destaca (solicitud con ofertas nuevas sin ver).
+                border: widget.border,
                 boxShadow: jayaloCardShadow(context),
               ),
               child: widget.child,
