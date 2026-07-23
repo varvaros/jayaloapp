@@ -243,9 +243,14 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
       // Por el navigator RAÍZ: si no, el sheet queda DEBAJO de la navbar
       // flotante del shell y tapa el botón (bug PO 2026-07-21).
       useRootNavigator: true,
+      // Respeta el área segura: sin esto el sheet se mete bajo la barra de
+      // navegación del sistema y el botón "Recargar" queda tapado (bug PO
+      // 2026-07-22: "queda debajo de todo").
+      useSafeArea: true,
       showDragHandle: true,
       builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        padding: EdgeInsets.fromLTRB(
+            20, 0, 20, 24 + MediaQuery.paddingOf(ctx).bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
