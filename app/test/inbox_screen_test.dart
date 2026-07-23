@@ -44,7 +44,10 @@ void main() {
     await tester.pumpWidget(host(ProviderInboxView(fetch: vacio, leading: const SizedBox.shrink(), actions: const [])));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Todas'));
+    // "Todas" aparece en 2 segmentos (el toggle Para ti/Todas y el filtro de
+    // estado Todas/Abiertas/…); se apunta al primero, el toggle superior.
+    await tester.tap(find.descendant(
+        of: find.byType(HeaderSegmented).first, matching: find.text('Todas')));
     await tester.pumpAndSettle();
 
     expect(find.text('Todas las solicitudes'), findsOneWidget);
@@ -68,7 +71,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls, [false]);
 
-    await tester.tap(find.text('Todas'));
+    // "Todas" aparece en 2 segmentos (el toggle Para ti/Todas y el filtro de
+    // estado Todas/Abiertas/…); se apunta al primero, el toggle superior.
+    await tester.tap(find.descendant(
+        of: find.byType(HeaderSegmented).first, matching: find.text('Todas')));
     await tester.pumpAndSettle();
     expect(calls, [false, true]);
   });

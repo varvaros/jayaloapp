@@ -46,7 +46,15 @@ class FunnelStatusStore extends ChangeNotifier {
   /// Best-effort: sin red se arranca vacío. Se recarga si cambia el usuario
   /// logueado (los datos son por proveedor, no por dispositivo).
   Future<void> ensureLoaded() async {
-    final uid = _db.auth.currentUser?.id;
+    final String? uid;
+    try {
+      uid = _db.auth.currentUser?.id;
+    } catch (_) {
+      // Supabase sin inicializar (widget-tests): best-effort, se arranca sin
+      // embudo. Mismo patrón defensivo que MessagesBadgeStore en repos.dart —
+      // `Supabase.instance` dispara un assert si no hubo initialize().
+      return;
+    }
     if (_loaded && _loadedForUid == uid) return;
     _loaded = true;
     _loadedForUid = uid;

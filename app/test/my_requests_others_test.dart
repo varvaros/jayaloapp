@@ -33,8 +33,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // Cambiar al segmento "De otros".
-    await tester.tap(find.text('De otros'));
+    // Cambiar al segmento de solicitudes ajenas (etiqueta actual del filtro).
+    await tester.tap(find.text('Ver solicitudes de usuarios'));
     await tester.pumpAndSettle();
 
     expect(find.text('Busco 50 sillas plegables'), findsOneWidget);

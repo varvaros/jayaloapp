@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -204,19 +205,20 @@ void main() {
     await tester.pump(); // sin pumpAndSettle: no esperar a que la red resuelva
 
     final avatar = tester.widget<CircleAvatar>(find.byType(CircleAvatar));
+    // El avatar usa `jayaloAvatarImage` (downsampling, auditoría 2026-07-23):
+    // un ResizeImage que envuelve un CachedNetworkImageProvider (caché en disco)
+    // — ya no un NetworkImage crudo. Se verifica el provider interno y su url.
+    final resize = avatar.backgroundImage as ResizeImage;
     expect(
-        avatar.backgroundImage,
-        isA<NetworkImage>()
+        resize.imageProvider,
+        isA<CachedNetworkImageProvider>()
             .having((i) => i.url, 'url', 'https://example.com/foto.jpg'));
     expect(avatar.child, isNull,
         reason: 'con foto no debe superponerse el fallback de inicial');
 
-    // El entorno de test intercepta todo HttpClient y responde 400 (no hay
-    // red real) — NetworkImage intenta decodificar esa respuesta y falla de
-    // forma asíncrona. Es un artefacto conocido del binding de test (ver
-    // aviso de `flutter test`), no un bug del widget: se drena aquí para que
-    // no tumbe el test.
-    expect(tester.takeException(), isA<Object>());
+    // Sin red real en tests, la carga async del provider puede dejar un fallo
+    // pendiente: se drena si lo hay (no se exige) para que no tumbe el test.
+    tester.takeException();
   });
 
   testWidgets(
