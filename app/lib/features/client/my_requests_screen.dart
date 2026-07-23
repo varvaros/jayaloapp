@@ -658,7 +658,6 @@ class _RequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final tone = toneFor(context, phase);
     final tinted = _live.contains(phase);
     // Tarjeta teñida en las fases vivas; blanca cuando espera/completa.
@@ -726,20 +725,19 @@ class _RequestCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 9, vertical: 3),
+                      // Fondo BLANCO (pedido PO 2026-07-23): el rosado no jugaba
+                      // bien sobre el lila ni el verde de las tarjetas. Blanco +
+                      // texto rojo lee sobre cualquier tinte.
                       decoration: BoxDecoration(
-                        color: dark
-                            ? const Color(0x33F14E46)
-                            : const Color(0xFFFDE8E8),
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: Text(
+                      child: const Text(
                         'Nuevas ofertas',
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w700,
-                          color: dark
-                              ? const Color(0xFFF6A7A2)
-                              : const Color(0xFFC0261C),
+                          color: Color(0xFFC0261C),
                         ),
                       ),
                     ),
