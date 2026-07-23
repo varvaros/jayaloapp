@@ -127,7 +127,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
 
   /// Al ABRIR una oferta queda vista: marca su `offer_new` leída (best-effort) y
   /// quita el borde/número al instante. Cuando la solicitud se queda sin ofertas
-  /// sin leer, su punto rojo de la lista desaparece en el próximo fetch.
+  /// sin leer, su "Nuevas ofertas" desaparece de la lista.
   Future<void> _markOfferSeen(String offerId) async {
     if (!_unreadOfferIds.contains(offerId)) return;
     setState(() => _unreadOfferIds = {..._unreadOfferIds}..remove(offerId));
@@ -141,6 +141,12 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
           .eq('kind', 'offer_new')
           .eq('entity_id', offerId)
           .isFilter('read_at', null);
+      // Avisa a la LISTA de solicitudes que recompute su "Nuevas ofertas": vive
+      // montada como pestaña del shell y escucha `requestsChanged`. Sin esto,
+      // volver a la lista mostraba el estado viejo (bug PO 2026-07-23: "entré a
+      // las ofertas y no se quita Nuevas ofertas") — el `.then` de la lista solo
+      // recargaba al hacer pop, y no siempre disparaba.
+      requestsChanged.value++;
     } catch (_) {}
   }
 
