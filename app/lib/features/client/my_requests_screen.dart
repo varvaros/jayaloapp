@@ -658,6 +658,7 @@ class _RequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final tone = toneFor(context, phase);
     final tinted = _live.contains(phase);
     // Tarjeta teñida en las fases vivas; blanca cuando espera/completa.
@@ -688,28 +689,6 @@ class _RequestCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Etiqueta "Nuevas ofertas" (pedido PO 2026-07-23):
-                    // reemplaza al punto rojo — más claro para el usuario. El
-                    // borde quedó SOLO para las ofertas sin abrir en el detalle.
-                    if (unseen) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 9, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: cs.error,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'Nuevas ofertas',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                            color: cs.onError,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                    ],
                     Text(
                       title,
                       maxLines: 2,
@@ -735,10 +714,43 @@ class _RequestCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: fg.withValues(alpha: .4),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // "Nuevas ofertas" a la DERECHA (pedido PO 2026-07-23): la
+                  // izquierda ya está cargada (foto, título, fecha, chips). Rojo
+                  // PASTEL (mismo tono suave que "Negocio sin verificar"), no
+                  // chillón.
+                  if (unseen) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 9, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: dark
+                            ? const Color(0x33F14E46)
+                            : const Color(0xFFFDE8E8),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'Nuevas ofertas',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: dark
+                              ? const Color(0xFFF6A7A2)
+                              : const Color(0xFFC0261C),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  Icon(
+                    Icons.chevron_right,
+                    size: 20,
+                    color: fg.withValues(alpha: .4),
+                  ),
+                ],
               ),
             ],
           ),
