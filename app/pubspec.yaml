@@ -96,7 +96,8 @@ flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/icon/icon.png"
-  adaptive_icon_background: "#E0CFE5"
+  # Lila del fondo del isotipo — atenuado por el PO 2026-07-23 (#E0CFE5 → #E1D5F9).
+  adaptive_icon_background: "#E1D5F9"
   adaptive_icon_foreground: "assets/icon/icon_foreground.png"
 
 # For information on the generic Dart part of this file, see the
@@ -114,6 +115,16 @@ flutter:
     - assets/images/mascot.png
     - assets/sounds/oferta_aceptada.mp3
     - assets/sounds/desbloqueo.mp3
+
+  # Nunito (variable, eje wght 200-1000; OFL, de google/fonts): la tipografía
+  # redondeada de la marca en la web (`--font-rounded`). En la app se usa en
+  # los textos de la celebración de desbloqueo (pedido PO 2026-07-22). Al ser
+  # variable, el peso se pide con `fontVariations: [FontVariation('wght', N)]`
+  # — `fontWeight` solo no basta.
+  fonts:
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-Variable.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

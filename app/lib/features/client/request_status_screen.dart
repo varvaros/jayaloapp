@@ -67,7 +67,10 @@ const _phaseTitle = {
   RequestPhase.waiting: 'Esperando ofertas',
   RequestPhase.withOffers: 'Con ofertas',
   RequestPhase.accepted: 'Oferta aceptada',
-  RequestPhase.unlocked: 'Contacto desbloqueado',
+  // "En contacto", no "desbloqueado" (pedido PO 2026-07-23): el CLIENTE nunca
+  // desbloquea nada — quien paga es el proveedor; para el cliente la fase es
+  // simplemente que ya están en contacto.
+  RequestPhase.unlocked: 'En contacto',
   RequestPhase.completed: 'Completada',
 };
 
@@ -325,8 +328,10 @@ Widget offerStatusChip(
   final dark = Theme.of(context).brightness == Brightness.dark;
   final st = o['status'] as String;
   final (txt, tone) = switch (st) {
+    // "En contacto", no "Desbloqueada" (pedido PO 2026-07-23): vista del
+    // CLIENTE — él nunca desbloquea, el proveedor ya lo contactó.
     'accepted' when o['unlocked_at'] != null => (
-      'Desbloqueada',
+      'En contacto',
       dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight,
     ),
     'accepted' => (

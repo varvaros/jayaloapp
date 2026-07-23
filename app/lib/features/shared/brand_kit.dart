@@ -448,13 +448,20 @@ class HoldToConfirmButton extends StatefulWidget {
       {super.key,
       required this.onConfirmed,
       this.tone = HoldToConfirmTone.paid,
-      this.label});
+      this.label,
+      this.progress});
 
   final Future<void> Function() onConfirmed;
   final HoldToConfirmTone tone;
 
   /// Copy del botón; si es null cae al texto por defecto del [tone].
   final String? label;
+
+  /// Espejo OPCIONAL del progreso REAL del hold (0→1): el botón escribe aquí
+  /// el valor de su propio AnimationController en cada tick (avance Y
+  /// reversa al soltar). Permite capas visuales sincronizadas — la mascota
+  /// que se infla del desbloqueo — sin un segundo timer ni doble conteo.
+  final ValueNotifier<double>? progress;
 
   @override
   State<HoldToConfirmButton> createState() => _HoldToConfirmButtonState();
@@ -464,6 +471,7 @@ class _HoldToConfirmButtonState extends State<HoldToConfirmButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c =
       AnimationController(vsync: this, duration: JayaloMotion.holdConfirm)
+        ..addListener(() => widget.progress?.value = _c.value)
         ..addStatusListener((s) {
           if (s == AnimationStatus.completed) widget.onConfirmed();
         });

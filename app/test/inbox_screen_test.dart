@@ -127,7 +127,7 @@ void main() {
   });
 
   testWidgets(
-      'saldo insuficiente ofrece recargar en vez de lanzar al cobro',
+      'saldo insuficiente: la hoja de detalle ofrece recargar, no el hold',
       (tester) async {
     await tester.pumpWidget(host(ProviderInboxView(
         fetch: fetchOnly(interestRow()),
@@ -135,16 +135,19 @@ void main() {
         balanceFetch: () async => 0)));
     await tester.pumpAndSettle();
 
+    // Toca la tarjeta → abre la hoja de DETALLE (pedido PO 2026-07-23), no
+    // salta directo al cobro. Sin `pumpAndSettle`: con saldo 0 no hay mascota,
+    // pero se mantiene el patrón de pumps cronometrados.
     await tester.tap(find.text('Conversar · 1 crédito'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 450));
 
-    expect(find.text('Saldo insuficiente'), findsOneWidget);
-    expect(find.text('Recargar'), findsOneWidget);
-    expect(find.textContaining('Mantén presionado'), findsNothing);
+    expect(find.text('Saldo insuficiente — Recargar'), findsOneWidget);
+    expect(find.textContaining('Mantener para desbloquear'), findsNothing);
   });
 
   testWidgets(
-      'saldo suficiente muestra la confirmación de desbloqueo (mantener presionado)',
+      'saldo suficiente: la hoja de detalle muestra el hold de desbloqueo',
       (tester) async {
     await tester.pumpWidget(host(ProviderInboxView(
         fetch: fetchOnly(interestRow()),
@@ -153,11 +156,15 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Conversar · 1 crédito'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    // NO `pumpAndSettle`: la hoja de detalle pinta la mascota, cuyo reloj se
+    // repite eternamente y colgaría el settle. Un pump cronometrado basta.
+    await tester.pump(const Duration(milliseconds: 450));
 
-    expect(find.text('Conversar con el comprador'), findsOneWidget);
-    expect(find.textContaining('Mantén presionado'), findsOneWidget);
-    expect(find.text('Saldo insuficiente'), findsNothing);
+    // El detalle del producto está a la vista (título) y el botón de hold con
+    // su copy nuevo; nada de recargar.
+    expect(find.textContaining('Mantener para desbloquear'), findsOneWidget);
+    expect(find.text('Saldo insuficiente — Recargar'), findsNothing);
   });
 
   testWidgets(

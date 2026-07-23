@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/brand.dart';
 import '../../core/config.dart';
+import '../../core/motion.dart';
 import '../../data/repos.dart';
 import '../../domain/pricing.dart';
 import '../../domain/recharge.dart';
@@ -14,6 +15,7 @@ import '../shell/home_scroll.dart';
 import '../shared/brand_kit.dart';
 import '../shared/celebration.dart';
 import '../shared/violet_header.dart';
+import 'unlock_flow.dart' show StartChatButton;
 
 /// Signature de las fuentes de datos del inbox: `providerInbox` (Para ti,
 /// filtra por rubro del proveedor) y `allOpenRequests` (Todas, cualquier
@@ -222,208 +224,240 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   }
 
   Future<void> _onInterestAction(Map<String, dynamic> row) async {
+    // Pedido PO 2026-07-23: SIEMPRE abrir el detalle primero (nunca saltar
+    // directo). El botón de acción vive DENTRO del detalle: "Abrir chat" si ya
+    // está desbloqueado, o el hold de desbloquear si no.
     if (row['unlocked'] == true) {
-      await _showInterestContactSheet(row);
+      // Ya desbloqueado: trae el contacto (nombre/WhatsApp) para mostrarlo en
+      // el detalle; si falla, igual se abre con "Abrir chat" (vía segura).
+      ({String? firstName, String? phone})? contact;
+      try {
+        contact = await productInterestContact(row['id'] as String);
+      } catch (_) {}
+      if (!mounted) return;
+      _showInterestDetailSheet(row, contact: contact);
       return;
     }
-    if (shouldOfferRecharge(
-      balance: _balance,
-      cost: productInterestUnlockCost,
-    )) {
-      _offerRechargeSheet();
-      return;
-    }
-    _showUnlockSheet(row);
+    _showInterestDetailSheet(row);
   }
 
-  /// Saldo insuficiente: SIEMPRE ofrecer recargar, nunca lanzar a un cobro
-  /// que va a fallar (regla del proyecto).
-  void _offerRechargeSheet() {
+  /// DETALLE de la solicitud de la tienda (pedido PO 2026-07-23): el proveedor
+  /// ve el producto/mensaje ANTES de decidir, y el botón de desbloquear vive
+  /// abajo — con la MISMA mascota que se infla + ¡PUM! del desbloqueo de
+  /// ofertas. Al completar: celebración unificada + "¡Iniciar conversación!".
+  void _showInterestDetailSheet(
+    Map<String, dynamic> row, {
+    ({String? firstName, String? phone})? contact,
+  }) {
+    final id = row['id'] as String;
+    final unlocked = row['unlocked'] == true;
+    final cost = productInterestUnlockCost;
+    final needsRecharge = shouldOfferRecharge(balance: _balance, cost: cost);
+    // Espejo del progreso del hold para la mascota (mismo patrón que la oferta;
+    // sin dispose a propósito — sin listeners, lo recoge el GC).
+    final progress = ValueNotifier<double>(0);
+    final title = (row['title'] as String?) ?? 'Producto';
+    final message = (row['description'] as String?) ?? '';
+    final imageUrl = row['image_url'] as String?;
+    final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');
     showModalBottomSheet(
       context: context,
-      // Por el navigator RAÍZ: si no, el sheet queda DEBAJO de la navbar
-      // flotante del shell y tapa el botón (bug PO 2026-07-21).
-      useRootNavigator: true,
-      // Respeta el área segura: sin esto el sheet se mete bajo la barra de
-      // navegación del sistema y el botón "Recargar" queda tapado (bug PO
-      // 2026-07-22: "queda debajo de todo").
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            20, 0, 20, 24 + MediaQuery.paddingOf(ctx).bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Saldo insuficiente',
-              style: Theme.of(ctx).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Necesitas al menos 1 crédito para conversar con este comprador. '
-              'Recarga para continuar — no se te cobrará nada ahora.',
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _openWallet();
-              },
-              child: const Text('Recargar'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showUnlockSheet(Map<String, dynamic> row) {
-    showModalBottomSheet(
-      context: context,
-      // Por el navigator RAÍZ: si no, el sheet queda DEBAJO de la navbar
-      // flotante del shell y tapa el botón (bug PO 2026-07-21).
+      // Navigator RAÍZ + área segura: si no, la hoja queda bajo la navbar.
       useRootNavigator: true,
       showDragHandle: true,
-      // Sube la hoja ~30% de la pantalla (pedido PO 2026-07-22: quedaba muy
-      // abajo) — el relleno inferior la despega del borde.
       isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          0,
-          20,
-          24 + MediaQuery.sizeOf(ctx).height * .30,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Conversar con el comprador',
-              style: Theme.of(ctx).textTheme.titleLarge,
+      useSafeArea: true,
+      builder: (ctx) {
+        final mq = MediaQuery.of(ctx);
+        final green = Theme.of(ctx).brightness == Brightness.dark
+            ? JayaloColors.dSuccess
+            : JayaloColors.success;
+        return SizedBox(
+          height: mq.size.height * .70,
+          child: Padding(
+            padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                bottom: mq.viewInsets.bottom + mq.padding.bottom + 16),
+            child: Stack(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ── Detalle del producto (arriba) ──
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _interestDetailThumb(imageUrl, green),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                Icon(Icons.favorite, size: 14, color: green),
+                                const SizedBox(width: 4),
+                                Text('Interesado en tu producto',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: green)),
+                              ]),
+                              const SizedBox(height: 4),
+                              Text(title,
+                                  style: Theme.of(ctx)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w600)),
+                              if (createdAt != null) ...[
+                                const SizedBox(height: 4),
+                                Text(timeAgo(createdAt),
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(ctx)
+                                            .colorScheme
+                                            .onSurfaceVariant)),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (message.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      Text(message,
+                          style: TextStyle(
+                              fontSize: 14,
+                              height: 1.4,
+                              color: Theme.of(ctx).colorScheme.onSurface)),
+                    ],
+                    const Spacer(),
+                    // ── Acción (abajo), según el estado ──
+                    if (unlocked) ...[
+                      // Ya desbloqueado: contacto (si hay WhatsApp) + Abrir chat.
+                      Text(
+                        contact?.phone != null
+                            ? '${contact?.firstName ?? 'Cliente'} · ${contact?.phone}'
+                            : 'Conversa por el chat de Jayalo.',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 14),
+                      FilledButton.icon(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _openInterestChat(row, peerName: contact?.firstName);
+                        },
+                        icon: const Icon(Icons.forum_outlined),
+                        label: const Text('Abrir chat'),
+                      ),
+                    ] else if (needsRecharge) ...[
+                      Text(
+                        'Costo: $cost crédito${cost == 1 ? '' : 's'} · Tu saldo: ${_balance ?? 0}',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 14),
+                      FilledButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _openWallet();
+                        },
+                        child: const Text('Saldo insuficiente — Recargar'),
+                      ),
+                    ] else ...[
+                      Text(
+                        'Costo: $cost crédito${cost == 1 ? '' : 's'} · Tu saldo: ${_balance ?? 0}',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 14),
+                      HoldToConfirmButton(
+                        label:
+                            'Mantener para desbloquear · $cost crédito${cost == 1 ? '' : 's'}',
+                        progress: progress,
+                        onConfirmed: () =>
+                            _unlockInterestWithMascot(ctx, id, cost),
+                      ),
+                    ],
+                  ],
+                ),
+                // La mascota solo cuando hay hold real (no en desbloqueado ni
+                // en saldo insuficiente).
+                if (!unlocked && !needsRecharge)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: HoldMascotLayer(
+                          progress: progress,
+                          // Más abajo que en la oferta: deja respirar el
+                          // detalle del producto arriba.
+                          alignment: const Alignment(0, .12)),
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Costo: $productInterestUnlockCost crédito · Tu saldo: ${_balance ?? 0}',
-            ),
-            const SizedBox(height: 16),
-            HoldToConfirmButton(
-              onConfirmed: () async {
-                Navigator.pop(ctx);
-                await _unlockInterest(row);
-              },
-            ),
-          ],
-        ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Miniatura grande del producto para la hoja de detalle.
+  Widget _interestDetailThumb(String? url, Color accent) {
+    const box = 64.0;
+    Widget placeholder() => Container(
+          width: box,
+          height: box,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: .14),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(Icons.inventory_2_outlined, size: 28, color: accent),
+        );
+    if (url == null || url.isEmpty) return placeholder();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: JayaloNetworkImage(
+        url,
+        width: box,
+        height: box,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, progress) =>
+            progress == null ? child : placeholder(),
+        errorBuilder: (context, error, stack) => placeholder(),
       ),
     );
   }
 
-  Future<void> _unlockInterest(Map<String, dynamic> row) async {
-    final id = row['id'] as String;
-    ({bool ok, bool already, int charged, int? newBalance}) res;
-    try {
-      res = await unlockProductInterest(id, productInterestUnlockCost);
-    } catch (_) {
-      if (mounted) _snack('No se pudo desbloquear. Intenta de nuevo.');
-      return;
+  /// Desbloqueo del interés con la mascota (paralelo al de ofertas en
+  /// `unlock_flow.dart`): el cobro arranca YA mientras la mascota hace su
+  /// "¡PUM!"; luego celebración unificada + botón "¡Iniciar conversación!".
+  Future<void> _unlockInterestWithMascot(
+      BuildContext sheetCtx, String id, int cost) async {
+    // Handler inmediato para no dejar el future sin oyente durante el PUM.
+    final unlocking = unlockProductInterest(id, cost)
+        .then((r) => (ok: r.ok, newBalance: r.newBalance))
+        .catchError((_) => (ok: false, newBalance: null as int?));
+    if (!JayaloMotion.reduced(sheetCtx)) {
+      await Future<void>.delayed(JayaloMotion.mascotPum);
     }
-    if (!res.ok) {
-      if (mounted) _snack('No se pudo desbloquear. Intenta de nuevo.');
-      return;
-    }
-    // `already` es un ÉXITO idempotente (ya pagado antes), no un error —
-    // solo se avisa, nunca se bloquea el acceso al contacto.
-    if (mounted) {
-      if (res.newBalance != null) setState(() => _balance = res.newBalance);
-      if (res.already) _snack('Ya tenías este contacto desbloqueado.');
-    }
-    // Celebrar solo el desbloqueo fresco (con `already` no hubo cobro nuevo).
-    if (mounted && !res.already) {
-      await showUnlockCelebration(context); // 🔓 candado abriéndose
-      if (!mounted) return;
-    }
-    _refetch();
-    await _showInterestContactSheet(row);
-  }
-
-  Future<void> _showInterestContactSheet(Map<String, dynamic> row) async {
-    final id = row['id'] as String;
-    ({String? firstName, String? phone}) contact;
-    try {
-      contact = await productInterestContact(id);
-    } catch (_) {
-      if (!mounted) return;
-      showModalBottomSheet(
-        context: context,
-        useRootNavigator: true,
-        showDragHandle: true,
-        builder: (ctx) => Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'No pudimos cargar el contacto',
-                style: Theme.of(ctx).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Tu desbloqueo está guardado — no se te volverá a cobrar. '
-                'Revisa tu conexión e intenta de nuevo.',
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _showInterestContactSheet(row);
-                },
-                child: const Text('Reintentar'),
-              ),
-            ],
-          ),
-        ),
-      );
-      return;
-    }
+    if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+    final res = await unlocking;
     if (!mounted) return;
-    showModalBottomSheet(
-      context: context,
-      // Por el navigator RAÍZ: si no, el sheet queda DEBAJO de la navbar
-      // flotante del shell y tapa el botón (bug PO 2026-07-21).
-      useRootNavigator: true,
-      showDragHandle: true,
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '✅ Contacto desbloqueado',
-              style: Theme.of(ctx).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              contact.phone != null
-                  ? '${contact.firstName ?? 'Cliente'} · ${contact.phone}'
-                  : 'Este cliente todavía no tiene WhatsApp verificado; '
-                        'conversa con él por el chat de Jayalo.',
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _openInterestChat(row, peerName: contact.firstName);
-              },
-              icon: const Icon(Icons.chat),
-              label: const Text('Abrir chat'),
-            ),
-          ],
-        ),
+    if (!res.ok) {
+      _snack('No se pudo desbloquear. Intenta de nuevo.');
+      return;
+    }
+    if (res.newBalance != null) setState(() => _balance = res.newBalance);
+    _refetch();
+    await showUnlockCelebration(
+      context,
+      footer: (dismiss) => StartChatButton(
+        conversationKind: 'product_interest',
+        sourceId: id,
+        dismiss: dismiss,
+        onOpen: (convId) async {
+          if (!mounted) return;
+          await context.push('/messages/$convId');
+          if (mounted) _refetch();
+        },
       ),
     );
   }

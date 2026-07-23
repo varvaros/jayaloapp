@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
+import '../../core/motion.dart';
 import '../../data/repos.dart';
 import '../../domain/money.dart';
 import '../shared/brand_kit.dart';
@@ -149,6 +150,17 @@ class _OfferSheetBody extends StatefulWidget {
 
 class _OfferSheetBodyState extends State<_OfferSheetBody> {
   bool _busy = false;
+
+  /// Espejo del progreso del hold "Mantener para aceptar" → la mascota que se
+  /// infla + ¡PUM! (pedido PO 2026-07-23: la MISMA animación del desbloqueo,
+  /// también al aceptar). Cero timers propios; lo escribe el propio botón.
+  final ValueNotifier<double> _acceptProgress = ValueNotifier<double>(0);
+
+  @override
+  void dispose() {
+    _acceptProgress.dispose();
+    super.dispose();
+  }
 
   // Info pública ANÓNIMA del proveedor (pedido PO 2026-07-22, paridad web):
   // reputación, verificado y tiempo de respuesta. `null` mientras carga.
@@ -402,9 +414,14 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
     final photos = ((o['image_urls'] as List?)?.cast<String>() ?? const <String>[])
         .where((u) => u.isNotEmpty)
         .toList();
+    // ¿Se muestra el hold de aceptar? Si sí, se pinta la mascota que se infla
+    // por encima (IgnorePointer: nunca roba el toque del botón).
+    final showAccept = st == 'pending' && !widget.hasAcceptedElsewhere;
     // Detalles scrolleables arriba + acciones FIJAS abajo: con el sheet casi a
     // pantalla completa, el botón de aceptar queda siempre a mano.
-    return Column(
+    return Stack(
+      children: [
+        Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
@@ -453,6 +470,7 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
             // "Mantener para aceptar" (pedido PO 2026-07-21): el label enseña
             // el gesto — antes decía "Aceptar esta oferta" y parecía un tap.
             label: 'Mantener para aceptar',
+            progress: _acceptProgress, // alimenta la mascota que se infla
             onConfirmed: _accept,
           ),
           TextButton(
@@ -476,6 +494,19 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
           ),
         ],
       ],
+        ),
+        if (showAccept)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: HoldMascotLayer(
+                progress: _acceptProgress,
+                // Baja: el detalle de la oferta ocupa arriba; la mascota vive
+                // sobre el botón de aceptar, en el tercio inferior.
+                alignment: const Alignment(0, .34),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -484,7 +515,15 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
     // intermedia). `_busy` evita el doble disparo si mantiene dos veces.
     if (_busy || !mounted) return;
     setState(() => _busy = true);
-    final accepted = await acceptOffer(offerId: widget.offer['id'] as String);
+    // El RPC arranca YA (en paralelo) mientras la mascota hace su "¡PUM!" en la
+    // hoja — la animación no retrasa la aceptación. Handler inmediato para no
+    // dejar el future sin oyente durante el PUM.
+    final accepting = acceptOffer(offerId: widget.offer['id'] as String)
+        .catchError((_) => false);
+    if (!JayaloMotion.reduced(context)) {
+      await Future<void>.delayed(JayaloMotion.mascotPum);
+    }
+    final accepted = await accepting;
     if (!mounted) return;
     if (accepted) {
       // 🎉 violeta + cotejo + confeti, con el aviso de reputación DENTRO de la

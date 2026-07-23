@@ -99,6 +99,11 @@ abstract final class JayaloMotion {
   /// deliberada pero no eterna; evita aceptaciones/cobros por reflejo.
   static const holdConfirm = Duration(milliseconds: 2500);
 
+  /// El "¡PUM!" de la mascota al completar el hold de desbloqueo (pedido PO
+  /// 2026-07-22): lo que dura la explosión ANTES de cerrar la hoja. Corre en
+  /// paralelo con el RPC del cobro, así que no retrasa el acceso al contacto.
+  static const mascotPum = Duration(milliseconds: 560);
+
   /// Accesibilidad: con "reducir animaciones" del sistema el movimiento se
   /// apaga (mismo criterio que JayaloLoader).
   static bool reduced(BuildContext context) =>

@@ -27,6 +27,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/config.dart';
+import '../../core/motion.dart';
 import '../../data/repos.dart';
 import '../../domain/pricing.dart';
 import '../../domain/recharge.dart';
@@ -88,6 +89,13 @@ Future<void> startUnlockFlow(
   if (!context.mounted) return;
   final cost = estimatedUnlockCost(offer);
   final needsRecharge = shouldOfferRecharge(balance: balance, cost: cost);
+  // Espejo del progreso REAL del hold (0→1): lo escribe el propio
+  // AnimationController del botón y lo escucha la capa de la mascota que se
+  // infla (pedido PO 2026-07-22) — un solo origen de verdad, cero timers
+  // duplicados. A propósito SIN dispose: un dispose en el whenComplete del
+  // sheet puede pisar un último tick del botón durante la salida (throw en
+  // debug); sin listeners ni recursos, lo recoge el GC igual.
+  final holdProgress = ValueNotifier<double>(0);
   showModalBottomSheet(
     context: context,
     showDragHandle: true,
@@ -96,6 +104,7 @@ Future<void> startUnlockFlow(
     // Sube casi al centro (pedido PO 2026-07-22): hoja alta con el contenido
     // centrado, en vez de una franja pegada al borde inferior.
     builder: (ctx) => _TallSheet(
+      overlay: needsRecharge ? null : HoldMascotLayer(progress: holdProgress),
       child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -131,29 +140,43 @@ Future<void> startUnlockFlow(
               HoldToConfirmButton(
                   // Copy + costo en el propio botón (pedido PO 2026-07-22).
                   label: 'Mantener para desbloquear · $cost crédito${cost == 1 ? '' : 's'}',
+                  progress: holdProgress,
                   onConfirmed: () async {
-                Navigator.pop(ctx);
-                final res = await unlockOffer(offer['id'] as String, cost);
+                // El cobro arranca YA (en paralelo) mientras la mascota hace
+                // su "¡PUM!" en la hoja — la animación no retrasa el acceso
+                // al contacto. `.then/.catchError` inmediatos para que un
+                // fallo del RPC durante la espera nunca quede sin oyente.
+                final unlocking = unlockOffer(offer['id'] as String, cost)
+                    .then((r) => r.ok)
+                    .catchError((_) => false);
+                if (!JayaloMotion.reduced(ctx)) {
+                  await Future<void>.delayed(JayaloMotion.mascotPum);
+                }
+                if (ctx.mounted) Navigator.pop(ctx);
+                final ok = await unlocking;
                 if (!context.mounted) return;
-                if (res.ok) {
-                  await showUnlockCelebration(context); // 🔓 violeta + candado
-                  if (!context.mounted) return;
+                if (ok) {
                   await onChanged?.call();
-                  // TODOS los contactos desbloqueados aparecen en el chat
-                  // (pedido PO 2026-07-22): se crea la conversación al pagar,
-                  // best-effort, sin bloquear el flujo.
-                  try {
-                    await getOrCreateConversation(
-                        kind: 'offer', sourceId: offer['id'] as String);
-                  } catch (_) {}
-                  // Fila fresca (unlocked_at ya puesto) para la hoja de
-                  // contacto; si falla la red se usa la que había.
-                  var fresh = offer;
-                  try {
-                    fresh = await offerForEdit(offer['id'] as String) ?? offer;
-                  } catch (_) {}
                   if (!context.mounted) return;
-                  showOfferContactSheet(context, fresh, onChanged: onChanged);
+                  // UNA sola pantalla (pedido PO 2026-07-23): el botón grande
+                  // de "¡Iniciar conversación!" vive DENTRO de la celebración
+                  // violeta — sin hoja de contacto intermedia ni "marcar
+                  // completada" (recién desbloqueó, no hay venta que marcar).
+                  // La hoja de contacto sigue viva para los toques desde la
+                  // lista de ofertas ya desbloqueadas.
+                  await showUnlockCelebration(
+                    context,
+                    footer: (dismiss) => StartChatButton(
+                      conversationKind: 'offer',
+                      sourceId: offer['id'] as String,
+                      dismiss: dismiss,
+                      onOpen: (convId) {
+                        if (context.mounted) {
+                          context.push('/messages/$convId');
+                        }
+                      },
+                    ),
+                  );
                 } else {
                   _snack(context, 'No se pudo desbloquear. Intenta de nuevo.');
                 }
@@ -169,51 +192,30 @@ Future<void> showOfferContactSheet(
   Map<String, dynamic> offer, {
   Future<void> Function()? onChanged,
 }) async {
-  ({String? firstName, String? phone}) contact;
-  try {
-    contact = await unlockedContact(offer['id'] as String);
-  } catch (_) {
-    if (!context.mounted) return;
-    // Derecho YA pagado: jamás presentar un fallo como "no hay contacto"
-    // (el catch silencioso aquí era el bug de dinero 2026-07-16).
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      useRootNavigator: true,
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-        child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('No pudimos cargar el contacto',
-                  style: Theme.of(ctx).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              const Text('Tu desbloqueo está guardado — no se te volverá a cobrar. '
-                  'Revisa tu conexión e intenta de nuevo.'),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  showOfferContactSheet(context, offer, onChanged: onChanged);
-                },
-                child: const Text('Reintentar'),
-              ),
-            ]),
-      ),
-    );
-    return;
-  }
-  if (!context.mounted) return;
-  // ¿El cliente permite WhatsApp? `can_reveal_offer_whatsapp` (post-unlock,
-  // aquí SÍ aplica: `unlocked_at` ya está puesto) es true solo si el cliente
-  // tiene WhatsApp verificado Y activó "que me contacten por WhatsApp". Si no,
-  // el botón de WhatsApp NO aparece (pedido PO 2026-07-22) — solo el chat.
+  // El chat SIEMPRE es la vía (pedido PO 2026-07-22: "todos los contactos
+  // desbloqueados aparecen en el chat"); WhatsApp es el extra opcional.
+  //
+  // ⚠️ BUG arreglado 2026-07-23: se llamaba `get_unlocked_offer_contact`
+  // (RPC de REVELAR WhatsApp: exige que el cliente tenga WhatsApp verificado y
+  // MARCA `whatsapp_revealed_at`) para traer el contacto básico, y esa RPC
+  // hace `RAISE EXCEPTION 'El cliente no tiene WhatsApp disponible…'` cuando el
+  // cliente no tiene WhatsApp → el catch mostraba "No pudimos cargar el
+  // contacto" AUNQUE hubiera internet. La web nunca cae en eso: gatea con
+  // `can_reveal_offer_whatsapp` (bool) y solo llama la RPC de revelado al tocar
+  // "ver WhatsApp". Aquí se hace igual: gatear PRIMERO, y solo entonces (si hay
+  // WhatsApp) pedir el contacto — así jamás revienta y la hoja siempre abre.
   var canWhatsapp = false;
-  if (contact.phone != null) {
+  try {
+    canWhatsapp = await canRevealOffer(offer['id'] as String);
+  } catch (_) {}
+  ({String? firstName, String? phone}) contact = (firstName: null, phone: null);
+  if (canWhatsapp) {
     try {
-      canWhatsapp = await canRevealOffer(offer['id'] as String);
-    } catch (_) {}
+      contact = await unlockedContact(offer['id'] as String);
+    } catch (_) {
+      // Inesperado (el gate dijo que sí): cae a chat-only sin romper nada.
+      canWhatsapp = false;
+    }
   }
   if (!context.mounted) return;
   showModalBottomSheet(
@@ -285,13 +287,98 @@ Future<void> showOfferContactSheet(
   );
 }
 
+/// El pill grande de la celebración de desbloqueo (pedido PO 2026-07-23):
+/// "¡Iniciar conversación!" — blanco sobre el violeta, abre (o crea) la
+/// conversación y navega directo al chat. Muestra spinner mientras el RPC
+/// corre; si falla avisa y deja reintentar sin cerrar la celebración.
+/// Público y parametrizado por [conversationKind] para reusarse tanto en el
+/// desbloqueo de OFERTAS (`'offer'`) como en el de INTERESES de la tienda
+/// (`'product_interest'`).
+class StartChatButton extends StatefulWidget {
+  const StartChatButton({
+    super.key,
+    required this.conversationKind,
+    required this.sourceId,
+    required this.dismiss,
+    required this.onOpen,
+  });
+
+  /// Tipo de conversación para `getOrCreateConversation`.
+  final String conversationKind;
+  final String sourceId;
+
+  /// Cierra la celebración (el `dismiss` del footer del overlay).
+  final VoidCallback dismiss;
+
+  /// Navega al chat — corre con el context de la PANTALLA (no el del overlay,
+  /// que ya estará muerto tras [dismiss]).
+  final void Function(String convId) onOpen;
+
+  @override
+  State<StartChatButton> createState() => _StartChatButtonState();
+}
+
+class _StartChatButtonState extends State<StartChatButton> {
+  bool _busy = false;
+
+  Future<void> _start() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    String? convId;
+    try {
+      convId = await getOrCreateConversation(
+          kind: widget.conversationKind, sourceId: widget.sourceId);
+    } catch (_) {}
+    if (!mounted) return;
+    if (convId == null) {
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No se pudo abrir el chat. Intenta de nuevo.')));
+      return;
+    }
+    widget.dismiss();
+    widget.onOpen(convId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final violet = Theme.of(context).colorScheme.primary;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 280),
+      child: FilledButton.icon(
+        onPressed: _busy ? null : _start,
+        style: FilledButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: violet,
+          disabledBackgroundColor: Colors.white.withValues(alpha: .85),
+          minimumSize: const Size(280, 58),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+          shape: const StadiumBorder(),
+          textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+        icon: _busy
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.4, color: violet),
+              )
+            : const Icon(Icons.forum_rounded),
+        label: const Text('¡Iniciar conversación!'),
+      ),
+    );
+  }
+}
+
 /// Hoja alta que sube casi al centro (pedido PO 2026-07-22): reserva una
 /// fracción de la pantalla y centra su contenido, en vez de una franja pegada
 /// al borde inferior. Suma el inset del sistema para no quedar tras el navbar.
+/// [overlay] (opcional) se pinta ENCIMA del contenido, dentro de un
+/// IgnorePointer — la capa de la mascota que se infla con el hold.
 class _TallSheet extends StatelessWidget {
-  const _TallSheet({required this.child, this.heightFactor = .5});
+  const _TallSheet({required this.child, this.heightFactor = .5, this.overlay});
   final Widget child;
   final double heightFactor;
+  final Widget? overlay;
 
   @override
   Widget build(BuildContext context) {
@@ -304,10 +391,16 @@ class _TallSheet extends StatelessWidget {
             left: 24,
             right: 24,
             bottom: mq.viewInsets.bottom + mq.padding.bottom + 16),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [Flexible(child: SingleChildScrollView(child: child))],
+        child: Stack(
+          children: [
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [Flexible(child: SingleChildScrollView(child: child))],
+            ),
+            if (overlay != null)
+              Positioned.fill(child: IgnorePointer(child: overlay!)),
+          ],
         ),
       ),
     );

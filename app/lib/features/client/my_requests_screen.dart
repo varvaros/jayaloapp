@@ -28,7 +28,9 @@ String timeAgo(DateTime d) {
     '$offerCount oferta${offerCount == 1 ? '' : 's'}',
   ),
   RequestPhase.accepted => (Icons.handshake, 'Aceptada'),
-  RequestPhase.unlocked => (Icons.lock_open, 'Desbloqueado'),
+  // "En contacto", no "Desbloqueado" (pedido PO 2026-07-23): el cliente nunca
+  // desbloquea — el ícono de chat refuerza que ya están conversando.
+  RequestPhase.unlocked => (Icons.forum_outlined, 'En contacto'),
   RequestPhase.completed => (Icons.done_all, 'Completada'),
 };
 

@@ -325,7 +325,17 @@ class _MascotPainter extends CustomPainter {
     this.doubtMouth = 0,
     this.bodyDy = 0,
     this.bodyRotate = 0,
+    this.bodyColor = JayaloColors.mascot,
+    this.inkColor = Colors.white,
   });
+
+  /// Esquema de color de la mascota. Por defecto = cuerpo violeta de marca +
+  /// "tinta" blanca (ojo/sonrisa) sobre él. Se invierte para la celebración de
+  /// desbloqueo (pedido PO 2026-07-22): cuerpo BLANCO + tinta violeta, para que
+  /// resalte sobre el fondo violeta a pantalla completa. El pupilo va del color
+  /// del CUERPO (el "hueco" del ojo), igual que en el isotipo.
+  final Color bodyColor;
+  final Color inkColor;
 
   /// Grados de rotación de cada antena sobre su punto de anclaje al cuerpo.
   final double antennaLeft;
@@ -360,9 +370,9 @@ class _MascotPainter extends CustomPainter {
     canvas.rotate(bodyRotate * math.pi / 180);
     canvas.translate(-97, -109);
 
-    final violet = Paint()..color = JayaloColors.mascot;
+    final violet = Paint()..color = bodyColor;
     final stroke = Paint()
-      ..color = JayaloColors.mascot
+      ..color = bodyColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 9
       ..strokeCap = StrokeCap.round;
@@ -388,13 +398,13 @@ class _MascotPainter extends CustomPainter {
       canvas.translate(eyeCenter.dx, eyeCenter.dy);
       canvas.scale(1, math.max(effectiveEyeY, .001));
       canvas.translate(-eyeCenter.dx, -eyeCenter.dy);
-      canvas.drawCircle(eyeCenter, 29, Paint()..color = Colors.white);
+      canvas.drawCircle(eyeCenter, 29, Paint()..color = inkColor);
       canvas.drawCircle(Offset(82 + pupilDx, 86 + pupilDy), 9.5, violet);
       canvas.restore();
     }
     if (happyEye > 0) {
       final happy = Paint()
-        ..color = Colors.white.withValues(alpha: happyEye.clamp(0.0, 1.0))
+        ..color = inkColor.withValues(alpha: happyEye.clamp(0.0, 1.0))
         ..style = PaintingStyle.stroke
         ..strokeWidth = 10
         ..strokeCap = StrokeCap.round;
@@ -407,7 +417,7 @@ class _MascotPainter extends CustomPainter {
     // Boca — solo en estados expresivos. Sonrisa "‿" centrada bajo el ojo.
     if (smile > 0) {
       final m = Paint()
-        ..color = Colors.white.withValues(alpha: smile.clamp(0.0, 1.0))
+        ..color = inkColor.withValues(alpha: smile.clamp(0.0, 1.0))
         ..style = PaintingStyle.stroke
         ..strokeWidth = 8
         ..strokeCap = StrokeCap.round;
@@ -419,7 +429,7 @@ class _MascotPainter extends CustomPainter {
     // Boquita ladeada de duda ("mmm…").
     if (doubtMouth > 0) {
       final m = Paint()
-        ..color = Colors.white.withValues(alpha: doubtMouth.clamp(0.0, 1.0))
+        ..color = inkColor.withValues(alpha: doubtMouth.clamp(0.0, 1.0))
         ..style = PaintingStyle.stroke
         ..strokeWidth = 7
         ..strokeCap = StrokeCap.round;
@@ -450,7 +460,9 @@ class _MascotPainter extends CustomPainter {
       old.smile != smile ||
       old.doubtMouth != doubtMouth ||
       old.bodyDy != bodyDy ||
-      old.bodyRotate != bodyRotate;
+      old.bodyRotate != bodyRotate ||
+      old.bodyColor != bodyColor ||
+      old.inkColor != inkColor;
 }
 
 /// Estados de ánimo de la mascota para la gamificación de crear-solicitud.
@@ -508,11 +520,19 @@ class JayaloMascotFace extends StatefulWidget {
     this.mood = MascotMood.idle,
     this.reactKey = 0,
     this.semanticsLabel,
+    this.bodyColor,
+    this.inkColor,
   });
   final double size;
   final MascotMood mood;
   final int reactKey;
   final String? semanticsLabel;
+
+  /// Esquema de color opcional (ver [_MascotPainter]). Null → cuerpo violeta de
+  /// marca + tinta blanca. La celebración de desbloqueo los invierte
+  /// (cuerpo blanco + tinta violeta) para resaltar sobre el fondo violeta.
+  final Color? bodyColor;
+  final Color? inkColor;
 
   @override
   State<JayaloMascotFace> createState() => _JayaloMascotFaceState();
@@ -632,6 +652,8 @@ class _JayaloMascotFaceState extends State<JayaloMascotFace>
           doubtMouth: f.doubtMouth,
           bodyDy: f.bodyDy,
           bodyRotate: f.bodyRotate,
+          bodyColor: widget.bodyColor ?? JayaloColors.mascot,
+          inkColor: widget.inkColor ?? Colors.white,
         ),
       );
       return widget.semanticsLabel == null
@@ -661,6 +683,8 @@ class _JayaloMascotFaceState extends State<JayaloMascotFace>
               doubtMouth: f.doubtMouth,
               bodyDy: f.bodyDy,
               bodyRotate: f.bodyRotate,
+              bodyColor: widget.bodyColor ?? JayaloColors.mascot,
+              inkColor: widget.inkColor ?? Colors.white,
             ),
           ),
         );

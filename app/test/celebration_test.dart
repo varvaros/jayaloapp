@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
+import 'package:jayalo_app/features/shared/brand_kit.dart';
 import 'package:jayalo_app/features/shared/celebration.dart';
 
 /// Contrato de las celebraciones: cada una monta un overlay por el navigator
@@ -55,5 +56,65 @@ void main() {
     await tester.tapAt(const Offset(20, 20));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('celebration-accept')), findsNothing);
+  });
+
+  testWidgets(
+      'hold: la mascota sigue el progreso REAL del botón, se desinfla al '
+      'soltar y explota (PUM) al completar', (tester) async {
+    final progress = ValueNotifier<double>(0);
+    var confirmed = false;
+    await tester.pumpWidget(MaterialApp(
+      theme: jayaloTheme(Brightness.light),
+      home: Scaffold(
+        body: Stack(children: [
+          Center(
+            child: HoldToConfirmButton(
+              progress: progress,
+              onConfirmed: () async => confirmed = true,
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(child: HoldMascotLayer(progress: progress)),
+          ),
+        ]),
+      ),
+    ));
+
+    // La mascota está PRESENTE desde que abre la hoja (aún sin presionar) —
+    // pedido PO 2026-07-22 ("que esté ahí desde que abre la ventana").
+    expect(find.byType(JayaloMascotFace), findsOneWidget);
+
+    // Mantener a mitad de camino: el botón ESCRIBE su progreso en el espejo
+    // y la mascota lo sigue (misma señal, cero timers propios).
+    final g = await tester
+        .startGesture(tester.getCenter(find.byType(HoldToConfirmButton)));
+    // Pump vacío: resuelve la arena de gestos (onTapDown) antes de saltar el
+    // reloj — mismo gotcha documentado en brand_kit_test.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1000));
+    expect(progress.value, greaterThan(.3));
+    expect(find.byType(JayaloMascotFace), findsOneWidget);
+
+    // Soltar antes de tiempo: el reverse del PROPIO botón la desinfla hasta
+    // el reposo, sin confirmar nada (la mascota sigue presente, en reposo).
+    await g.up();
+    await tester.pump(); // primer tick del reverse (elapsed 0)
+    await tester.pump(const Duration(milliseconds: 1500));
+    expect(progress.value, 0);
+    expect(find.byType(JayaloMascotFace), findsOneWidget);
+    expect(confirmed, isFalse);
+
+    // Hold completo: onConfirmed dispara y el PUM (560 ms) desvanece a la
+    // mascota aunque el dedo siga puesto.
+    final g2 = await tester
+        .startGesture(tester.getCenter(find.byType(HoldToConfirmButton)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 2600));
+    expect(confirmed, isTrue);
+    expect(progress.value, 1);
+    await g2.up();
+    await tester.pump(); // primer tick del PUM (elapsed 0)
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(find.byType(JayaloMascotFace), findsNothing);
   });
 }

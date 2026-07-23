@@ -1,11 +1,17 @@
 /// Celebraciones de motion graphics para las DOS confirmaciones deliberadas
 /// de la app (doctrina PO 2026-07-20 "hold en ambos, con distinción visual"):
 ///
-///   • [showUnlockCelebration] — acción PAGADA (desbloquear contacto): un
-///     candado que se abre + un anillo de brillo. El premio de haber gastado
-///     créditos.
+///   • [showUnlockCelebration] — acción PAGADA (desbloquear contacto): la
+///     MASCOTA celebrando + ráfaga de confeti + mensaje juguetón (rediseño PO
+///     2026-07-22; antes era un candado abriéndose). El premio de haber
+///     gastado créditos.
 ///   • [showAcceptCelebration] — acción GRATIS (aceptar una oferta): confeti
 ///     + un cotejo que se dibuja solo. El premio de cerrar el trato.
+///
+/// Además vive aquí [HoldMascotLayer]: la mascota que se INFLA al ritmo del
+/// hold-to-confirm del desbloqueo y hace "¡PUM!" al completarse (pedido PO
+/// 2026-07-22). Escucha el progreso REAL del [HoldToConfirmButton] — cero
+/// timers propios de conteo.
 ///
 /// Todo se pinta a mano con [CustomPainter] sobre los tokens de [JayaloMotion]
 /// — sin paquetes de confeti/lottie (doctrina "mínimo, no replicar wrappers").
@@ -16,7 +22,9 @@ library;
 
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/brand.dart';
@@ -24,9 +32,15 @@ import '../../core/motion.dart';
 import '../../core/sfx.dart';
 import 'jayalo_loader.dart';
 
-/// Overlay del candado abriéndose (desbloqueo pagado).
-Future<void> showUnlockCelebration(BuildContext context) =>
-    _showCelebration(context, _CelebrationKind.unlock);
+/// Overlay de la mascota celebrando (desbloqueo pagado). `footer` (pedido PO
+/// 2026-07-23): el botón de "¡Iniciar conversación!" vive DENTRO de la misma
+/// pantalla violeta — sin hoja de contacto intermedia. Con footer la
+/// celebración NO se auto-cierra: espera al botón (via `dismiss`).
+Future<void> showUnlockCelebration(
+  BuildContext context, {
+  Widget Function(VoidCallback dismiss)? footer,
+}) =>
+    _showCelebration(context, _CelebrationKind.unlock, footer: footer);
 
 /// Overlay de confeti + cotejo (oferta aceptada, gratis). `footer` (pedido PO
 /// 2026-07-22): contenido que aparece DENTRO de la misma ventana violeta,
@@ -125,12 +139,26 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
         if (widget.footer != null) {
           setState(() => _revealed = true);
         } else {
-          Navigator.of(context).maybePop();
+          _dismissOnce();
         }
       }
     });
   bool _started = false;
   bool _revealed = false;
+  bool _closed = false;
+
+  /// ÚNICO camino de cierre del overlay. El latch evita el DOBLE pop (bug
+  /// pantalla negra 2026-07-23): tocar para saltar arranca la transición de
+  /// salida (~420 ms) pero el State sigue `mounted` hasta que la ruta muere —
+  /// si el controlador completaba en esa ventana, el segundo `maybePop` ya no
+  /// encontraba la celebración arriba y se llevaba la ruta del SHELL →
+  /// navigator vacío → pantalla negra congelada (mismo over-pop que el error
+  /// de BackGuard capturado en error_events el 2026-07-22).
+  void _dismissOnce() {
+    if (_closed || !mounted) return;
+    _closed = true;
+    Navigator.of(context).maybePop();
+  }
 
   @override
   void didChangeDependencies() {
@@ -142,14 +170,15 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
     final reduced = JayaloMotion.reduced(context);
     final accept = widget.kind == _CelebrationKind.accept;
     // Con movimiento: círculo que se forma → cotejo → explosión de confeti más
-    // larga (accept, pedido PO "confetti de mayor duración") / candado que se
-    // abre + halo, ventana de 4 s (unlock, pedido PO). Con reduce: destello
-    // estático breve.
+    // larga (accept, pedido PO "confetti de mayor duración") / la mascota
+    // celebrando + confeti, ventana corta (unlock, PO 2026-07-22: "la
+    // animación y el mensaje deben ser rápidos para no retrasar el acceso al
+    // contacto"). Con reduce: destello estático breve.
     _ctrl.duration = reduced
         ? const Duration(milliseconds: 600)
         : (accept
             ? const Duration(milliseconds: 3000)
-            : const Duration(milliseconds: 4000));
+            : const Duration(milliseconds: 2600));
     _ctrl.forward();
     // Sonido de la celebración (pedido PO 2026-07-21: sonido en ambas). El
     // audio es decorativo — playSfx nunca lanza.
@@ -172,7 +201,7 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
       if (!_revealed) setState(() => _revealed = true);
       return;
     }
-    Navigator.of(context).maybePop();
+    _dismissOnce();
   }
 
   @override
@@ -180,66 +209,107 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
     final reduced = JayaloMotion.reduced(context);
     final violet = _brandPrimary(context);
     final accept = widget.kind == _CelebrationKind.accept;
+    // Título del desbloqueo en Nunito (la redondeada de la marca en la web) y
+    // SIN línea bajo el texto (pedido PO 2026-07-22): `decoration: none`
+    // explícito + el Material transparente de abajo matan el subrayado
+    // amarillo que aparece en overlays sin Material ancestro.
+    final titleStyle = accept
+        ? Theme.of(context).textTheme.headlineSmall?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              decoration: TextDecoration.none,
+            )
+        : const TextStyle(
+            fontFamily: 'Nunito',
+            fontVariations: [FontVariation('wght', 800)],
+            fontWeight: FontWeight.w800,
+            fontSize: 26,
+            color: Colors.white,
+            decoration: TextDecoration.none,
+          );
     return GestureDetector(
       key: ValueKey('celebration-${widget.kind.name}'),
       behavior: HitTestBehavior.opaque,
       onTap: _skip,
-      // Pantalla COMPLETA violeta (pedido PO): ícono y letra en blanco.
-      child: Container(
-        color: violet,
-        alignment: Alignment.center,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 280,
-                height: 280,
-                child: AnimatedBuilder(
-                  animation: _ctrl,
-                  builder: (_, _) => accept
-                      ? CustomPaint(
-                          painter: _AcceptPainter(
-                              t: _ctrl.value, reduced: reduced, bg: violet),
-                          size: const Size(280, 280),
-                        )
-                      : _UnlockLockAnimation(t: _ctrl.value, reduced: reduced),
+      // Pantalla COMPLETA violeta (pedido PO): ícono y letra en blanco. El
+      // Material transparente da el DefaultTextStyle sano (sin subrayados).
+      child: Material(
+        type: MaterialType.transparency,
+        child: Container(
+          color: violet,
+          alignment: Alignment.center,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 280,
+                  height: 280,
+                  // La MISMA mascota blanca (ojo/boca violeta) + confeti para
+                  // AMBAS celebraciones (pedido PO 2026-07-23: unificar aceptar
+                  // con desbloquear). Antes aceptar dibujaba un cotejo.
+                  child: AnimatedBuilder(
+                    animation: _ctrl,
+                    builder: (_, _) =>
+                        _UnlockMascotBurst(t: _ctrl.value, reduced: reduced),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                accept ? '¡Oferta aceptada!' : '¡Contacto desbloqueado!',
-                textAlign: TextAlign.center,
-                // Misma tipografía de marca que el resto de títulos (hereda la
-                // familia del textTheme); blanca sobre el violeta. Pedido PO.
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
+                const SizedBox(height: 4),
+                Text(
+                  accept ? '¡Oferta aceptada!' : '¡Contacto desbloqueado!',
+                  textAlign: TextAlign.center,
+                  style: titleStyle,
+                )
+                    .animate()
+                    .fadeIn(duration: JayaloMotion.base, delay: 350.ms)
+                    .slideY(
+                        begin: .25,
+                        end: 0,
+                        duration: JayaloMotion.base,
+                        delay: 350.ms,
+                        curve: JayaloMotion.enter),
+                // Mensaje juguetón de la mascota (pedido PO 2026-07-22): corto
+                // y rápido, para no retrasar el acceso al contacto.
+                if (!accept)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(32, 10, 32, 0),
+                    child: Text(
+                      '¡Yeiii! ¡Ahora sí! ¡Ahora ve por esa venta!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
+                        fontVariations: const [FontVariation('wght', 700)],
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15.5,
+                        height: 1.35,
+                        color: Colors.white.withValues(alpha: .92),
+                        decoration: TextDecoration.none,
+                      ),
                     ),
-              )
-                  .animate()
-                  .fadeIn(duration: JayaloMotion.base, delay: 350.ms)
-                  .slideY(
-                      begin: .25,
-                      end: 0,
-                      duration: JayaloMotion.base,
-                      delay: 350.ms,
-                      curve: JayaloMotion.enter),
-              // Aviso dentro de la misma ventana violeta (pedido PO 2026-07-22):
-              // aparece cuando termina (o se adelanta) la animación.
-              if (_revealed && widget.footer != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 24),
-                  child: widget.footer!(() {
-                    if (mounted) Navigator.of(context).maybePop();
-                  }),
-                ).animate().fadeIn(duration: JayaloMotion.base).slideY(
-                      begin: .15,
-                      end: 0,
-                      duration: JayaloMotion.base,
-                      curve: JayaloMotion.enter,
-                    ),
-            ],
+                  )
+                      .animate()
+                      .fadeIn(duration: JayaloMotion.base, delay: 600.ms)
+                      .slideY(
+                          begin: .3,
+                          end: 0,
+                          duration: JayaloMotion.base,
+                          delay: 600.ms,
+                          curve: JayaloMotion.enter),
+                // Aviso dentro de la misma ventana violeta (pedido PO
+                // 2026-07-22): aparece cuando termina (o se adelanta) la
+                // animación.
+                if (_revealed && widget.footer != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 24),
+                    child: widget.footer!(_dismissOnce),
+                  ).animate().fadeIn(duration: JayaloMotion.base).slideY(
+                        begin: .15,
+                        end: 0,
+                        duration: JayaloMotion.base,
+                        curve: JayaloMotion.enter,
+                      ),
+              ],
+            ),
           ),
         ),
       ),
@@ -253,7 +323,7 @@ Color _brandPrimary(BuildContext context) =>
         : JayaloColors.primary;
 
 // ---------------------------------------------------------------------------
-// Confeti + cotejo (aceptar oferta).
+// Confeti compartido de las celebraciones (aceptar y desbloquear).
 // ---------------------------------------------------------------------------
 
 class _Bit {
@@ -294,252 +364,350 @@ List<_Bit> _buildBits() {
   });
 }
 
-/// Cotejo sobre el fondo violeta (pedido PO 2026-07-21): primero SE FORMA EL
-/// CÍRCULO (un anillo blanco que se dibuja barriendo), luego el cotejo se
-/// traza, y al completarse EXPLOTA el confetti. Todo el ícono en blanco.
-class _AcceptPainter extends CustomPainter {
-  _AcceptPainter({required this.t, required this.reduced, required this.bg});
-  final double t;
-  final bool reduced;
-
-  /// El violeta del fondo (para tintes translúcidos coherentes).
-  final Color bg;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final c = size.center(Offset.zero);
-    final r = size.shortestSide * 0.24;
-
-    // 1. El anillo se forma: barrido de 360° entre t 0 y 0.32 (arranca arriba).
-    final ringProg = reduced
-        ? 1.0
-        : Curves.easeInOut.transform((t / 0.32).clamp(0.0, 1.0));
-    if (ringProg > 0) {
-      canvas.drawArc(
-          Rect.fromCircle(center: c, radius: r),
-          -math.pi / 2,
-          math.pi * 2 * ringProg,
-          false,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = r * 0.12
-            ..strokeCap = StrokeCap.round
-            ..color = Colors.white);
-    }
-    // Relleno sutil dentro del anillo cuando ya cerró (asienta el cotejo).
-    if (ringProg >= 1) {
-      canvas.drawCircle(
-          c, r * 0.90, Paint()..color = Colors.white.withValues(alpha: .12));
-    }
-
-    // 2. El cotejo se traza entre t 0.30 y 0.52.
-    final prog = reduced ? 1.0 : ((t - 0.30) / 0.22).clamp(0.0, 1.0);
-    if (prog > 0) {
-      final s = r * 0.82;
-      final p1 = c + Offset(-0.42, 0.02) * s;
-      final p2 = c + Offset(-0.12, 0.34) * s;
-      final p3 = c + Offset(0.44, -0.30) * s;
-      _paintPolyProgress(canvas, [p1, p2, p3], prog,
-          Paint()
-            ..color = Colors.white
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = r * 0.14
-            ..strokeCap = StrokeCap.round
-            ..strokeJoin = StrokeJoin.round);
-    }
-
-    // 3. Al completarse el cotejo EXPLOTA el confetti (t 0.5 → 1).
-    if (!reduced) {
-      final ct = Curves.easeOut.transform(((t - 0.5) / 0.5).clamp(0.0, 1.0));
-      if (ct > 0) {
-        for (final b in _confettiBits) {
-          final dist = b.speed * size.width * 0.72 * ct;
-          final gravity = size.height * 0.35 * ct * ct;
-          final pos = Offset(
-            c.dx + math.cos(b.angle) * dist,
-            c.dy + math.sin(b.angle) * dist + gravity - size.height * 0.04,
-          );
-          final fade =
-              ct < 0.6 ? 1.0 : (1 - (ct - 0.6) / 0.4).clamp(0.0, 1.0);
-          if (fade <= 0) continue;
-          final paint = Paint()..color = b.color.withValues(alpha: fade);
-          canvas.save();
-          canvas.translate(pos.dx, pos.dy);
-          canvas.rotate(b.spin * ct);
-          if (b.rect) {
-            canvas.drawRect(
-                Rect.fromCenter(
-                    center: Offset.zero, width: b.size, height: b.size * 0.5),
-                paint);
-          } else {
-            canvas.drawCircle(Offset.zero, b.size * 0.4, paint);
-          }
-          canvas.restore();
-        }
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_AcceptPainter old) => old.t != t || old.bg != bg;
-}
-
-/// Dibuja una polilínea hasta [prog] (0..1) de su longitud total.
-void _paintPolyProgress(
-    Canvas canvas, List<Offset> pts, double prog, Paint paint) {
-  final segLens = <double>[];
-  var total = 0.0;
-  for (var i = 0; i < pts.length - 1; i++) {
-    final l = (pts[i + 1] - pts[i]).distance;
-    segLens.add(l);
-    total += l;
-  }
-  var target = total * prog;
-  final path = Path()..moveTo(pts.first.dx, pts.first.dy);
-  for (var i = 0; i < segLens.length; i++) {
-    if (target <= 0) break;
-    final l = segLens[i];
-    if (target >= l) {
-      path.lineTo(pts[i + 1].dx, pts[i + 1].dy);
-      target -= l;
+/// Ráfaga radial de [_confettiBits] con gravedad y fundido, avanzada a [ct]
+/// (0..1 ya con curva aplicada). Compartida por el cotejo de aceptar y la
+/// celebración de desbloqueo de la mascota.
+void _paintConfettiBurst(Canvas canvas, Size size, double ct) {
+  if (ct <= 0) return;
+  final c = size.center(Offset.zero);
+  for (final b in _confettiBits) {
+    final dist = b.speed * size.width * 0.72 * ct;
+    final gravity = size.height * 0.35 * ct * ct;
+    final pos = Offset(
+      c.dx + math.cos(b.angle) * dist,
+      c.dy + math.sin(b.angle) * dist + gravity - size.height * 0.04,
+    );
+    final fade = ct < 0.6 ? 1.0 : (1 - (ct - 0.6) / 0.4).clamp(0.0, 1.0);
+    if (fade <= 0) continue;
+    final paint = Paint()..color = b.color.withValues(alpha: fade);
+    canvas.save();
+    canvas.translate(pos.dx, pos.dy);
+    canvas.rotate(b.spin * ct);
+    if (b.rect) {
+      canvas.drawRect(
+          Rect.fromCenter(
+              center: Offset.zero, width: b.size, height: b.size * 0.5),
+          paint);
     } else {
-      final f = target / l;
-      final p = Offset.lerp(pts[i], pts[i + 1], f)!;
-      path.lineTo(p.dx, p.dy);
-      target = 0;
+      canvas.drawCircle(Offset.zero, b.size * 0.4, paint);
     }
+    canvas.restore();
   }
-  canvas.drawPath(path, paint);
 }
 
 // ---------------------------------------------------------------------------
-// Candado abriéndose (desbloqueo pagado).
+// La mascota celebrando (desbloqueo pagado).
 //
-// Rediseño PO 2026-07-21: el candado dibujado a mano quedaba DEFORME (el arco
-// pivotaba y se despegaba del cuerpo). Se reemplaza por los GLIFOS de Material
-// (`Icons.lock_rounded` → `Icons.lock_open_rounded`) — geometría impecable por
-// construcción, imposible de deformar — animados con un cross-fade y un pop, un
-// halo y unas chispas pintadas detrás. La ventana dura 4 s (ver duración del
-// controlador). Sin paquete de animación externo: los glifos SON la "librería".
+// Rediseño PO 2026-07-22: el candado de glifos Material se reemplaza por la
+// MASCOTA en modo celebrate + la misma ráfaga de confeti del cotejo — la
+// continuación natural del "¡PUM!" del hold (la mascota explotó en la hoja y
+// reaparece aquí festejando). Reduce-motion: mascota quieta, sin confeti.
 // ---------------------------------------------------------------------------
 
-/// El candado cerrado (que entra con rebote), se abre con un POP y suelta un
-/// halo + chispas; luego respira suave hasta cerrar la ventana de 4 s.
-/// Recibe [t] 0..1 del controlador de la celebración.
-class _UnlockLockAnimation extends StatelessWidget {
-  const _UnlockLockAnimation({required this.t, required this.reduced});
+/// La mascota entra con un pop (0 → 0.16) mientras el confeti explota de una;
+/// el resto de la ventana la lleva su propio motor de `celebrate` (saltitos,
+/// antenas). Recibe [t] 0..1 del controlador de la celebración.
+class _UnlockMascotBurst extends StatelessWidget {
+  const _UnlockMascotBurst({required this.t, required this.reduced});
   final double t;
   final bool reduced;
 
   @override
   Widget build(BuildContext context) {
-    // Entrada con rebote (0 → 0.18).
     final appear = reduced
         ? 1.0
-        : Curves.easeOutBack.transform((t / 0.18).clamp(0.0, 1.0));
-
-    // Anticipación: un leve bamboleo justo antes de abrir (0.18 → 0.30).
-    double rot = 0;
-    if (!reduced && t > 0.18 && t < 0.30) {
-      rot = math.sin(((t - 0.18) / 0.12) * math.pi * 2) * 0.09;
-    }
-
-    // Cross-fade cerrado→abierto centrado en t≈0.30.
-    final openT =
-        reduced ? 1.0 : ((t - 0.27) / 0.06).clamp(0.0, 1.0);
-
-    // POP al abrir: un pequeño salto de escala en forma de campana (0.28→0.42).
-    double pop = 1.0;
-    if (!reduced) {
-      final p = ((t - 0.28) / 0.14).clamp(0.0, 1.0);
-      pop = 1 + math.sin(p * math.pi) * 0.16;
-    }
-
-    // Respiración suave en la cola (0.55→1) para que los 4 s no se sientan
-    // muertos.
-    double breathe = 1.0;
-    if (!reduced && t > 0.55) {
-      breathe = 1 + math.sin((t - 0.55) * math.pi * 2 * 1.1) * 0.02;
-    }
-
-    final scale = appear * pop * breathe;
-
+        : Curves.easeOutBack.transform((t / 0.16).clamp(0.0, 1.0));
+    final violet = _brandPrimary(context);
     return Stack(
       alignment: Alignment.center,
       children: [
         if (!reduced)
-          Positioned.fill(child: CustomPaint(painter: _UnlockGlowPainter(t))),
-        Transform.rotate(
-          angle: rot,
-          child: Transform.scale(
-            scale: scale,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // Candado CERRADO (se desvanece al abrir).
-                Opacity(
-                  opacity: 1 - openT,
-                  child: const Icon(Icons.lock_rounded,
-                      size: 150, color: Colors.white),
-                ),
-                // Candado ABIERTO (aparece).
-                Opacity(
-                  opacity: openT,
-                  child: const Icon(Icons.lock_open_rounded,
-                      size: 150, color: Colors.white),
-                ),
-              ],
-            ),
-          ),
+          Positioned.fill(
+              child: CustomPaint(painter: _UnlockBurstPainter(t))),
+        Transform.scale(
+          scale: appear,
+          // Mascota BLANCA con ojo/boca violeta (pedido PO 2026-07-22): sobre
+          // el fondo violeta a pantalla completa el cuerpo violeta de siempre
+          // se perdía; invertido, la mascota resalta.
+          child: JayaloMascotFace(
+              size: 150,
+              mood: MascotMood.celebrate,
+              bodyColor: Colors.white,
+              inkColor: violet,
+              semanticsLabel: 'Contacto desbloqueado'),
         ),
       ],
     );
   }
 }
 
-/// Halo blanco que se expande al abrir + un puñado de chispas radiales.
-/// Detrás del glifo del candado; todo en blanco sobre el violeta del fondo.
-class _UnlockGlowPainter extends CustomPainter {
-  _UnlockGlowPainter(this.t);
+/// El confeti de la celebración de desbloqueo: la misma ráfaga compartida,
+/// disparada desde el arranque (t 0 → 0.75) — el eco del "¡PUM!" de la hoja.
+class _UnlockBurstPainter extends CustomPainter {
+  _UnlockBurstPainter(this.t);
   final double t;
 
-  static final _sparkleAngles = List<double>.generate(
-      8, (i) => -math.pi / 2 + i * (math.pi * 2 / 8) + 0.2);
+  @override
+  void paint(Canvas canvas, Size size) {
+    final ct = Curves.easeOut.transform((t / 0.75).clamp(0.0, 1.0));
+    _paintConfettiBurst(canvas, size, ct);
+  }
+
+  @override
+  bool shouldRepaint(_UnlockBurstPainter old) => old.t != t;
+}
+
+// ---------------------------------------------------------------------------
+// La mascota que se INFLA con el hold de desbloqueo + "¡PUM!" (PO 2026-07-22).
+// ---------------------------------------------------------------------------
+
+/// Capa visual de la hoja "Desbloquear contacto": la mascota aparece al
+/// empezar el hold y se infla al ritmo del progreso REAL del botón —
+/// [progress] es el espejo del AnimationController del [HoldToConfirmButton]
+/// (cero timers de conteo propios; si el usuario suelta, el mismo reverse del
+/// botón la desinfla). Fases del PO sobre t lineal (2.5 s):
+///
+///   • 0 → 0.4: inflado suave (ease-out).
+///   • 0.4 → 0.8: sigue inflando lineal + vibración ligera creciente.
+///   • 0.8 → 1: llega al máximo, crecimiento frenado + más vibración =
+///     tensión/anticipación.
+///   • t == 1: "¡PUM!" — la única animación propia (la explosión, ~560 ms,
+///     [JayaloMotion.mascotPum]) + un golpe háptico.
+///
+/// Va dentro de un IgnorePointer: jamás roba toques al botón. Con "reducir
+/// animaciones" no se muestra nada.
+class HoldMascotLayer extends StatefulWidget {
+  const HoldMascotLayer({
+    super.key,
+    required this.progress,
+    this.alignment = const Alignment(0, -.55),
+  });
+
+  /// Progreso del hold (0→1) — el `progress` del [HoldToConfirmButton].
+  final ValueListenable<double> progress;
+
+  /// Dónde se ancla la mascota dentro de su caja. Por defecto arriba-centro
+  /// (hoja de desbloqueo de oferta, contenido corto); la hoja de DETALLE de un
+  /// interés de la tienda la baja para no chocar con el detalle del producto.
+  final Alignment alignment;
+
+  @override
+  State<HoldMascotLayer> createState() => _HoldMascotLayerState();
+}
+
+class _HoldMascotLayerState extends State<HoldMascotLayer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pum =
+      AnimationController(vsync: this, duration: JayaloMotion.mascotPum);
+  bool _fired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.progress.addListener(_onProgress);
+  }
+
+  void _onProgress() {
+    if (_fired || widget.progress.value < 1) return;
+    _fired = true;
+    HapticFeedback.mediumImpact(); // el golpe del ¡PUM!
+    _pum.forward();
+  }
+
+  @override
+  void dispose() {
+    widget.progress.removeListener(_onProgress);
+    _pum.dispose();
+    super.dispose();
+  }
+
+  /// Escala de reposo (antes de presionar) y a lo largo del hold. La mascota
+  /// ya está PRESENTE al abrir la hoja (pedido PO 2026-07-22: "que esté ahí
+  /// desde que abre la ventana"), en reposo, y se infla con el progreso real.
+  static const double _restScale = .62;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduced = JayaloMotion.reduced(context);
+    // Con "reducir animaciones": la mascota está presente pero quieta (sin
+    // inflado ni PUM) — sigue siendo la protagonista de la hoja.
+    if (reduced) return _mascot(context, scale: _restScale);
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([widget.progress, _pum]),
+      builder: (context, _) {
+        // Tras el PUM la mascota queda "congelada" en su máximo y explota;
+        // antes, sigue el progreso vivo (incluida la reversa al soltar).
+        final t = _fired ? 1.0 : widget.progress.value.clamp(0.0, 1.0);
+        final b = _fired ? _pum.value : 0.0;
+
+        // Escala por fases del PO (t es TIEMPO lineal del hold). En reposo
+        // (t==0) parte de _restScale y de ahí se infla.
+        double scale;
+        if (t < .4) {
+          scale = _restScale +
+              (1.0 - _restScale) * Curves.easeOut.transform(t / .4); // suave
+        } else if (t < .8) {
+          scale = 1.0 + .55 * ((t - .4) / .4); // sigue inflando
+        } else {
+          // Frena el crecimiento: el aire "ya no cabe" — tensión.
+          scale = 1.55 + .25 * Curves.easeIn.transform((t - .8) / .2);
+        }
+        // El PUM estira la escala un golpe más antes de desvanecerla.
+        if (b > 0) scale *= 1 + .45 * Curves.easeOutCubic.transform(b);
+
+        // Vibración: nace en la fase 2 y sube en la 3 (traslación + giro
+        // diminutos a ~frecuencia de zumbido; t recorre 2.5 s).
+        var wobble = Offset.zero;
+        var jitter = 0.0;
+        if (b == 0 && t > .4) {
+          final amp = t < .8 ? 1.6 * ((t - .4) / .4) : 1.6 + 1.9 * ((t - .8) / .2);
+          wobble = Offset(math.sin(t * math.pi * 2 * 45),
+                  math.cos(t * math.pi * 2 * 38)) *
+              amp;
+          jitter = math.sin(t * math.pi * 2 * 33) * .015 * (amp / 1.6);
+        }
+
+        // Solo el PUM la desvanece; en reposo y durante el hold está a plena
+        // opacidad (ya no aparece al presionar — vive ahí desde el inicio).
+        final opacity = b < .22
+            ? 1.0
+            : 1 - Curves.easeIn.transform(((b - .22) / .30).clamp(0.0, 1.0));
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            // Onda + partículas del PUM (detrás de la mascota).
+            if (b > 0)
+              Align(
+                alignment: widget.alignment,
+                child: CustomPaint(
+                  size: const Size(300, 300),
+                  painter: _PumPainter(
+                      t: b, color: Theme.of(context).colorScheme.primary),
+                ),
+              ),
+            _mascot(context,
+                scale: scale, opacity: opacity, wobble: wobble, jitter: jitter),
+          ],
+        );
+      },
+    );
+  }
+
+  /// La mascota (halo + cara feliz) en su posición de la hoja, con la
+  /// transformación dada. Compartida por el reposo, el hold y reduce-motion.
+  Widget _mascot(BuildContext context,
+      {required double scale,
+      double opacity = 1,
+      Offset wobble = Offset.zero,
+      double jitter = 0}) {
+    if (opacity <= 0) return const SizedBox.shrink();
+    return Align(
+      alignment: widget.alignment,
+      child: Opacity(
+        opacity: opacity,
+        child: Transform.translate(
+          offset: wobble,
+          child: Transform.rotate(
+            angle: jitter,
+            child: Transform.scale(
+              scale: scale,
+              // Un halo suave separa a la mascota del contenido de la hoja que
+              // va tapando al inflarse.
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(colors: [
+                    Colors.white.withValues(alpha: .85),
+                    Colors.white.withValues(alpha: 0),
+                  ]),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.all(14),
+                  child:
+                      JayaloMascotFace(size: 92, mood: MascotMood.happy),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// El "¡PUM!": una onda expansiva (anillo del violeta de acción) + partículas
+/// de la paleta de marca que salen disparadas — pintado sobre el fondo CLARO
+/// de la hoja (por eso no usa la paleta blanca del confeti del overlay).
+class _PumPainter extends CustomPainter {
+  _PumPainter({required this.t, required this.color});
+  final double t; // 0..1 del controlador del PUM
+  final Color color;
+
+  static final List<_Bit> _bits = _buildPumBits();
+
+  static List<_Bit> _buildPumBits() {
+    final rnd = math.Random(3); // determinista
+    const palette = <Color>[
+      Color(0xFFF2B705), // dorado
+      JayaloColors.success, // verde
+      Color(0xFFEE6C9B), // rosa
+      Color(0xFF7FBCFF), // azul claro
+    ];
+    return List.generate(14, (i) {
+      final angle = rnd.nextDouble() * math.pi * 2;
+      final speed = 0.55 + rnd.nextDouble() * 0.45;
+      final size = 5.0 + rnd.nextDouble() * 6.0;
+      final spin = (rnd.nextDouble() * 2 - 1) * math.pi * 3;
+      return _Bit(
+          angle, speed, size, palette[i % palette.length], spin, rnd.nextBool());
+    });
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = size.center(Offset.zero);
-    final base = size.shortestSide * 0.20;
+    final base = size.shortestSide * 0.22;
 
-    // Halo: un anillo que crece y se desvanece al abrir (0.30 → 0.72).
-    final ringT = ((t - 0.30) / 0.42).clamp(0.0, 1.0);
-    if (ringT > 0 && ringT < 1) {
-      final rr = base * (1.2 + ringT * 1.7);
-      canvas.drawCircle(
-          c,
-          rr,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = base * 0.14 * (1 - ringT)
-            ..color = Colors.white.withValues(alpha: 0.55 * (1 - ringT)));
-    }
+    // Onda expansiva: crece y se apaga.
+    final ring = Curves.easeOutCubic.transform(t);
+    canvas.drawCircle(
+        c,
+        base * (0.9 + ring * 1.9),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(0.5, base * 0.12 * (1 - ring))
+          ..color = color.withValues(alpha: 0.5 * (1 - ring)));
 
-    // Chispas: salen disparadas al abrir y se apagan (0.30 → 0.65).
-    final sparkT = ((t - 0.30) / 0.35).clamp(0.0, 1.0);
-    if (sparkT > 0 && sparkT < 1) {
-      final eased = Curves.easeOut.transform(sparkT);
-      final fade = (1 - sparkT).clamp(0.0, 1.0);
-      final paint = Paint()..color = Colors.white.withValues(alpha: fade);
-      for (final a in _sparkleAngles) {
-        final dist = base * (1.1 + eased * 1.6);
-        final p = c + Offset(math.cos(a), math.sin(a)) * dist;
-        canvas.drawCircle(p, base * 0.09 * (1 - sparkT * 0.5), paint);
+    // Partículas radiales con leve gravedad y fundido.
+    final pt = Curves.easeOut.transform(t);
+    for (final bit in _bits) {
+      final dist = bit.speed * size.width * 0.45 * pt;
+      final pos = Offset(
+        c.dx + math.cos(bit.angle) * dist,
+        c.dy + math.sin(bit.angle) * dist + size.height * 0.10 * pt * pt,
+      );
+      final fade = t < 0.55 ? 1.0 : (1 - (t - 0.55) / 0.45).clamp(0.0, 1.0);
+      if (fade <= 0) continue;
+      final paint = Paint()..color = bit.color.withValues(alpha: fade);
+      canvas.save();
+      canvas.translate(pos.dx, pos.dy);
+      canvas.rotate(bit.spin * pt);
+      if (bit.rect) {
+        canvas.drawRect(
+            Rect.fromCenter(
+                center: Offset.zero, width: bit.size, height: bit.size * 0.5),
+            paint);
+      } else {
+        canvas.drawCircle(Offset.zero, bit.size * 0.4, paint);
       }
+      canvas.restore();
     }
   }
 
   @override
-  bool shouldRepaint(_UnlockGlowPainter old) => old.t != t;
+  bool shouldRepaint(_PumPainter old) => old.t != t || old.color != color;
 }
 
 // ---------------------------------------------------------------------------
