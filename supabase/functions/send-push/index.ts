@@ -79,6 +79,22 @@ Deno.serve(async (req) => {
       .from("device_tokens").select("token").eq("user_id", user_id);
     if (!tokens?.length) return new Response("no tokens", { status: 200 });
 
+    // Badge NUMÉRICO del ícono de la app (launchers que lo soportan, MIUI
+    // incluido): el total de notificaciones SIN LEER del usuario. Vale igual
+    // para chat (message_new) y ofertas (offer_new). Best-effort: si el conteo
+    // falla, el push se envía igual, solo sin número.
+    let unread = 0;
+    try {
+      const { count } = await admin
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user_id)
+        .is("read_at", null);
+      unread = count ?? 0;
+    } catch (_) {
+      // sin badge
+    }
+
     // FCM_SERVICE_ACCOUNT puede ser el JSON crudo o (recomendado) base64 del
     // JSON — base64 es una sola línea sin caracteres que un editor de secretos
     // pueda mutilar (pegar el JSON multilínea corrompía las comillas/saltos).
@@ -109,7 +125,11 @@ Deno.serve(async (req) => {
               token,
               notification: { title, body: body ?? "" },
               data: { link: link ?? "", kind: kind ?? "" },
-              android: { priority: "HIGH" },
+              android: {
+                priority: "HIGH",
+                // Número del badge del ícono (chat + ofertas).
+                notification: { notification_count: unread },
+              },
             },
           }),
         },
