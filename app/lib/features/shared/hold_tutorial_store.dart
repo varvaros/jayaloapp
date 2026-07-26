@@ -40,6 +40,14 @@ class HoldTutorialStore extends ChangeNotifier {
     }
   }
 
+  /// Solo para tests: el singleton vive todo el proceso, así que sin esto un
+  /// gesto marcado en un test contamina los siguientes del mismo archivo.
+  @visibleForTesting
+  void reset() {
+    _done.clear();
+    _loaded = false;
+  }
+
   Future<void> _persist() async {
     try {
       final p = await SharedPreferences.getInstance();

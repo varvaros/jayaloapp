@@ -9,6 +9,7 @@ library;
 
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -17,6 +18,7 @@ import '../../core/brand.dart';
 import '../../core/motion.dart';
 import '../../domain/phase.dart';
 import '../shell/floating_nav_bar.dart';
+import 'hold_tutorial_store.dart';
 import 'jayalo_loader.dart';
 
 // Re-exporta el loader para que cualquier pantalla que ya importa el kit pueda
@@ -471,6 +473,11 @@ class HoldToConfirmButton extends StatefulWidget {
   /// que se infla del desbloqueo — sin un segundo timer ni doble conteo.
   final ValueNotifier<double>? progress;
 
+  /// Alto total del botón renderizado (Container 58 + Padding.all(4)*2 = 66).
+  /// Lo consume [HoldCoachMark] para dimensionar el hueco del spotlight sin
+  /// medir el botón real (que vive en el overlay).
+  static const double kHeight = 66;
+
   @override
   State<HoldToConfirmButton> createState() => _HoldToConfirmButtonState();
 }
@@ -849,4 +856,314 @@ void showJayaloToast(BuildContext context, String message) {
       margin:
           EdgeInsets.fromLTRB(16, 0, 16, navBarReservedSpace(context) + 12),
     ));
+}
+
+/// Tutorial coach-mark para el gesto "mantén presionado".
+///
+/// Envuelve un [HoldToConfirmButton]. Mientras el gesto ([gesture]) no se haya
+/// logrado ni descartado, monta un overlay a pantalla completa: velo oscuro
+/// (spotlight), el botón reubicado BRILLANTE encima del velo (vía
+/// [CompositedTransformFollower], único origen del botón — el sitio en el flujo
+/// queda como hueco que reserva el tamaño), un recuadro guía sobre el botón y
+/// una demo animada (barra clara que barre + "dedito" pulsante) que enseña el
+/// gesto. La demo se pausa cuando el usuario presiona de verdad ([progress] >
+/// 0). Al primer hold exitoso ([progress] llega a 1.0) marca el gesto en
+/// [holdTutorialStore] y el tutorial desaparece para siempre. Un toque en el
+/// velo lo descarta en esta apertura (sin marcar), y reaparecerá la próxima vez.
+class HoldCoachMark extends StatefulWidget {
+  const HoldCoachMark({
+    super.key,
+    required this.gesture,
+    required this.message,
+    required this.tone,
+    required this.progress,
+    required this.child,
+  });
+
+  final String gesture;
+  final String message;
+  final HoldToConfirmTone tone;
+  final ValueListenable<double> progress;
+  final Widget child;
+
+  @override
+  State<HoldCoachMark> createState() => _HoldCoachMarkState();
+}
+
+class _HoldCoachMarkState extends State<HoldCoachMark>
+    with SingleTickerProviderStateMixin {
+  final _portal = OverlayPortalController();
+  final _link = LayerLink();
+  final _anchorKey = GlobalKey();
+
+  // Loop de la demo (barre 0→1 y sostiene lleno un instante antes de reiniciar).
+  late final AnimationController _demo =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 2100));
+
+  Size? _anchorSize;
+  bool _dismissed = false;
+  bool _marked = false;
+
+  bool get _shouldShow =>
+      !_dismissed && !holdTutorialStore.isDone(widget.gesture);
+
+  @override
+  void initState() {
+    super.initState();
+    holdTutorialStore.addListener(_onStore);
+    widget.progress.addListener(_onProgress);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureAndMaybeShow());
+  }
+
+  @override
+  void dispose() {
+    holdTutorialStore.removeListener(_onStore);
+    widget.progress.removeListener(_onProgress);
+    _demo.dispose();
+    super.dispose();
+  }
+
+  void _onStore() {
+    if (mounted) setState(() {});
+    if (!_shouldShow && _portal.isShowing) _portal.hide();
+  }
+
+  void _onProgress() {
+    // Éxito del gesto: el hold real llegó al tope → marcar y cerrar el tutorial.
+    if (!_marked && widget.progress.value >= 1.0) {
+      _marked = true;
+      holdTutorialStore.markDone(widget.gesture);
+    }
+    // Pausar/reanudar la demo según el usuario esté presionando de verdad.
+    if (mounted) setState(() {});
+  }
+
+  void _measureAndMaybeShow() {
+    if (!mounted) return;
+    final box = _anchorKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      setState(() => _anchorSize = box.size);
+    }
+    if (_shouldShow && _anchorSize != null) {
+      _portal.show();
+      if (!_demo.isAnimating && !JayaloMotion.reduced(context)) {
+        _demo.repeat();
+      }
+    }
+  }
+
+  void _dismiss() {
+    setState(() => _dismissed = true);
+    if (_portal.isShowing) _portal.hide();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Ya logrado o descartado → botón normal en su sitio, sin overlay.
+    if (!_shouldShow) return widget.child;
+
+    // El sitio en el flujo reserva el tamaño del botón (hueco). El botón real
+    // vive en el overlay, brillante sobre el velo.
+    return CompositedTransformTarget(
+      link: _link,
+      child: OverlayPortal(
+        controller: _portal,
+        overlayChildBuilder: _buildOverlay,
+        child: SizedBox(
+          key: _anchorKey,
+          width: double.infinity,
+          height: HoldToConfirmButton.kHeight,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOverlay(BuildContext context) {
+    final size = _anchorSize;
+    if (size == null) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final pressing = widget.progress.value > 0;
+
+    return Stack(
+      children: [
+        // Velo oscuro a pantalla completa: atenúa todo y descarta al tocarlo.
+        Positioned.fill(
+          child: GestureDetector(
+            key: const Key('holdCoachScrim'),
+            behavior: HitTestBehavior.opaque,
+            onTap: _dismiss,
+            child: const ColoredBox(color: Color(0x8C000000)),
+          ),
+        ),
+        // Botón real, reubicado BRILLANTE sobre el velo (spotlight).
+        CompositedTransformFollower(
+          link: _link,
+          targetAnchor: Alignment.topLeft,
+          followerAnchor: Alignment.topLeft,
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: Stack(
+              children: [
+                widget.child,
+                // Demo: solo cuando el usuario NO está presionando de verdad.
+                if (!pressing)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: _DemoFill(listenable: _demo, tone: widget.tone),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        // Recuadro guía, justo encima del botón.
+        CompositedTransformFollower(
+          link: _link,
+          targetAnchor: Alignment.topCenter,
+          followerAnchor: Alignment.bottomCenter,
+          offset: const Offset(0, -12),
+          child: _CoachCallout(
+            message: widget.message,
+            demo: _demo,
+            color: cs.primary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Barra clara que barre de izq. a der. + "dedito" translúcido pulsante, sobre
+/// el botón. Enseña el gesto sin tocar los internos del [HoldToConfirmButton].
+class _DemoFill extends StatelessWidget {
+  const _DemoFill({required this.listenable, required this.tone});
+  final Animation<double> listenable;
+  final HoldToConfirmTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: listenable,
+      builder: (_, _) {
+        // Barre durante el 70% del ciclo y sostiene lleno el resto.
+        final t = (listenable.value / 0.7).clamp(0.0, 1.0);
+        return Padding(
+          padding: const EdgeInsets.all(4),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Stack(
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: t,
+                    heightFactor: 1,
+                    child: const ColoredBox(color: Color(0x47FFFFFF)),
+                  ),
+                ),
+                // Dedito: círculo translúcido que avanza con la barra y late.
+                Align(
+                  alignment: Alignment(-1 + 2 * t, 0),
+                  child: Opacity(
+                    opacity: (1 - (t - 0.85).abs() * 6).clamp(0.0, 1.0),
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: const BoxDecoration(
+                        color: Color(0x59FFFFFF),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Recuadro flotante con el texto del gesto y una mini-barra de demo, con un
+/// pico apuntando hacia abajo al botón.
+class _CoachCallout extends StatelessWidget {
+  const _CoachCallout(
+      {required this.message, required this.demo, required this.color});
+  final String message;
+  final Animation<double> demo;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          constraints: const BoxConstraints(maxWidth: 280),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: SizedBox(
+                  height: 6,
+                  child: AnimatedBuilder(
+                    animation: demo,
+                    builder: (_, _) {
+                      final t = (demo.value / 0.7).clamp(0.0, 1.0);
+                      return Stack(
+                        children: [
+                          const Positioned.fill(
+                              child: ColoredBox(color: Color(0x33FFFFFF))),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: FractionallySizedBox(
+                              widthFactor: t,
+                              heightFactor: 1,
+                              child: const ColoredBox(color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Pico del recuadro.
+        Transform.translate(
+          offset: const Offset(0, -1),
+          child: Transform.rotate(
+            angle: 0.785398, // 45°
+            child: Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
