@@ -22,6 +22,8 @@
 ///     contacto" — siempre Reintentar.
 library;
 
+import 'dart:async'; // unawaited
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -33,6 +35,7 @@ import '../../domain/pricing.dart';
 import '../../domain/recharge.dart';
 import '../shared/brand_kit.dart';
 import '../shared/celebration.dart';
+import '../shared/hold_tutorial_store.dart';
 
 /// Costo estimado (en créditos) de desbloquear una oferta. El server lo
 /// recalcula e IGNORA lo enviado (regla de seguridad del proyecto).
@@ -95,6 +98,8 @@ Future<void> startUnlockFlow(
   // duplicados. A propósito SIN dispose: un dispose en el whenComplete del
   // sheet puede pisar un último tick del botón durante la salida (throw en
   // debug); sin listeners ni recursos, lo recoge el GC igual.
+  // Carga perezosa del tutorial coach-mark (idempotente).
+  unawaited(holdTutorialStore.ensureLoaded());
   final holdProgress = ValueNotifier<double>(0);
   showModalBottomSheet(
     context: context,
@@ -137,50 +142,59 @@ Future<void> startUnlockFlow(
                 child: const Text('Saldo insuficiente — Recargar'),
               )
             else
-              HoldToConfirmButton(
+              HoldCoachMark(
+                gesture: 'unlock',
+                message: 'Mantén presionado para desbloquear',
+                tone: HoldToConfirmTone.paid,
+                progress: holdProgress,
+                child: HoldToConfirmButton(
                   // Copy + costo en el propio botón (pedido PO 2026-07-22).
-                  label: 'Mantener para desbloquear · $cost crédito${cost == 1 ? '' : 's'}',
+                  label:
+                      'Mantener para desbloquear · $cost crédito${cost == 1 ? '' : 's'}',
                   progress: holdProgress,
                   onConfirmed: () async {
-                // El cobro arranca YA (en paralelo) mientras la mascota hace
-                // su "¡PUM!" en la hoja — la animación no retrasa el acceso
-                // al contacto. `.then/.catchError` inmediatos para que un
-                // fallo del RPC durante la espera nunca quede sin oyente.
-                final unlocking = unlockOffer(offer['id'] as String, cost)
-                    .then((r) => r.ok)
-                    .catchError((_) => false);
-                if (!JayaloMotion.reduced(ctx)) {
-                  await Future<void>.delayed(JayaloMotion.mascotPum);
-                }
-                if (ctx.mounted) Navigator.pop(ctx);
-                final ok = await unlocking;
-                if (!context.mounted) return;
-                if (ok) {
-                  await onChanged?.call();
-                  if (!context.mounted) return;
-                  // UNA sola pantalla (pedido PO 2026-07-23): el botón grande
-                  // de "¡Iniciar conversación!" vive DENTRO de la celebración
-                  // violeta — sin hoja de contacto intermedia ni "marcar
-                  // completada" (recién desbloqueó, no hay venta que marcar).
-                  // La hoja de contacto sigue viva para los toques desde la
-                  // lista de ofertas ya desbloqueadas.
-                  await showUnlockCelebration(
-                    context,
-                    footer: (dismiss) => StartChatButton(
-                      conversationKind: 'offer',
-                      sourceId: offer['id'] as String,
-                      dismiss: dismiss,
-                      onOpen: (convId) {
-                        if (context.mounted) {
-                          context.push('/messages/$convId');
-                        }
-                      },
-                    ),
-                  );
-                } else {
-                  _snack(context, 'No se pudo desbloquear. Intenta de nuevo.');
-                }
-              }),
+                    // El cobro arranca YA (en paralelo) mientras la mascota hace
+                    // su "¡PUM!" en la hoja — la animación no retrasa el acceso
+                    // al contacto. `.then/.catchError` inmediatos para que un
+                    // fallo del RPC durante la espera nunca quede sin oyente.
+                    final unlocking = unlockOffer(offer['id'] as String, cost)
+                        .then((r) => r.ok)
+                        .catchError((_) => false);
+                    if (!JayaloMotion.reduced(ctx)) {
+                      await Future<void>.delayed(JayaloMotion.mascotPum);
+                    }
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    final ok = await unlocking;
+                    if (!context.mounted) return;
+                    if (ok) {
+                      await onChanged?.call();
+                      if (!context.mounted) return;
+                      // UNA sola pantalla (pedido PO 2026-07-23): el botón
+                      // grande de "¡Iniciar conversación!" vive DENTRO de la
+                      // celebración violeta — sin hoja de contacto intermedia
+                      // ni "marcar completada" (recién desbloqueó, no hay
+                      // venta que marcar). La hoja de contacto sigue viva
+                      // para los toques desde la lista de ofertas ya
+                      // desbloqueadas.
+                      await showUnlockCelebration(
+                        context,
+                        footer: (dismiss) => StartChatButton(
+                          conversationKind: 'offer',
+                          sourceId: offer['id'] as String,
+                          dismiss: dismiss,
+                          onOpen: (convId) {
+                            if (context.mounted) {
+                              context.push('/messages/$convId');
+                            }
+                          },
+                        ),
+                      );
+                    } else {
+                      _snack(context, 'No se pudo desbloquear. Intenta de nuevo.');
+                    }
+                  },
+                ),
+              ),
           ]),
     ),
   );
