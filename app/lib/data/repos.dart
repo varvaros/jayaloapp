@@ -389,15 +389,12 @@ Future<void> cancelCustomerRequest(String requestId) async {
 }
 
 Future<bool> acceptOffer({required String offerId}) async {
-  final uid = supa.auth.currentUser!.id;
-  // Guard anti-doble-aceptación: mismo patrón que la web ($requestId.tsx L707-713).
-  final rows = await supa
-      .from('provider_offers')
-      .update({'status': 'accepted', 'customer_id': uid})
-      .eq('id', offerId)
-      .eq('status', 'pending')
-      .select('id');
-  return rows.isNotEmpty;
+  // Tope de 3 finalistas ATÓMICO server-side (RPC en prod). Reemplaza el UPDATE
+  // directo. La RPC valida dueño, idempotencia, solicitud abierta y el cap; el
+  // caller envuelve en catchError, así que una excepción (p.ej. "ya tiene 3
+  // finalistas") cae al mensaje genérico "esta oferta ya no está disponible".
+  final res = await supa.rpc('accept_offer', params: {'_offer_id': offerId});
+  return res is Map && res['ok'] == true;
 }
 
 Future<void> rejectOffer({
