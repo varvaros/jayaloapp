@@ -904,6 +904,12 @@ class _HoldCoachMarkState extends State<HoldCoachMark>
   bool _dismissed = false;
   bool _marked = false;
 
+  /// Se enciende cuando NI la medición inicial NI el reintento único logran
+  /// un tamaño del ancla — invariante: el botón nunca debe quedar
+  /// inalcanzable, así que [build] cae al botón real en línea en vez del
+  /// hueco vacío.
+  bool _measureFailed = false;
+
   bool get _shouldShow =>
       !_dismissed && !holdTutorialStore.isDone(widget.gesture);
 
@@ -943,7 +949,28 @@ class _HoldCoachMarkState extends State<HoldCoachMark>
     final box = _anchorKey.currentContext?.findRenderObject() as RenderBox?;
     if (box != null && box.hasSize) {
       setState(() => _anchorSize = box.size);
+    } else {
+      // La medición falló en este frame (RenderBox nulo o sin tamaño aún) —
+      // reintenta UNA vez en el próximo frame antes de resignarse al
+      // fallback en línea.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final retryBox =
+            _anchorKey.currentContext?.findRenderObject() as RenderBox?;
+        if (retryBox != null && retryBox.hasSize) {
+          setState(() => _anchorSize = retryBox.size);
+          _showPortalIfReady();
+        } else {
+          setState(() => _measureFailed = true);
+        }
+      });
+      return;
     }
+    _showPortalIfReady();
+  }
+
+  void _showPortalIfReady() {
+    if (!mounted) return;
     if (_shouldShow && _anchorSize != null) {
       _portal.show();
       if (!_demo.isAnimating && !JayaloMotion.reduced(context)) {
@@ -961,6 +988,12 @@ class _HoldCoachMarkState extends State<HoldCoachMark>
   Widget build(BuildContext context) {
     // Ya logrado o descartado → botón normal en su sitio, sin overlay.
     if (!_shouldShow) return widget.child;
+
+    // Fallback (invariante: el botón nunca debe quedar inalcanzable): si la
+    // medición del ancla falló incluso tras el reintento, el overlay no
+    // puede mostrarse — el botón real queda en línea, interactivo, en vez
+    // del hueco vacío sin acción posible.
+    if (_measureFailed) return widget.child;
 
     // El sitio en el flujo reserva el tamaño del botón (hueco). El botón real
     // vive en el overlay, brillante sobre el velo.
@@ -1009,8 +1042,9 @@ class _HoldCoachMarkState extends State<HoldCoachMark>
                 // Demo: solo cuando el usuario NO está presionando de verdad.
                 if (!pressing)
                   Positioned.fill(
+                    key: const Key('holdCoachDemo'),
                     child: IgnorePointer(
-                      child: _DemoFill(listenable: _demo, tone: widget.tone),
+                      child: _DemoFill(listenable: _demo),
                     ),
                   ),
               ],
@@ -1037,9 +1071,8 @@ class _HoldCoachMarkState extends State<HoldCoachMark>
 /// Barra clara que barre de izq. a der. + "dedito" translúcido pulsante, sobre
 /// el botón. Enseña el gesto sin tocar los internos del [HoldToConfirmButton].
 class _DemoFill extends StatelessWidget {
-  const _DemoFill({required this.listenable, required this.tone});
+  const _DemoFill({required this.listenable});
   final Animation<double> listenable;
-  final HoldToConfirmTone tone;
 
   @override
   Widget build(BuildContext context) {

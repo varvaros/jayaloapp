@@ -84,4 +84,27 @@ void main() {
     expect(find.text('Mantén presionado para aceptar'), findsNothing);
     expect(holdTutorialStore.isDone('accept'), isFalse);
   });
+
+  testWidgets('la demo se pausa mientras el usuario mantiene presionado',
+      (tester) async {
+    await holdTutorialStore.ensureLoaded();
+    final progress = ValueNotifier<double>(0);
+    await tester.pumpWidget(_host(progress));
+    await tester.pump();
+    await tester.pump();
+    // En reposo (progress == 0) la demo sobre el botón está presente…
+    expect(find.byKey(const Key('holdCoachDemo')), findsOneWidget);
+    expect(find.text('Mantén presionado para aceptar'), findsOneWidget);
+
+    // …y se oculta mientras el usuario mantiene presionado de verdad, SIN
+    // que el gesto se dé por completado (0.5 < 1.0).
+    progress.value = 0.5;
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const Key('holdCoachDemo')), findsNothing);
+    // El recuadro con el mensaje sigue visible — la pausa solo afecta la
+    // demo sobre el botón, no el callout.
+    expect(find.text('Mantén presionado para aceptar'), findsOneWidget);
+    expect(holdTutorialStore.isDone('accept'), isFalse);
+  });
 }
