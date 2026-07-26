@@ -460,8 +460,8 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
           // El hold ES el botón de aceptar (pedido PO): un solo gesto, sin
           // hoja de confirmación intermedia; el helper explica la regla.
           Text(
-              'Solo puedes aceptar UNA oferta por solicitud. Es gratis, pero '
-              'definitiva: el proveedor podrá desbloquear tu contacto.',
+              'Puedes aceptar hasta 3 ofertas por solicitud. Es gratis; cada '
+              'proveedor que elijas podrá desbloquear tu contacto.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
           const SizedBox(height: 10),
@@ -476,7 +476,7 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
           TextButton(
               onPressed: _busy ? null : _reject, child: const Text('Rechazar')),
         ] else if (st == 'pending')
-          const Text('Ya aceptaste otra oferta para esta solicitud.',
+          const Text('Ya tienes 3 finalistas. Descarta una para elegir otra.',
               textAlign: TextAlign.center)
         else if (st == 'accepted' && !unlocked)
           const Text('Oferta aceptada. El proveedor te contactará pronto.',

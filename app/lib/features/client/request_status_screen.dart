@@ -6,6 +6,7 @@ import '../../data/repos.dart';
 import '../../domain/chat_time.dart';
 import '../../domain/money.dart';
 import '../../domain/phase.dart';
+import '../../domain/finalist_slots.dart';
 import 'my_requests_screen.dart' show phaseChip;
 import 'offer_actions.dart';
 import '../shell/floating_nav_bar.dart';
@@ -242,9 +243,9 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
       // Sin red: se usa lo que trajo el stream.
     }
     if (!context.mounted) return;
-    final hasAccepted = list.any(
-      (o) => o['status'] == 'accepted' || o['status'] == 'completed',
-    );
+    final acceptedCount = list
+        .where((o) => o['status'] == 'accepted' || o['status'] == 'completed')
+        .length;
     final cheapest = cheapestOfferId(list);
     // Estado de verificación de los negocios que ofertaron (para el badge rojo
     // "Negocio sin verificar"). Best-effort: si falla, no se muestra el badge.
@@ -284,7 +285,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
         offers: list,
         cheapestId: cheapest,
         verified: verified,
-        hasAccepted: hasAccepted,
+        acceptedCount: acceptedCount,
         initialUnread: _unreadOfferIds,
         onSeen: _markOfferSeen,
       ),
@@ -302,7 +303,7 @@ class _OffersSheet extends StatefulWidget {
     required this.offers,
     required this.cheapestId,
     required this.verified,
-    required this.hasAccepted,
+    required this.acceptedCount,
     required this.initialUnread,
     required this.onSeen,
   });
@@ -311,7 +312,7 @@ class _OffersSheet extends StatefulWidget {
   final List<Map<String, dynamic>> offers;
   final String? cheapestId;
   final Map<String, bool> verified;
-  final bool hasAccepted;
+  final int acceptedCount;
   final Set<String> initialUnread;
   final ValueChanged<String> onSeen;
 
@@ -332,7 +333,8 @@ class _OffersSheetState extends State<_OffersSheet> {
       context,
       widget.request,
       o,
-      hasAcceptedElsewhere: widget.hasAccepted && o['status'] == 'pending',
+      hasAcceptedElsewhere:
+          isClosedToOffers(widget.acceptedCount) && o['status'] == 'pending',
     );
   }
 
@@ -389,7 +391,8 @@ class _OffersSheetState extends State<_OffersSheet> {
                         cheapest: o['id'] == widget.cheapestId,
                         unverified: widget.verified[o['business_id']] == false,
                         unread: _unread.contains(o['id']),
-                        statusChip: offerStatusChip(context, o, widget.hasAccepted),
+                        statusChip: offerStatusChip(
+                            context, o, isClosedToOffers(widget.acceptedCount)),
                         onTap: () => _open(o),
                       );
                     },
@@ -434,7 +437,7 @@ String? cheapestOfferId(List<Map<String, dynamic>> offers) {
 Widget offerStatusChip(
   BuildContext context,
   Map<String, dynamic> o,
-  bool hasAccepted,
+  bool noSlotsLeft,
 ) {
   final dark = Theme.of(context).brightness == Brightness.dark;
   final st = o['status'] as String;
@@ -459,9 +462,9 @@ Widget offerStatusChip(
       dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
     ),
     _ =>
-      hasAccepted
+      noSlotsLeft
           ? (
-              'Otra aceptada',
+              'Cupos llenos',
               dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
             )
           : (
@@ -761,6 +764,25 @@ class _DetailSheet extends StatelessWidget {
                     color: cs.onSurfaceVariant,
                   ),
                 ),
+                // Cupos restantes (modelo de hasta 3 finalistas): el cliente
+                // puede aceptar más de una oferta.
+                if (offers.isNotEmpty && phase != RequestPhase.completed) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    clientSlotsMessage(
+                      offers
+                          .where((o) =>
+                              o['status'] == 'accepted' ||
+                              o['status'] == 'completed')
+                          .length,
+                    ),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: cs.primary,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
