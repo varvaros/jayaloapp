@@ -342,6 +342,13 @@ GoRouter buildRouter() => GoRouter(
                           reverseCurve: JayaloMotion.exit)),
                   child: child,
                 ),
+                // BackGuard maneja el atrás del sistema → `go('/messages')`
+                // (vuelve a la lista). Funciona porque el predictive-back está
+                // DESACTIVADO en el manifest (enableOnBackInvokedCallback=false):
+                // en el camino legacy el PopScope de BackGuard se dispara aunque
+                // sea un route directo del navigator raíz. Con predictive-back
+                // activo (default de targetSdk 36) esto minimizaba (bug PO
+                // 2026-07-23) — ver AndroidManifest.xml.
                 child: BackGuard(
                     child: ChatScreen(
                         conversationId: s.pathParameters['id']!,

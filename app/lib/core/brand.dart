@@ -11,8 +11,9 @@
 /// su propia calidez; el violeta de acción es lo único que se mantiene idéntico
 /// en las dos superficies.
 ///
-/// OSCURO sigue como estaba (azul primario, como la web): el PO todavía no ha
-/// aprobado la pasada de modo oscuro cálido — hasta entonces no se inventa.
+/// OSCURO es VIOLETA (PO 2026-07-23: "debe ser violeta, no usamos azul") — se
+/// reemplazó el oscuro "azul viejo" heredado de la web por una paleta violeta
+/// (ver tokens `d*` abajo). El toggle de modo oscuro vive en Ajustes.
 library;
 
 import 'package:flutter/material.dart';
@@ -53,20 +54,27 @@ abstract final class JayaloColors {
   /// `warmShadow` se conserva por no tocar sus usos; ya no es cálida.
   static const warmShadow = Color(0x17263143);
 
-  // ── Oscuro ───────────────────────────────────────────────────────────────
-  static const dBackground = Color(0xFF080D16);
-  static const dForeground = Color(0xFFF3F5F8);
-  static const dCard = Color(0xFF121824);
-  static const dSurfaceLow = Color(0xFF0D131C);
-  static const dPrimary = Color(0xFF3E98FF);
-  static const dPrimaryFg = Color(0xFF080D16);
-  static const dSecondary = Color(0xFF1E242E);
-  static const dMutedFg = Color(0xFF9EA5AE);
-  static const dAccent = Color(0xFF142C55);
+  // ── Oscuro · VIOLETA (PO 2026-07-23: "debe ser violeta, no usamos azul") ───
+  // Reemplaza el oscuro "azul viejo" heredado de la web. Neutros tintados de
+  // VIOLETA (no azul); el primario es el violeta de marca lo bastante oscuro
+  // para que el texto BLANCO del header/botones cumpla contraste (≈5:1), y una
+  // escala de superficies con las tarjetas ELEVADAS sobre el fondo — antes
+  // `surfaceContainerLowest` caía al mismo color del fondo → tarjetas
+  // invisibles en oscuro. El contraste no-textual del ícono inactivo de la
+  // navbar (`dMutedFg` sobre `dAccent`) queda en ~5.6:1 (test lo verifica).
+  static const dBackground = Color(0xFF141020); //  casi negro violáceo (scaffold)
+  static const dForeground = Color(0xFFF3F0F8); //  casi blanco con tinte violeta
+  static const dCard = Color(0xFF241C38); //         tarjeta elevada (separa del fondo)
+  static const dSurfaceLow = Color(0xFF1B1528);
+  static const dPrimary = Color(0xFF845EF5); //      VIOLETA de acción (blanco legible)
+  static const dPrimaryFg = Color(0xFFFFFFFF); //    texto/íconos sobre el violeta
+  static const dSecondary = Color(0xFF2C2444);
+  static const dMutedFg = Color(0xFFA79FB8); //      gris violáceo (texto atenuado)
+  static const dAccent = Color(0xFF2E2350); //       lila oscuro de la navbar
   static const dDestructive = Color(0xFFF14E46);
   static const dSuccess = Color(0xFF2BBB71);
-  static const dSurfaceHighest = Color(0xFF282E38);
-  static const dBorder = Color(0x1AFFFFFF); // blanco 10%, como la web
+  static const dSurfaceHighest = Color(0xFF383052); // relleno de campos / más alto
+  static const dBorder = Color(0x1AFFFFFF); //       blanco 10%
 
   /// Violeta del loader/mascota (`JayaloLoader.tsx`). La web lo hornea fijo en
   /// el SVG, sin cambiarlo en oscuro — aquí igual, para que la mascota sea la
@@ -158,9 +166,13 @@ ColorScheme jayaloScheme(Brightness b) => b == Brightness.light
         surface: JayaloColors.dBackground,
         onSurface: JayaloColors.dForeground,
         onSurfaceVariant: JayaloColors.dMutedFg,
-        surfaceContainerLowest: JayaloColors.dBackground,
+        // `surfaceContainerLowest` es EL color de tarjeta del proyecto (en claro
+        // es el blanco elevado). En oscuro debe ser una superficie ELEVADA
+        // (dCard), no el fondo — antes caía a `dBackground` y las tarjetas se
+        // volvían invisibles sobre el scaffold.
+        surfaceContainerLowest: JayaloColors.dCard,
         surfaceContainerLow: JayaloColors.dSurfaceLow,
-        surfaceContainer: JayaloColors.dCard,
+        surfaceContainer: JayaloColors.dSecondary,
         surfaceContainerHigh: JayaloColors.dSecondary,
         surfaceContainerHighest: JayaloColors.dSurfaceHighest,
         outline: JayaloColors.dMutedFg,

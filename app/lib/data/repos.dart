@@ -1251,22 +1251,6 @@ Future<List<Map<String, dynamic>>> conversationsList() async =>
       await supa.rpc('get_my_conversations_list'),
     );
 
-/// De un set de conversaciones, cuáles tienen AL MENOS un mensaje MÍO (para el
-/// chip "Nueva" = nunca has hablado, pedido PO 2026-07-22). Una sola query
-/// batched sobre las conversaciones ya cargadas; RLS limita a las propias.
-Future<Set<String>> conversationsWithMyMessages(List<String> convIds) async {
-  if (convIds.isEmpty) return {};
-  final uid = supa.auth.currentUser!.id;
-  final rows = List<Map<String, dynamic>>.from(
-    await supa
-        .from('conversation_messages')
-        .select('conversation_id')
-        .eq('sender_id', uid)
-        .inFilter('conversation_id', convIds),
-  );
-  return {for (final r in rows) r['conversation_id'] as String};
-}
-
 Future<Map<String, dynamic>?> fetchConversation(String id) async => await supa
     .from('conversations')
     .select(

@@ -280,11 +280,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     // la más reciente arriba. `myRequests` ya viene por created_at desc, pero lo
     // dejamos explícito para no depender de ese detalle.
     sortRequestRows(rows, _unseenReqIds);
-    // Badge de la pestaña "Solicitudes" (cliente): cuántas tienen ofertas por
-    // revisar — lo accionable, lo que hace volver a la app.
-    solicitudesBadge.value = rows
-        .where((e) => e.$2 == RequestPhase.withOffers)
-        .length;
+    // Badge de la pestaña "Solicitudes" (cliente): cuántas solicitudes tienen
+    // ofertas SIN VER (pedido PO 2026-07-23: antes contaba TODA solicitud con
+    // ofertas sin aceptar — se quedaba encendido aunque ya las hubieras
+    // revisado). `_unseenReqIds` se vacía al abrir cada solicitud (marca su
+    // `offer_new` leída + bump de `requestsChanged` → recarga), así el badge se
+    // limpia cuando ya no queda nada por revisar.
+    solicitudesBadge.value = _unseenReqIds.length;
     return rows;
   }
 
@@ -658,6 +660,7 @@ class _RequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final tone = toneFor(context, phase);
     final tinted = _live.contains(phase);
     // Tarjeta teñida en las fases vivas; blanca cuando espera/completa.
@@ -709,7 +712,7 @@ class _RequestCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    _pill(label, tone, tinted),
+                    _pill(label, tone, tinted, dark),
                   ],
                 ),
               ),
@@ -826,9 +829,15 @@ class _RequestCard extends StatelessWidget {
   /// suave (nunca un ícono roto).
   Widget _thumb(BuildContext context, bool tinted, StatusTone tone) {
     final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    // Mismo fix que la píldora: en oscuro el placeholder blanco con ícono claro
+    // (tone.ink) era ilegible; se usa el tinte claro del status de fondo y el
+    // oscuro para el ícono.
     final holderBg = tinted
-        ? Colors.white.withValues(alpha: .65)
+        ? (dark ? tone.ink : Colors.white.withValues(alpha: .65))
         : cs.surfaceContainerHighest;
+    final holderIcon =
+        (tinted && dark ? tone.bg : tone.ink).withValues(alpha: .8);
     Widget placeholder() => Container(
       width: 54,
       height: 54,
@@ -842,7 +851,7 @@ class _RequestCard extends StatelessWidget {
             ? Icons.handyman_outlined
             : Icons.inventory_2_outlined,
         size: 24,
-        color: tone.ink.withValues(alpha: .8),
+        color: holderIcon,
       ),
     );
     final url = imageUrl;
@@ -862,21 +871,40 @@ class _RequestCard extends StatelessWidget {
 
   /// Chip de estado: sobre tarjeta teñida va en píldora blanca translúcida con
   /// la tinta de la fase; sobre tarjeta blanca va en la píldora teñida.
-  Widget _pill(String label, StatusTone tone, bool tinted) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
-    decoration: BoxDecoration(
-      color: tinted ? Colors.white.withValues(alpha: .85) : tone.bg,
-      borderRadius: BorderRadius.circular(999),
-    ),
-    child: Text(
-      label,
-      style: TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-        color: tone.ink,
+  Widget _pill(String label, StatusTone tone, bool tinted, bool dark) {
+    // En CLARO la píldora teñida es blanca con tinta oscura (tone.ink). En
+    // OSCURO esa misma receta deja tinta CLARA (tone.ink es claro en oscuro)
+    // sobre blanco → ilegible (bug PO 2026-07-23). Fix: en oscuro se invierte a
+    // píldora con el tinte CLARO del status (tone.ink) y texto OSCURO (tone.bg),
+    // que contrasta y resalta sobre la tarjeta teñida oscura.
+    final Color pillBg;
+    final Color pillInk;
+    if (!tinted) {
+      pillBg = tone.bg;
+      pillInk = tone.ink;
+    } else if (dark) {
+      pillBg = tone.ink;
+      pillInk = tone.bg;
+    } else {
+      pillBg = Colors.white.withValues(alpha: .85);
+      pillInk = tone.ink;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
+      decoration: BoxDecoration(
+        color: pillBg,
+        borderRadius: BorderRadius.circular(999),
       ),
-    ),
-  );
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: pillInk,
+        ),
+      ),
+    );
+  }
 }
 
 /// Card de una solicitud AJENA (pestaña "De otros"): foto + título + "hace X"

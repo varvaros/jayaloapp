@@ -289,14 +289,16 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     final unlocked = o['unlocked_at'] != null;
     // Tonos del badge unificados (pedido PO 2026-07-21): desbloqueada = VIOLETA,
     // aceptada = VERDE, pendiente = ÁMBAR. Ver [offerBadgeTone].
+    // `unlocked_at` GANA sobre el status (bug PO 2026-07-23: decía "Ya
+    // ofertaste" con el contacto ya desbloqueado). Antes solo mostraba
+    // "Desbloqueada" si el status era exactamente 'accepted'; si estaba
+    // desbloqueada con otro status (p. ej. 'pending') caía al default. Misma
+    // doctrina que `myOfferedRequestStatuses` y el inbox: desbloqueado manda.
     final (label, tone) = switch (st) {
-      'accepted' when unlocked => (
-        'Desbloqueada',
-        offerBadgeTone(context, 'unlocked'),
-      ),
-      'accepted' => ('Aceptada', offerBadgeTone(context, 'accepted')),
       'completed' => ('Completada', offerBadgeTone(context, 'completed')),
       'rejected' => ('Rechazada', offerBadgeTone(context, 'rejected')),
+      _ when unlocked => ('Desbloqueada', offerBadgeTone(context, 'unlocked')),
+      'accepted' => ('Aceptada', offerBadgeTone(context, 'accepted')),
       _ => ('Ya ofertaste', offerBadgeTone(context, 'pending')),
     };
     final created = o['created_at'] as String?;

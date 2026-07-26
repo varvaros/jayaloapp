@@ -6,6 +6,7 @@ import 'app.dart';
 import 'core/config.dart';
 import 'core/error_reporter.dart';
 import 'core/router.dart';
+import 'core/theme_store.dart';
 import 'push/push_service.dart';
 
 Future<void> main() async {
@@ -14,6 +15,10 @@ Future<void> main() async {
         url: AppConfig.supabaseUrl,
         publishableKey: AppConfig.supabasePublishableKey);
     final router = buildRouter();
+    // Preferencia de tema ANTES de runApp: la app pinta directo en claro/oscuro
+    // sin parpadeo. Supabase.initialize ya llamó ensureInitialized, así que
+    // SharedPreferences está disponible aquí.
+    await themeStore.load();
     // El push es ACCESORIO y arranca DESPUÉS de la primera pantalla. El try/catch
     // de antes solo cubría que initPush LANZARA; si en vez de lanzar se QUEDA
     // COLGADO (el diálogo de permiso de Android 13+ que MIUI a veces no muestra,

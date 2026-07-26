@@ -6,8 +6,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/session_state.dart';
+import '../../core/theme_store.dart';
 import '../../data/repos.dart';
 import '../../push/push_service.dart';
+import '../chat/widgets/bubbles.dart' show chatPalette;
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/violet_header.dart';
@@ -180,6 +182,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final email = Supabase.instance.client.auth.currentUser?.email ?? '';
     final isProvider = roleStore.value == RoleState.provider;
     return Scaffold(
+      // Fondo lila del chat (pedido PO 2026-07-23): el mismo panel del chat
+      // detrás de las tarjetas — se adapta solo a oscuro (chatPalette ya trae
+      // su variante). Las tarjetas (JayaloCard) NO cambian.
+      backgroundColor: chatPalette(context).panel,
       body: Column(children: [
         VioletHeader(
           leading: HeaderCircleButton(
@@ -262,6 +268,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _savingWa ? null : _setWaReveal,
           ),
         ],
+        const SectionHeader(text: 'Apariencia'),
+        const _DarkModeRow(),
         const SectionHeader(text: 'Chat'),
         _SettingsRow(
           icon: Icons.quickreply_outlined,
@@ -361,6 +369,53 @@ class _WaPreferenceCard extends StatelessWidget {
                   style: TextStyle(fontSize: 12, height: 1.4, color: warnInk)),
             ),
           ]),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Toggle de modo oscuro (pedido PO 2026-07-23). Misma anatomía del kit que
+/// [_SettingsRow] pero con un Switch a la derecha; escucha [themeStore] para
+/// reflejar el estado y lo escribe al cambiar (persistencia + repintado global
+/// los maneja el store).
+class _DarkModeRow extends StatelessWidget {
+  const _DarkModeRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return JayaloCard(
+      child: Row(children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: .14),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(Icons.dark_mode_outlined, size: 20, color: cs.primary),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Modo oscuro',
+                  style: TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(height: 2),
+              Text('Tema oscuro para toda la app',
+                  style:
+                      TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            ],
+          ),
+        ),
+        ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeStore,
+          builder: (_, mode, _) => Switch(
+            value: mode == ThemeMode.dark,
+            onChanged: (v) => themeStore.setDark(v),
+          ),
         ),
       ]),
     );

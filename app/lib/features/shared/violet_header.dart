@@ -585,8 +585,13 @@ class HeaderSegmented extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: i == index ? FontWeight.w600 : FontWeight.w500,
+                    // Píldora seleccionada = BLANCA en ambos temas → el texto
+                    // debe ser oscuro. `onPrimaryContainer` es claro en oscuro
+                    // (texto claro sobre blanco = ilegible, bug PO 2026-07-23);
+                    // `primary` (violeta) es legible sobre blanco en claro Y
+                    // oscuro, igual que HeaderPill.
                     color: i == index
-                        ? cs.onPrimaryContainer
+                        ? cs.primary
                         : Colors.white.withValues(alpha: .88),
                   ),
                 ),

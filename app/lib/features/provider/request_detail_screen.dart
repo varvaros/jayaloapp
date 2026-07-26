@@ -878,24 +878,6 @@ class _ProviderRequestDetailScreenState
 
     final (StatusTone tone, IconData icon, String title, String body,
         String? cta, VoidCallback? onCta) = switch (st) {
-      // Violeta = el color de "desbloquear" (pedido PO 2026-07-22).
-      'accepted' when !unlocked => (
-          dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight,
-          Icons.emoji_events_outlined,
-          '🏆 ¡Te aceptaron!',
-          'El cliente aceptó tu oferta de $label. Desbloquea su contacto '
-              'para cerrar el trato.',
-          'Desbloquear contacto',
-          () => startUnlockFlow(context, o, onChanged: _reloadOffer),
-        ),
-      'accepted' || 'completed' => (
-          dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight,
-          Icons.check_circle,
-          'Contacto desbloqueado',
-          'Tu oferta: $label. Ya puedes hablar con el cliente.',
-          'Ver contacto',
-          () => showOfferContactSheet(context, o, onChanged: _reloadOffer),
-        ),
       'rejected' => (
           dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
           Icons.do_not_disturb_on_outlined,
@@ -903,6 +885,29 @@ class _ProviderRequestDetailScreenState
           'Tu oferta fue $label. Sigue atento a nuevas solicitudes de tu rubro.',
           null,
           null,
+        ),
+      // `unlocked_at` GANA sobre el status (bug PO 2026-07-23: decía "Ya
+      // enviaste tu oferta" con el contacto ya desbloqueado). Cualquier oferta
+      // desbloqueada (o completada) muestra "Contacto desbloqueado", sin
+      // importar si el status quedó en 'pending'/'accepted'.
+      _ when unlocked || st == 'completed' => (
+          dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight,
+          Icons.check_circle,
+          'Contacto desbloqueado',
+          'Tu oferta: $label. Ya puedes hablar con el cliente.',
+          'Ver contacto',
+          () => showOfferContactSheet(context, o, onChanged: _reloadOffer),
+        ),
+      // Aceptada pero AÚN NO desbloqueada (lo desbloqueado ya lo tomó el arm de
+      // arriba). Violeta = el color de "desbloquear" (pedido PO 2026-07-22).
+      'accepted' => (
+          dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight,
+          Icons.emoji_events_outlined,
+          '🏆 ¡Te aceptaron!',
+          'El cliente aceptó tu oferta de $label. Desbloquea su contacto '
+              'para cerrar el trato.',
+          'Desbloquear contacto',
+          () => startUnlockFlow(context, o, onChanged: _reloadOffer),
         ),
       _ => (
           dark ? JayaloStatus.acceptedDark : JayaloStatus.acceptedLight,

@@ -9,6 +9,7 @@ import '../shared/brand_kit.dart';
 import '../shared/network_image.dart';
 import '../shared/violet_header.dart';
 import 'funnel_status_store.dart';
+import 'opened_conversations.dart';
 
 const _tabs = [
   ('abierto', 'Abierto'),
@@ -85,10 +86,14 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     _load();
     // Estado de embudo (local): repintar la lista cuando cambie desde el chat.
     funnelStatusStore.ensureLoaded();
-    funnelStatusStore.addListener(_onFunnelChanged);
+    funnelStatusStore.addListener(_onStoreChanged);
+    // "Nueva" = conversación no abierta: la lista se repinta al instante cuando
+    // el chat marca una conversación abierta (sin depender del reload por ruta).
+    openedConversationsStore.ensureLoaded();
+    openedConversationsStore.addListener(_onStoreChanged);
   }
 
-  void _onFunnelChanged() {
+  void _onStoreChanged() {
     if (mounted) setState(() {});
   }
 
@@ -116,12 +121,10 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   @override
   void dispose() {
     _router?.routeInformationProvider.removeListener(_onRouteChanged);
-    funnelStatusStore.removeListener(_onFunnelChanged);
+    funnelStatusStore.removeListener(_onStoreChanged);
+    openedConversationsStore.removeListener(_onStoreChanged);
     super.dispose();
   }
-
-  /// Conversaciones donde YA envié algún mensaje (para el chip "Nueva").
-  Set<String> _talked = {};
 
   Future<void> _load() async {
     setState(() => _error = false);
@@ -132,12 +135,6 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       messagesBadge.set(
           rows.fold<int>(0, (s, c) => s + ((c['unread_count'] as int?) ?? 0)));
       if (mounted) setState(() => _all = rows);
-      // "Nueva" = nunca has hablado (best-effort; si falla, no se muestra chip).
-      try {
-        final ids = [for (final c in rows) c['id'] as String];
-        final talked = await conversationsWithMyMessages(ids);
-        if (mounted) setState(() => _talked = talked);
-      } catch (_) {}
     } catch (_) {
       if (mounted) setState(() => _error = true);
     }
@@ -233,7 +230,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                   itemBuilder: (context, i) => _ConversationRow(
                         c: filtered[i],
                         onOpen: _open,
-                        isNew: !_talked.contains(filtered[i]['id']),
+                        isNew: !openedConversationsStore
+                            .contains(filtered[i]['id'] as String),
                         // Estado de embudo SOLO en las conversaciones donde soy
                         // el proveedor (es mi herramienta privada).
                         funnel: filtered[i]['provider_user_id'] == _uid
@@ -309,7 +307,7 @@ class _ConversationRow extends StatelessWidget {
   final Map<String, dynamic> c;
   final void Function(Map<String, dynamic>) onOpen;
 
-  /// "Nueva": el usuario nunca ha enviado un mensaje en esta conversación.
+  /// "Nueva": el usuario todavía no ha ABIERTO esta conversación.
   final bool isNew;
 
   /// Estado de embudo (privado del proveedor) o null. Tiene prioridad sobre

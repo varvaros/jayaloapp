@@ -272,16 +272,8 @@ Future<void> showOfferContactSheet(
               _WhatsappReveal(
                   phone: contact.phone!, firstName: contact.firstName),
             ],
-            const SizedBox(height: 8),
-            if (offer['purchase_completed'] != true)
-              OutlinedButton(
-                onPressed: () async {
-                  await markPurchaseCompleted(offer['id'] as String);
-                  if (ctx.mounted) Navigator.pop(ctx);
-                  await onChanged?.call();
-                },
-                child: const Text('¿Se concretó la venta? Marcar completada'),
-              ),
+            // "¿Se concretó la venta? Marcar completada" RETIRADO (pedido PO
+            // 2026-07-23): el proveedor no marca la venta desde esta hoja.
           ]),
     ),
   );

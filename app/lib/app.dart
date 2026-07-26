@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import 'core/brand.dart';
 import 'core/motion.dart';
+import 'core/theme_store.dart';
 
 /// SIN animación en los cambios de sección (PO 2026-07-19, 4ª pasada —
 /// REVIERTE el deslizado de las directrices 07-18/07-19 anteriores):
@@ -161,19 +162,21 @@ class _JayaloAppState extends State<JayaloApp> {
   }
 
   @override
-  Widget build(BuildContext context) => MaterialApp.router(
-        title: 'Jayalo',
-        scaffoldMessengerKey: _messengerKey,
-        theme: jayaloTheme(Brightness.light),
-        darkTheme: jayaloTheme(Brightness.dark),
-        // FIJADO A CLARO (decisión PO 2026-07-19): el rediseño cálido (arena,
-        // headers violeta) es solo para modo claro; el oscuro cálido (violeta)
-        // sigue pendiente de diseño. Hasta entonces la app se ve SIEMPRE en el
-        // tema claro, sin importar el modo del sistema — así el rediseño se ve
-        // en todos los teléfonos. Quitar este `themeMode` reactiva el tema
-        // oscuro azul viejo.
-        themeMode: ThemeMode.light,
-        scrollBehavior: const JayaloScrollBehavior(),
-        routerConfig: widget.router,
+  Widget build(BuildContext context) => ValueListenableBuilder<ThemeMode>(
+        // El toggle "Modo oscuro" de Ajustes escribe [themeStore]; el tema se
+        // aplica a toda la app desde aquí (decisión PO 2026-07-23: el oscuro ya
+        // se puede activar). El default del store es claro, así que sin tocar
+        // el toggle la app se ve igual que antes. `themeMode` sigue siendo
+        // binario claro/oscuro (no `system`) por pedido del PO.
+        valueListenable: themeStore,
+        builder: (context, mode, _) => MaterialApp.router(
+          title: 'Jayalo',
+          scaffoldMessengerKey: _messengerKey,
+          theme: jayaloTheme(Brightness.light),
+          darkTheme: jayaloTheme(Brightness.dark),
+          themeMode: mode,
+          scrollBehavior: const JayaloScrollBehavior(),
+          routerConfig: widget.router,
+        ),
       );
 }

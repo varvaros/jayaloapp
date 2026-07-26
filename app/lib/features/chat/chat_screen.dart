@@ -13,6 +13,7 @@ import '../../domain/money.dart';
 import 'widgets/bubbles.dart';
 import 'widgets/chat_dialogs.dart';
 import 'funnel_status_store.dart';
+import 'opened_conversations.dart';
 import '../shared/brand_kit.dart';
 import 'widgets/composer.dart';
 import 'widgets/rating_form.dart';
@@ -63,6 +64,11 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    // "Nueva" en la lista se quita al ENTRAR (pedido PO 2026-07-23): marcar la
+    // conversación como abierta AQUÍ (no en _load) — se registra al abrir el
+    // chat aunque la carga de mensajes tarde o falle. El store notifica y la
+    // lista se repinta al instante.
+    openedConversationsStore.markOpened(widget.conversationId);
     _load();
     _lifecycle = AppLifecycleListener(
       onPause: _teardownRealtime,

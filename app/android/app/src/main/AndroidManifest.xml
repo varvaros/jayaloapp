@@ -5,7 +5,17 @@
     <application
         android:label="Jayalo"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:enableOnBackInvokedCallback="false"><!--
+        Predictive back (OnBackInvokedCallback) DESACTIVADO a propósito
+        (bug PO 2026-07-23: "el atrás del chat minimiza la app"). Con targetSdk
+        36 Android lo activa por defecto; en ese modo el chat (ruta TOP-LEVEL
+        apilada sobre el shell) minimiza en vez de volver — el predictive-back
+        no respeta el PopScope de un route directo del navigator raíz (solo el
+        de los navigators anidados, por eso las rutas del shell sí funcionaban).
+        En el camino legacy, Activity.onBackPressed → framework → PopScope
+        (BackGuard) se dispara SIEMPRE y navega bien en todas las rutas. Se
+        pierde solo la animación de "peek" del predictive-back (cosmético). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
