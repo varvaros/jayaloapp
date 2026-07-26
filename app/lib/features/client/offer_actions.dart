@@ -9,6 +9,7 @@ import '../../data/repos.dart';
 import '../../domain/money.dart';
 import '../shared/brand_kit.dart';
 import '../shared/celebration.dart';
+import '../shared/hold_tutorial_store.dart';
 import 'request_status_screen.dart' show offerPriceLabel;
 
 void showOfferSheet(BuildContext context, Map<String, dynamic> request,
@@ -176,6 +177,7 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
   void initState() {
     super.initState();
     _loadProvider();
+    unawaited(holdTutorialStore.ensureLoaded());
   }
 
   Future<void> _loadProvider() async {
@@ -465,13 +467,19 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
           const SizedBox(height: 10),
-          HoldToConfirmButton(
+          HoldCoachMark(
+            gesture: 'accept',
+            message: 'Mantén presionado para aceptar',
             tone: HoldToConfirmTone.free,
-            // "Mantener para aceptar" (pedido PO 2026-07-21): el label enseña
-            // el gesto — antes decía "Aceptar esta oferta" y parecía un tap.
-            label: 'Mantener para aceptar',
-            progress: _acceptProgress, // alimenta la mascota que se infla
-            onConfirmed: _accept,
+            progress: _acceptProgress,
+            child: HoldToConfirmButton(
+              tone: HoldToConfirmTone.free,
+              // "Mantener para aceptar" (pedido PO 2026-07-21): el label enseña
+              // el gesto — antes decía "Aceptar esta oferta" y parecía un tap.
+              label: 'Mantener para aceptar',
+              progress: _acceptProgress, // alimenta la mascota que se infla
+              onConfirmed: _accept,
+            ),
           ),
           TextButton(
               onPressed: _busy ? null : _reject, child: const Text('Rechazar')),
