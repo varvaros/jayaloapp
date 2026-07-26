@@ -478,10 +478,26 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
         ] else if (st == 'pending')
           const Text('Ya elegiste 3 finalistas para esta solicitud.',
               textAlign: TextAlign.center)
-        else if (st == 'accepted' && !unlocked)
+        else if (st == 'accepted' && !unlocked) ...[
           const Text('Oferta aceptada. El proveedor te contactará pronto.',
-              textAlign: TextAlign.center)
-        else if (unlocked) ...[
+              textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          // Descartar un finalista aún no desbloqueado: libera el cupo y reabre
+          // (server-side). Solo cuando NO está desbloqueado (paridad con la web).
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _discard,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+              side: BorderSide(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .error
+                      .withValues(alpha: .4)),
+            ),
+            icon: const Icon(Icons.close, size: 18),
+            label: const Text('Descartar oferta'),
+          ),
+        ] else if (unlocked) ...[
           // Contacto desbloqueado: el siguiente paso es CONVERSAR, no calificar
           // (la calificación llega al cerrarse el chat, pedido PO 2026-07-21).
           const Text('Contacto desbloqueado. Ya pueden coordinar por el chat.',
@@ -608,6 +624,47 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
                 FilledButton(
                     onPressed: () => Navigator.pop(d, true),
                     child: const Text('Rechazar')),
+              ],
+            ));
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    await rejectOffer(
+        offerId: widget.offer['id'] as String, reason: ctrl.text.trim());
+    if (!mounted) return;
+    Navigator.pop(context);
+  }
+
+  /// Descartar un finalista ACEPTADO aún no desbloqueado: pone la oferta en
+  /// 'rejected' → la BD (trigger de conteo + reapertura) libera el cupo y
+  /// reabre la solicitud. Solo se ofrece si NO está desbloqueado (paridad web).
+  Future<void> _discard() async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+        context: context,
+        builder: (d) => AlertDialog(
+              title: const Text('Descartar oferta'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                      'Se liberará un cupo y podrás elegir otra oferta.'),
+                  const SizedBox(height: 12),
+                  TextField(
+                      controller: ctrl,
+                      maxLines: 3,
+                      minLines: 2,
+                      decoration:
+                          filledField(d, '¿Por qué?', hint: 'Opcional')),
+                ],
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(d, false),
+                    child: const Text('Cancelar')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(d, true),
+                    child: const Text('Descartar')),
               ],
             ));
     if (ok != true || !mounted) return;
