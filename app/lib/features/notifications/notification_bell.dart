@@ -1,3 +1,4 @@
+import 'package:app_badge_plus/app_badge_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -29,6 +30,11 @@ class NotifCountStore extends ChangeNotifier {
         count = n;
         notifyListeners();
       }
+      // Se sincroniza SIEMPRE (aun si el conteo no cambió): el badge del
+      // launcher pudo quedar pegado con un `notification_count` viejo de un
+      // push anterior, y este refresh (montaje/resume) es la ocasión de
+      // corregirlo al valor real.
+      _syncLauncherBadge();
     } catch (_) {
       // Best-effort: el badge nunca rompe la pantalla que lo hospeda.
     }
@@ -39,10 +45,22 @@ class NotifCountStore extends ChangeNotifier {
     if (next != count) {
       count = next;
       notifyListeners();
+      _syncLauncherBadge();
     }
   }
 
   void zero() => add(-count);
+
+  /// Badge NUMÉRICO del ícono del launcher = no-leídas reales. El push
+  /// (`send-push`) solo recalcula ese número cuando LLEGA un push, así que sin
+  /// esto el ícono muestra un conteo viejo/inflado hasta el siguiente aviso.
+  /// Al abrir o volver a la app lo ponemos al día (y a 0 al marcar todas /
+  /// cerrar sesión). Best-effort: launchers que no lo soportan lo ignoran.
+  void _syncLauncherBadge() {
+    // Tope 99 igual que `send-push`: un ícono con 3 dígitos se ve roto y no
+    // aporta. El conteo real vive en la campana in-app y en la lista.
+    AppBadgePlus.updateBadge(count > 99 ? 99 : count).catchError((_) {});
+  }
 }
 
 final notifCountStore = NotifCountStore();
