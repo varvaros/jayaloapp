@@ -57,7 +57,7 @@ const _phaseCopy = {
   RequestPhase.waiting:
       'Tu solicitud está publicada. Los proveedores la están viendo.',
   RequestPhase.withOffers:
-      'Revisa las ofertas y acepta la que más te convenga.',
+      'Revisa las ofertas: puedes aceptar hasta 3.',
   RequestPhase.accepted: 'El proveedor te contactará pronto.',
   RequestPhase.unlocked: 'Ya puedes hablar con el proveedor.',
   RequestPhase.completed: 'Califica al proveedor para ayudar a la comunidad.',
@@ -361,7 +361,7 @@ class _OffersSheetState extends State<_OffersSheet> {
                 ),
                 const Spacer(),
                 Text(
-                  'Acepta la que más te convenga',
+                  'Puedes aceptar hasta 3 ofertas',
                   style: TextStyle(
                     fontSize: 12,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
