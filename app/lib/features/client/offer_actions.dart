@@ -476,7 +476,7 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
           TextButton(
               onPressed: _busy ? null : _reject, child: const Text('Rechazar')),
         ] else if (st == 'pending')
-          const Text('Ya tienes 3 finalistas. Descarta una para elegir otra.',
+          const Text('Ya elegiste 3 finalistas para esta solicitud.',
               textAlign: TextAlign.center)
         else if (st == 'accepted' && !unlocked)
           const Text('Oferta aceptada. El proveedor te contactará pronto.',

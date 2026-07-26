@@ -451,9 +451,10 @@ class _ProviderRequestDetailScreenState
 
   Future<void> _submit() async {
     final req = _req!;
-    // Gate: no ofertar si la solicitud ya tiene 3 finalistas (complementa el
-    // trigger block_offer_when_full de la BD).
-    if (isClosedToOffers(_acceptedCount)) {
+    // Gate: no ofertar (oferta NUEVA) si la solicitud ya tiene 3 finalistas
+    // (complementa el trigger block_offer_when_full, que bloquea INSERT, no
+    // UPDATE). En modo edición NO aplica: editar es un UPDATE permitido.
+    if (!_editing && isClosedToOffers(_acceptedCount)) {
       return _toast('Esta solicitud ya completó su selección (3 de 3).');
     }
     final isService = _isService;
@@ -1639,8 +1640,9 @@ class _ProviderRequestDetailScreenState
             }),
           const SizedBox(height: 12),
           FilledButton(
-              onPressed:
-                  _busy || isClosedToOffers(_acceptedCount) ? null : _submit,
+              onPressed: _busy || (!_editing && isClosedToOffers(_acceptedCount))
+                  ? null
+                  : _submit,
               child: Text(_editing ? 'Guardar cambios' : 'Enviar oferta (gratis)')),
           if (_editing) ...[
             const SizedBox(height: 8),
