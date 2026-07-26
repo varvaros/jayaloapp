@@ -14,6 +14,7 @@ import '../../domain/money.dart';
 import '../../domain/offer_message.dart';
 import '../../domain/pricing.dart';
 import '../../domain/wholesale.dart';
+import '../../domain/finalist_slots.dart';
 import '../shared/celebration.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
@@ -118,6 +119,11 @@ class _ProviderRequestDetailScreenState
   static const _svcModes = ['fixed', 'range', 'hourly', 'needs_evaluation'];
 
   bool get _isService => _req?['kind'] == 'servicio';
+  // Cupos de finalista (modelo de hasta 3): finalistas ya seleccionados y
+  // ofertas activas de la solicitud (columnas materializadas en la BD).
+  int get _acceptedCount => (_req?['accepted_offers_count'] as num?)?.toInt() ?? 0;
+  int get _offersCountLive =>
+      (_req?['offers_count'] as num?)?.toInt() ?? _offerCount;
   String get _pricingMode =>
       _isService ? _svcModes[_svcMode] : (_fixed ? 'fixed' : 'range');
 
@@ -445,6 +451,11 @@ class _ProviderRequestDetailScreenState
 
   Future<void> _submit() async {
     final req = _req!;
+    // Gate: no ofertar si la solicitud ya tiene 3 finalistas (complementa el
+    // trigger block_offer_when_full de la BD).
+    if (isClosedToOffers(_acceptedCount)) {
+      return _toast('Esta solicitud ya completó su selección (3 de 3).');
+    }
     final isService = _isService;
     final mode = _pricingMode;
 
@@ -1272,6 +1283,57 @@ class _ProviderRequestDetailScreenState
         ),
       ]);
 
+  /// Escalera de FOMO del proveedor: banner de color según finalistas
+  /// seleccionados + recencia + ofertas recibidas. Copy exacto en
+  /// `providerSlotSignal` (domain/finalist_slots.dart).
+  Widget _slotLadder(BuildContext context) {
+    final signal = providerSlotSignal(_acceptedCount, _offersCountLive);
+    final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final base = switch (signal.tone) {
+      SlotTone.green => const Color(0xFF16A34A),
+      SlotTone.yellow => const Color(0xFFCA8A04),
+      SlotTone.orange => const Color(0xFFEA580C),
+      SlotTone.red => const Color(0xFFE11D48),
+    };
+    final title = dark ? Color.lerp(base, Colors.white, .4)! : base;
+    final offers = _offersCountLive;
+    final createdAt = DateTime.tryParse(_req?['created_at'] as String? ?? '');
+    String ago = '';
+    if (createdAt != null) {
+      final d = DateTime.now().difference(createdAt);
+      ago = d.inMinutes < 60
+          ? 'hace ${d.inMinutes} min'
+          : d.inHours < 24
+              ? 'hace ${d.inHours} h'
+              : 'hace ${d.inDays} d';
+    }
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: base.withValues(alpha: dark ? .18 : .10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: base.withValues(alpha: .40)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(signal.text,
+              style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w700, color: title)),
+          const SizedBox(height: 2),
+          Text(
+            '${ago.isEmpty ? '' : '⏱️ Publicada $ago · '}'
+            '$offers oferta${offers == 1 ? '' : 's'} recibida${offers == 1 ? '' : 's'}',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final req = _req;
@@ -1380,29 +1442,19 @@ class _ProviderRequestDetailScreenState
                           height: 1.2,
                           fontWeight: FontWeight.w600,
                           color: jayaloHead(context))),
-                  if (req['is_wholesale'] == true || _offerCount > 0)
+                  if (req['is_wholesale'] == true)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: Wrap(spacing: 8, runSpacing: 8, children: [
-                        if (req['is_wholesale'] == true)
-                          StatusChip(
-                              label: 'Al por mayor',
-                              icon: Icons.storefront_outlined,
-                              tone: dark
-                                  ? JayaloStatus.respondedDark
-                                  : JayaloStatus.respondedLight),
-                        // FOMO (pedido PO 2026-07-21): competencia ya presente.
-                        if (_offerCount > 0)
-                          StatusChip(
-                              label: _offerCount == 1
-                                  ? '1 oferta ya'
-                                  : '$_offerCount ofertas ya',
-                              icon: Icons.local_fire_department,
-                              tone: dark
-                                  ? JayaloStatus.pendingDark
-                                  : JayaloStatus.pendingLight),
-                      ]),
+                      child: StatusChip(
+                          label: 'Al por mayor',
+                          icon: Icons.storefront_outlined,
+                          tone: dark
+                              ? JayaloStatus.respondedDark
+                              : JayaloStatus.respondedLight),
                     ),
+                  // FOMO de cupos (modelo de hasta 3 finalistas): escalera de
+                  // color + recencia + ofertas recibidas.
+                  _slotLadder(context),
                   if (req['is_wholesale'] == true) ...[
                     const SizedBox(height: 8),
                     if (req['wholesale_quantity'] != null)
@@ -1587,7 +1639,8 @@ class _ProviderRequestDetailScreenState
             }),
           const SizedBox(height: 12),
           FilledButton(
-              onPressed: _busy ? null : _submit,
+              onPressed:
+                  _busy || isClosedToOffers(_acceptedCount) ? null : _submit,
               child: Text(_editing ? 'Guardar cambios' : 'Enviar oferta (gratis)')),
           if (_editing) ...[
             const SizedBox(height: 8),
