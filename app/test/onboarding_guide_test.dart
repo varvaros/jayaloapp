@@ -78,4 +78,30 @@ void main() {
     expect(find.text('destino'), findsOneWidget);
     expect(onboardingStore.isDone('x.off.v1'), isFalse);
   });
+
+  testWidgets('libera el coordinador cuando enabled pasa a false mientras se muestra',
+      (t) async {
+    await t.pumpWidget(_host(
+      const OnboardingGuide(
+        guideKey: 'x.rel.v1',
+        steps: [OnboardingStep('Hola guia')],
+        child: SizedBox(width: 100, height: 40, child: Text('destino')),
+      ),
+    ));
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('onboardingCard')), findsOneWidget);
+
+    await t.pumpWidget(_host(
+      const OnboardingGuide(
+        enabled: false,
+        guideKey: 'x.rel.v1',
+        steps: [OnboardingStep('Hola guia')],
+        child: SizedBox(width: 100, height: 40, child: Text('destino')),
+      ),
+    ));
+    await t.pumpAndSettle();
+
+    expect(find.byKey(const Key('onboardingCard')), findsNothing);
+    expect(onboardingStore.acquire('other.key.v1'), isTrue);
+  });
 }

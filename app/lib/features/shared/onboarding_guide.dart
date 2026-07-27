@@ -74,18 +74,42 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
     if (widget.enabled && !old.enabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _measureAndMaybeShow());
     }
+    // enabled pasa de true a false: liberar el coordinador si estaba
+    // mostrándose, para no bloquear otras guías. No hace falta llamar
+    // `_portal.hide()` aquí (no se puede durante la fase de build): el build()
+    // que sigue ya no renderiza el OverlayPortal porque `_shouldShow` es falso,
+    // así que el portal se desmonta solo. `release()` se difiere a después del
+    // frame: notifica listeners sincrónicamente (incluido este propio widget vía
+    // `_onStore`), y esa notificación no puede intentar tocar el portal mientras
+    // seguimos dentro de la fase de build.
+    if (!widget.enabled && old.enabled) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _releaseIfHeld();
+      });
+    }
   }
 
   @override
   void dispose() {
     onboardingStore.removeListener(_onStore);
-    if (_acquired) onboardingStore.release(widget.guideKey);
+    _releaseIfHeld();
     super.dispose();
+  }
+
+  void _releaseIfHeld() {
+    if (_acquired) {
+      onboardingStore.release(widget.guideKey);
+      _acquired = false;
+    }
   }
 
   void _onStore() {
     if (!mounted) return;
-    if (!_shouldShow && _portal.isShowing) _portal.hide();
+    if (!_shouldShow && _portal.isShowing) {
+      _portal.hide();
+      _releaseIfHeld();
+    }
     // Si otra guía se liberó, reintentar mostrar esta.
     if (_shouldShow && !_portal.isShowing) _measureAndMaybeShow();
     setState(() {});
@@ -132,10 +156,7 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
   Future<void> _complete() async {
     setState(() => _done = true);
     if (_portal.isShowing) _portal.hide();
-    if (_acquired) {
-      onboardingStore.release(widget.guideKey);
-      _acquired = false;
-    }
+    _releaseIfHeld();
     await onboardingStore.markDone(widget.guideKey);
   }
 
