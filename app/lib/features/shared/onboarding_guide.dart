@@ -32,6 +32,8 @@ class OnboardingGuide extends StatefulWidget {
     required this.child,
     this.enabled = true,
     this.mode = OnboardingMode.anchored,
+    this.order = 0,
+    this.anchorKey,
   });
 
   final String guideKey;
@@ -39,6 +41,15 @@ class OnboardingGuide extends StatefulWidget {
   final Widget child;
   final bool enabled;
   final OnboardingMode mode;
+
+  /// Prioridad en el tour encadenado: menor = se muestra antes (coordinador
+  /// global). Guías condicionales que aparecen tarde usan un `order` alto.
+  final int order;
+
+  /// Ancla EXTERNA: si se pasa, la guía NO envuelve al hijo para medirlo, sino
+  /// que mide el widget que lleve este [GlobalKey] en otra parte del árbol
+  /// (p. ej. el botón `+` de la barra). El [child] puede ser `SizedBox.shrink`.
+  final GlobalKey? anchorKey;
 
   @override
   State<OnboardingGuide> createState() => _OnboardingGuideState();
@@ -99,25 +110,30 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
 
   void _releaseIfHeld() {
     if (_acquired) {
-      onboardingStore.release(widget.guideKey);
+      onboardingStore.withdraw(widget.guideKey);
       _acquired = false;
     }
   }
 
   void _onStore() {
     if (!mounted) return;
-    if (!_shouldShow && _portal.isShowing) {
-      _portal.hide();
+    if (!_shouldShow) {
+      if (_portal.isShowing) _portal.hide();
       _releaseIfHeld();
+    } else {
+      // Si aún no tengo turno ni portal, (re)pido turno.
+      if (!_portal.isShowing && !onboardingStore.isActive(widget.guideKey)) {
+        _measureAndMaybeShow();
+      }
+      _syncPortal();
     }
-    // Si otra guía se liberó, reintentar mostrar esta.
-    if (_shouldShow && !_portal.isShowing) _measureAndMaybeShow();
     setState(() {});
   }
 
-  /// Rect GLOBAL del ancla (coords de pantalla, que es el espacio del overlay).
+  /// Rect GLOBAL del ancla (coords de pantalla). Usa el ancla externa si se dio.
   Rect? _measureAnchor() {
-    final box = _anchorKey.currentContext?.findRenderObject() as RenderBox?;
+    final ctx = (widget.anchorKey ?? _anchorKey).currentContext;
+    final box = ctx?.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return null;
     return box.localToGlobal(Offset.zero) & box.size;
   }
@@ -148,9 +164,22 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
 
   void _tryShow() {
     if (!mounted || !_shouldShow) return;
-    if (!onboardingStore.acquire(widget.guideKey)) return; // otra guía activa
+    onboardingStore.requestSlot(widget.guideKey, widget.order);
     _acquired = true;
-    _portal.show();
+    // Ventana de recolección: junta las candidatas de este frame y resuelve al
+    // final. Idempotente si varias guías la agendan.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) onboardingStore.resolvePending();
+    });
+    _syncPortal();
+  }
+
+  /// Muestra u oculta el portal según si esta guía tiene el turno.
+  void _syncPortal() {
+    if (!mounted) return;
+    final active = onboardingStore.isActive(widget.guideKey);
+    if (active && !_portal.isShowing) _portal.show();
+    if (!active && _portal.isShowing) _portal.hide();
   }
 
   Future<void> _complete() async {
@@ -172,9 +201,11 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
   Widget build(BuildContext context) {
     if (!_shouldShow || _measureFailed) return widget.child;
 
-    final content = widget.mode == OnboardingMode.anchored
-        ? KeyedSubtree(key: _anchorKey, child: widget.child)
-        : widget.child;
+    // Con ancla externa NO se envuelve el hijo (el GlobalKey vive en el target).
+    final wrap =
+        widget.mode == OnboardingMode.anchored && widget.anchorKey == null;
+    final content =
+        wrap ? KeyedSubtree(key: _anchorKey, child: widget.child) : widget.child;
 
     return OverlayPortal(
       controller: _portal,

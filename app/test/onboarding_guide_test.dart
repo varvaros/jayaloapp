@@ -102,6 +102,64 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.byKey(const Key('onboardingCard')), findsNothing);
-    expect(onboardingStore.acquire('other.key.v1'), isTrue);
+    onboardingStore.requestSlot('other.key.v1', 0);
+    onboardingStore.resolvePending();
+    expect(onboardingStore.isActive('other.key.v1'), isTrue);
+  });
+
+  testWidgets('orden: la guia de menor order se muestra primero', (t) async {
+    await t.pumpWidget(_host(
+      Column(mainAxisSize: MainAxisSize.min, children: const [
+        OnboardingGuide(
+          guideKey: 'x.b.v1',
+          order: 2,
+          steps: [OnboardingStep('Segunda')],
+          child: SizedBox(width: 80, height: 30, child: Text('b')),
+        ),
+        OnboardingGuide(
+          guideKey: 'x.a.v1',
+          order: 1,
+          steps: [OnboardingStep('Primera')],
+          child: SizedBox(width: 80, height: 30, child: Text('a')),
+        ),
+      ]),
+    ));
+    await t.pumpAndSettle();
+    // aunque 'b' va antes en el árbol, gana 'a' (order menor)
+    expect(find.text('Primera'), findsOneWidget);
+    expect(find.text('Segunda'), findsNothing);
+    await t.tap(find.text('Entendido'));
+    await t.pumpAndSettle();
+    expect(find.text('Segunda'), findsOneWidget);
+  });
+
+  testWidgets('ancla externa: mide un widget por anchorKey sin envolverlo', (t) async {
+    final anchor = GlobalKey();
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Stack(children: [
+          Positioned(
+            left: 20,
+            top: 20,
+            child: SizedBox(
+              key: anchor,
+              width: 60,
+              height: 40,
+              child: const Text('target'),
+            ),
+          ),
+          OnboardingGuide(
+            anchorKey: anchor,
+            guideKey: 'x.ext.v1',
+            steps: const [OnboardingStep('Externa')],
+            order: 1,
+            child: const SizedBox.shrink(),
+          ),
+        ]),
+      ),
+    ));
+    await t.pumpAndSettle();
+    expect(find.text('Externa'), findsOneWidget);
+    expect(find.text('target'), findsOneWidget);
   });
 }
