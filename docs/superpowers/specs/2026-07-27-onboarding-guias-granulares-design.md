@@ -88,16 +88,19 @@ La guía existente del botón **enviar** (`client.create_request.v1`) se
 | 2 | `client.request_photo.v1` | Chips Tomar foto / Galería (**una** guía sobre ambos) | "Aquí tomas una foto o subes una imagen de lo que buscas." |
 | 3 | `client.create_request.v1` (existe) | Botón enviar | (copy actual, sin cambio) |
 
-Fuera del tour (disparo propio al aparecer su elemento):
+Fuera de la cadena inicial (disparo propio al aparecer su elemento):
 
-| clave | ancla | copy |
-|---|---|---|
-| `client.request_wholesale.v1` | Píldora "Al por mayor" | "¿Necesitas grandes cantidades? Actívalo aquí." |
+| order | clave | ancla | copy |
+|---|---|---|---|
+| 9 | `client.request_wholesale.v1` | Píldora "Al por mayor" | "¿Necesitas grandes cantidades? Actívalo aquí." |
 
 La píldora "Al por mayor" solo se monta tras elegir Producto; su guía se
-dispara sola en ese momento (progresión natural), no forma parte de la cadena
-inicial. Sin `order` en cadena — muestra cuando su ancla existe y el
-coordinador esté libre.
+dispara en ese momento (progresión natural). **El coordinador es global**
+(un solo turno para toda la app): si el usuario elige Producto a mitad del
+tour, la píldora se monta como candidata; con `order = 9` (alto) queda
+**detrás** de los pasos pendientes de la cadena (1–3) y nunca se cuela
+delante. El coordinador no expropia una guía activa (solo elige al liberar),
+así que un `order` alto basta para dejarla al final.
 
 ### Catálogo (`catalog_screen.dart`) — cliente
 
