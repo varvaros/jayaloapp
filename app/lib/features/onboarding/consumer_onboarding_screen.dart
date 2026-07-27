@@ -109,7 +109,9 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
               locality: m.locality,
               administrativeArea: m.administrativeArea,
             );
-            if (addr.isNotEmpty) setState(() => _address.text = addr);
+            if (addr.isNotEmpty && _address.text.trim().isEmpty) {
+              setState(() => _address.text = addr);
+            }
           }
         } catch (_) {
           // Best-effort: si el geocoder falla, se queda solo con lat/lng.
