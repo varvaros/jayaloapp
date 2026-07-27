@@ -6,7 +6,7 @@
 
 **Architecture:** Un `OnboardingStore` (`ChangeNotifier`) es la única fuente de verdad: carga las claves completadas desde una tabla de Supabase al iniciar sesión, cachea local para offline/anti-parpadeo, y expone `isDone(key)`/`markDone(key)`. Un widget `OnboardingGuide` generaliza el spotlight de `HoldCoachMark` (velo + elemento resaltado + tarjeta + botones, con fallback de anclaje). Cada pantalla envuelve su elemento objetivo con `OnboardingGuide`. El coach-mark de gesto se migra a consultar `OnboardingStore` con claves versionadas.
 
-**Tech Stack:** Flutter, `supabase_flutter`, `shared_preferences`, `OverlayPortal` + `LayerLink`/`CompositedTransformFollower`. Tests con `flutter_test` + `SharedPreferences.setMockInitialValues` + repo falso inyectado.
+**Tech Stack:** Flutter, `supabase_flutter`, `shared_preferences`, `OverlayPortal` + `CustomPaint` (velo con hueco recortado vía `BlendMode.clear`, sin clonar el elemento). Tests con `flutter_test` + `SharedPreferences.setMockInitialValues` + repo falso inyectado.
 
 ## Global Constraints
 
@@ -569,13 +569,20 @@ class OnboardingStep {
 }
 
 /// Guía contextual tipo spotlight. Envuelve el elemento objetivo ([child]).
-/// La primera vez (según [onboardingStore]) monta un overlay: velo oscuro, el
-/// hijo resaltado encima del velo (modo [OnboardingMode.anchored]) o una tarjeta
-/// centrada (modo [OnboardingMode.welcome]), con el mensaje del paso actual y
-/// botones Saltar / Siguiente / Entendido. Cerrar, saltar, tocar el velo o
-/// terminar → `markDone` permanente. Reúsa la técnica y el fallback de anclaje
-/// de [HoldCoachMark]: si el ancla no se puede medir, renderiza el hijo en línea
-/// (nunca deja la UI tapada ni el elemento inaccesible).
+/// La primera vez (según [onboardingStore]) monta un overlay: un velo oscuro con
+/// un HUECO recortado sobre el elemento (modo [OnboardingMode.anchored]) para que
+/// el elemento REAL —que sigue en su sitio, no se re-renderiza— se vea brillante
+/// a través del hueco; o un velo lleno con tarjeta centrada (modo
+/// [OnboardingMode.welcome]). Muestra el mensaje del paso actual y botones Saltar
+/// / Siguiente / Entendido. Cerrar, saltar, tocar el velo o terminar → `markDone`
+/// permanente.
+///
+/// El elemento NO se clona en el overlay (eso rompería con hijos que llevan
+/// `GlobalKey`, como botones/forms): se mide su rect global y el velo se pinta
+/// con un recorte (`BlendMode.clear`) en esa zona. Reúsa el fallback de anclaje
+/// de [HoldCoachMark]: si el ancla no se puede medir tras un reintento, renderiza
+/// el hijo en línea sin overlay (nunca deja la UI tapada ni el elemento
+/// inaccesible).
 class OnboardingGuide extends StatefulWidget {
   const OnboardingGuide({
     super.key,
@@ -598,10 +605,9 @@ class OnboardingGuide extends StatefulWidget {
 
 class _OnboardingGuideState extends State<OnboardingGuide> {
   final _portal = OverlayPortalController();
-  final _link = LayerLink();
   final _anchorKey = GlobalKey();
 
-  Size? _anchorSize;
+  Rect? _anchorRect; // rect GLOBAL del elemento a resaltar (para el hueco)
   bool _done = false;
   bool _measureFailed = false;
   bool _acquired = false;
@@ -644,22 +650,29 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
     setState(() {});
   }
 
+  /// Rect GLOBAL del ancla (coords de pantalla, que es el espacio del overlay).
+  Rect? _measureAnchor() {
+    final box = _anchorKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
   void _measureAndMaybeShow() {
     if (!mounted || !_shouldShow) return;
     if (widget.mode == OnboardingMode.welcome) {
       _tryShow(); // sin ancla que medir
       return;
     }
-    final box = _anchorKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box != null && box.hasSize) {
-      setState(() => _anchorSize = box.size);
+    final rect = _measureAnchor();
+    if (rect != null) {
+      setState(() => _anchorRect = rect);
       _tryShow();
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final retry = _anchorKey.currentContext?.findRenderObject() as RenderBox?;
-        if (retry != null && retry.hasSize) {
-          setState(() => _anchorSize = retry.size);
+        final retry = _measureAnchor();
+        if (retry != null) {
+          setState(() => _anchorRect = retry);
           _tryShow();
         } else {
           setState(() => _measureFailed = true); // fallback: hijo en línea
@@ -697,21 +710,14 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
   Widget build(BuildContext context) {
     if (!_shouldShow || _measureFailed) return widget.child;
 
-    if (widget.mode == OnboardingMode.welcome) {
-      return OverlayPortal(
-        controller: _portal,
-        overlayChildBuilder: _buildOverlay,
-        child: widget.child,
-      );
-    }
+    final content = widget.mode == OnboardingMode.anchored
+        ? KeyedSubtree(key: _anchorKey, child: widget.child)
+        : widget.child;
 
-    return CompositedTransformTarget(
-      link: _link,
-      child: OverlayPortal(
-        controller: _portal,
-        overlayChildBuilder: _buildOverlay,
-        child: KeyedSubtree(key: _anchorKey, child: widget.child),
-      ),
+    return OverlayPortal(
+      controller: _portal,
+      overlayChildBuilder: _buildOverlay,
+      child: content,
     );
   }
 
@@ -746,27 +752,34 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
       ),
     );
 
+    final hole = widget.mode == OnboardingMode.anchored ? _anchorRect : null;
+
     return Stack(
       children: [
-        // Velo oscuro: atenúa todo; tocarlo cierra y marca visto.
+        // Velo oscuro con hueco recortado sobre el elemento (spotlight). No
+        // intercepta toques (IgnorePointer): el elemento real vive debajo, en su
+        // sitio, y se ve brillante por el hueco.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: _ScrimPainter(
+                hole: hole,
+                color: const Color(0x8C000000),
+                ringColor: cs.primary,
+              ),
+            ),
+          ),
+        ),
+        // Captura de toques a pantalla completa (incluye el hueco): cerrar y
+        // marcar visto. Va debajo de la tarjeta para que sus botones reciban tap.
         Positioned.fill(
           child: GestureDetector(
             key: const Key('onboardingScrim'),
             behavior: HitTestBehavior.opaque,
             onTap: _complete,
-            child: const ColoredBox(color: Color(0x8C000000)),
+            child: const SizedBox.expand(),
           ),
         ),
-        if (widget.mode == OnboardingMode.anchored && _anchorSize != null)
-          // Hijo resaltado sobre el velo (spotlight).
-          CompositedTransformFollower(
-            link: _link,
-            targetAnchor: Alignment.topLeft,
-            showWhenUnlinked: false,
-            child: IgnorePointer(
-              child: SizedBox.fromSize(size: _anchorSize, child: widget.child),
-            ),
-          ),
         // Tarjeta: centrada (welcome) o abajo (anchored).
         Align(
           alignment: widget.mode == OnboardingMode.welcome
@@ -778,12 +791,53 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
     );
   }
 }
+
+/// Pinta el velo oscuro a pantalla completa y, si hay [hole], recorta ese rect
+/// (con un margen y esquinas redondeadas) para que el elemento real se vea, más
+/// un anillo de resalte alrededor. El recorte usa `saveLayer` + `BlendMode.clear`.
+class _ScrimPainter extends CustomPainter {
+  _ScrimPainter({required this.hole, required this.color, required this.ringColor});
+
+  final Rect? hole;
+  final Color color;
+  final Color ringColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final full = Offset.zero & size;
+    if (hole == null) {
+      canvas.drawRect(full, Paint()..color = color);
+      return;
+    }
+    final rr = RRect.fromRectAndRadius(hole!.inflate(6), const Radius.circular(12));
+    canvas.saveLayer(full, Paint());
+    canvas.drawRect(full, Paint()..color = color);
+    canvas.drawRRect(rr, Paint()..blendMode = BlendMode.clear);
+    canvas.restore();
+    canvas.drawRRect(
+      rr,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = ringColor,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ScrimPainter old) =>
+      old.hole != hole || old.color != color || old.ringColor != ringColor;
+}
 ```
 
 > El spotlight v1 es estático (cumple reduced-motion por construcción), por eso
 > el widget NO importa `core/motion.dart`. Cuando se anime el resaltado, agregar
 > `import '../../core/motion.dart';` y guardar la animación con
 > `JayaloMotion.reduced(context)`.
+>
+> **Anti-duplicación (importante):** el `child` se renderiza UNA sola vez (en su
+> sitio, para poder medirlo). El resaltado es un recorte del velo, no un clon del
+> `child` — así funciona con hijos que llevan `GlobalKey` (botones/forms). No usar
+> `CompositedTransformFollower` con el `child` real.
 
 - [ ] **Step 4: Ejecutar y ver que pasa**
 
