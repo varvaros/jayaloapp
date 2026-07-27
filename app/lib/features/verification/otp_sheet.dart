@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:smart_auth/smart_auth.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../shared/jayalo_loader.dart';
@@ -41,6 +43,7 @@ class _OtpSheetState extends State<_OtpSheet> {
   int _resendIn = 0;
   Timer? _timer;
   String _channel = 'sms'; // lo confirma send-otp; el copy lo sigue
+  final _smartAuth = SmartAuth.instance;
 
   @override
   void initState() {
@@ -52,7 +55,30 @@ class _OtpSheetState extends State<_OtpSheet> {
   void dispose() {
     _timer?.cancel();
     _code.dispose();
+    // Solo se arrancó el listener en Android; en otras plataformas es no-op.
+    if (Platform.isAndroid) _smartAuth.removeSmsRetrieverApiListener();
     super.dispose();
+  }
+
+  /// Autocompletado del código vía SMS Retriever (Android). El SMS que manda
+  /// `send-otp` lleva el hash de firma de la app al final (Task B2) — Google lo
+  /// entrega directo a la app sin permiso de lectura de SMS. Best-effort: si no
+  /// llega o no coincide el hash, el usuario tipea el código a mano. iOS usa el
+  /// `autofillHints: oneTimeCode` del teclado (no este listener).
+  Future<void> _listenForCode() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final res = await _smartAuth.getSmsWithRetrieverApi(matcher: r'\d{6}');
+      if (!mounted) return;
+      final code = res.data?.code;
+      if (res.hasData && code != null && RegExp(r'^\d{6}$').hasMatch(code)) {
+        setState(() => _code.text = code);
+        // Auto-verifica solo si no hay otra operación en curso.
+        if (!_sending && !_verifying) _verify();
+      }
+    } catch (_) {
+      // Best-effort: cualquier fallo del retriever cae al tipeo manual.
+    }
   }
 
   void _startCountdown() {
@@ -74,6 +100,8 @@ class _OtpSheetState extends State<_OtpSheet> {
       final channel = await sendOtp(phone: widget.phone, businessId: widget.businessId);
       if (mounted) setState(() => _channel = channel);
       _startCountdown();
+      // Arranca el escucha de SMS Retriever recién enviado el código (Android).
+      _listenForCode();
     } catch (e) {
       if (mounted) {
         setState(() =>
@@ -137,6 +165,10 @@ class _OtpSheetState extends State<_OtpSheet> {
             keyboardType: TextInputType.number,
             maxLength: 6,
             autofocus: true,
+            // iOS: sugiere el código del SMS en la barra del teclado. Android
+            // usa el listener SMS Retriever (`_listenForCode`). No altera el
+            // estilo casi-gigante del campo.
+            autofillHints: const [AutofillHints.oneTimeCode],
             // Código CASI GIGANTE (pedido PO): el número es el protagonista de
             // la hoja — dígitos grandes y muy espaciados para leerlos/tipearlos
             // de un vistazo, con la altura suficiente para que no se recorten.
