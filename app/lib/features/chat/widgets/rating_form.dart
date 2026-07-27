@@ -46,7 +46,6 @@ class CustomerRatingPanel extends StatefulWidget {
 }
 
 class _CustomerRatingPanelState extends State<CustomerRatingPanel> {
-  bool _expanded = false;
   int _rating = 5;
   final _comment = TextEditingController();
   bool _submitting = false;
@@ -82,27 +81,19 @@ class _CustomerRatingPanelState extends State<CustomerRatingPanel> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    if (!_expanded) {
-      return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          color: cs.primaryContainer.withValues(alpha: 0.3),
-          child: Column(children: [
-            const Text('¡Califica a este cliente!',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            Text('Tu opinión ayuda a otros proveedores.',
-                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-                onPressed: () => setState(() => _expanded = true),
-                icon: const Icon(Icons.star_outline),
-                label: const Text('Calificar ahora')),
-          ]));
-    }
+    // Calificador INMEDIATO (sin el paso previo "Calificar ahora") + respiro
+    // inferior para no quedar bajo la barra de gestos del sistema (pedido PO
+    // 2026-07-27: "que aparezca de inmediato" y "no tan abajo").
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(
+          16, 16, 16, 16 + MediaQuery.viewPaddingOf(context).bottom),
       color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('¡Califica a este cliente!',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        Text('Tu opinión ayuda a otros proveedores.',
+            style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+        const SizedBox(height: 10),
         const Text('Califica al cliente',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
@@ -152,7 +143,6 @@ class RatingPanel extends StatefulWidget {
 }
 
 class _RatingPanelState extends State<RatingPanel> {
-  bool _expanded = false;
   int _overall = 0;
   bool _quality = true, _fulfillment = true, _service = true, _condition = true;
   final _comment = TextEditingController();
@@ -197,28 +187,20 @@ class _RatingPanelState extends State<RatingPanel> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    if (!_expanded) {
-      return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          color: cs.primaryContainer.withValues(alpha: 0.3),
-          child: Column(children: [
-            const Text('¡Califica este proveedor!',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            Text('Tu opinión ayuda a otros clientes.',
-                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-                onPressed: () => setState(() => _expanded = true),
-                icon: const Icon(Icons.star_outline),
-                label: const Text('Calificar ahora')),
-          ]));
-    }
+    // Calificador INMEDIATO (sin el paso previo "Calificar ahora") + respiro
+    // inferior para no quedar bajo la barra de gestos del sistema (pedido PO
+    // 2026-07-27: "que aparezca de inmediato" y "no tan abajo").
     return Container(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(
+            16, 16, 16, 16 + MediaQuery.viewPaddingOf(context).bottom),
         color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
         child: SingleChildScrollView(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('¡Califica este proveedor!',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          Text('Tu opinión ayuda a otros clientes.',
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 10),
           Text(
               'Al calificar a este proveedor, reconoces que la transacción fue realizada de forma privada. Jayalo no interviene en disputas comerciales ni garantiza la veracidad de la información intercambiada. Tu calificación ayuda a la comunidad a identificar proveedores responsables.',
               style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
