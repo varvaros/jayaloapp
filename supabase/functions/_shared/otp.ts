@@ -115,6 +115,22 @@ export async function getOtpChannel(admin: SupabaseClient): Promise<OtpChannel> 
   return parseOtpChannel(data?.value ?? Deno.env.get("OTP_CHANNEL"));
 }
 
+/**
+ * Cuerpo del SMS/WhatsApp del OTP. Con canal SMS y hash presente, usa el formato
+ * de Google SMS Retriever (autofill Android): `<#>` al inicio, el código en el
+ * cuerpo, y el hash de 11 chars en la última línea; todo ≤140 bytes.
+ */
+export function buildOtpMessage(
+  code: string,
+  channel: OtpChannel,
+  smsRetrieverHash: string | null,
+): string {
+  if (channel === "sms" && smsRetrieverHash) {
+    return `<#> Tu codigo Jayalo es ${code}. Vence en 10 min.\n${smsRetrieverHash}`;
+  }
+  return `Tu código de verificación Jayalo: ${code}\n\nVence en 10 minutos.`;
+}
+
 export async function sendOtpMessage(admin: SupabaseClient, to: string, body: string) {
   const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
