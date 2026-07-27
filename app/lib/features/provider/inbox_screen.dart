@@ -14,6 +14,8 @@ import '../shell/floating_nav_bar.dart';
 import '../shell/home_scroll.dart';
 import '../shared/brand_kit.dart';
 import '../shared/celebration.dart';
+import '../shared/onboarding_copy.dart';
+import '../shared/onboarding_guide.dart';
 import '../shared/violet_header.dart';
 import 'unlock_flow.dart' show StartChatButton;
 
@@ -604,6 +606,14 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                         },
                       );
                     }
+                    // Primera solicitud REGULAR (no _InterestCard) de la lista:
+                    // ancla de la guía de onboarding. Las tarjetas 'store' son
+                    // otra cosa (interés de producto), así que la guía —que
+                    // habla de "personas buscando servicios"— no debe anclarse
+                    // ahí.
+                    final firstRegularIndex = items.indexWhere(
+                      (r) => r['source'] != 'store',
+                    );
                     return ListView.builder(
                       controller: homeScrollController,
                       padding: EdgeInsets.only(
@@ -623,7 +633,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                             onAction: () => _onInterestAction(r),
                           ).cascadeIn(i);
                         }
-                        return _InboxCard(
+                        final card = _InboxCard(
                           title: r['title'] as String? ?? '',
                           description: r['description'] as String? ?? '',
                           kind: r['kind'] as String?,
@@ -640,7 +650,15 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                             await context.push('/provider/request/${r['id']}');
                             if (context.mounted) _refetch();
                           },
-                        ).cascadeIn(i);
+                        );
+                        if (i == firstRegularIndex) {
+                          return OnboardingGuide(
+                            guideKey: 'provider.requests_list.v1',
+                            steps: onboardingCopy['provider.requests_list.v1']!,
+                            child: card,
+                          ).cascadeIn(i);
+                        }
+                        return card.cascadeIn(i);
                       },
                     );
                   },

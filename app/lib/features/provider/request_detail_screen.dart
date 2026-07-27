@@ -17,6 +17,8 @@ import '../../domain/pricing.dart';
 import '../../domain/wholesale.dart';
 import '../../domain/finalist_slots.dart';
 import '../shared/celebration.dart';
+import '../shared/onboarding_copy.dart';
+import '../shared/onboarding_guide.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import 'unlock_flow.dart';
@@ -1641,11 +1643,17 @@ class _ProviderRequestDetailScreenState
               );
             }),
           const SizedBox(height: 12),
-          FilledButton(
-              onPressed: _busy || (!_editing && isClosedToOffers(_acceptedCount))
-                  ? null
-                  : _submit,
-              child: Text(_editing ? 'Guardar cambios' : 'Enviar oferta (gratis)')),
+          OnboardingGuide(
+            guideKey: 'provider.make_offer.v1',
+            steps: onboardingCopy['provider.make_offer.v1']!,
+            child: FilledButton(
+                onPressed:
+                    _busy || (!_editing && isClosedToOffers(_acceptedCount))
+                        ? null
+                        : _submit,
+                child: Text(
+                    _editing ? 'Guardar cambios' : 'Enviar oferta (gratis)')),
+          ),
           if (_editing) ...[
             const SizedBox(height: 8),
             TextButton.icon(
