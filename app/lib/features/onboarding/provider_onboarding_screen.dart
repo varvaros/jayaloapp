@@ -93,8 +93,10 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           final p3 = tenDigits.substring(0, 3);
           final rest = tenDigits.substring(3);
           setState(() {
-            if (kRdPrefixes.contains(p3)) _prefix = p3;
-            _local.text = rest;
+            if (kRdPrefixes.contains(p3)) {
+              _prefix = p3;
+              _local.text = rest;
+            }
           });
           _checkPhone();
         }
