@@ -147,6 +147,7 @@ class OnboardingStore extends ChangeNotifier {
     _loaded = false;
     _suppressed = false;
     _active = null;
+    _candidates.clear();
     await ensureLoaded();
   }
 
@@ -157,21 +158,52 @@ class OnboardingStore extends ChangeNotifier {
     } catch (_) {/* no bloquea */}
   }
 
-  // --- Coordinador: solo una guía visible a la vez ---
-  bool acquire(String key) {
-    if (_active == null || _active == key) {
-      _active = key;
-      return true;
-    }
-    return false;
+  // --- Coordinador ORDENADO: una guía visible a la vez, por prioridad. Las
+  // guías se registran como candidatas con su `order`; el turno se concede (en
+  // `resolvePending`, que las guías llaman en un post-frame — ventana de
+  // recolección de un frame) a la de MENOR `order`. Al liberar, entra la
+  // siguiente de menor orden.
+  final Map<String, int> _candidates = {};
+
+  /// Registra la guía [key] como candidata con prioridad [order]. No concede el
+  /// turno de inmediato: se resuelve en [resolvePending].
+  void requestSlot(String key, int order) {
+    if (_active == key) return;
+    _candidates[key] = order;
   }
 
-  void release(String key) {
+  /// Concede el turno a la candidata de MENOR `order` si no hay ninguna activa.
+  /// Idempotente. En producción la llaman las guías en un post-frame; en tests
+  /// se llama a mano.
+  void resolvePending() {
+    if (_active != null || _candidates.isEmpty) return;
+    var best = _candidates.keys.first;
+    var bestOrder = _candidates[best]!;
+    _candidates.forEach((k, o) {
+      if (o < bestOrder) {
+        best = k;
+        bestOrder = o;
+      }
+    });
+    _active = best;
+    _candidates.clear();
+    notifyListeners();
+  }
+
+  bool isActive(String key) => _active == key;
+
+  /// Saca a [key] de la cola; si era la activa, libera el turno y reevalúa (las
+  /// guías en espera reintentan pedir turno vía su listener).
+  void withdraw(String key) {
+    _candidates.remove(key);
     if (_active == key) {
       _active = null;
-      notifyListeners(); // las guías en espera reintentan
+      notifyListeners();
     }
   }
+
+  /// "Terminé de mostrarme": alias de [withdraw] para la guía activa.
+  void release(String key) => withdraw(key);
 
   @visibleForTesting
   void reset() {
@@ -179,6 +211,7 @@ class OnboardingStore extends ChangeNotifier {
     _loaded = false;
     _suppressed = false;
     _active = null;
+    _candidates.clear();
   }
 }
 

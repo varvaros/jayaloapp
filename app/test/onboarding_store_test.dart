@@ -81,23 +81,42 @@ void main() {
     expect(repo.marked.toSet(), {'gesture.accept.v1', 'gesture.unlock.v1'});
   });
 
-  test('coordinador: solo una guia activa a la vez', () async {
+  test('coordinador ordenado: gana la de menor order', () async {
     final store = OnboardingStore.forTest(FakeRepo());
     await store.ensureLoaded();
-    expect(store.acquire('a'), isTrue);
-    expect(store.acquire('b'), isFalse);
-    expect(store.acquire('a'), isTrue); // reentrante para la misma clave
+    store.requestSlot('b', 2);
+    store.requestSlot('a', 1);
+    store.requestSlot('c', 3);
+    store.resolvePending();
+    expect(store.isActive('a'), isTrue);
+    expect(store.isActive('b'), isFalse);
+    // al liberar 'a', tras re-registrar entra la siguiente de menor orden (b)
     store.release('a');
-    expect(store.acquire('b'), isTrue);
+    store.requestSlot('b', 2);
+    store.requestSlot('c', 3);
+    store.resolvePending();
+    expect(store.isActive('b'), isTrue);
+  });
+
+  test('reentrante: pedir turno para la ya activa no la saca', () async {
+    final store = OnboardingStore.forTest(FakeRepo());
+    await store.ensureLoaded();
+    store.requestSlot('a', 0);
+    store.resolvePending();
+    expect(store.isActive('a'), isTrue);
+    store.requestSlot('a', 0); // no-op
+    expect(store.isActive('a'), isTrue);
   });
 
   test('reload limpia el coordinador: una guia activa no queda trabada', () async {
     final store = OnboardingStore.forTest(FakeRepo());
     await store.ensureLoaded();
-    expect(store.acquire('a'), isTrue); // queda "mostrándose" para el usuario 1
-
-    await store.reload(); // p. ej. cambio de sesión (auth signedIn)
-
-    expect(store.acquire('b'), isTrue); // no debe quedar bloqueado por 'a'
+    store.requestSlot('a', 0);
+    store.resolvePending();
+    expect(store.isActive('a'), isTrue);
+    await store.reload();
+    store.requestSlot('b', 0);
+    store.resolvePending();
+    expect(store.isActive('b'), isTrue);
   });
 }
