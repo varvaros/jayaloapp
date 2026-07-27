@@ -11,6 +11,8 @@ import '../shared/brand_kit.dart';
 import '../shared/profile_avatar_button.dart';
 import '../shared/swipe_to_actions.dart';
 import '../shared/violet_header.dart';
+import '../shared/onboarding_guide.dart';
+import '../shared/onboarding_copy.dart';
 
 String timeAgo(DateTime d) {
   final diff = DateTime.now().difference(d);
@@ -88,6 +90,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
       _fetchMine();
   int _seenTick = requestsChanged.value;
 
+  /// Se vuelve true cuando el fetch inicial de "mis solicitudes" resuelve
+  /// (vacío o no). Gatea la guía `client.others_requests.v1`: si esa guía
+  /// pudiera pedir turno de inmediato (siempre visible) mientras la de
+  /// `client.my_requests.v1` recién aparece al resolver `_load` (estado
+  /// vacío), la de mayor `order` ganaba la carrera por llegar primero al
+  /// coordinador — el de MENOR order (2, mis solicitudes) dejaba de "ganar el
+  /// turno primero" pese a la doctrina. Al sincronizar ambas guías al mismo
+  /// evento, compiten de verdad por `order` en vez de por quién carga antes.
+  bool _myLoadSettled = false;
+
   /// Solicitudes con al menos una oferta NUEVA sin leer (= con notificación
   /// `offer_new` sin leer). Van PRIMERO en la lista, con punto rojo + borde
   /// grueso oscuro (pedido PO 2026-07-23). El "leído" es por OFERTA (se marca al
@@ -121,6 +133,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   void initState() {
     super.initState();
     requestsChanged.addListener(_reload);
+    _load.whenComplete(() {
+      if (mounted) setState(() => _myLoadSettled = true);
+    });
   }
 
   @override
@@ -382,12 +397,18 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                 _filterButton('Mis solicitudes', !_others, () {
                   if (_others) setState(() => _others = false);
                 }),
-                _filterButton('Ver solicitudes de usuarios', _others, () {
-                  setState(() {
-                    _others = true;
-                    _othersLoad ??= _fetchOthers();
-                  });
-                }),
+                OnboardingGuide(
+                  guideKey: 'client.others_requests.v1',
+                  steps: onboardingCopy['client.others_requests.v1']!,
+                  order: 3,
+                  enabled: _myLoadSettled,
+                  child: _filterButton('Ver solicitudes de usuarios', _others, () {
+                    setState(() {
+                      _others = true;
+                      _othersLoad ??= _fetchOthers();
+                    });
+                  }),
+                ),
               ],
             ),
           ),
@@ -448,16 +469,45 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                           }
                           final items = snap.data!;
                           if (items.isEmpty) {
-                            return EmptyState(
+                            return ListView(
                               controller: homeScrollController,
-                              message:
-                                  'Aún no has pedido nada.\n'
-                                  'Cuéntanos qué buscas y los proveedores te harán ofertas.',
-                              ctaLabel: 'Crear solicitud',
-                              // push, no go: crear-solicitud es MODAL (sube por encima
-                              // con su CustomTransitionPage); un go la trataría como
-                              // pestaña más — swap instantáneo (gotcha ShellRoute).
-                              onCta: () => context.push('/client/create'),
+                              padding: EdgeInsets.only(
+                                top: 12,
+                                bottom: navBarReservedSpace(context),
+                              ),
+                              children: [
+                                OnboardingGuide(
+                                  guideKey: 'client.my_requests.v1',
+                                  steps:
+                                      onboardingCopy['client.my_requests.v1']!,
+                                  order: 2,
+                                  child: const _ExampleRequestCard(),
+                                ),
+                                const SizedBox(height: 12),
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 24),
+                                  child: Text(
+                                    'Aún no has pedido nada.\n'
+                                    'Cuéntanos qué buscas y los proveedores te '
+                                    'harán ofertas.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                Center(
+                                  child: FilledButton(
+                                    onPressed: () =>
+                                        context.push('/client/create'),
+                                    child: const Text('Crear solicitud'),
+                                  ),
+                                ),
+                              ],
                             );
                           }
                           return Column(
@@ -1009,6 +1059,103 @@ class _OtherRequestCard extends StatelessWidget {
             color: cs.onSurfaceVariant.withValues(alpha: .4),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Tarjeta de solicitud de EJEMPLO (estado vacío): mismo lenguaje visual que
+/// `_RequestCard` pero atenuada, con etiqueta "Ejemplo" y SIN `onTap`. Sirve de
+/// ancla a la guía `client.my_requests.v1` y da sustancia al "aquí se verán tus
+/// solicitudes". Desaparece en cuanto el cliente tiene una solicitud real.
+class _ExampleRequestCard extends StatelessWidget {
+  const _ExampleRequestCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Opacity(
+      opacity: .9,
+      child: JayaloCard(
+        tint: cs.surfaceContainerLowest,
+        child: Row(
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(Icons.inventory_2_outlined,
+                  size: 24, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          'Nevera 11 pies, poco uso',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Ejemplo',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text('hace 2 h',
+                      style: TextStyle(
+                          fontSize: 11.5, color: cs.onSurfaceVariant)),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 11, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '3 ofertas',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

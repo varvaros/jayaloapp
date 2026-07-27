@@ -33,4 +33,10 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
   'client.plus.v1': [
     OnboardingStep('Aquí creas una nueva solicitud.'),
   ],
+  'client.my_requests.v1': [
+    OnboardingStep('Aquí se verán tus solicitudes y en qué van.'),
+  ],
+  'client.others_requests.v1': [
+    OnboardingStep('Y aquí ves qué están pidiendo otros usuarios.'),
+  ],
 };

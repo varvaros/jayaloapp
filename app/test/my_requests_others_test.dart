@@ -1,9 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/client/my_requests_screen.dart';
+import 'package:jayalo_app/features/shared/onboarding_store.dart';
 
 void main() {
+  // Este test es sobre el toggle de filtro, no sobre onboarding. Las guías de
+  // esta pantalla (`client.my_requests.v1` / `client.others_requests.v1`)
+  // montan un velo a pantalla completa que intercepta los taps; marcarlas como
+  // vistas evita que el velo se coma el tap al botón "Ver solicitudes de
+  // usuarios".
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    onboardingStore.reset();
+    await onboardingStore.markDone('client.my_requests.v1');
+    await onboardingStore.markDone('client.others_requests.v1');
+  });
+
   Widget host(Widget child) =>
       MaterialApp(theme: jayaloTheme(Brightness.light), home: child);
 
