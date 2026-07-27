@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../domain/chat.dart';
 import '../quick_replies_store.dart';
 import '../../shared/jayalo_loader.dart';
+import '../../shared/onboarding_guide.dart';
+import '../../shared/onboarding_copy.dart';
 
 enum PlusAction {
   sendAddress,
@@ -167,7 +169,14 @@ class _ChatComposerState extends State<ChatComposer> {
       child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
         IconButton(onPressed: _openPlusMenu, icon: const Icon(Icons.add)),
         IconButton(onPressed: _openEmojis, icon: const Icon(Icons.emoji_emotions_outlined)),
-        IconButton(onPressed: _openQuickList, icon: const Icon(Icons.auto_awesome_outlined)),
+        OnboardingGuide(
+          guideKey: 'chat.quick_replies.v1',
+          steps: onboardingCopy['chat.quick_replies.v1']!,
+          order: 2,
+          child: IconButton(
+              onPressed: _openQuickList,
+              icon: const Icon(Icons.auto_awesome_outlined)),
+        ),
         Expanded(
           child: TextField(
             controller: _ctrl,

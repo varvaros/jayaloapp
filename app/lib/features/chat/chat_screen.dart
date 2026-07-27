@@ -747,6 +747,7 @@ class _ChatScreenState extends State<ChatScreen> {
         key: ValueKey(chatGuideKey),
         guideKey: chatGuideKey,
         mode: OnboardingMode.welcome,
+        order: 1,
         steps: onboardingCopy[chatGuideKey]!,
         enabled: _conv != null,
         child: Column(children: [
@@ -838,7 +839,12 @@ class _ChatScreenState extends State<ChatScreen> {
       onTitleTap: () => showAgreementDetails(context, conv,
           peerName: _peerName, isProvider: _isProvider),
       actions: [
-        PopupMenuButton<String>(
+        OnboardingGuide(
+          guideKey: 'chat.report.v1',
+          steps: onboardingCopy['chat.report.v1']!,
+          order: 3,
+          enabled: _conv != null,
+          child: PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: Colors.white),
           onSelected: (v) async {
             switch (v) {
@@ -918,6 +924,7 @@ class _ChatScreenState extends State<ChatScreen> {
               const PopupMenuItem(value: 'funnel', child: Text('Estado del cliente')),
             const PopupMenuItem(value: 'report', child: Text('Denunciar cuenta')),
           ],
+          ),
         ),
       ],
     );

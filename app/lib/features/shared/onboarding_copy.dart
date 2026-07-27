@@ -51,4 +51,10 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
   'client.catalog.v1': [
     OnboardingStep('Aquí ves productos que los proveedores ofrecen en sus tiendas.'),
   ],
+  'chat.quick_replies.v1': [
+    OnboardingStep('Aquí eliges mensajes predefinidos para responder rápido.'),
+  ],
+  'chat.report.v1': [
+    OnboardingStep('¿Sientes algo deshonesto? Denúncialo desde aquí.'),
+  ],
 };
