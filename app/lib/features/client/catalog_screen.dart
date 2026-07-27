@@ -6,6 +6,8 @@ import 'package:flutter/rendering.dart' show ScrollDirection;
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../shared/brand_kit.dart';
+import '../shared/onboarding_copy.dart';
+import '../shared/onboarding_guide.dart';
 import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
@@ -162,7 +164,11 @@ class _CatalogViewState extends State<CatalogView> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => OnboardingGuide(
+        guideKey: 'client.catalog.v1',
+        steps: onboardingCopy['client.catalog.v1']!,
+        mode: OnboardingMode.welcome,
+        child: Scaffold(
         body: Column(children: [
           // Header violeta: segmento Producto/Servicio a la izquierda, título
           // "Catálogo" a la derecha, campana, y el buscador (funcional) debajo.
@@ -306,6 +312,7 @@ class _CatalogViewState extends State<CatalogView> {
             ),
           ),
         ]),
+        ),
       );
 }
 

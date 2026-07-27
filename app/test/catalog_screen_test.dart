@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/client/catalog_screen.dart';
+import 'package:jayalo_app/features/shared/onboarding_store.dart';
 import 'package:jayalo_app/features/shared/violet_header.dart';
 
 /// `/catalog` (Task 6, listado): el toggle Producto/Servicio decide el
@@ -11,6 +13,16 @@ import 'package:jayalo_app/features/shared/violet_header.dart';
 /// estado de error con reintento. `fetch` se inyecta (mismo patrón que
 /// `ProviderInboxView`) para probar el widget sin tocar la red.
 void main() {
+  // Estos tests son sobre el catálogo, no sobre onboarding. La guía welcome
+  // `client.catalog.v1` (Task 6) monta un velo a pantalla completa que
+  // intercepta los taps; marcarla como vista evita que el velo se coma los
+  // taps de estos tests (mismo fix que `my_requests_others_test.dart`).
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    onboardingStore.reset();
+    await onboardingStore.markDone('client.catalog.v1');
+  });
+
   Widget host(Widget child) => MaterialApp(
         theme: jayaloTheme(Brightness.light),
         home: child,

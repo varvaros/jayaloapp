@@ -48,4 +48,7 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
   'client.request_wholesale.v1': [
     OnboardingStep('¿Necesitas grandes cantidades? Actívalo aquí.'),
   ],
+  'client.catalog.v1': [
+    OnboardingStep('Aquí ves productos que los proveedores ofrecen en sus tiendas.'),
+  ],
 };
