@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
@@ -59,7 +60,8 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   bool _locating = false;
 
   // Paso 3 — WhatsApp (chequeo de "ocupado" inmediato, con rebote)
-  final _phone = TextEditingController();
+  String _prefix = '809';
+  final _local = TextEditingController();
   String? _phoneError;
   bool _checkingPhone = false;
   Timer? _phoneDebounce;
@@ -82,12 +84,25 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
             (parts.length > 1 ? parts.sublist(1).join(' ') : ''));
     myProfile().then((p) {
       final ph = p?['phone'] as String?;
-      if (ph != null && ph.isNotEmpty && mounted && _phone.text.isEmpty) {
-        setState(() => _phone.text = ph);
-        _checkPhone();
+      if (ph != null && ph.isNotEmpty && mounted && _local.text.isEmpty) {
+        final digits = ph.replaceAll(RegExp(r'\D'), '');
+        final tenDigits = digits.length == 11 && digits.startsWith('1')
+            ? digits.substring(1)
+            : (digits.length == 10 ? digits : null);
+        if (tenDigits != null) {
+          final p3 = tenDigits.substring(0, 3);
+          final rest = tenDigits.substring(3);
+          setState(() {
+            if (kRdPrefixes.contains(p3)) _prefix = p3;
+            _local.text = rest;
+          });
+          _checkPhone();
+        }
       }
     }).catchError((_) => null);
   }
+
+  String get _composedPhone => composeRdWhatsapp(_prefix, _local.text);
 
   @override
   void dispose() {
@@ -95,7 +110,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     _page.dispose();
     for (final c in [
       _first, _last, _name, _rnc, _profession,
-      _cityInput, _sectorInput, _address, _phone,
+      _cityInput, _sectorInput, _address, _local,
     ]) {
       c.dispose();
     }
@@ -109,7 +124,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         0 => _name.text.trim().isNotEmpty &&
             (_businessType != 'formal' || _rnc.text.trim().isNotEmpty),
         1 => _categories.isNotEmpty && _cities.isNotEmpty,
-        2 => isValidPhone(_phone.text) && _phoneError == null && !_checkingPhone,
+        2 => _composedPhone.isNotEmpty && _phoneError == null && !_checkingPhone,
         3 => _terms,
         _ => false,
       };
@@ -291,17 +306,17 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   }
 
   Future<void> _checkPhone() async {
-    final raw = _phone.text.trim();
-    if (raw.isEmpty) return;
-    if (!isValidPhone(raw)) {
+    if (_local.text.trim().isEmpty) return;
+    final composed = _composedPhone;
+    if (composed.isEmpty) {
       if (mounted) {
-        setState(() => _phoneError = 'Escribe un número válido (ej. 809-555-1234).');
+        setState(() => _phoneError = 'Escribe un WhatsApp de 7 dígitos.');
       }
       return;
     }
     setState(() => _checkingPhone = true);
     try {
-      final digits = normalizePhone(raw).replaceAll(RegExp(r'\D'), '');
+      final digits = composed.replaceAll(RegExp(r'\D'), '');
       final taken = await isWhatsappTakenRemote(digits);
       if (!mounted) return;
       setState(() => _phoneError = taken
@@ -317,8 +332,12 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   // ── Cierre ─────────────────────────────────────────────────────────────────
 
   Future<void> _finish() async {
+    final phoneE164 = _composedPhone;
+    if (phoneE164.isEmpty) {
+      _snack('Escribe un WhatsApp de 7 dígitos.');
+      return;
+    }
     setState(() => _busy = true);
-    final phoneE164 = normalizePhone(_phone.text);
     try {
       await completeProviderOnboarding(
         firstName: _first.text.trim(),
@@ -438,7 +457,9 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           {String? hint,
           TextInputType? keyboard,
           bool caps = false,
-          ValueChanged<String>? onChanged}) =>
+          ValueChanged<String>? onChanged,
+          List<TextInputFormatter>? inputFormatters,
+          int? maxLength}) =>
       TextField(
         controller: c,
         keyboardType: keyboard,
@@ -446,15 +467,27 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
             caps ? TextCapitalization.words : TextCapitalization.none,
         decoration: filledField(context, label, hint: hint),
         onChanged: onChanged ?? (_) => setState(() {}),
+        inputFormatters: inputFormatters,
+        maxLength: maxLength,
+        buildCounter: maxLength != null
+            ? (_, {required currentLength, required isFocused, maxLength}) =>
+                null
+            : null,
       );
 
   // ── Paso 1: tu negocio ─────────────────────────────────────────────────────
 
   Widget _stepBusiness() {
+    final nameFormatters = [
+      LengthLimitingTextInputFormatter(40),
+      FilteringTextInputFormatter.allow(RegExp(r"[\p{L}\p{M} '\-]", unicode: true)),
+    ];
     return _pad([
-      _field(_first, 'Tu nombre', caps: true),
+      _field(_first, 'Tu nombre',
+          caps: true, maxLength: 40, inputFormatters: nameFormatters),
       const SizedBox(height: 10),
-      _field(_last, 'Tu apellido', caps: true),
+      _field(_last, 'Tu apellido',
+          caps: true, maxLength: 40, inputFormatters: nameFormatters),
       const SizedBox(height: 10),
       _field(_name, 'Nombre del negocio',
           hint: 'Ej. Repuestos El Primo', caps: true),
@@ -674,26 +707,58 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     return _pad([
       _hint('Los clientes te contactan por aquí cuando desbloquean tu oferta.'),
       const SizedBox(height: 14),
-      TextField(
-        controller: _phone,
-        keyboardType: TextInputType.phone,
-        onChanged: _onPhoneChanged,
-        decoration: filledField(context, 'WhatsApp del negocio',
-                hint: '809-555-1234')
-            .copyWith(
-          errorText: _phoneError,
-          errorMaxLines: 3,
-          suffixIcon: _checkingPhone
-              ? const Padding(
-                  padding: EdgeInsets.all(14), child: JayaloSpinner(size: 16))
-              : (_phoneError == null && isValidPhone(_phone.text)
-                  ? Icon(Icons.check_circle,
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? JayaloColors.dSuccess
-                          : JayaloColors.success)
-                  : null),
+      Row(children: [
+        Container(
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _prefix,
+              items: [
+                for (final p in kRdPrefixes)
+                  DropdownMenuItem(value: p, child: Text(p))
+              ],
+              onChanged: (v) {
+                setState(() => _prefix = v ?? '809');
+                _onPhoneChanged(_local.text);
+              },
+            ),
+          ),
         ),
-      ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: TextField(
+            controller: _local,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(7),
+            ],
+            onChanged: _onPhoneChanged,
+            decoration: filledField(context, 'WhatsApp del negocio',
+                    hint: '5551234')
+                .copyWith(
+              errorText: _phoneError,
+              errorMaxLines: 3,
+              suffixIcon: _checkingPhone
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: JayaloSpinner(size: 16))
+                  : (_phoneError == null && _composedPhone.isNotEmpty
+                      ? Icon(Icons.check_circle,
+                          color: Theme.of(context).brightness ==
+                                  Brightness.dark
+                              ? JayaloColors.dSuccess
+                              : JayaloColors.success)
+                      : null),
+            ),
+          ),
+        ),
+      ]),
       const SizedBox(height: 8),
       _hint(
           'Después de crear tu negocio podrás confirmarlo por SMS para ganar el sello de verificado.'),
@@ -718,7 +783,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           Text(_categories.map(_catName).join(', ')),
           Text('${_cities.join(', ')}'
               '${_sectors.isEmpty ? '' : ' · ${_sectors.join(', ')}'}'),
-          Text('WhatsApp: ${normalizePhone(_phone.text)}'),
+          Text('WhatsApp: $_composedPhone'),
           if (_wholesale) ...[
             const SizedBox(height: 8),
             StatusChip(

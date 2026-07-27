@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -23,7 +24,8 @@ class ConsumerOnboardingScreen extends StatefulWidget {
 class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
   late final TextEditingController _first;
   late final TextEditingController _last;
-  final _phone = TextEditingController();
+  String _prefix = '809';
+  final _local = TextEditingController();
   final _address = TextEditingController();
   double? _lat, _lng;
   bool _locating = false;
@@ -49,21 +51,23 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
   void dispose() {
     _first.dispose();
     _last.dispose();
-    _phone.dispose();
+    _local.dispose();
     _address.dispose();
     super.dispose();
   }
 
+  String get _composedPhone => composeRdWhatsapp(_prefix, _local.text);
+
   Future<void> _checkPhone() async {
-    final raw = _phone.text.trim();
-    if (raw.isEmpty) return;
-    if (!isValidPhone(raw)) {
-      setState(() => _phoneError = 'Escribe un número válido (ej. 809-555-1234).');
+    if (_local.text.trim().isEmpty) return;
+    final composed = _composedPhone;
+    if (composed.isEmpty) {
+      setState(() => _phoneError = 'Escribe un WhatsApp de 7 dígitos.');
       return;
     }
     setState(() => _phoneError = null);
     try {
-      final digits = normalizePhone(raw).replaceAll(RegExp(r'\D'), '');
+      final digits = composed.replaceAll(RegExp(r'\D'), '');
       if (await isWhatsappTakenRemote(digits) && mounted) {
         setState(() => _phoneError =
             'Este WhatsApp ya está registrado en otra cuenta. Usa otro número o inicia sesión con esa cuenta.');
@@ -100,7 +104,7 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
 
   bool get _valid =>
       _first.text.trim().isNotEmpty &&
-      isValidPhone(_phone.text) &&
+      _composedPhone.isNotEmpty &&
       _phoneError == null &&
       _address.text.trim().isNotEmpty &&
       _terms;
@@ -111,7 +115,7 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
       await completeConsumerProfile(
         firstName: _first.text.trim(),
         lastName: _last.text.trim(),
-        whatsapp: normalizePhone(_phone.text),
+        whatsapp: _composedPhone,
         address: _address.text.trim(),
         lat: _lat,
         lng: _lng,
@@ -155,6 +159,12 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
             controller: _first,
             textCapitalization: TextCapitalization.words,
             decoration: const InputDecoration(labelText: 'Nombre'),
+            maxLength: 40,
+            buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+            inputFormatters: [
+              LengthLimitingTextInputFormatter(40),
+              FilteringTextInputFormatter.allow(RegExp(r"[\p{L}\p{M} '\-]", unicode: true)),
+            ],
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 8),
@@ -162,31 +172,51 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
             controller: _last,
             textCapitalization: TextCapitalization.words,
             decoration: const InputDecoration(labelText: 'Apellido'),
+            maxLength: 40,
+            buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+            inputFormatters: [
+              LengthLimitingTextInputFormatter(40),
+              FilteringTextInputFormatter.allow(RegExp(r"[\p{L}\p{M} '\-]", unicode: true)),
+            ],
           ),
           const SizedBox(height: 24),
           Text('Tu WhatsApp', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
           const Text('Los proveedores te contactan por aquí cuando aceptas una oferta.'),
           const SizedBox(height: 8),
-          TextField(
-            controller: _phone,
-            keyboardType: TextInputType.phone,
-            decoration: InputDecoration(
-              labelText: 'Número de WhatsApp',
-              hintText: '809-555-1234',
-              errorText: _phoneError,
-              errorMaxLines: 3,
+          Row(children: [
+            DropdownButton<String>(
+              value: _prefix,
+              items: [for (final p in kRdPrefixes) DropdownMenuItem(value: p, child: Text(p))],
+              onChanged: (v) => setState(() => _prefix = v ?? '809'),
             ),
-            onChanged: (_) => setState(() => _phoneError = null),
-            onEditingComplete: () {
-              FocusScope.of(context).nextFocus();
-              _checkPhone();
-            },
-            onTapOutside: (_) {
-              FocusScope.of(context).unfocus();
-              _checkPhone();
-            },
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: _local,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(7),
+                ],
+                decoration: InputDecoration(
+                  labelText: 'Número de WhatsApp',
+                  hintText: '5551234',
+                  errorText: _phoneError,
+                  errorMaxLines: 3,
+                ),
+                onChanged: (_) => setState(() => _phoneError = null),
+                onEditingComplete: () {
+                  FocusScope.of(context).nextFocus();
+                  _checkPhone();
+                },
+                onTapOutside: (_) {
+                  FocusScope.of(context).unfocus();
+                  _checkPhone();
+                },
+              ),
+            ),
+          ]),
           const SizedBox(height: 24),
           Text('Dónde estás', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
