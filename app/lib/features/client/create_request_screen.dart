@@ -11,6 +11,7 @@ import '../../core/ai_client.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_turns.dart';
+import '../../core/safe_image_picker.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/request_progress.dart';
 import '../../domain/request_seed.dart';
@@ -265,11 +266,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// Elige y valida una foto; la agrega a `_photos` (con su base64 cacheado).
   /// Devuelve true si se agregó.
   Future<bool> _pickPhoto(ImageSource source) async {
-    final picked = await ImagePicker().pickImage(
-      source: source,
-      maxWidth: 1200,
-      imageQuality: 85,
-    );
+    final picked = await guardedPick((p) => p.pickImage(
+          source: source,
+          maxWidth: 1200,
+          imageQuality: 85,
+        ));
     if (picked == null) return false;
     // Recorte tras tomar/elegir la foto (pedido PO): el usuario ajusta el
     // encuadre antes de adjuntarla. Si cancela el crop, no se adjunta nada.

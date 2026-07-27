@@ -8,6 +8,7 @@ import '../../data/repos.dart';
 import '../../domain/chat.dart';
 import '../../domain/chat_session.dart';
 import '../../domain/chat_time.dart';
+import '../../core/safe_image_picker.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
 import 'widgets/bubbles.dart';
@@ -429,8 +430,8 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
     if (source == null || !mounted) return;
-    final picked = await ImagePicker()
-        .pickImage(source: source, maxWidth: 1200, imageQuality: 85);
+    final picked = await guardedPick(
+        (p) => p.pickImage(source: source, maxWidth: 1200, imageQuality: 85));
     if (picked == null) return;
     final size = await picked.length();
     if (!mounted) return;

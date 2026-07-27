@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../core/safe_image_picker.dart';
 import '../../data/repos.dart';
 import '../shared/brand_kit.dart';
 
@@ -47,8 +48,8 @@ class _IdDocBodyState extends State<_IdDocBody> {
   }
 
   Future<void> _pick(ImageSource source) async {
-    final picked = await ImagePicker()
-        .pickImage(source: source, maxWidth: 1600, imageQuality: 85);
+    final picked = await guardedPick(
+        (p) => p.pickImage(source: source, maxWidth: 1600, imageQuality: 85));
     if (picked != null && mounted) setState(() => _photo = picked);
   }
 

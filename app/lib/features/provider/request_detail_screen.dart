@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/config.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
+import '../../core/safe_image_picker.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
 import '../../domain/offer_message.dart';
@@ -251,13 +252,14 @@ class _ProviderRequestDetailScreenState
   /// Cámara = una foto; Galería = VARIAS (pedido PO: permitir seleccionar
   /// varias). Cada una se valida y se corta al llegar al tope.
   Future<void> _pickPhoto(ImageSource source) async {
-    final picker = ImagePicker();
     final List<XFile> picked;
     if (source == ImageSource.gallery) {
-      picked = await picker.pickMultiImage(maxWidth: 1200, imageQuality: 85);
+      picked = await guardedPick(
+              (p) => p.pickMultiImage(maxWidth: 1200, imageQuality: 85)) ??
+          const [];
     } else {
-      final one =
-          await picker.pickImage(source: source, maxWidth: 1200, imageQuality: 85);
+      final one = await guardedPick((p) =>
+          p.pickImage(source: source, maxWidth: 1200, imageQuality: 85));
       picked = one == null ? const [] : [one];
     }
     if (picked.isEmpty) return;

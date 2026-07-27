@@ -156,7 +156,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Si Google falla, la sesión de Supabase debe cerrarse igual.
       debugPrint('GoogleSignIn.signOut falló (no bloqueante): $e');
     }
-    await Supabase.instance.client.auth.signOut();
+    try {
+      await Supabase.instance.client.auth.signOut();
+    } catch (e) {
+      // El signOut local ya limpió la sesión antes de la llamada de red; si esa
+      // falla (p.ej. "connection reset" al perder señal) NO es un error real.
+      debugPrint('auth.signOut red falló (no bloqueante): $e');
+    }
   }
 
   /// Sello del negocio (spec §7.4): OTP con business_id — espeja el badge si

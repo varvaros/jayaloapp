@@ -55,7 +55,13 @@ class _ChooseRoleScreenState extends State<ChooseRoleScreen> {
       // Si Google falla, la sesión de Supabase debe cerrarse igual.
       debugPrint('GoogleSignIn.signOut falló (no bloqueante): $e');
     }
-    await Supabase.instance.client.auth.signOut();
+    try {
+      await Supabase.instance.client.auth.signOut();
+    } catch (e) {
+      // El signOut local ya limpió la sesión antes de la llamada de red; si esa
+      // falla (p.ej. "connection reset" al perder señal) NO es un error real.
+      debugPrint('auth.signOut red falló (no bloqueante): $e');
+    }
     // El redirect a /login lo dispara el router al detectar el signOut; si por
     // algo seguimos montados (no navegó), soltamos el estado de carga.
     if (mounted) setState(() => _signingOut = false);

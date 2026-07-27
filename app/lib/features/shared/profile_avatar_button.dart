@@ -15,6 +15,7 @@ import 'network_image.dart';
 
 import '../../core/config.dart';
 import '../../core/motion.dart';
+import '../../core/safe_image_picker.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart'
     show myProfile, walletBalance, createWalletLoginLink, updateMyAvatar, isAdmin;
@@ -328,8 +329,8 @@ class _ProfileMenuHeaderState extends State<_ProfileMenuHeader> {
   /// sube a Storage y refresca el avatar en toda la app.
   Future<void> _pickAvatar() async {
     if (_uploadingAvatar) return;
-    final picked = await ImagePicker()
-        .pickImage(source: ImageSource.gallery, maxWidth: 800, imageQuality: 85);
+    final picked = await guardedPick((p) => p.pickImage(
+        source: ImageSource.gallery, maxWidth: 800, imageQuality: 85));
     if (picked == null || !mounted) return;
     setState(() => _uploadingAvatar = true);
     try {

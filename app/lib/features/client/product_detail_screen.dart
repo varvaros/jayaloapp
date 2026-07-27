@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/brand.dart';
 import '../../data/repos.dart';
+import '../../core/safe_image_picker.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/interest_message.dart';
 import '../../domain/money.dart';
@@ -1032,8 +1033,8 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
   }
 
   Future<void> _pickPhoto() async {
-    final picked = await ImagePicker()
-        .pickImage(source: ImageSource.gallery, maxWidth: 1200, imageQuality: 85);
+    final picked = await guardedPick((p) => p.pickImage(
+        source: ImageSource.gallery, maxWidth: 1200, imageQuality: 85));
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
     final res = validatePickedImage(
