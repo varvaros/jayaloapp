@@ -18,7 +18,7 @@ import '../../core/brand.dart';
 import '../../core/motion.dart';
 import '../../domain/phase.dart';
 import '../shell/floating_nav_bar.dart';
-import 'hold_tutorial_store.dart';
+import 'onboarding_store.dart';
 import 'jayalo_loader.dart';
 
 // Re-exporta el loader para que cualquier pantalla que ya importa el kit pueda
@@ -868,7 +868,7 @@ void showJayaloToast(BuildContext context, String message) {
 /// una demo animada (barra clara que barre + "dedito" pulsante) que enseña el
 /// gesto. La demo se pausa cuando el usuario presiona de verdad ([progress] >
 /// 0). Al primer hold exitoso ([progress] llega a 1.0) marca el gesto en
-/// [holdTutorialStore] y el tutorial desaparece para siempre. Un toque en el
+/// [onboardingStore] y el tutorial desaparece para siempre. Un toque en el
 /// velo lo descarta en esta apertura (sin marcar), y reaparecerá la próxima vez.
 class HoldCoachMark extends StatefulWidget {
   const HoldCoachMark({
@@ -910,20 +910,22 @@ class _HoldCoachMarkState extends State<HoldCoachMark>
   /// hueco vacío.
   bool _measureFailed = false;
 
+  String get _guideKey => 'gesture.${widget.gesture}.v1';
+
   bool get _shouldShow =>
-      !_dismissed && !holdTutorialStore.isDone(widget.gesture);
+      !_dismissed && !onboardingStore.isDone(_guideKey);
 
   @override
   void initState() {
     super.initState();
-    holdTutorialStore.addListener(_onStore);
+    onboardingStore.addListener(_onStore);
     widget.progress.addListener(_onProgress);
     WidgetsBinding.instance.addPostFrameCallback((_) => _measureAndMaybeShow());
   }
 
   @override
   void dispose() {
-    holdTutorialStore.removeListener(_onStore);
+    onboardingStore.removeListener(_onStore);
     widget.progress.removeListener(_onProgress);
     _demo.dispose();
     super.dispose();
@@ -938,7 +940,7 @@ class _HoldCoachMarkState extends State<HoldCoachMark>
     // Éxito del gesto: el hold real llegó al tope → marcar y cerrar el tutorial.
     if (!_marked && widget.progress.value >= 1.0) {
       _marked = true;
-      holdTutorialStore.markDone(widget.gesture);
+      onboardingStore.markDone(_guideKey);
     }
     // Pausar/reanudar la demo según el usuario esté presionando de verdad.
     if (mounted) setState(() {});

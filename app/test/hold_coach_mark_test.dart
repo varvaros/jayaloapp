@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jayalo_app/features/shared/brand_kit.dart';
-import 'package:jayalo_app/features/shared/hold_tutorial_store.dart';
+import 'package:jayalo_app/features/shared/onboarding_store.dart';
 
 Widget _host(ValueNotifier<double> progress) => MaterialApp(
       home: Scaffold(
@@ -28,9 +28,13 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-    // El singleton `holdTutorialStore` vive todo el proceso: sin este reset,
+    // El singleton `onboardingStore` vive todo el proceso: sin este reset,
     // marcar el gesto en un test contaminaría los siguientes de este archivo.
-    holdTutorialStore.reset();
+    // NO llamar ensureLoaded() aquí: el repo real (sin login en tests)
+    // suprimiría el store (`_suppressed = true`) y las guías nunca se
+    // mostrarían — reset() ya deja `_suppressed = false`, que es lo que
+    // necesitan estos tests.
+    onboardingStore.reset();
   });
 
   // NOTA: la demo del coach-mark corre un `AnimationController.repeat()`
@@ -41,7 +45,6 @@ void main() {
   // reflejen ese estado.
   testWidgets('muestra el recuadro cuando el gesto no se ha logrado',
       (tester) async {
-    await holdTutorialStore.ensureLoaded();
     final progress = ValueNotifier<double>(0);
     await tester.pumpWidget(_host(progress));
     await tester.pump();
@@ -51,7 +54,6 @@ void main() {
 
   testWidgets('al llegar progress a 1.0 marca el gesto y oculta el recuadro',
       (tester) async {
-    await holdTutorialStore.ensureLoaded();
     final progress = ValueNotifier<double>(0);
     await tester.pumpWidget(_host(progress));
     await tester.pump();
@@ -59,13 +61,12 @@ void main() {
     progress.value = 1.0;
     await tester.pump();
     await tester.pump();
-    expect(holdTutorialStore.isDone('accept'), isTrue);
+    expect(onboardingStore.isDone('gesture.accept.v1'), isTrue);
     expect(find.text('Mantén presionado para aceptar'), findsNothing);
   });
 
   testWidgets('tocar el velo descarta el recuadro sin marcar el gesto',
       (tester) async {
-    await holdTutorialStore.ensureLoaded();
     final progress = ValueNotifier<double>(0);
     await tester.pumpWidget(_host(progress));
     await tester.pump();
@@ -82,12 +83,11 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.text('Mantén presionado para aceptar'), findsNothing);
-    expect(holdTutorialStore.isDone('accept'), isFalse);
+    expect(onboardingStore.isDone('gesture.accept.v1'), isFalse);
   });
 
   testWidgets('la demo se pausa mientras el usuario mantiene presionado',
       (tester) async {
-    await holdTutorialStore.ensureLoaded();
     final progress = ValueNotifier<double>(0);
     await tester.pumpWidget(_host(progress));
     await tester.pump();
@@ -105,6 +105,6 @@ void main() {
     // El recuadro con el mensaje sigue visible — la pausa solo afecta la
     // demo sobre el botón, no el callout.
     expect(find.text('Mantén presionado para aceptar'), findsOneWidget);
-    expect(holdTutorialStore.isDone('accept'), isFalse);
+    expect(onboardingStore.isDone('gesture.accept.v1'), isFalse);
   });
 }

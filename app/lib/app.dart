@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/brand.dart';
 import 'core/motion.dart';
 import 'core/theme_store.dart';
+import 'features/shared/onboarding_store.dart';
 
 /// SIN animación en los cambios de sección (PO 2026-07-19, 4ª pasada —
 /// REVIERTE el deslizado de las directrices 07-18/07-19 anteriores):
@@ -125,11 +127,18 @@ class _JayaloAppState extends State<JayaloApp> {
   // Para el snackbar global del retorno de PayPal (fuera de cualquier Scaffold).
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   StreamSubscription<Uri>? _linkSub;
+  StreamSubscription<AuthState>? _authSub;
 
   @override
   void initState() {
     super.initState();
     _initDeepLinks();
+    onboardingStore.ensureLoaded();
+    // Un login nuevo (p. ej. cambio de usuario en el mismo dispositivo) debe
+    // recargar el store desde el backend — ver `onboardingStore.reload()`.
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedIn) onboardingStore.reload();
+    });
   }
 
   /// Deep link de retorno de la recarga por PayPal (jayalo://wallet): trae la
@@ -158,6 +167,7 @@ class _JayaloAppState extends State<JayaloApp> {
   @override
   void dispose() {
     _linkSub?.cancel();
+    _authSub?.cancel();
     super.dispose();
   }
 

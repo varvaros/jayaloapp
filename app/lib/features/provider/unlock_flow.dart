@@ -35,7 +35,7 @@ import '../../domain/pricing.dart';
 import '../../domain/recharge.dart';
 import '../shared/brand_kit.dart';
 import '../shared/celebration.dart';
-import '../shared/hold_tutorial_store.dart';
+import '../shared/onboarding_store.dart';
 
 /// Costo estimado (en créditos) de desbloquear una oferta. El server lo
 /// recalcula e IGNORA lo enviado (regla de seguridad del proyecto).
@@ -99,7 +99,7 @@ Future<void> startUnlockFlow(
   // sheet puede pisar un último tick del botón durante la salida (throw en
   // debug); sin listeners ni recursos, lo recoge el GC igual.
   // Carga perezosa del tutorial coach-mark (idempotente).
-  unawaited(holdTutorialStore.ensureLoaded());
+  unawaited(onboardingStore.ensureLoaded());
   final holdProgress = ValueNotifier<double>(0);
   showModalBottomSheet(
     context: context,

@@ -9,7 +9,7 @@ import '../../data/repos.dart';
 import '../../domain/money.dart';
 import '../shared/brand_kit.dart';
 import '../shared/celebration.dart';
-import '../shared/hold_tutorial_store.dart';
+import '../shared/onboarding_store.dart';
 import 'request_status_screen.dart' show offerPriceLabel;
 
 void showOfferSheet(BuildContext context, Map<String, dynamic> request,
@@ -177,7 +177,7 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
   void initState() {
     super.initState();
     _loadProvider();
-    unawaited(holdTutorialStore.ensureLoaded());
+    unawaited(onboardingStore.ensureLoaded());
   }
 
   Future<void> _loadProvider() async {
