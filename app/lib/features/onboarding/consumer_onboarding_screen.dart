@@ -12,9 +12,12 @@ import '../../domain/geo.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
 import '../shared/brand_kit.dart';
+import '../verification/otp_sheet.dart';
 
 /// Alta de consumidor (spec §6): nombre precargado de las claims de Google,
-/// WhatsApp SIN OTP (decisión PO §10.1 — el OTP se dispara después, §6.1),
+/// WhatsApp verificado por OTP BLOQUEANTE antes de crear la cuenta (§6.1) —
+/// `verify-otp` solo escribe `account_verifications`, no `profiles`, así que
+/// verificar antes de `completeConsumerProfile` es seguro,
 /// ubicación GPS opcional + dirección obligatoria, términos. Una sola
 /// escritura al final (upsert de profiles, atómico por naturaleza).
 class ConsumerOnboardingScreen extends StatefulWidget {
@@ -134,6 +137,13 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
   Future<void> _submit() async {
     setState(() => _busy = true);
     try {
+      // 1) OTP BLOQUEANTE: sin verificar el WhatsApp no se crea la cuenta.
+      final verified = await showOtpSheet(context, phone: _composedPhone);
+      if (!verified) {
+        if (mounted) _snack('Confirma tu WhatsApp para crear la cuenta.');
+        return;
+      }
+      // 2) Recién ahora se persiste el perfil (número ya verificado).
       await completeConsumerProfile(
         firstName: _first.text.trim(),
         lastName: _last.text.trim(),
