@@ -13,6 +13,12 @@ async function sha256Hex(s: string): Promise<string> {
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** Extrae el id de conversación de un link de chat "/messages?c=<id>". */
+export function conversationIdFromLink(link: string): string | null {
+  const m = /[?&]c=([^&]+)/.exec(link ?? "");
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 // --- OAuth2 para FCM HTTP v1 (JWT RS256 con la service account) ---
 let cachedToken: { token: string; exp: number } | null = null;
 
@@ -124,7 +130,11 @@ Deno.serve(async (req) => {
             message: {
               token,
               notification: { title, body: body ?? "" },
-              data: { link: link ?? "", kind: kind ?? "" },
+              data: {
+                link: link ?? "",
+                kind: kind ?? "",
+                conversation_id: conversationIdFromLink(link ?? "") ?? "",
+              },
               android: {
                 priority: "HIGH",
                 // Número del badge del ícono (chat + ofertas).
