@@ -718,6 +718,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               suffixIcon: OnboardingGuide(
                 guideKey: 'client.create_request.v1',
                 steps: onboardingCopy['client.create_request.v1']!,
+                order: 3,
                 child: IconButton(
                   icon: const Icon(Icons.send),
                   onPressed: () => _startSend(_input.text),
@@ -731,19 +732,31 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           // Producto se OCULTA Servicio y aparece "Al por mayor"; al elegir
           // Servicio se oculta Producto. Tocar el tipo elegido de nuevo lo
           // deselecciona y vuelve a los dos botones.
-          Row(
-            children: [
-              if (_kind != 'servicio')
-                Expanded(child: _kindPill('producto', 'Producto')),
-              if (_kind == 'producto') ...[
-                const SizedBox(width: 10),
-                Expanded(child: _kindPill('mayor', 'Al por mayor')),
+          OnboardingGuide(
+            guideKey: 'client.request_kind.v1',
+            steps: onboardingCopy['client.request_kind.v1']!,
+            order: 1,
+            child: Row(
+              children: [
+                if (_kind != 'servicio')
+                  Expanded(child: _kindPill('producto', 'Producto')),
+                if (_kind == 'producto') ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OnboardingGuide(
+                      guideKey: 'client.request_wholesale.v1',
+                      steps: onboardingCopy['client.request_wholesale.v1']!,
+                      order: 9,
+                      child: _kindPill('mayor', 'Al por mayor'),
+                    ),
+                  ),
+                ],
+                if (_kind != 'producto') ...[
+                  if (_kind != 'servicio') const SizedBox(width: 10),
+                  Expanded(child: _kindPill('servicio', 'Servicio')),
+                ],
               ],
-              if (_kind != 'producto') ...[
-                if (_kind != 'servicio') const SizedBox(width: 10),
-                Expanded(child: _kindPill('servicio', 'Servicio')),
-              ],
-            ],
+            ),
           ),
           if (_photos.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -789,22 +802,27 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           // El botón de HACER la foto, visible desde el arranque
           // (pedido PO): cámara primero, galería al lado. La foto
           // viaja con el primer mensaje.
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            alignment: WrapAlignment.center,
-            children: [
-              ActionChip(
-                avatar: const Icon(Icons.photo_camera_outlined, size: 18),
-                label: const Text('Tomar foto'),
-                onPressed: () => _pickPhoto(ImageSource.camera),
-              ),
-              ActionChip(
-                avatar: const Icon(Icons.photo_library_outlined, size: 18),
-                label: const Text('Galería'),
-                onPressed: () => _pickPhoto(ImageSource.gallery),
-              ),
-            ],
+          OnboardingGuide(
+            guideKey: 'client.request_photo.v1',
+            steps: onboardingCopy['client.request_photo.v1']!,
+            order: 2,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              alignment: WrapAlignment.center,
+              children: [
+                ActionChip(
+                  avatar: const Icon(Icons.photo_camera_outlined, size: 18),
+                  label: const Text('Tomar foto'),
+                  onPressed: () => _pickPhoto(ImageSource.camera),
+                ),
+                ActionChip(
+                  avatar: const Icon(Icons.photo_library_outlined, size: 18),
+                  label: const Text('Galería'),
+                  onPressed: () => _pickPhoto(ImageSource.gallery),
+                ),
+              ],
+            ),
           ),
         ],
       ),
