@@ -69,6 +69,7 @@ class FloatingNavBar extends StatelessWidget {
     required this.currentIndex,
     required this.onSelected,
     this.badges = const {},
+    this.centerButtonKey,
   });
 
   final List<NavDestination> destinations;
@@ -84,6 +85,10 @@ class FloatingNavBar extends StatelessWidget {
   /// índice real de [destinations] ni con [kCenterIndex].
   final int currentIndex;
   final ValueChanged<int> onSelected;
+
+  /// Key opcional para anclar una guía de onboarding sobre el botón central
+  /// (no cambia el aspecto: solo permite medir su rect). Ver home_shell.
+  final GlobalKey? centerButtonKey;
 
   @override
   Widget build(BuildContext context) {
@@ -137,10 +142,13 @@ class FloatingNavBar extends StatelessWidget {
               ),
               Positioned(
                 bottom: _pillHeight - _centerSize / 2 - _centerButtonLift,
-                child: _CenterButton(
-                  destination: destinations[kCenterIndex],
-                  active: currentIndex == kCenterIndex,
-                  onTap: () => onSelected(kCenterIndex),
+                child: KeyedSubtree(
+                  key: centerButtonKey,
+                  child: _CenterButton(
+                    destination: destinations[kCenterIndex],
+                    active: currentIndex == kCenterIndex,
+                    onTap: () => onSelected(kCenterIndex),
+                  ),
                 ),
               ),
             ],

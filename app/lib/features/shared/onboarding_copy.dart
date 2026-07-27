@@ -30,4 +30,7 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
     OnboardingStep(
         'Ofertar siempre es gratis. Los créditos solo se usan para desbloquear el contacto de un cliente que aceptó tu oferta.'),
   ],
+  'client.plus.v1': [
+    OnboardingStep('Aquí creas una nueva solicitud.'),
+  ],
 };

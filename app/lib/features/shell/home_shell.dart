@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/motion.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart' show solicitudesBadge, messagesBadge;
+import '../shared/onboarding_guide.dart';
+import '../shared/onboarding_copy.dart';
 import 'floating_nav_bar.dart';
 import 'nav_destinations.dart';
 
@@ -16,6 +18,8 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
+  final GlobalKey _plusAnchorKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +66,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final loc = GoRouterState.of(context).uri.path;
     final idx = activeIndex(dests, loc);
     final showNavBar = showsNavBar(loc);
+    final isClient = roleStore.value != RoleState.provider;
 
     return Scaffold(
       // La barra FLOTA: el cuerpo se extiende por debajo de ella. Cada
@@ -120,17 +125,33 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       // paso síncrono — nunca coexisten dos, así que el `GlobalKey` estable de
       // `child` jamás se duplica (ver test "ningún `go()` entre pestañas
       // lanza excepción").
-      body: TweenAnimationBuilder<double>(
-        key: ValueKey(GoRouterState.of(context).matchedLocation),
-        tween: Tween(begin: 0, end: 1),
-        duration:
-            JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.fast,
-        curve: JayaloMotion.enter,
-        builder: (context, t, bodyChild) => Opacity(
-          opacity: t,
-          child: bodyChild,
-        ),
-        child: widget.child,
+      body: Stack(
+        children: [
+          TweenAnimationBuilder<double>(
+            key: ValueKey(GoRouterState.of(context).matchedLocation),
+            tween: Tween(begin: 0, end: 1),
+            duration: JayaloMotion.reduced(context)
+                ? Duration.zero
+                : JayaloMotion.fast,
+            curve: JayaloMotion.enter,
+            builder: (context, t, bodyChild) => Opacity(
+              opacity: t,
+              child: bodyChild,
+            ),
+            child: widget.child,
+          ),
+          // Guía spotlight del botón `+`: solo cliente y solo en su pantalla de
+          // aterrizaje (`/client`). Ancla EXTERNA sobre el botón central.
+          if (isClient)
+            OnboardingGuide(
+              anchorKey: _plusAnchorKey,
+              guideKey: 'client.plus.v1',
+              steps: onboardingCopy['client.plus.v1']!,
+              order: 1,
+              enabled: loc == '/client',
+              child: const SizedBox.shrink(),
+            ),
+        ],
       ),
       // M2 (revisión final de rama): antes era `showNavBar ? FloatingNavBar(
       // ...) : null` — un swap instantáneo, contra la doctrina de movimiento
@@ -167,6 +188,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 listenable: Listenable.merge([solicitudesBadge, messagesBadge]),
                 builder: (context, _) => FloatingNavBar(
                 key: const ValueKey('nav-bar-visible'),
+                centerButtonKey: isClient ? _plusAnchorKey : null,
                 destinations: dests,
                 currentIndex: idx,
                 // Badges de la barra: "Solicitudes" (índice 0, significado por
