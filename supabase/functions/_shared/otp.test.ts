@@ -1,4 +1,4 @@
-import { assert, assertStringIncludes } from "https://deno.land/std/assert/mod.ts";
+import { assert, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { buildOtpMessage } from "./otp.ts";
 
 Deno.test("SMS con hash cumple formato SMS Retriever", () => {
