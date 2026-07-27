@@ -742,7 +742,17 @@ class _ChatScreenState extends State<ChatScreen> {
             color: pal.panel,
             child: Column(children: [
               Expanded(
-                child: ListView.builder(
+                // Fondo de doodles Jáyalo detrás de los mensajes (el composer
+                // de abajo conserva el lila pleno). Base pal.panel por debajo
+                // como fallback mientras carga el asset.
+                child: Container(
+                  decoration: const BoxDecoration(
+                    image: DecorationImage(
+                      image: AssetImage('assets/images/chat-bg.jpg'),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  child: ListView.builder(
                   controller: _scroll,
                   reverse: true,
                   padding:
@@ -783,6 +793,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       bubble,
                     ]);
                   },
+                  ),
                 ),
               ),
               _buildBottom(conv),

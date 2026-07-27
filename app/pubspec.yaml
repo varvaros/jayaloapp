@@ -120,6 +120,7 @@ flutter:
 
   assets:
     - assets/images/mascot.png
+    - assets/images/chat-bg.jpg
     - assets/sounds/oferta_aceptada.mp3
     - assets/sounds/desbloqueo.mp3
     # Animaciones Lottie de Jayi celebrando (violeta para fondos claros; blanca
