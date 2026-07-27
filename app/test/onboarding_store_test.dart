@@ -83,4 +83,14 @@ void main() {
     store.release('a');
     expect(store.acquire('b'), isTrue);
   });
+
+  test('reload limpia el coordinador: una guia activa no queda trabada', () async {
+    final store = OnboardingStore.forTest(FakeRepo());
+    await store.ensureLoaded();
+    expect(store.acquire('a'), isTrue); // queda "mostrándose" para el usuario 1
+
+    await store.reload(); // p. ej. cambio de sesión (auth signedIn)
+
+    expect(store.acquire('b'), isTrue); // no debe quedar bloqueado por 'a'
+  });
 }

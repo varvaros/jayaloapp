@@ -61,10 +61,22 @@ class OnboardingStore extends ChangeNotifier {
     if (_loaded) return;
     _loaded = true;
 
-    final prefs = await SharedPreferences.getInstance();
-    final localCache = prefs.getStringList(_cacheKey);
-    final hadLocal = localCache != null;
-    if (hadLocal) _done.addAll(localCache);
+    // Todo el acceso a prefs (incluido getInstance) va adentro del try: si
+    // falla, se trata como "sin cache local" y el fail-safe de abajo decide
+    // si se suprime o no — nunca debe propagar y dejar el store atascado con
+    // `_loaded = true` pero sin datos.
+    SharedPreferences? prefs;
+    var hadLocal = false;
+    try {
+      prefs = await SharedPreferences.getInstance();
+      final localCache = prefs.getStringList(_cacheKey);
+      if (localCache != null) {
+        hadLocal = true;
+        _done.addAll(localCache);
+      }
+    } catch (_) {
+      // Sin prefs se arranca como si no hubiera cache local.
+    }
 
     if (_repo.isLoggedIn) {
       try {
@@ -79,30 +91,35 @@ class OnboardingStore extends ChangeNotifier {
     }
 
     await _importOldHoldFlag(prefs);
-    await _persist(prefs);
+    await _persist();
     notifyListeners();
   }
 
   /// Traduce el flag local del coach-mark viejo a claves versionadas, una sola
-  /// vez, para no re-enseñar el gesto a quien ya lo domina.
-  Future<void> _importOldHoldFlag(SharedPreferences prefs) async {
-    if (prefs.getBool(_importFlag) == true) return;
-    final old = prefs.getStringList(_oldHoldKey) ?? const [];
-    for (final g in old) {
-      final key = 'gesture.$g.v1';
-      if (_done.add(key)) {
-        try {
-          await _repo.markCompleted(key);
-        } catch (_) {/* best-effort */}
+  /// vez, para no re-enseñar el gesto a quien ya lo domina. Reusa la instancia
+  /// de prefs de [ensureLoaded] si está disponible; si no (falló arriba),
+  /// intenta la suya propia y también degrada sin propagar.
+  Future<void> _importOldHoldFlag(SharedPreferences? prefs) async {
+    try {
+      final p = prefs ?? await SharedPreferences.getInstance();
+      if (p.getBool(_importFlag) == true) return;
+      final old = p.getStringList(_oldHoldKey) ?? const [];
+      for (final g in old) {
+        final key = 'gesture.$g.v1';
+        if (_done.add(key)) {
+          try {
+            await _repo.markCompleted(key);
+          } catch (_) {/* best-effort */}
+        }
       }
-    }
-    await prefs.setBool(_importFlag, true);
+      await p.setBool(_importFlag, true);
+    } catch (_) {/* best-effort */}
   }
 
   Future<void> markDone(String key) async {
     if (!_done.add(key)) return;
     notifyListeners();
-    await _persist(await SharedPreferences.getInstance());
+    await _persist();
     try {
       await _repo.markCompleted(key);
     } catch (_) {/* el cache local ya evita re-mostrar en este device */}
@@ -110,17 +127,20 @@ class OnboardingStore extends ChangeNotifier {
 
   /// Recarga pública (p. ej. al iniciar sesión otro usuario). Limpia el estado y
   /// vuelve a leer del backend. `_importFlag` en prefs evita re-importar el flag
-  /// viejo del gesto.
+  /// viejo del gesto. Limpia `_active` también: si una guía había quedado
+  /// mostrándose para el usuario anterior, no debe bloquear al nuevo.
   Future<void> reload() async {
     _done.clear();
     _loaded = false;
     _suppressed = false;
+    _active = null;
     await ensureLoaded();
   }
 
-  Future<void> _persist(SharedPreferences prefs) async {
+  Future<void> _persist() async {
     try {
-      await prefs.setStringList(_cacheKey, _done.toList());
+      final p = await SharedPreferences.getInstance();
+      await p.setStringList(_cacheKey, _done.toList());
     } catch (_) {/* no bloquea */}
   }
 
