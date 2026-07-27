@@ -87,17 +87,18 @@ class MyRequestsScreen extends StatefulWidget {
 
 class _MyRequestsScreenState extends State<MyRequestsScreen> {
   late Future<List<(Map<String, dynamic>, RequestPhase, int)>> _load =
-      _fetchMine();
+      _startLoad();
   int _seenTick = requestsChanged.value;
 
-  /// Se vuelve true cuando el fetch inicial de "mis solicitudes" resuelve
-  /// (vacío o no). Gatea la guía `client.others_requests.v1`: si esa guía
-  /// pudiera pedir turno de inmediato (siempre visible) mientras la de
-  /// `client.my_requests.v1` recién aparece al resolver `_load` (estado
-  /// vacío), la de mayor `order` ganaba la carrera por llegar primero al
-  /// coordinador — el de MENOR order (2, mis solicitudes) dejaba de "ganar el
-  /// turno primero" pese a la doctrina. Al sincronizar ambas guías al mismo
-  /// evento, compiten de verdad por `order` en vez de por quién carga antes.
+  /// True mientras NO hay una carga de "mis solicitudes" en vuelo (la última
+  /// resolvió). Gatea la guía `client.others_requests.v1`: si esa guía pudiera
+  /// pedir turno de inmediato (su botón siempre está visible) mientras la de
+  /// `client.my_requests.v1` recién aparece al resolver `_load` (estado vacío,
+  /// su ancla es la tarjeta de ejemplo), la de MAYOR `order` ganaba la carrera
+  /// por llegar primero al coordinador — el de MENOR order (2, mis solicitudes)
+  /// dejaba de "ganar el turno primero" pese a la doctrina. `_startLoad` lo
+  /// pone en false en CADA recarga y en true al resolver, así ambas guías
+  /// compiten por `order` y no por quién carga antes — no sólo en la 1ª carga.
   bool _myLoadSettled = false;
 
   /// Solicitudes con al menos una oferta NUEVA sin leer (= con notificación
@@ -118,6 +119,20 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   Future<List<(Map<String, dynamic>, RequestPhase, int)>> _fetchMine() =>
       (widget.myFetch ?? _fetch)();
 
+  /// Arranca (o rearranca) la carga de "mis solicitudes" sincronizando
+  /// [_myLoadSettled]: vuelve a false mientras la nueva carga está en vuelo y
+  /// se pone en true al resolver. Se usa en TODAS las rutas de carga (inicial,
+  /// listener `_reload`, staleness y pull-to-refresh) para que el gate de la
+  /// guía de "otros" valga en cada recarga, no sólo en la primera.
+  Future<List<(Map<String, dynamic>, RequestPhase, int)>> _startLoad() {
+    _myLoadSettled = false;
+    final f = _fetchMine();
+    f.whenComplete(() {
+      if (mounted) setState(() => _myLoadSettled = true);
+    });
+    return f;
+  }
+
   /// El buscador del header se esconde al bajar por la lista y reaparece al
   /// volver al tope (pedido PO). Mientras está escondido, una flecha permite
   /// sacarlo a mano.
@@ -133,9 +148,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   void initState() {
     super.initState();
     requestsChanged.addListener(_reload);
-    _load.whenComplete(() {
-      if (mounted) setState(() => _myLoadSettled = true);
-    });
   }
 
   @override
@@ -255,7 +267,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     if (mounted) {
       setState(() {
         _seenTick = requestsChanged.value;
-        _load = _fetchMine();
+        _load = _startLoad();
       });
     }
   }
@@ -263,7 +275,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   void _refetchIfStale() {
     if (_seenTick != requestsChanged.value) {
       _seenTick = requestsChanged.value;
-      _load = _fetchMine();
+      _load = _startLoad();
     }
   }
 
@@ -458,7 +470,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                       // onRefresh espera Future<void>; setState para no devolver Future.
                       onRefresh: () async {
                         setState(() {
-                          _load = _fetch();
+                          _load = _startLoad();
                         });
                       },
                       child: FutureBuilder(
