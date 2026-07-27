@@ -66,6 +66,15 @@ async function fcmAccessToken(
   return json.access_token;
 }
 
+// Ventana y tope del badge del ícono. El badge es un NUDGE ("tienes cosas
+// recientes por ver"), no un histórico: contar TODAS las no-leídas de todos
+// los tiempos hacía que las informativas que el usuario nunca abre
+// (confirmaciones de oferta, wallet, bienvenidas, avisos de inactividad) se
+// acumularan sin límite y el ícono llegara a números absurdos (153+). La
+// ventana las deja envejecer; el tope evita 3 dígitos.
+const BADGE_WINDOW_DAYS = 30;
+const BADGE_MAX = 99;
+
 Deno.serve(async (req) => {
   const secret = Deno.env.get("INTERNAL_WEBHOOK_SECRET") ?? "";
   const got = req.headers.get("x-webhook-secret") ?? "";
@@ -86,17 +95,22 @@ Deno.serve(async (req) => {
     if (!tokens?.length) return new Response("no tokens", { status: 200 });
 
     // Badge NUMÉRICO del ícono de la app (launchers que lo soportan, MIUI
-    // incluido): el total de notificaciones SIN LEER del usuario. Vale igual
-    // para chat (message_new) y ofertas (offer_new). Best-effort: si el conteo
-    // falla, el push se envía igual, solo sin número.
+    // incluido): el total de notificaciones SIN LEER RECIENTES (últimos
+    // BADGE_WINDOW_DAYS días), con tope BADGE_MAX. Vale igual para chat
+    // (message_new) y ofertas (offer_new). Best-effort: si el conteo falla, el
+    // push se envía igual, solo sin número.
     let unread = 0;
     try {
+      const since = new Date(
+        Date.now() - BADGE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+      ).toISOString();
       const { count } = await admin
         .from("notifications")
         .select("id", { count: "exact", head: true })
         .eq("user_id", user_id)
-        .is("read_at", null);
-      unread = count ?? 0;
+        .is("read_at", null)
+        .gte("created_at", since);
+      unread = Math.min(count ?? 0, BADGE_MAX);
     } catch (_) {
       // sin badge
     }
