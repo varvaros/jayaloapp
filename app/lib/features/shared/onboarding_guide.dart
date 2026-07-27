@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/motion.dart';
 import 'onboarding_store.dart';
 
 enum OnboardingMode { anchored, welcome }
@@ -55,12 +56,24 @@ class OnboardingGuide extends StatefulWidget {
   State<OnboardingGuide> createState() => _OnboardingGuideState();
 }
 
-class _OnboardingGuideState extends State<OnboardingGuide> {
+class _OnboardingGuideState extends State<OnboardingGuide>
+    with SingleTickerProviderStateMixin {
   final _portal = OverlayPortalController();
   final _anchorKey = GlobalKey();
 
+  // Animación de entrada/salida del overlay (velo + tarjeta): la guía "abre" al
+  // ganar el turno y "cierra" al terminar, para que dos guías seguidas no
+  // parezcan la misma ventana (feedback PO 2026-07-27). Fade global + leve
+  // deslizamiento de la tarjeta hacia el hueco. Respeta "reducir animaciones".
+  // Inicializados en initState (NO `late` lazy): si se crearan al primer acceso
+  // y ese acceso fuera `dispose()` (una guía que nunca se mostró), crear el
+  // controller haría un lookup de InheritedWidget durante el teardown → crash.
+  late final AnimationController _anim;
+  late final Animation<double> _fade;
+
   Rect? _anchorRect; // rect GLOBAL del elemento a resaltar (para el hueco)
   bool _done = false;
+  bool _closing = false; // cerrando con animación (evita doble _complete)
   bool _measureFailed = false;
   bool _acquired = false;
   int _step = 0;
@@ -71,6 +84,9 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
   @override
   void initState() {
     super.initState();
+    _anim = AnimationController(vsync: this, duration: JayaloMotion.base);
+    _fade = CurvedAnimation(
+        parent: _anim, curve: JayaloMotion.enter, reverseCurve: JayaloMotion.exit);
     onboardingStore.addListener(_onStore);
     if (widget.enabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _measureAndMaybeShow());
@@ -105,6 +121,7 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
   void dispose() {
     onboardingStore.removeListener(_onStore);
     _releaseIfHeld();
+    _anim.dispose();
     super.dispose();
   }
 
@@ -118,7 +135,7 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
   void _onStore() {
     if (!mounted) return;
     if (!_shouldShow) {
-      if (_portal.isShowing) _portal.hide();
+      if (_portal.isShowing) _hideAnimated();
       _releaseIfHeld();
     } else {
       // Si aún no tengo turno ni portal, (re)pido turno.
@@ -174,17 +191,36 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
     _syncPortal();
   }
 
-  /// Muestra u oculta el portal según si esta guía tiene el turno.
+  /// Muestra el portal (con animación de apertura) cuando la guía gana el turno.
+  /// El ocultar animado lo maneja [_hideAnimated] (desde [_complete] o al perder
+  /// `_shouldShow`) para no cortar la animación de salida a la mitad.
   void _syncPortal() {
     if (!mounted) return;
-    final active = onboardingStore.isActive(widget.guideKey);
-    if (active && !_portal.isShowing) _portal.show();
-    if (!active && _portal.isShowing) _portal.hide();
+    if (onboardingStore.isActive(widget.guideKey) && !_portal.isShowing) {
+      _portal.show();
+      _anim.duration =
+          JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base;
+      _anim.forward(from: 0);
+    }
+  }
+
+  /// Cierra el overlay con la animación de salida y luego desmonta el portal.
+  Future<void> _hideAnimated() async {
+    if (!_portal.isShowing) return;
+    _anim.duration =
+        JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base;
+    await _anim.reverse();
+    if (mounted && _portal.isShowing) _portal.hide();
   }
 
   Future<void> _complete() async {
+    // Cierra con animación ANTES de liberar el turno: así la siguiente guía
+    // abre cuando esta ya cerró (nunca se solapan → se ve "abrir y cerrar").
+    if (_closing || _done) return;
+    _closing = true;
+    await _hideAnimated();
+    if (!mounted) return;
     setState(() => _done = true);
-    if (_portal.isShowing) _portal.hide();
     _releaseIfHeld();
     await onboardingStore.markDone(widget.guideKey);
   }
@@ -246,8 +282,36 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
     );
 
     final hole = widget.mode == OnboardingMode.anchored ? _anchorRect : null;
+    final screenH = MediaQuery.of(context).size.height;
+    // Con el ancla en la mitad INFERIOR, la tarjeta va ENCIMA del hueco (si no,
+    // lo taparía — p. ej. el botón `+` o el ✨ del composer); con el ancla en la
+    // mitad superior, va DEBAJO (p. ej. el ⋮ del header). Siempre PEGADA al
+    // hueco para que el texto se lea junto al resaltado.
+    final anchorLow = hole != null && hole.center.dy >= screenH / 2;
 
-    return Stack(
+    // Tarjeta con leve deslizamiento hacia el hueco al entrar.
+    final slidCard = SlideTransition(
+      position: Tween<Offset>(
+        begin: Offset(0, anchorLow ? .06 : -.06),
+        end: Offset.zero,
+      ).animate(_fade),
+      child: card,
+    );
+
+    final Widget placedCard;
+    if (hole == null) {
+      placedCard = Align(alignment: Alignment.center, child: SafeArea(child: slidCard));
+    } else {
+      placedCard = Positioned(
+        left: 0,
+        right: 0,
+        top: anchorLow ? null : hole.bottom + 8,
+        bottom: anchorLow ? (screenH - hole.top) + 8 : null,
+        child: slidCard,
+      );
+    }
+
+    final overlay = Stack(
       children: [
         // Velo oscuro con hueco recortado sobre el elemento (spotlight). No
         // intercepta toques (IgnorePointer): el elemento real vive debajo, en su
@@ -273,15 +337,13 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
             child: const SizedBox.expand(),
           ),
         ),
-        // Tarjeta: centrada (welcome) o abajo (anchored).
-        Align(
-          alignment: widget.mode == OnboardingMode.welcome
-              ? Alignment.center
-              : Alignment.bottomCenter,
-          child: SafeArea(child: card),
-        ),
+        placedCard,
       ],
     );
+
+    // Fade global del velo + tarjeta: la guía "abre" al entrar y "cierra" al
+    // salir, así dos guías seguidas no parecen la misma ventana.
+    return FadeTransition(opacity: _fade, child: overlay);
   }
 }
 
