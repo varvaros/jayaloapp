@@ -117,7 +117,43 @@ Deno.serve(async (req) => {
     const access = await fcmAccessToken(sa);
     const results: string[] = [];
 
+    // Los push de CHAT (message_new) van como data-message puro: sin bloque
+    // `notification`, la app los pinta con flutter_local_notifications para
+    // poder añadir la acción "Responder" (incluso con la app cerrada, vía el
+    // isolate de background). El resto de kinds (ofertas, etc.) siguen como
+    // notification-message que el SO muestra solo — sin cambios.
+    const isChat = kind === "message_new";
+    const convId = conversationIdFromLink(link ?? "") ?? "";
+
     for (const { token } of tokens) {
+      const message = isChat
+        ? {
+          token,
+          data: {
+            kind: "chat",
+            link: link ?? "",
+            conversation_id: convId,
+            title,
+            body: body ?? "",
+            // La app fija el badge del ícono desde el data-message.
+            badge: String(unread),
+          },
+          android: { priority: "HIGH" as const },
+        }
+        : {
+          token,
+          notification: { title, body: body ?? "" },
+          data: {
+            link: link ?? "",
+            kind: kind ?? "",
+            conversation_id: convId,
+          },
+          android: {
+            priority: "HIGH" as const,
+            // Número del badge del ícono (ofertas y demás notification-messages).
+            notification: { notification_count: unread },
+          },
+        };
       const res = await fetch(
         `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`,
         {
@@ -126,22 +162,7 @@ Deno.serve(async (req) => {
             Authorization: `Bearer ${access}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            message: {
-              token,
-              notification: { title, body: body ?? "" },
-              data: {
-                link: link ?? "",
-                kind: kind ?? "",
-                conversation_id: conversationIdFromLink(link ?? "") ?? "",
-              },
-              android: {
-                priority: "HIGH",
-                // Número del badge del ícono (chat + ofertas).
-                notification: { notification_count: unread },
-              },
-            },
-          }),
+          body: JSON.stringify({ message }),
         },
       );
       const respBody = await res.text();
