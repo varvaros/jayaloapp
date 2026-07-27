@@ -1,11 +1,33 @@
+import 'dart:convert';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/session_state.dart';
 import '../domain/notifications.dart';
+import 'chat_notifications.dart';
+
+/// Handler de mensajes FCM con la app en background/terminada. DEBE ser una
+/// función de nivel superior con `@pragma('vm:entry-point')` (corre en un
+/// isolate propio). Solo los push de chat son data-message (`kind:'chat'`): el
+/// SO no los pinta, así que los dibujamos nosotros con la acción "Responder".
+@pragma('vm:entry-point')
+Future<void> fcmBackgroundHandler(RemoteMessage m) async {
+  if (m.data['kind'] != 'chat') return;
+  await Firebase.initializeApp();
+  // Registra el plugin (y su background response handler) en este isolate.
+  await initChatNotifications((_) {});
+  await showChatReplyNotification(
+    conversationId: m.data['conversation_id'] ?? '',
+    title: m.data['title'] ?? 'Nuevo mensaje',
+    body: m.data['body'] ?? '',
+    badge: int.tryParse(m.data['badge'] ?? ''),
+  );
+}
 
 Future<void> _saveToken(String token) async {
   final auth = Supabase.instance.client.auth;
@@ -43,6 +65,38 @@ Future<void> initPush(GoRouter router) async {
   await Firebase.initializeApp();
   final fcm = FirebaseMessaging.instance;
   await fcm.requestPermission(); // Android 13+: diálogo del sistema
+
+  // Respuesta a la notificación de chat con la app viva (foreground o
+  // background-no-terminada). El reply reusa el mismo envío que el isolate de
+  // background; un tap simple abre la conversación.
+  void onNotifResponse(NotificationResponse r) {
+    if (r.actionId == kReplyActionId) {
+      notificationBackgroundHandler(r);
+      return;
+    }
+    final cid = r.payload == null
+        ? null
+        : (jsonDecode(r.payload!) as Map<String, dynamic>)['conversation_id']
+            as String?;
+    if (cid != null && cid.isNotEmpty) {
+      router.go(mapLinkToRoute('/messages?c=$cid',
+          provider: roleStore.value == RoleState.provider));
+    }
+  }
+
+  await initChatNotifications(onNotifResponse);
+  FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
+  // Con la app en foreground el SO no pinta los data-message: los dibujamos.
+  FirebaseMessaging.onMessage.listen((m) {
+    if (m.data['kind'] == 'chat') {
+      showChatReplyNotification(
+        conversationId: m.data['conversation_id'] ?? '',
+        title: m.data['title'] ?? 'Nuevo mensaje',
+        body: m.data['body'] ?? '',
+        badge: int.tryParse(m.data['badge'] ?? ''),
+      );
+    }
+  });
 
   final token = await fcm.getToken();
   if (token != null) await _saveToken(token);
