@@ -3,10 +3,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jayalo_app/features/shared/onboarding_store.dart';
 
 class FakeRepo implements OnboardingRepo {
-  FakeRepo({this.remote = const {}, this.throwOnFetch = false, this.loggedIn = true});
+  FakeRepo({
+    this.remote = const {},
+    this.throwOnFetch = false,
+    this.loggedIn = true,
+    this.currentUserId = 'u1',
+  });
   Set<String> remote;
   bool throwOnFetch;
   bool loggedIn;
+  @override
+  String? currentUserId;
   final List<String> marked = [];
 
   @override
@@ -29,7 +36,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   test('merge de backend y cache local persistido', () async {
-    SharedPreferences.setMockInitialValues({'onboarding_guides': ['b']});
+    SharedPreferences.setMockInitialValues({'onboarding_guides_u1': ['b']});
     final repo = FakeRepo(remote: {'a'});
     final store = OnboardingStore.forTest(repo);
     await store.ensureLoaded();
@@ -46,7 +53,7 @@ void main() {
   });
 
   test('fail-safe: backend falla pero hay cache local usa el cache', () async {
-    SharedPreferences.setMockInitialValues({'onboarding_guides': ['b']});
+    SharedPreferences.setMockInitialValues({'onboarding_guides_u1': ['b']});
     final repo = FakeRepo(throwOnFetch: true);
     final store = OnboardingStore.forTest(repo);
     await store.ensureLoaded();

@@ -652,11 +652,20 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           },
                         );
                         if (i == firstRegularIndex) {
+                          // cascadeIn(i) va DENTRO del child (no envolviendo
+                          // todo el OnboardingGuide): la guía mide su ancla con
+                          // localToGlobal en un post-frame callback, y si el
+                          // slide de entrada envuelve la guía, esa medición cae
+                          // en la posición A MITAD de camino de la animación —
+                          // el spotlight queda ~10% de una tarjeta desalineado.
+                          // Con cascadeIn solo en la tarjeta, la guía mide la
+                          // posición YA asentada mientras la tarjeta sigue
+                          // animando visualmente.
                           return OnboardingGuide(
                             guideKey: 'provider.requests_list.v1',
                             steps: onboardingCopy['provider.requests_list.v1']!,
-                            child: card,
-                          ).cascadeIn(i);
+                            child: card.cascadeIn(i),
+                          );
                         }
                         return card.cascadeIn(i);
                       },

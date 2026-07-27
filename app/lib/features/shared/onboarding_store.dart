@@ -7,6 +7,12 @@ import '../../data/repos.dart' show supa;
 /// store sin red (ver [OnboardingStore.forTest]).
 abstract class OnboardingRepo {
   bool get isLoggedIn;
+
+  /// Id del usuario actual (o `null` sin sesión). Usado para namespacear el
+  /// cache local por usuario — en un teléfono compartido, el cache global
+  /// mezclaba las guías "vistas" de un usuario con las del siguiente que
+  /// inicia sesión.
+  String? get currentUserId;
   Future<Set<String>> fetchCompleted();
   Future<void> markCompleted(String key);
 }
@@ -16,6 +22,9 @@ abstract class OnboardingRepo {
 class SupabaseOnboardingRepo implements OnboardingRepo {
   @override
   bool get isLoggedIn => supa.auth.currentUser != null;
+
+  @override
+  String? get currentUserId => supa.auth.currentUser?.id;
 
   @override
   Future<Set<String>> fetchCompleted() async {
@@ -45,7 +54,11 @@ class OnboardingStore extends ChangeNotifier {
   @visibleForTesting
   OnboardingStore.forTest(this._repo);
 
-  static const _cacheKey = 'onboarding_guides';
+  /// Namespaceado por usuario (fix: en un teléfono compartido, la clave
+  /// global mezclaba el cache de "guías vistas" de un usuario con el del
+  /// siguiente que inicia sesión en el mismo device). Sin usuario ('anon'),
+  /// cache separado también.
+  String get _cacheKey => 'onboarding_guides_${_repo.currentUserId ?? 'anon'}';
   static const _oldHoldKey = 'hold_tutorial_done';
   static const _importFlag = 'onboarding_hold_imported';
 
