@@ -20,6 +20,8 @@ import 'widgets/composer.dart';
 import 'widgets/rating_form.dart';
 import '../shared/jayalo_loader.dart';
 import '../shared/violet_header.dart';
+import '../shared/onboarding_guide.dart';
+import '../shared/onboarding_copy.dart';
 
 const _pageSize = 50;
 
@@ -733,8 +735,21 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final ms = _session.messages;
     final pal = chatPalette(context);
+    // Guía de bienvenida al chat, por rol: el proveedor y el cliente ven
+    // consignas distintas. `_conv` ya está garantizado no-nulo en este punto
+    // (los `if (conv == null)`/`_error` de arriba retornan antes), así que
+    // `_isProvider` ya refleja el rol real — pero se gatea igual por
+    // claridad/robustez ante refactors futuros.
+    final chatGuideKey =
+        _isProvider ? 'provider.chat_reveal.v1' : 'client.chat_reveal.v1';
     return Scaffold(
-      body: Column(children: [
+      body: OnboardingGuide(
+        key: ValueKey(chatGuideKey),
+        guideKey: chatGuideKey,
+        mode: OnboardingMode.welcome,
+        steps: onboardingCopy[chatGuideKey]!,
+        enabled: _conv != null,
+        child: Column(children: [
         _buildHeader(conv),
         // El panel lila ES la pantalla del chat (doctrina: un solo fondo lila,
         // inconfundible). La lista y el composer viven dentro.
@@ -801,7 +816,8 @@ class _ChatScreenState extends State<ChatScreen> {
             ]),
           ),
         ),
-      ]),
+        ]),
+      ),
     );
   }
 

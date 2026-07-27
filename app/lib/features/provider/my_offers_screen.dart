@@ -8,6 +8,8 @@ import '../client/request_status_screen.dart' show offerPriceLabel;
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/violet_header.dart';
+import '../shared/onboarding_guide.dart';
+import '../shared/onboarding_copy.dart';
 import 'unlock_flow.dart';
 
 class MyOffersScreen extends StatefulWidget {
@@ -119,10 +121,14 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     final children = <Widget>[];
     var ci = 0;
     children.add(
-      _WalletCard(
-        balance: _balance,
-        tone: _balance == 0 ? _red : _green,
-        onRecharge: _openWallet,
+      OnboardingGuide(
+        guideKey: 'wallet.credits.v1',
+        steps: onboardingCopy['wallet.credits.v1']!,
+        child: _WalletCard(
+          balance: _balance,
+          tone: _balance == 0 ? _red : _green,
+          onRecharge: _openWallet,
+        ),
       ).cascadeIn(ci++),
     );
     if (toUnlock.isNotEmpty) {
