@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,6 +8,7 @@ import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
+import '../../domain/geo.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
 import '../shared/brand_kit.dart';
@@ -95,6 +97,24 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
         _lat = pos.latitude;
         _lng = pos.longitude;
       });
+      // Reverse geocoding nativo (gratis). Solo rellena si el usuario no escribió.
+      if (_address.text.trim().isEmpty) {
+        try {
+          final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+          if (marks.isNotEmpty && mounted) {
+            final m = marks.first;
+            final addr = formatPlacemarkAddress(
+              street: m.street,
+              subLocality: m.subLocality,
+              locality: m.locality,
+              administrativeArea: m.administrativeArea,
+            );
+            if (addr.isNotEmpty) setState(() => _address.text = addr);
+          }
+        } catch (_) {
+          // Best-effort: si el geocoder falla, se queda solo con lat/lng.
+        }
+      }
     } catch (_) {
       _snack('No pudimos captar tu ubicación — puedes escribir tu dirección igual.');
     } finally {
