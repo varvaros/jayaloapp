@@ -11,6 +11,8 @@ import 'my_requests_screen.dart' show phaseChip;
 import 'offer_actions.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../shared/onboarding_guide.dart';
+import '../shared/onboarding_copy.dart';
 
 /// Tono ámbar del panel del detalle (la doctrina lo pide cálido, NO lila —
 /// así el detalle no se confunde con el chat). Claro sale del mockup
@@ -800,24 +802,29 @@ class _DetailSheet extends StatelessWidget {
             // Badge rojo con el número de ofertas SIN ABRIR (pedido PO
             // 2026-07-23), en la esquina del botón — la "notificación" que dice
             // cuántas faltan por revisar.
-            child: Badge(
-              isLabelVisible: unreadCount > 0,
-              label: Text('$unreadCount'),
-              offset: const Offset(-6, 4),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: onSeeOffers,
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
+            child: OnboardingGuide(
+              guideKey: 'client.view_offers.v1',
+              enabled: offers.isNotEmpty,
+              steps: onboardingCopy['client.view_offers.v1']!,
+              child: Badge(
+                isLabelVisible: unreadCount > 0,
+                label: Text('$unreadCount'),
+                offset: const Offset(-6, 4),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: onSeeOffers,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(999),
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    offers.isEmpty
-                        ? 'Ver ofertas'
-                        : 'Ver ${offers.length} oferta${offers.length == 1 ? '' : 's'}',
+                    child: Text(
+                      offers.isEmpty
+                          ? 'Ver ofertas'
+                          : 'Ver ${offers.length} oferta${offers.length == 1 ? '' : 's'}',
+                    ),
                   ),
                 ),
               ),

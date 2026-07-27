@@ -21,6 +21,8 @@ import '../verification/verify_banner.dart';
 import 'request_success_view.dart';
 import '../shared/brand_kit.dart';
 import '../shared/violet_header.dart';
+import '../shared/onboarding_guide.dart';
+import '../shared/onboarding_copy.dart';
 
 const _maxRequestPhotos = 2;
 
@@ -713,9 +715,13 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 icon: const Icon(Icons.photo_camera_outlined),
                 onPressed: _busy ? null : _showPickSheet,
               ),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.send),
-                onPressed: () => _startSend(_input.text),
+              suffixIcon: OnboardingGuide(
+                guideKey: 'client.create_request.v1',
+                steps: onboardingCopy['client.create_request.v1']!,
+                child: IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: () => _startSend(_input.text),
+                ),
               ),
             ),
           ),
