@@ -4,6 +4,14 @@
 //   INTERNAL_WEBHOOK_SECRET  = mismo valor que app_settings.internal_webhook_secret
 //   FCM_SERVICE_ACCOUNT      = JSON completo de la cuenta de servicio de Firebase
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY los inyecta la plataforma.
+//
+// ⚠ VERSIÓN SEGURA (notification-message para TODOS los kinds, incluido chat).
+// La pinta Google Play Services, NO nuestro proceso → llega aunque la app esté
+// cerrada o force-stopped, y es compatible con CUALQUIER APK instalado.
+// La variante data-only del chat (kind:'chat', necesaria para el botón
+// "Responder") vive en el commit 4f712da y SOLO debe desplegarse en LOCKSTEP
+// con un APK que traiga C2/C3 (commit 36ad60a). Desplegarla sin ese APK hace
+// DESAPARECER las notificaciones de chat (incidente 2026-07-27).
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const enc = new TextEncoder();
@@ -131,43 +139,11 @@ Deno.serve(async (req) => {
     const access = await fcmAccessToken(sa);
     const results: string[] = [];
 
-    // Los push de CHAT (message_new) van como data-message puro: sin bloque
-    // `notification`, la app los pinta con flutter_local_notifications para
-    // poder añadir la acción "Responder" (incluso con la app cerrada, vía el
-    // isolate de background). El resto de kinds (ofertas, etc.) siguen como
-    // notification-message que el SO muestra solo — sin cambios.
-    const isChat = kind === "message_new";
+    // conversation_id va ADITIVO en data (inofensivo para cualquier APK): la app
+    // nueva podrá usarlo, la vieja lo ignora.
     const convId = conversationIdFromLink(link ?? "") ?? "";
 
     for (const { token } of tokens) {
-      const message = isChat
-        ? {
-          token,
-          data: {
-            kind: "chat",
-            link: link ?? "",
-            conversation_id: convId,
-            title,
-            body: body ?? "",
-            // La app fija el badge del ícono desde el data-message.
-            badge: String(unread),
-          },
-          android: { priority: "HIGH" as const },
-        }
-        : {
-          token,
-          notification: { title, body: body ?? "" },
-          data: {
-            link: link ?? "",
-            kind: kind ?? "",
-            conversation_id: convId,
-          },
-          android: {
-            priority: "HIGH" as const,
-            // Número del badge del ícono (ofertas y demás notification-messages).
-            notification: { notification_count: unread },
-          },
-        };
       const res = await fetch(
         `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`,
         {
@@ -176,7 +152,22 @@ Deno.serve(async (req) => {
             Authorization: `Bearer ${access}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({
+            message: {
+              token,
+              notification: { title, body: body ?? "" },
+              data: {
+                link: link ?? "",
+                kind: kind ?? "",
+                conversation_id: convId,
+              },
+              android: {
+                priority: "HIGH",
+                // Número del badge del ícono (chat + ofertas).
+                notification: { notification_count: unread },
+              },
+            },
+          }),
         },
       );
       const respBody = await res.text();
