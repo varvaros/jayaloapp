@@ -131,10 +131,67 @@ export function buildOtpMessage(
   return `Tu código de verificación Jayalo: ${code}\n\nVence en 10 minutos.`;
 }
 
+/**
+ * Traduce un código de error de Twilio a algo que el usuario pueda entender y
+ * accionar. El mensaje crudo (`Twilio error [400] to number cannot be a…`) NO
+ * debe llegar nunca a la pantalla: no dice qué hacer y expone al proveedor.
+ * El detalle técnico queda en los logs del servidor (ver `sendOtpMessage`).
+ * Códigos: https://www.twilio.com/docs/api/errors
+ */
+export function friendlyOtpError(code: number | null, channel: OtpChannel): string {
+  const via = channel === "whatsapp" ? "WhatsApp" : "SMS";
+  switch (code) {
+    // El número no existe o está mal escrito.
+    case 21211:
+    case 21214:
+    case 21212:
+      return "Ese número no parece válido. Revísalo e inténtalo de nuevo.";
+    // El número existe pero no recibe mensajes (fijo, VoIP, sin servicio).
+    case 21614:
+    case 21612:
+    case 30006:
+      return `Ese número no puede recibir ${via}. Parece un teléfono fijo: usa un celular.`;
+    // País fuera de los permisos de envío de la cuenta.
+    case 21408:
+    case 21215:
+      return "Todavía no podemos enviar mensajes a ese país.";
+    // El usuario respondió STOP y quedó dado de baja.
+    case 21610:
+      return "Ese número bloqueó nuestros mensajes. Responde START al último " +
+        "mensaje de Jayalo para volver a recibirlos.";
+    // No se pudo entregar (apagado, sin señal, operador desconocido).
+    case 30003:
+    case 30005:
+      return `No pudimos entregar el ${via}. Verifica que el número esté ` +
+        "activo y con señal.";
+    // Fallos de configuración NUESTROS: no culpar al usuario ni pedirle nada.
+    case 21617:
+    case 20003:
+    case 21606:
+    case 21266:
+      return "No pudimos enviar el código por un problema de configuración " +
+        "nuestro. Ya estamos al tanto: inténtalo más tarde.";
+    default:
+      return `No pudimos enviarte el código por ${via}. Revisa el número o ` +
+        "inténtalo de nuevo en un minuto.";
+  }
+}
+
+/** Deja solo los últimos 4 dígitos visibles (para logs sin PII completa). */
+function maskPhone(v: string): string {
+  return v.replace(/\d(?=\d{4})/g, "•");
+}
+
 export async function sendOtpMessage(admin: SupabaseClient, to: string, body: string) {
   const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-  if (!accountSid || !authToken) throw new Error("Twilio no está configurado");
+  if (!accountSid || !authToken) {
+    console.error("TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN no configurados");
+    throw new Error(
+      "No pudimos enviar el código por un problema de configuración nuestro. " +
+        "Ya estamos al tanto: inténtalo más tarde.",
+    );
+  }
   const channel = await getOtpChannel(admin);
   const { data } = await admin
     .from("app_settings")
@@ -157,6 +214,18 @@ export async function sendOtpMessage(admin: SupabaseClient, to: string, body: st
   });
   const j = await resp.json().catch(() => ({}));
   if (!resp.ok) {
-    throw new Error(`Twilio error [${resp.status}] ${j?.message ?? j?.code ?? "desconocido"}`);
+    // El detalle técnico vive AQUÍ (logs del servidor), no en la pantalla del
+    // usuario: sin esto, un fallo de Twilio se vuelve imposible de diagnosticar.
+    console.error("Twilio rechazó el envío de OTP:", JSON.stringify({
+      http: resp.status,
+      code: j?.code ?? null,
+      message: j?.message ?? null,
+      more_info: j?.more_info ?? null,
+      channel,
+      to: maskPhone(toAddr),
+      from: maskPhone(from),
+    }));
+    const code = typeof j?.code === "number" ? j.code : null;
+    throw new Error(friendlyOtpError(code, channel));
   }
 }

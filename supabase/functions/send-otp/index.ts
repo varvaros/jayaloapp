@@ -95,6 +95,10 @@ Deno.serve(async (req) => {
     await sendOtpMessage(admin, phone, buildOtpMessage(code, channel, hash));
     return json({ ok: true, phone, channel });
   } catch (e) {
-    return json({ error: (e as Error).message ?? "Error inesperado" }, 500);
+    // Todo lo que llega aquí ya trae copy apto para el usuario (teléfono
+    // inválido, límites, y los mensajes de friendlyOtpError). Se registra
+    // igual: si algún día cae un error inesperado, sin este log queda ciego.
+    console.error("send-otp falló:", e instanceof Error ? e.stack ?? e.message : String(e));
+    return json({ error: (e as Error).message ?? "No pudimos enviar el código." }, 500);
   }
 });
