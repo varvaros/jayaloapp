@@ -25,7 +25,10 @@ final flnp = FlutterLocalNotificationsPlugin();
 Future<void> initChatNotifications(
   void Function(NotificationResponse) onResponse,
 ) async {
-  const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+  // Silueta monocroma, NO el ícono del launcher: Android >= 21 usa solo el
+  // canal alfa del ícono pequeño, y uno a todo color se ve como un cuadrado
+  // negro (el bug que reportó el PO en las notificaciones de FCM).
+  const android = AndroidInitializationSettings('@drawable/ic_stat_jayalo');
   await flnp.initialize(
     settings: const InitializationSettings(android: android),
     onDidReceiveNotificationResponse: onResponse,

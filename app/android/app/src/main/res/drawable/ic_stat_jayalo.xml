@@ -1,0 +1,46 @@
+<!--
+  Ícono PEQUEÑO de notificación (barra de estado). Android >= 21 usa SOLO el
+  canal ALFA de este drawable y lo repinta con el color de acento: por eso tiene
+  que ser una SILUETA blanca sobre transparente. Al no existir este recurso, FCM
+  caía al ícono del launcher, que es a todo color y 100% opaco → se veía un
+  CUADRADO NEGRO sólido (reporte PO 2026-07-28).
+
+  Es la mascota-TV de Jayalo simplificada a 24dp: cuerpo + dos antenas, y el ojo
+  como HUECO (fillType="evenOdd" resta el círculo del cuerpo) con la pupila
+  maciza dentro. Los dos brillos de la pupila del ícono grande se omiten a
+  propósito: a 24dp se empastan y la guía de Android pide formas simples.
+
+  minSdk del proyecto es 24, así que un vector drawable es seguro aquí (los
+  problemas históricos de VectorDrawable en notificaciones son de API < 21).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Cuerpo de la tele + ojo restado (evenOdd) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M5.5,6.6 H18.5 A4,4 0 0 1 22.5,10.6 V17 A4,4 0 0 1 18.5,21 H5.5 A4,4 0 0 1 1.5,17 V10.6 A4,4 0 0 1 5.5,6.6 Z M9,9.9 A4.2,4.2 0 1 0 9,18.3 A4.2,4.2 0 1 0 9,9.9 Z" />
+
+    <!-- Pupila (maciza, dentro del hueco del ojo) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M10.6,12.4 A1.75,1.75 0 1 0 10.6,15.9 A1.75,1.75 0 1 0 10.6,12.4 Z" />
+
+    <!-- Antenas -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M9.2,6.5 C8.1,4.5 6.2,2.9 3.9,2.2" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M14.9,6.5 C16.0,4.9 17.7,3.9 19.8,3.5" />
+</vector>

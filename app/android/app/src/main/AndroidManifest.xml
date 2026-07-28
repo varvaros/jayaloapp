@@ -59,6 +59,17 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="jayalo_alerts_v2" />
 
+        <!-- Ícono PEQUEÑO de la barra de estado. Sin esto FCM cae al ícono del
+             launcher, que es a todo color y opaco; como Android >= 21 usa SOLO
+             el canal alfa del ícono pequeño, se veía un CUADRADO NEGRO (reporte
+             PO 2026-07-28). ic_stat_jayalo es la silueta blanca de la mascota. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_jayalo" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_color" />
+
         <!-- image_cropper (UCrop): pantalla de recorte de la foto al solicitar. -->
         <activity
             android:name="com.yalantis.ucrop.UCropActivity"
