@@ -117,4 +117,69 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
     expect(find.byType(JayaloMascotFace), findsNothing);
   });
+
+  testWidgets(
+      'hold: el cuerpo se INFLA con el progreso real — en reposo es el isotipo '
+      'puro y va redondeándose hasta la esfera', (tester) async {
+    final progress = ValueNotifier<double>(0);
+    await tester.pumpWidget(MaterialApp(
+      theme: jayaloTheme(Brightness.light),
+      home: Scaffold(
+        body: Stack(children: [
+          Center(
+            child: HoldToConfirmButton(
+              progress: progress,
+              onConfirmed: () async {},
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(child: HoldMascotLayer(progress: progress)),
+          ),
+        ]),
+      ),
+    ));
+
+    double inflate() =>
+        tester.widget<JayaloMascotFace>(find.byType(JayaloMascotFace)).inflate;
+
+    // En reposo NO está inflada: dibuja el isotipo de la marca tal cual.
+    expect(inflate(), 0);
+
+    final g = await tester
+        .startGesture(tester.getCenter(find.byType(HoldToConfirmButton)));
+    // Pump vacío: el ticker entrega elapsed 0 en su primer tick (mismo gotcha
+    // del test de arriba y de brand_kit_test).
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1200));
+    final mid = inflate();
+    expect(mid, greaterThan(.4));
+
+    // Sigue inflándose mientras el dedo aguanta, siempre dentro de 0..1.
+    await tester.pump(const Duration(milliseconds: 1000));
+    expect(inflate(), greaterThan(mid));
+    expect(inflate(), lessThanOrEqualTo(1));
+
+    // Soltar la desinfla de vuelta al isotipo. El reverse recorre el mismo
+    // camino que el avance, así que desde casi lleno hay que darle los 2.5 s
+    // completos (con 1.5 s se queda a mitad de camino).
+    await g.up();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 2600));
+    expect(inflate(), 0);
+  });
+
+  testWidgets(
+      'la mascota fuera del hold NO se infla: el resto de las pantallas siguen '
+      'viendo el isotipo de siempre', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: jayaloTheme(Brightness.light),
+      home: const Scaffold(body: Center(child: JayaloMascotFace(size: 92))),
+    ));
+    // La cara tiene un reloj en repeat(): pump cronometrado, NUNCA
+    // pumpAndSettle (cuelga para siempre).
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+        tester.widget<JayaloMascotFace>(find.byType(JayaloMascotFace)).inflate,
+        0);
+  });
 }

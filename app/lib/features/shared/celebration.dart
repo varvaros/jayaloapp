@@ -621,6 +621,11 @@ class _ConfettiField extends CustomPainter {
 ///   • t == 1: "¡PUM!" — la única animación propia (la explosión, ~560 ms,
 ///     [JayaloMotion.mascotPum]) + un golpe háptico.
 ///
+/// El inflado NO es solo escala: el progreso viaja como `inflate` a
+/// [JayaloMascotFace], que redondea el cuerpo de "tele" a esfera y, pasada la
+/// mitad, le cambia la cara de feliz a sorprendida (la "o"). Escalar sola se
+/// leía como un zoom; lo que vende el aire es que la silueta cambie.
+///
 /// Va dentro de un IgnorePointer: jamás roba toques al botón. Con "reducir
 /// animaciones" no se muestra nada.
 class HoldMascotLayer extends StatefulWidget {
@@ -750,6 +755,9 @@ class _HoldMascotLayerState extends State<HoldMascotLayer>
               opacity: opacity,
               wobble: wobble,
               jitter: jitter,
+              // El cuerpo se redondea al ritmo del hold; tras el PUM `t` ya
+              // quedó clavado en 1, así que explota bien inflada.
+              inflate: t,
             ),
           ],
         );
@@ -765,6 +773,7 @@ class _HoldMascotLayerState extends State<HoldMascotLayer>
     double opacity = 1,
     Offset wobble = Offset.zero,
     double jitter = 0,
+    double inflate = 0,
   }) {
     if (opacity <= 0) return const SizedBox.shrink();
     return Align(
@@ -789,9 +798,13 @@ class _HoldMascotLayerState extends State<HoldMascotLayer>
                     ],
                   ),
                 ),
-                child: const Padding(
-                  padding: EdgeInsets.all(14),
-                  child: JayaloMascotFace(size: 92, mood: MascotMood.happy),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: JayaloMascotFace(
+                    size: 92,
+                    mood: MascotMood.happy,
+                    inflate: inflate,
+                  ),
                 ),
               ),
             ),

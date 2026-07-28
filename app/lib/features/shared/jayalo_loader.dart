@@ -325,6 +325,8 @@ class _MascotPainter extends CustomPainter {
     this.doubtMouth = 0,
     this.bodyDy = 0,
     this.bodyRotate = 0,
+    this.inflate = 0,
+    this.oMouth = 0,
     this.bodyColor = JayaloColors.mascot,
     this.inkColor = Colors.white,
   });
@@ -359,6 +361,14 @@ class _MascotPainter extends CustomPainter {
   final double bodyDy;
   final double bodyRotate;
 
+  /// 0..1: el cuerpo se INFLA. Las esquinas se redondean hasta volverse un
+  /// círculo y la caja gana panza. 0 = isotipo puro (la "tele" de la marca).
+  final double inflate;
+
+  /// 0..1: boca de sorpresa — la "o" pequeña de "¡uy, me estoy inflando!".
+  /// Cruza en fundido con [smile] (el que hace el cross-fade es [_MoodFrame]).
+  final double oMouth;
+
   @override
   void paint(Canvas canvas, Size size) {
     final s = size.width / 200;
@@ -383,10 +393,19 @@ class _MascotPainter extends CustomPainter {
     _antenna(canvas, stroke, const Offset(108, 43), antennaRight,
         (p) => p..cubicTo(117, 35, 129, 32, 138, 25));
 
-    // Cuerpo.
+    // Cuerpo. Al inflarse NO hace falta geometría nueva: el radio de esquina
+    // crece hasta 66, que es la mitad del lado corto de la caja, y eso
+    // convierte la misma RRect de la marca en un círculo. La caja además se
+    // ensancha y se achata un pelín para que quede con panza, no como bola de
+    // billar. Con inflate=0 el rect es idéntico al del isotipo (29,42,136,135).
+    final inf = inflate.clamp(0.0, 1.0);
     canvas.drawRRect(
         RRect.fromRectAndRadius(
-            const Rect.fromLTWH(29, 42, 136, 135), const Radius.circular(33)),
+            Rect.fromCenter(
+                center: const Offset(97, 109.5),
+                width: 136 + 6 * inf,
+                height: 135 - 3 * inf),
+            Radius.circular(33 + 33 * inf)),
         violet);
 
     // Ojo. Con happyEye el círculo se funde en el arco feliz "∩" (ojo cerrado
@@ -426,6 +445,18 @@ class _MascotPainter extends CustomPainter {
         ..quadraticBezierTo(78, 130 + 20 * smile, 98, 130);
       canvas.drawPath(mouth, m);
     }
+    // Boca de sorpresa: la "o" que pone mientras el aire la va apretando.
+    // Va en el mismo sitio que la sonrisa, y crece un poco con la sorpresa.
+    if (oMouth > 0) {
+      final o = oMouth.clamp(0.0, 1.0);
+      canvas.drawCircle(
+          const Offset(78, 135),
+          6 + 4 * o,
+          Paint()
+            ..color = inkColor.withValues(alpha: o)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 7);
+    }
     // Boquita ladeada de duda ("mmm…").
     if (doubtMouth > 0) {
       final m = Paint()
@@ -461,6 +492,8 @@ class _MascotPainter extends CustomPainter {
       old.doubtMouth != doubtMouth ||
       old.bodyDy != bodyDy ||
       old.bodyRotate != bodyRotate ||
+      old.inflate != inflate ||
+      old.oMouth != oMouth ||
       old.bodyColor != bodyColor ||
       old.inkColor != inkColor;
 }
@@ -481,9 +514,11 @@ class _MoodFrame {
     this.doubtMouth = 0,
     this.bodyDy = 0,
     this.bodyRotate = 0,
+    this.oMouth = 0,
   });
   final double antennaLeft, antennaRight, eyeScaleY, pupilDx, pupilDy;
   final double happyEye, smile, doubtMouth, bodyDy, bodyRotate;
+  final double oMouth;
 
   static _MoodFrame lerp(_MoodFrame a, _MoodFrame b, double t) => _MoodFrame(
         antennaLeft: a.antennaLeft + (b.antennaLeft - a.antennaLeft) * t,
@@ -496,6 +531,20 @@ class _MoodFrame {
         doubtMouth: a.doubtMouth + (b.doubtMouth - a.doubtMouth) * t,
         bodyDy: a.bodyDy + (b.bodyDy - a.bodyDy) * t,
         bodyRotate: a.bodyRotate + (b.bodyRotate - a.bodyRotate) * t,
+        oMouth: a.oMouth + (b.oMouth - a.oMouth) * t,
+      );
+
+  /// La misma cara, pero SORPRENDIDA: el ojo feliz "∩" se abre al ojo redondo
+  /// completo y la sonrisa se cierra en la "o". Conserva antenas y cuerpo para
+  /// que solo cambie la expresión al interpolar hacia acá.
+  _MoodFrame get surprised => _MoodFrame(
+        antennaLeft: antennaLeft,
+        antennaRight: antennaRight,
+        eyeScaleY: 1,
+        pupilDx: pupilDx,
+        bodyDy: bodyDy,
+        bodyRotate: bodyRotate,
+        oMouth: 1,
       );
 }
 
@@ -519,6 +568,7 @@ class JayaloMascotFace extends StatefulWidget {
     this.size = 72,
     this.mood = MascotMood.idle,
     this.reactKey = 0,
+    this.inflate = 0,
     this.semanticsLabel,
     this.bodyColor,
     this.inkColor,
@@ -526,6 +576,12 @@ class JayaloMascotFace extends StatefulWidget {
   final double size;
   final MascotMood mood;
   final int reactKey;
+
+  /// 0..1: cuánto está INFLADA. Lo empuja [HoldMascotLayer] con el progreso
+  /// real del hold. Redondea el cuerpo hasta la esfera y, pasada la mitad,
+  /// le cambia la cara a sorprendida. 0 = la mascota de siempre.
+  final double inflate;
+
   final String? semanticsLabel;
 
   /// Esquema de color opcional (ver [_MascotPainter]). Null → cuerpo violeta de
@@ -635,10 +691,22 @@ class _JayaloMascotFaceState extends State<JayaloMascotFace>
         MascotMood.celebrate => const _MoodFrame(happyEye: 1, smile: 1),
       };
 
+  /// Cuánto de la cara SORPRENDIDA se mezcla, según lo inflada que esté. Entra
+  /// en la fase 2 del hold (cuando arranca la vibración) y está plena antes de
+  /// la tensión final: primero está contenta, después "¡uy!".
+  double get _surprise =>
+      Curves.easeOut.transform(((widget.inflate - .4) / .45).clamp(0.0, 1.0));
+
+  /// El frame del ánimo, ya mezclado con la sorpresa del inflado.
+  _MoodFrame _withSurprise(_MoodFrame f) {
+    final s = _surprise;
+    return s <= 0 ? f : _MoodFrame.lerp(f, f.surprised, s);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (MediaQuery.disableAnimationsOf(context)) {
-      final f = _still(widget.mood);
+      final f = _withSurprise(_still(widget.mood));
       final art = CustomPaint(
         size: Size.square(widget.size),
         painter: _MascotPainter(
@@ -652,6 +720,8 @@ class _JayaloMascotFaceState extends State<JayaloMascotFace>
           doubtMouth: f.doubtMouth,
           bodyDy: f.bodyDy,
           bodyRotate: f.bodyRotate,
+          inflate: widget.inflate,
+          oMouth: f.oMouth,
           bodyColor: widget.bodyColor ?? JayaloColors.mascot,
           inkColor: widget.inkColor ?? Colors.white,
         ),
@@ -665,8 +735,8 @@ class _JayaloMascotFaceState extends State<JayaloMascotFace>
       builder: (context, _) {
         final t = _clock.value * _cycle.inSeconds;
         final mix = Curves.easeInOutCubic.transform(_blend.value);
-        final f = _MoodFrame.lerp(
-            _frame(_prevMood, t), _frame(widget.mood, t), mix);
+        final f = _withSurprise(_MoodFrame.lerp(
+            _frame(_prevMood, t), _frame(widget.mood, t), mix));
         final pop = 1 + .14 * (1 - Curves.easeOutBack.transform(_pulse.value));
         final art = Transform.scale(
           scale: pop,
@@ -683,6 +753,8 @@ class _JayaloMascotFaceState extends State<JayaloMascotFace>
               doubtMouth: f.doubtMouth,
               bodyDy: f.bodyDy,
               bodyRotate: f.bodyRotate,
+              inflate: widget.inflate,
+              oMouth: f.oMouth,
               bodyColor: widget.bodyColor ?? JayaloColors.mascot,
               inkColor: widget.inkColor ?? Colors.white,
             ),
