@@ -9,6 +9,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/ai_client.dart';
 import '../../core/brand.dart';
+import '../../core/center_action.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_question_options.dart';
 import '../../domain/ai_turns.dart';
@@ -167,13 +168,28 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   String _wsPackaging = '';
   String _wsNote = '';
 
+  /// Tear-off guardado UNA vez: [releaseCenterAction] compara por identidad y
+  /// un `_showPickSheet` evaluado dos veces no garantiza ser el mismo objeto.
+  late final VoidCallback _centerCamera = _showPickSheet;
+
   @override
   void initState() {
     super.initState();
+    // El ＋ de la barra no hace nada dentro de esta pantalla (home_shell no
+    // apila una segunda copia de la ruta en la que ya estás), así que se lo
+    // queda la cámara — pedido PO 2026-07-28. Se suelta al publicar y en
+    // dispose.
+    takeCenterAction(_centerCamera, Icons.photo_camera_outlined);
     if (widget.seedFrom != null) {
       // fire-and-forget: prefija el input; la foto se adjunta en Task 5.
       _applySeed(widget.seedFrom!);
     }
+  }
+
+  @override
+  void dispose() {
+    releaseCenterAction(_centerCamera);
+    super.dispose();
   }
 
   Future<void> _applySeed(String seedFrom) async {
@@ -548,6 +564,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             : null,
       );
       if (!mounted) return;
+      // Publicada: ya no hay a qué adjuntarle una foto, así que el botón
+      // central vuelve a ser el ＋ de siempre mientras se ve el éxito.
+      releaseCenterAction(_centerCamera);
       setState(() => _submitted = true);
     } catch (_) {
       _toast('No se pudo enviar la solicitud.');

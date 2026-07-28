@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/center_action.dart';
 import '../../core/motion.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart' show solicitudesBadge, messagesBadge, AppCaches;
@@ -190,12 +191,20 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         ),
         child: showNavBar
             ? ListenableBuilder(
-                listenable: Listenable.merge([solicitudesBadge, messagesBadge]),
+                listenable: Listenable.merge(
+                    [solicitudesBadge, messagesBadge, centerAction]),
                 builder: (context, _) => FloatingNavBar(
                   key: const ValueKey('nav-bar-visible'),
                   centerButtonKey: isClient ? _plusAnchorKey : null,
                   destinations: dests,
                   currentIndex: idx,
+                  // Cuando la pantalla al frente se apropió del centro (hoy:
+                  // crear solicitud lo vuelve una CÁMARA, porque ahí dentro
+                  // navegar es un no-op — ver el guard de `onSelected`), la
+                  // barra se pinta con SU ícono y SU etiqueta.
+                  centerIconOverride: centerActionIcon.value,
+                  centerLabelOverride:
+                      centerAction.value == null ? null : 'Añadir foto',
                   // Badges de la barra: "Solicitudes" (índice 0, significado por
                   // rol) y "Mensajes" (mensajes de chat sin leer, pedido PO
                   // 2026-07-21). Cada pantalla mantiene su contador al día.
@@ -216,7 +225,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                   onSelected: (i) {
                     final d = dests[i];
                     if (d.isCenter) {
-                      if (loc != d.route) context.push(d.route);
+                      // Si la pantalla al frente tomó el centro, gana ella: es
+                      // justo el caso en que navegar no haría nada.
+                      final taken = centerAction.value;
+                      if (taken != null) {
+                        taken();
+                      } else if (loc != d.route) {
+                        context.push(d.route);
+                      }
                     } else {
                       context.go(d.route);
                     }

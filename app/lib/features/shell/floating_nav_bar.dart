@@ -70,6 +70,8 @@ class FloatingNavBar extends StatelessWidget {
     required this.onSelected,
     this.badges = const {},
     this.centerButtonKey,
+    this.centerIconOverride,
+    this.centerLabelOverride,
   });
 
   final List<NavDestination> destinations;
@@ -89,6 +91,14 @@ class FloatingNavBar extends StatelessWidget {
   /// Key opcional para anclar una guía de onboarding sobre el botón central
   /// (no cambia el aspecto: solo permite medir su rect). Ver home_shell.
   final GlobalKey? centerButtonKey;
+
+  /// Ícono y etiqueta con los que se pinta el centro cuando la pantalla al
+  /// frente se APROPIÓ del botón (ver `core/center_action.dart`). `null` = los
+  /// del destino, que es el caso en todas las pantallas menos crear solicitud.
+  /// La barra sigue sin saber QUÉ hace el botón: solo lo pinta y avisa por
+  /// [onSelected], igual que hace con los badges.
+  final IconData? centerIconOverride;
+  final String? centerLabelOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -147,6 +157,8 @@ class FloatingNavBar extends StatelessWidget {
                   child: _CenterButton(
                     destination: destinations[kCenterIndex],
                     active: currentIndex == kCenterIndex,
+                    iconOverride: centerIconOverride,
+                    labelOverride: centerLabelOverride,
                     onTap: () => onSelected(kCenterIndex),
                   ),
                 ),
@@ -382,11 +394,17 @@ class _CenterButton extends StatelessWidget {
     required this.destination,
     required this.active,
     required this.onTap,
+    this.iconOverride,
+    this.labelOverride,
   });
 
   final NavDestination destination;
   final bool active;
   final VoidCallback onTap;
+
+  /// Ver [FloatingNavBar.centerIconOverride]. `null` = los del destino.
+  final IconData? iconOverride;
+  final String? labelOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -398,8 +416,9 @@ class _CenterButton extends StatelessWidget {
     // legible sobre la píldora lila igual que las etiquetas laterales — un
     // violeta primario pequeño sobre lila no llegaría al 4.5:1 de texto.
     final circleColor = cs.primary;
+    final label = labelOverride ?? destination.label;
     return Semantics(
-      label: destination.label,
+      label: label,
       button: true,
       selected: active,
       excludeSemantics: true,
@@ -424,7 +443,8 @@ class _CenterButton extends StatelessWidget {
               child: SizedBox(
                 width: _centerSize,
                 height: _centerSize,
-                child: Icon(destination.icon, color: cs.onPrimary, size: 28),
+                child: Icon(iconOverride ?? destination.icon,
+                    color: cs.onPrimary, size: 28),
               ),
             ),
           ),
@@ -432,7 +452,7 @@ class _CenterButton extends StatelessWidget {
             Positioned(
               top: _centerSize + 2,
               child: Text(
-                destination.label,
+                label,
                 maxLines: 1,
                 style: TextStyle(
                     fontSize: 11,
