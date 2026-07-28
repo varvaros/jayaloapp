@@ -29,6 +29,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Requisito de flutter_local_notifications (notificación de chat con
+        // acción "Responder"): sin esto el build de release falla con
+        // "requires core library desugaring to be enabled".
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -91,4 +95,10 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Backport de APIs de Java 8+ (java.time, etc.) para minSdk bajos. Lo exige
+    // flutter_local_notifications; va de la mano con isCoreLibraryDesugaringEnabled.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
