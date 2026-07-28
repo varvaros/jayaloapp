@@ -56,7 +56,8 @@ class _ChooseRoleScreenState extends State<ChooseRoleScreen> {
       debugPrint('GoogleSignIn.signOut falló (no bloqueante): $e');
     }
     try {
-      await Supabase.instance.client.auth.signOut();
+      // `local` explícito — ver el comentario en settings_screen._signOut.
+      await Supabase.instance.client.auth.signOut(scope: SignOutScope.local);
     } catch (e) {
       // El signOut local ya limpió la sesión antes de la llamada de red; si esa
       // falla (p.ej. "connection reset" al perder señal) NO es un error real.

@@ -157,7 +157,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       debugPrint('GoogleSignIn.signOut falló (no bloqueante): $e');
     }
     try {
-      await Supabase.instance.client.auth.signOut();
+      // `local` EXPLÍCITO (ya era el default de supabase_flutter, pero el de
+      // supabase-js es `global` → los dos lados hacían cosas opuestas sin que
+      // nadie lo decidiera). Cerrar sesión aquí no debe sacar al usuario de la
+      // web ni de otro teléfono; para eso haría falta una acción propia
+      // "cerrar sesión en todos mis dispositivos" (`SignOutScope.global`).
+      await Supabase.instance.client.auth.signOut(scope: SignOutScope.local);
     } catch (e) {
       // El signOut local ya limpió la sesión antes de la llamada de red; si esa
       // falla (p.ej. "connection reset" al perder señal) NO es un error real.
