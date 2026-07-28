@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/motion.dart';
 import '../../core/session_state.dart';
-import '../../data/repos.dart' show solicitudesBadge, messagesBadge;
+import '../../data/repos.dart' show solicitudesBadge, messagesBadge, AppCaches;
 import '../shared/onboarding_guide.dart';
 import '../shared/onboarding_copy.dart';
 import 'floating_nav_bar.dart';
@@ -38,7 +38,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Al volver del background puede haber mensajes nuevos (llegaron por push).
-    if (state == AppLifecycleState.resumed) messagesBadge.refresh();
+    if (state == AppLifecycleState.resumed) {
+      messagesBadge.refresh();
+      // Y el saldo pudo cambiar fuera de la app: la recarga por PayPal se hace
+      // en la web (deep link `jayalo://wallet`), así que el número cacheado
+      // vuelve a la fuente en la próxima lectura.
+      AppCaches.onResume();
+    }
   }
 
   @override
@@ -134,10 +140,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 ? Duration.zero
                 : JayaloMotion.fast,
             curve: JayaloMotion.enter,
-            builder: (context, t, bodyChild) => Opacity(
-              opacity: t,
-              child: bodyChild,
-            ),
+            builder: (context, t, bodyChild) =>
+                Opacity(opacity: t, child: bodyChild),
             child: widget.child,
           ),
           // Guía spotlight del botón `+`: solo cliente y solo en su pantalla de
@@ -170,8 +174,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       // renderizado en reposo (`nav_bar_reserved_space_test.dart` sigue
       // midiendo el `FloatingNavBar` real, sin tocar).
       bottomNavigationBar: AnimatedSwitcher(
-        duration:
-            JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base,
+        duration: JayaloMotion.reduced(context)
+            ? Duration.zero
+            : JayaloMotion.base,
         switchInCurve: JayaloMotion.enter,
         switchOutCurve: JayaloMotion.exit,
         transitionBuilder: (child, animation) => SizeTransition(
@@ -187,36 +192,36 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ? ListenableBuilder(
                 listenable: Listenable.merge([solicitudesBadge, messagesBadge]),
                 builder: (context, _) => FloatingNavBar(
-                key: const ValueKey('nav-bar-visible'),
-                centerButtonKey: isClient ? _plusAnchorKey : null,
-                destinations: dests,
-                currentIndex: idx,
-                // Badges de la barra: "Solicitudes" (índice 0, significado por
-                // rol) y "Mensajes" (mensajes de chat sin leer, pedido PO
-                // 2026-07-21). Cada pantalla mantiene su contador al día.
-                badges: {
-                  if (solicitudesBadge.value > 0)
-                    dests[0].route: solicitudesBadge.value,
-                  if (messagesBadge.count > 0)
-                    '/messages': messagesBadge.count,
-                },
-                // El centro (crear solicitud) se APILA con `push`: así corre
-                // la transición modal de su CustomTransitionPage (sube por
-                // encima de la pestaña actual, que queda viva debajo) y el
-                // ATRÁS la cierra volviendo a donde estaba. Un `go` la
-                // trataría como pestaña más (swap sin animación de ruta —
-                // el gotcha del ShellRoute). El guard evita apilar dos
-                // copias si se toca ＋ estando ya en la ventana. Las
-                // pestañas normales siguen con `go` (reemplazo, no pila).
-                onSelected: (i) {
-                  final d = dests[i];
-                  if (d.isCenter) {
-                    if (loc != d.route) context.push(d.route);
-                  } else {
-                    context.go(d.route);
-                  }
-                },
-              ),
+                  key: const ValueKey('nav-bar-visible'),
+                  centerButtonKey: isClient ? _plusAnchorKey : null,
+                  destinations: dests,
+                  currentIndex: idx,
+                  // Badges de la barra: "Solicitudes" (índice 0, significado por
+                  // rol) y "Mensajes" (mensajes de chat sin leer, pedido PO
+                  // 2026-07-21). Cada pantalla mantiene su contador al día.
+                  badges: {
+                    if (solicitudesBadge.value > 0)
+                      dests[0].route: solicitudesBadge.value,
+                    if (messagesBadge.count > 0)
+                      '/messages': messagesBadge.count,
+                  },
+                  // El centro (crear solicitud) se APILA con `push`: así corre
+                  // la transición modal de su CustomTransitionPage (sube por
+                  // encima de la pestaña actual, que queda viva debajo) y el
+                  // ATRÁS la cierra volviendo a donde estaba. Un `go` la
+                  // trataría como pestaña más (swap sin animación de ruta —
+                  // el gotcha del ShellRoute). El guard evita apilar dos
+                  // copias si se toca ＋ estando ya en la ventana. Las
+                  // pestañas normales siguen con `go` (reemplazo, no pila).
+                  onSelected: (i) {
+                    final d = dests[i];
+                    if (d.isCenter) {
+                      if (loc != d.route) context.push(d.route);
+                    } else {
+                      context.go(d.route);
+                    }
+                  },
+                ),
               )
             : const SizedBox.shrink(key: ValueKey('nav-bar-hidden')),
       ),

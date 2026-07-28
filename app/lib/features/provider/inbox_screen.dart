@@ -7,6 +7,7 @@ import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/motion.dart';
 import '../../data/repos.dart';
+import '../../domain/inbox_load.dart';
 import '../../domain/pricing.dart';
 import '../../domain/recharge.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
@@ -131,51 +132,29 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     _loadBalance();
   }
 
-  /// Envuelve `widget.fetch` para actualizar el badge de la pestaña
-  /// "Solicitudes" (proveedor) con el conteo de la bandeja "Para ti" — las
-  /// solicitudes abiertas de su rubro por atender. En "Todas" no se toca el
-  /// badge (ese conteo no es una alerta accionable, es exploración).
+  /// Carga la bandeja en DOS OLEADAS concurrentes (antes eran 4 viajes a la red
+  /// en serie). La orquestación y su porqué viven en `domain/inbox_load.dart`,
+  /// que es donde están sus tests; aquí solo se conectan las fuentes reales y
+  /// se vuelca el resultado en el estado del widget.
+  ///
+  /// "Para ti" incluye además las solicitudes de OTRO rubro a las que ya ofertó
+  /// (pedido PO: "si alguien ofertó en otro rubro, esa oferta pasa a Para ti");
+  /// en "Todas" ese merge no aplica → se pasa `null`.
   Future<List<Map<String, dynamic>>> _runFetch() async {
-    var items = await widget.fetch(kind: _kind, todas: _todas);
-    if (mounted && !_todas) {
-      solicitudesBadge.value = items
-          .where((r) => r['source'] != 'store')
-          .length;
-    }
-    // "Para ti" también incluye las solicitudes de OTRO rubro a las que ya
-    // ofertó (pedido PO: "si alguien ofertó en otro rubro, esa oferta pasa a
-    // Para ti") — el proveedor les da seguimiento desde su bandeja. Best-effort
-    // y DESPUÉS del badge: dar seguimiento no es una alerta pendiente.
-    if (!_todas) {
-      try {
-        final have = {for (final r in items) r['id']};
-        final offered = await myOfferedOpenRequests(kind: _kind);
-        items = [...items, ...offered.where((r) => !have.contains(r['id']))]
-          ..sort(
-            (a, b) => (b['created_at'] as String? ?? '').compareTo(
-              a['created_at'] as String? ?? '',
-            ),
-          );
-      } catch (_) {}
-    }
-    // ¿A cuáles de estas solicitudes ya ofertó y en qué estado? (badge
-    // "Ya ofertaste"/"Aceptada"). Y cuántas ofertas ha recibido CADA una
-    // (FOMO): ambas por el mismo conjunto de ids de marketplace.
-    final ids = [
-      for (final r in items)
-        if (r['source'] != 'store') r['id'] as String,
-    ];
-    try {
-      _offeredStatuses = await myOfferedRequestStatuses(ids);
-    } catch (_) {
-      _offeredStatuses = {};
-    }
-    try {
-      _offerCounts = await offerCountsForRequests(ids);
-    } catch (_) {
-      _offerCounts = {};
-    }
-    return items;
+    final data = await loadInboxData(
+      fetchItems: () => widget.fetch(kind: _kind, todas: _todas),
+      fetchOfferedOpen: _todas
+          ? null
+          : () => myOfferedOpenRequests(kind: _kind),
+      fetchStatuses: myOfferedRequestStatuses,
+      fetchCounts: offerCountsForRequests,
+    );
+    // En "Todas" no se toca el badge: ese conteo no es una alerta accionable,
+    // es exploración.
+    if (mounted && !_todas) solicitudesBadge.value = data.badgeCount;
+    _offeredStatuses = data.statuses;
+    _offerCounts = data.counts;
+    return data.items;
   }
 
   Future<void> _loadBalance() async {
@@ -278,9 +257,10 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
           height: mq.size.height * .70,
           child: Padding(
             padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                bottom: mq.viewInsets.bottom + mq.padding.bottom + 16),
+              left: 20,
+              right: 20,
+              bottom: mq.viewInsets.bottom + mq.padding.bottom + 16,
+            ),
             child: Stack(
               children: [
                 Column(
@@ -296,29 +276,37 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(children: [
-                                Icon(Icons.favorite, size: 14, color: green),
-                                const SizedBox(width: 4),
-                                Text('Interesado en tu producto',
+                              Row(
+                                children: [
+                                  Icon(Icons.favorite, size: 14, color: green),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Interesado en tu producto',
                                     style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: green)),
-                              ]),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: green,
+                                    ),
+                                  ),
+                                ],
+                              ),
                               const SizedBox(height: 4),
-                              Text(title,
-                                  style: Theme.of(ctx)
-                                      .textTheme
-                                      .titleLarge
-                                      ?.copyWith(fontWeight: FontWeight.w600)),
+                              Text(
+                                title,
+                                style: Theme.of(ctx).textTheme.titleLarge
+                                    ?.copyWith(fontWeight: FontWeight.w600),
+                              ),
                               if (createdAt != null) ...[
                                 const SizedBox(height: 4),
-                                Text(timeAgo(createdAt),
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: Theme.of(ctx)
-                                            .colorScheme
-                                            .onSurfaceVariant)),
+                                Text(
+                                  timeAgo(createdAt),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(
+                                      ctx,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
                               ],
                             ],
                           ),
@@ -327,11 +315,14 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                     ),
                     if (message.isNotEmpty) ...[
                       const SizedBox(height: 14),
-                      Text(message,
-                          style: TextStyle(
-                              fontSize: 14,
-                              height: 1.4,
-                              color: Theme.of(ctx).colorScheme.onSurface)),
+                      Text(
+                        message,
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.4,
+                          color: Theme.of(ctx).colorScheme.onSurface,
+                        ),
+                      ),
                     ],
                     const Spacer(),
                     // ── Acción (abajo), según el estado ──
@@ -387,10 +378,11 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                   Positioned.fill(
                     child: IgnorePointer(
                       child: HoldMascotLayer(
-                          progress: progress,
-                          // Más abajo que en la oferta: deja respirar el
-                          // detalle del producto arriba.
-                          alignment: const Alignment(0, .12)),
+                        progress: progress,
+                        // Más abajo que en la oferta: deja respirar el
+                        // detalle del producto arriba.
+                        alignment: const Alignment(0, .12),
+                      ),
                     ),
                   ),
               ],
@@ -405,14 +397,14 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   Widget _interestDetailThumb(String? url, Color accent) {
     const box = 64.0;
     Widget placeholder() => Container(
-          width: box,
-          height: box,
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: .14),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Icon(Icons.inventory_2_outlined, size: 28, color: accent),
-        );
+      width: box,
+      height: box,
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: .14),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Icon(Icons.inventory_2_outlined, size: 28, color: accent),
+    );
     if (url == null || url.isEmpty) return placeholder();
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
@@ -432,7 +424,10 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   /// `unlock_flow.dart`): el cobro arranca YA mientras la mascota hace su
   /// "¡PUM!"; luego celebración unificada + botón "¡Iniciar conversación!".
   Future<void> _unlockInterestWithMascot(
-      BuildContext sheetCtx, String id, int cost) async {
+    BuildContext sheetCtx,
+    String id,
+    int cost,
+  ) async {
     // Handler inmediato para no dejar el future sin oyente durante el PUM.
     final unlocking = unlockProductInterest(id, cost)
         .then((r) => (ok: r.ok, newBalance: r.newBalance))
@@ -927,19 +922,13 @@ class _InterestCard extends StatelessWidget {
                     message,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: cs.onSurfaceVariant,
-                    ),
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                   ),
                 ],
                 const SizedBox(height: 4),
                 Text(
                   timeAgo(createdAt),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: cs.onSurfaceVariant,
-                  ),
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ],
             ),

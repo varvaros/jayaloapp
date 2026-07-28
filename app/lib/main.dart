@@ -7,13 +7,19 @@ import 'core/config.dart';
 import 'core/error_reporter.dart';
 import 'core/router.dart';
 import 'core/theme_store.dart';
+import 'data/repos.dart' show wireCacheInvalidation;
 import 'push/push_service.dart';
 
 Future<void> main() async {
   initErrorReporting(() async {
     await Supabase.initialize(
-        url: AppConfig.supabaseUrl,
-        publishableKey: AppConfig.supabasePublishableKey);
+      url: AppConfig.supabaseUrl,
+      publishableKey: AppConfig.supabasePublishableKey,
+    );
+    // Vacía los cachés de lectura al cambiar de sesión. Debe engancharse
+    // DESPUÉS de Supabase.initialize (necesita `auth`) y ANTES de runApp, para
+    // no perderse un signOut temprano.
+    wireCacheInvalidation();
     final router = buildRouter();
     // Preferencia de tema ANTES de runApp: la app pinta directo en claro/oscuro
     // sin parpadeo. Supabase.initialize ya llamó ensureInitialized, así que
@@ -27,8 +33,10 @@ Future<void> main() async {
     // 2026-07-18. Pintar primero es la única forma de que un cuelgue del push no
     // pueda secuestrar el arranque.
     runApp(JayaloApp(router: router));
-    unawaited(initPush(router).catchError((Object e, StackTrace s) {
-      debugPrint('initPush falló (no bloqueante): $e\n$s');
-    }));
+    unawaited(
+      initPush(router).catchError((Object e, StackTrace s) {
+        debugPrint('initPush falló (no bloqueante): $e\n$s');
+      }),
+    );
   });
 }

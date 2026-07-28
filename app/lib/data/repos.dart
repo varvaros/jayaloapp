@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/ttl_cache.dart';
 import '../domain/chat.dart' show QuickItem;
 import '../domain/phase.dart';
 import '../domain/profile_address.dart';
@@ -79,6 +80,56 @@ class MessagesBadgeStore extends ChangeNotifier {
 }
 
 final messagesBadge = MessagesBadgeStore();
+
+// ── Caché de lecturas (auditoría de rendimiento 2026-07-28) ─────────────────
+//
+// La app no cacheaba NADA: cada `initState` y cada `resumed` refetcheaba. El
+// saldo del wallet era, con diferencia, la query más llamada de todo el
+// backend. Estos TTL son los MISMOS que los `staleTime` que la web ya usa para
+// las lecturas equivalentes, para que ambos clientes envejezcan igual:
+//
+//   saldo del wallet   60 s  ← Navbar.tsx staleTime 60_000
+//   rol proveedor       5 min ← useIsProvider.ts staleTime 5*60*1000
+//   rol admin           5 min ← useIsAdmin.ts    staleTime 5*60*1000
+//
+// Solo se cachean lecturas de PRESENTACIÓN. Ningún gate real depende de ellas:
+// el costo y el débito de un desbloqueo los calcula la RPC atómica server-side,
+// y el acceso de admin lo impone la RLS. Un valor viejo pinta un número
+// desactualizado un rato; nunca autoriza nada.
+class AppCaches {
+  AppCaches._();
+
+  /// Saldo en puntos. Se SIEMBRA con el `new_balance` que devuelven las RPCs de
+  /// desbloqueo (así el número baja al instante, sin releer) y se invalida al
+  /// volver del background — que es cuando pudo recargar por PayPal en la web.
+  static final wallet = TtlCache<int?>(const Duration(seconds: 60));
+
+  static final isProvider = TtlCache<bool>(const Duration(minutes: 5));
+  static final isAdmin = TtlCache<bool>(const Duration(minutes: 5));
+
+  /// Lo que pudo cambiar MIENTRAS la app estaba en background. Lo llama el
+  /// shell en `AppLifecycleState.resumed`, junto al refresh de los badges.
+  static void onResume() => wallet.clear();
+}
+
+/// Al cerrar sesión (o cambiar de cuenta) se vacía TODO: sin esto el saldo o el
+/// rol del usuario anterior sobrevivirían al login del siguiente.
+///
+/// Lo llama `main()` justo después de `Supabase.initialize`. NO se auto-engancha
+/// desde una `final` de nivel superior: las globales de Dart son PEREZOSAS, así
+/// que una que nadie referencia jamás se inicializa y el listener no existiría.
+/// El try/catch es el mismo caso que [MessagesBadgeStore]: en los widget-tests
+/// Supabase no está inicializado y `supa.auth` dispara un assert.
+void wireCacheInvalidation() {
+  try {
+    supa.auth.onAuthStateChange.listen((e) {
+      if (e.event == AuthChangeEvent.signedOut ||
+          e.event == AuthChangeEvent.signedIn) {
+        TtlCache.clearAll();
+      }
+    });
+  } catch (_) {}
+}
 
 // ── Cliente: mis solicitudes y ofertas ──────────────────────────────────────
 
@@ -324,48 +375,50 @@ Future<void> submitRequest({
   final isService = kind == 'servicio';
   try {
     await supa.from('customer_requests').insert({
-    'user_id': uid,
-    'client_request_id': clientRequestId,
-    'kind': kind,
-    'title': title,
-    'description': bullets.join(' • '),
-    'bullets': bullets,
-    // image_url = primaria (paridad web requests/new.tsx L570); image_urls = todas.
-    'image_url': imageUrls.isEmpty ? '' : imageUrls.first,
-    'image_urls': imageUrls,
-    'image_thumb_url': null,
-    'with_shipping': isService ? false : withShipping,
-    'with_installation': isService ? false : withInstallation,
-    'requires_evaluation': requiresEvaluation,
-    'requires_fiscal_receipt': requiresFiscalReceipt,
-    'requires_state_supplier': requiresStateSupplier,
-    'condition': isService ? '' : condition,
-    'urgency': urgency,
-    'status': 'open',
-    'target_categories': categories,
-    'target_rubros': rubros,
-    'service_modality': isService ? serviceModality : '',
-    'service_event_date':
-        isService && serviceModality == 'event' && serviceEventDate != null
-        ? serviceEventDate.toUtc().toIso8601String()
-        : null,
-    'urgency_level': isService ? urgencyLevel : '',
-    'budget_min': isService && budgetMin != null && budgetMin > 0
-        ? budgetMin
-        : null,
-    'budget_max': isService && budgetMax != null && budgetMax > 0
-        ? budgetMax
-        : null,
-    'is_recurring': false,
-    'recurrence_note': '',
-    'is_wholesale': !isService && wholesale,
-    'wholesale_quantity': (!isService && wholesale) ? wholesaleQuantity : null,
-    'wholesale_split': (!isService && wholesale) ? wholesaleSplit : null,
-    'wholesale_packaging': (!isService && wholesale)
-        ? wholesalePackaging
-        : null,
-    'wholesale_note': (!isService && wholesale) ? wholesaleNote : null,
-    'target_business_id': null,
+      'user_id': uid,
+      'client_request_id': clientRequestId,
+      'kind': kind,
+      'title': title,
+      'description': bullets.join(' • '),
+      'bullets': bullets,
+      // image_url = primaria (paridad web requests/new.tsx L570); image_urls = todas.
+      'image_url': imageUrls.isEmpty ? '' : imageUrls.first,
+      'image_urls': imageUrls,
+      'image_thumb_url': null,
+      'with_shipping': isService ? false : withShipping,
+      'with_installation': isService ? false : withInstallation,
+      'requires_evaluation': requiresEvaluation,
+      'requires_fiscal_receipt': requiresFiscalReceipt,
+      'requires_state_supplier': requiresStateSupplier,
+      'condition': isService ? '' : condition,
+      'urgency': urgency,
+      'status': 'open',
+      'target_categories': categories,
+      'target_rubros': rubros,
+      'service_modality': isService ? serviceModality : '',
+      'service_event_date':
+          isService && serviceModality == 'event' && serviceEventDate != null
+          ? serviceEventDate.toUtc().toIso8601String()
+          : null,
+      'urgency_level': isService ? urgencyLevel : '',
+      'budget_min': isService && budgetMin != null && budgetMin > 0
+          ? budgetMin
+          : null,
+      'budget_max': isService && budgetMax != null && budgetMax > 0
+          ? budgetMax
+          : null,
+      'is_recurring': false,
+      'recurrence_note': '',
+      'is_wholesale': !isService && wholesale,
+      'wholesale_quantity': (!isService && wholesale)
+          ? wholesaleQuantity
+          : null,
+      'wholesale_split': (!isService && wholesale) ? wholesaleSplit : null,
+      'wholesale_packaging': (!isService && wholesale)
+          ? wholesalePackaging
+          : null,
+      'wholesale_note': (!isService && wholesale) ? wholesaleNote : null,
+      'target_business_id': null,
     });
   } on PostgrestException catch (e) {
     // 23505 = choque con `uq_customer_requests_client_idempotency`: el primer
@@ -558,33 +611,33 @@ Future<void> makeOffer({
   final uid = supa.auth.currentUser!.id;
   try {
     await supa.from('provider_offers').insert({
-    'user_id': uid,
-    'business_id': businessId,
-    'request_id': request['id'],
-    'request_title': request['title'],
-    'status': 'pending',
-    ..._offerFields(
-      price: price,
-      priceMin: priceMin,
-      priceMax: priceMax,
-      message: message,
-      imageUrls: imageUrls,
-      pricingMode: pricingMode,
-      offersShipping: offersShipping,
-      shippingPrice: shippingPrice,
-      offersInstallation: offersInstallation,
-      installationPrice: installationPrice,
-      requiresEvaluation: requiresEvaluation,
-      evaluationPrice: evaluationPrice,
-      hourlyRate: hourlyRate,
-      estimatedHours: estimatedHours,
-      availabilityNote: availabilityNote,
-      estimatedDuration: estimatedDuration,
-      productBrand: productBrand,
-      productColors: productColors,
-      productWarranty: productWarranty,
-      deliveryTime: deliveryTime,
-    ),
+      'user_id': uid,
+      'business_id': businessId,
+      'request_id': request['id'],
+      'request_title': request['title'],
+      'status': 'pending',
+      ..._offerFields(
+        price: price,
+        priceMin: priceMin,
+        priceMax: priceMax,
+        message: message,
+        imageUrls: imageUrls,
+        pricingMode: pricingMode,
+        offersShipping: offersShipping,
+        shippingPrice: shippingPrice,
+        offersInstallation: offersInstallation,
+        installationPrice: installationPrice,
+        requiresEvaluation: requiresEvaluation,
+        evaluationPrice: evaluationPrice,
+        hourlyRate: hourlyRate,
+        estimatedHours: estimatedHours,
+        availabilityNote: availabilityNote,
+        estimatedDuration: estimatedDuration,
+        productBrand: productBrand,
+        productColors: productColors,
+        productWarranty: productWarranty,
+        deliveryTime: deliveryTime,
+      ),
     });
   } on PostgrestException catch (e) {
     // 23505 = choque con el índice UNIQUE parcial
@@ -676,7 +729,12 @@ Future<List<Map<String, dynamic>>> myOffers() async {
   );
 }
 
-Future<int?> walletBalance() async {
+/// Saldo en puntos. Cacheado 60 s (paridad con el `staleTime` del Navbar de la
+/// web) — era la query más llamada del backend porque cada pantalla que muestra
+/// el saldo lo pedía al montar. Se invalida solo en los tres momentos en que
+/// puede haber cambiado: un desbloqueo (lo SIEMBRA con el saldo que devuelve la
+/// RPC), volver del background (pudo recargar en la web) y cerrar sesión.
+Future<int?> walletBalance() => AppCaches.wallet.read(() async {
   final uid = supa.auth.currentUser!.id;
   final row = await supa
       .from('provider_wallets')
@@ -684,7 +742,7 @@ Future<int?> walletBalance() async {
       .eq('user_id', uid)
       .maybeSingle();
   return row?['balance'] as int?;
-}
+});
 
 /// RPC atómica; el `_cost` enviado se IGNORA server-side (el costo real lo
 /// calcula la RPC — regla de seguridad del proyecto).
@@ -698,12 +756,27 @@ Future<({bool ok, bool already, int charged, int? newBalance})> unlockOffer(
             params: {'_offer_id': offerId, '_cost': estimatedCost},
           )
           as Map<String, dynamic>;
+  final newBalance = (res['new_balance'] as num?)?.toInt();
+  _syncWalletCache(newBalance);
   return (
     ok: res['ok'] == true,
     already: res['already_unlocked'] == true,
     charged: (res['charged'] as num?)?.toInt() ?? 0,
-    newBalance: (res['new_balance'] as num?)?.toInt(),
+    newBalance: newBalance,
   );
+}
+
+/// Tras cobrar, el saldo cacheado quedó viejo. Si la RPC devolvió el nuevo se
+/// SIEMBRA (el número baja al instante, sin un viaje extra a la red); si no lo
+/// devolvió, se invalida para que la próxima lectura vaya a la fuente. Nunca se
+/// deja el valor anterior: un saldo inflado le haría creer al proveedor que
+/// puede pagar otro desbloqueo.
+void _syncWalletCache(int? newBalance) {
+  if (newBalance != null) {
+    AppCaches.wallet.set(newBalance);
+  } else {
+    AppCaches.wallet.clear();
+  }
 }
 
 Future<({String? firstName, String? phone})> unlockedContact(
@@ -734,11 +807,13 @@ unlockProductInterest(String interestId, int estimatedCost) async {
             params: {'_interest_id': interestId, '_cost': estimatedCost},
           )
           as Map<String, dynamic>;
+  final newBalance = (res['new_balance'] as num?)?.toInt();
+  _syncWalletCache(newBalance);
   return (
     ok: res['ok'] == true,
     already: res['already_unlocked'] == true,
     charged: (res['charged'] as num?)?.toInt() ?? 0,
-    newBalance: (res['new_balance'] as num?)?.toInt(),
+    newBalance: newBalance,
   );
 }
 
@@ -787,7 +862,9 @@ Future<void> markPurchaseCompleted(String offerId) async {
       .eq('id', offerId);
 }
 
-Future<bool> isProviderAccount() async {
+/// Cacheado 5 min (paridad con `useIsProvider` en la web). El rol de una cuenta
+/// no cambia dentro de una sesión salvo en el propio onboarding, que invalida.
+Future<bool> isProviderAccount() => AppCaches.isProvider.read(() async {
   final uid = supa.auth.currentUser?.id;
   if (uid == null) return false;
   final row = await supa
@@ -796,7 +873,7 @@ Future<bool> isProviderAccount() async {
       .eq('user_id', uid)
       .maybeSingle();
   return row?['account_type'] == 'provider';
-}
+});
 
 // ── Onboarding y verificación (spec 2026-07-16-onboarding-nativo) ───────────
 
@@ -881,7 +958,10 @@ Future<void> resetCustomQuickReplies({required bool provider}) async {
 
 /// ¿El usuario actual es admin? (RLS de `user_roles`: cada quien lee su propia
 /// fila). Para mostrar el "Registro rápido" del menú (pedido PO 2026-07-22).
-Future<bool> isAdmin() async {
+/// Cacheado 5 min (paridad con `useIsAdmin` en la web). Es un gate de UI: quien
+/// de verdad impide el acceso es la RLS sobre `user_roles` y el `assertAdmin`
+/// del servidor, así que cachearlo no abre nada.
+Future<bool> isAdmin() => AppCaches.isAdmin.read(() async {
   try {
     final uid = supa.auth.currentUser?.id;
     if (uid == null) return false;
@@ -895,7 +975,7 @@ Future<bool> isAdmin() async {
   } catch (_) {
     return false;
   }
-}
+});
 
 /// Registro rápido de un proveedor por correo (solo admin). Llama a la edge
 /// function `admin-invite-provider`, que reproduce el `inviteProvider` de la web
@@ -995,6 +1075,10 @@ Future<String> completeProviderOnboarding({
             },
           )
           as Map<String, dynamic>;
+  // La cuenta ACABA de volverse proveedor: el `false` cacheado por
+  // `isProviderAccount` mandaría al usuario recién registrado a la UI de
+  // cliente durante los próximos 5 minutos.
+  AppCaches.isProvider.set(true);
   return res['business_id'] as String;
 }
 
@@ -2014,8 +2098,10 @@ Future<BusinessStorefrontStats?> businessStorefrontStats(
   String businessId,
 ) async {
   final rows = List<Map<String, dynamic>>.from(
-    await supa.rpc('get_business_storefront_stats',
-        params: {'_business_id': businessId}),
+    await supa.rpc(
+      'get_business_storefront_stats',
+      params: {'_business_id': businessId},
+    ),
   );
   if (rows.isEmpty) return null;
   final r = rows.first;
