@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/ai_client.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
+import '../../domain/ai_question_options.dart';
 import '../../domain/ai_turns.dart';
 import '../../core/safe_image_picker.dart';
 import '../../domain/image_pick.dart';
@@ -955,12 +956,26 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         case AiQuestion q:
           question = q.question;
           counter = 'Pregunta ${_aiAnswered + 1}';
+          // Si la IA ya ofreció un catch-all ("Otros", "Otra marca"), ese botón
+          // ES el disparador del campo de texto: enviarlo tal cual mandaba
+          // "Otros" al proveedor como si fuera la respuesta (bug PO
+          // 2026-07-28). Paridad con la web (requests/new.tsx + isCatchAllOption).
+          final hasCatchAll = q.options.any(isCatchAllOption);
           actions = [
-            for (final op in q.options) _optionButton(op, () => _send(op)),
+            for (final op in q.options)
+              if (isCatchAllOption(op))
+                _optionButton(op, () => setState(() => _showOther = true),
+                    icon: Icons.edit_outlined)
+              else
+                _optionButton(op, () => _send(op)),
             // El campo de texto vive escondido: esto lo revela solo cuando
             // ninguna opción sirve (feedback PO: "se ve todo el tiempo
-            // enviar mensaje cuando solo se está dando clic").
-            if (q.allowOther && q.options.isNotEmpty && !_showOther)
+            // enviar mensaje cuando solo se está dando clic"). Con un
+            // catch-all a la vista el enlace sobraría (igual que en la web).
+            if (q.allowOther &&
+                q.options.isNotEmpty &&
+                !hasCatchAll &&
+                !_showOther)
               Center(
                 child: TextButton(
                   onPressed: () => setState(() => _showOther = true),
