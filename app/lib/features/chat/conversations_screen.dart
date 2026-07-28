@@ -322,6 +322,11 @@ class _ConversationRow extends StatelessWidget {
     final fg = cs.onSurface;
     final muted = cs.onSurfaceVariant;
     final lastAt = c['last_created_at'] ?? c['updated_at'];
+    // Asunto del chat: para las conversaciones de OFERTA, `product_name` ES el
+    // título de la solicitud (lo fija `get_or_create_conversation` desde
+    // `provider_offers.request_title`); para las de producto, el nombre del
+    // producto. En ambos casos es "qué se está negociando".
+    final subject = (c['product_name'] as String?)?.trim() ?? '';
     final price = c['agreed_price'] != null
         ? ' · ${fmtRD(c['agreed_price'] as num)}'
         : c['agreed_hourly_rate'] != null
@@ -404,12 +409,36 @@ class _ConversationRow extends StatelessWidget {
                         ),
                       ],
                     ]),
+                    // El asunto va en su PROPIA línea (pedido PO 2026-07-28:
+                    // "el chat solo tiene los nombres, debo entrar para saber
+                    // qué se está negociando"). Antes iba pegado al FINAL del
+                    // último mensaje, así que el ellipsis se lo comía casi
+                    // siempre. Jerarquía: nombre > asunto > mensaje.
+                    if (subject.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text.rich(
+                          TextSpan(children: [
+                            TextSpan(text: subject),
+                            if (price.isNotEmpty)
+                              TextSpan(
+                                  text: price,
+                                  style: TextStyle(
+                                      color: cs.primary,
+                                      fontWeight: FontWeight.w700)),
+                          ]),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: fg)),
+                    ],
                     const SizedBox(height: 2),
                     Text(
                         c['last_kind'] == null
                             ? 'Sin mensajes aún'
-                            : '${messagePreview(c['last_kind'] as String, c['last_body'] as String? ?? '')}'
-                                '${(c['product_name'] as String?)?.isNotEmpty == true ? ' · ${c['product_name']}$price' : ''}',
+                            : messagePreview(c['last_kind'] as String,
+                                c['last_body'] as String? ?? ''),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

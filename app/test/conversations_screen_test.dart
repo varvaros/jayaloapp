@@ -55,4 +55,50 @@ void main() {
         findsOneWidget,
         reason: 'la acción inyectada no llegó al header real');
   });
+
+  /// Pedido PO 2026-07-28: "el chat solo tiene los nombres, debo entrar para
+  /// saber qué se está negociando". El asunto (`product_name`, que en los chats
+  /// de oferta ES el título de la solicitud) tiene que verse en su PROPIA línea.
+  /// Antes iba concatenado al FINAL del último mensaje, donde el ellipsis se lo
+  /// comía casi siempre — ese es el bug que este test fija.
+  testWidgets('la fila muestra el asunto en su propia línea, no pegado al '
+      'último mensaje', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: ConversationsScreen(
+        leading: const SizedBox(),
+        actions: const [SizedBox()],
+        loadConversations: () async => [
+          {
+            'id': 'c1',
+            'status': 'abierto',
+            'peer_name': 'Ana Pérez',
+            'peer_avatar_url': null,
+            'product_name': 'Nevera Mabe 11 pies',
+            'agreed_price': 18500,
+            'agreed_hourly_rate': null,
+            'provider_user_id': 'otro-usuario',
+            'last_kind': 'text',
+            'last_body': 'Buenas, ¿sigue disponible?',
+            'last_created_at': '2026-07-28T15:42:00Z',
+            'unread_count': 0,
+          },
+        ],
+      ),
+    ));
+    await tester.pump(); // resuelve el future de loadConversations
+    await tester.pump(const Duration(milliseconds: 600)); // cascadeIn
+
+    expect(find.text('Ana Pérez'), findsOneWidget);
+
+    // El asunto se pinta (va en un Text.rich por el precio en violeta).
+    expect(find.textContaining('Nevera Mabe 11 pies', findRichText: true),
+        findsOneWidget,
+        reason: 'el asunto de la conversación no aparece en la fila');
+
+    // LA REGRESIÓN: el último mensaje va SOLO, sin el asunto ni el precio
+    // encolados. Un `findsOneWidget` con el texto EXACTO falla si alguien
+    // vuelve a concatenarlos.
+    expect(find.text('Buenas, ¿sigue disponible?'), findsOneWidget,
+        reason: 'el asunto volvió a concatenarse al último mensaje');
+  });
 }
