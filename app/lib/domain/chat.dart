@@ -5,7 +5,11 @@ library;
 import 'dart:convert';
 import 'chat_time.dart';
 
-const int maxMessageLen = 1000;
+/// Tope de un mensaje de chat. Bajado de 1000 a 300 (pedido PO 2026-07-28):
+/// el chat es para coordinar, no para parrafadas, y un tope corto acota de paso
+/// lo que un flood puede meter por mensaje. Mantener en paridad con
+/// `MAX_MESSAGE_LEN` de `src/routes/messages.$conversationId.tsx` (web).
+const int maxMessageLen = 300;
 
 enum SendStatus { sent, sending }
 

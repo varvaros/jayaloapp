@@ -28,7 +28,12 @@ void main() {
   });
   group('sanitizeChatText', () {
     test('trim y control chars', () => expect(sanitizeChatText('  hola  '), 'hola'));
-    test('cap 1000', () => expect(sanitizeChatText('a' * 1500).length, 1000));
+    test('cap a maxMessageLen (300 desde 2026-07-28)', () {
+      expect(maxMessageLen, 300,
+          reason: 'debe ir en paridad con MAX_MESSAGE_LEN de la web');
+      expect(
+          sanitizeChatText('a' * (maxMessageLen + 500)).length, maxMessageLen);
+    });
   });
   group('isRenderableImageSrc', () {
     test('https ok', () => expect(isRenderableImageSrc('https://x.co/a.jpg'), isTrue));
