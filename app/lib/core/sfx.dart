@@ -19,6 +19,15 @@ import 'package:flutter/foundation.dart';
 abstract final class Sfx {
   static const offerAccepted = 'sounds/oferta_aceptada.mp3';
   static const unlock = 'sounds/desbloqueo.mp3';
+
+  /// Mensaje que entra mientras ESTÁS dentro de esa conversación. Discreto a
+  /// propósito: ya estás mirando el chat, solo confirma que llegó algo.
+  static const messageInChat = 'sounds/mensaje_en_chat.mp3';
+
+  /// Mensaje que entra con la app abierta pero FUERA de esa conversación. Es el
+  /// mismo pop de burbuja que suena con la app cerrada (canal `jayalo_chat_v1`
+  /// de Android), para que el aviso se oiga igual esté donde esté el usuario.
+  static const messageElsewhere = 'sounds/mensaje_nuevo.mp3';
 }
 
 /// Reproduce un SFX empaquetado una sola vez. Nunca lanza.

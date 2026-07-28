@@ -125,6 +125,10 @@ flutter:
     - assets/images/chat-bg.jpg
     - assets/sounds/oferta_aceptada.mp3
     - assets/sounds/desbloqueo.mp3
+    # Avisos de mensaje con la app ABIERTA. Con la app cerrada el sonido lo pone
+    # el canal de Android, no estos assets (ver MainActivity.kt).
+    - assets/sounds/mensaje_en_chat.mp3
+    - assets/sounds/mensaje_nuevo.mp3
     # Animaciones Lottie de Jayi celebrando (violeta para fondos claros; blanca
     # para el fondo violeta de la celebración a pantalla completa).
     - assets/anim/jayi_celebrando.json

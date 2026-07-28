@@ -9,6 +9,7 @@ import '../../domain/chat.dart';
 import '../../domain/chat_session.dart';
 import '../../domain/chat_time.dart';
 import '../../core/safe_image_picker.dart';
+import '../../core/sfx.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
 import 'widgets/bubbles.dart';
@@ -72,6 +73,8 @@ class _ChatScreenState extends State<ChatScreen> {
     // chat aunque la carga de mensajes tarde o falle. El store notifica y la
     // lista se repinta al instante.
     openedConversationsStore.markOpened(widget.conversationId);
+    // Para que el push NO duplique el aviso sonoro mientras miras este chat.
+    activeConversationId = widget.conversationId;
     _load();
     _lifecycle = AppLifecycleListener(
       onPause: _teardownRealtime,
@@ -83,6 +86,9 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _teardownRealtime();
+    // Solo si sigue siendo la mía: si ya se abrió otra conversación, el dispose
+    // tardío de esta no debe borrar la marca de la que está en pantalla.
+    if (activeConversationId == widget.conversationId) activeConversationId = null;
     _lifecycle?.dispose();
     _scroll.dispose();
     super.dispose();
@@ -249,6 +255,14 @@ class _ChatScreenState extends State<ChatScreen> {
               value: widget.conversationId),
           callback: (payload) {
             if (_session.mergeServer(payload.newRecord)) {
+              // Aviso discreto: ya estás mirando el chat, solo confirma que
+              // llegó algo. Solo para lo que escribe el OTRO (mi propio eco del
+              // realtime no debe sonarme) y solo mensajes de persona: 'system'
+              // y 'audit' son carteles del servidor.
+              final kind = payload.newRecord['kind'] as String? ?? '';
+              if (payload.newRecord['sender_id'] != _uid && !isSystemKind(kind)) {
+                playSfx(Sfx.messageInChat);
+              }
               if (mounted) setState(() {});
               _jumpToBottom();
               markChatNotificationsRead(widget.conversationId).catchError((_) {});

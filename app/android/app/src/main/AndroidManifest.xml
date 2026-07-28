@@ -48,11 +48,16 @@
                 <data android:scheme="jayalo" android:host="wallet"/>
             </intent-filter>
         </activity>
-        <!-- Canal por defecto de FCM: los avisos en segundo plano usan el canal
-             "jayalo_alerts" (creado en MainActivity con el sonido custom). -->
+        <!-- Canal por defecto de FCM. DEBE coincidir con MainActivity.
+             ALERTS_CHANNEL_ID: si apunta a un canal que la app no crea, FCM cae
+             a su canal de reserva y el sonido custom NO suena (fue justo lo que
+             pasó entre f16199d y 2026-07-28: aquí decía "jayalo_alerts" y
+             MainActivity ya creaba "jayalo_alerts_v2").
+             Los mensajes de chat NO usan este canal: send-push les pide
+             "jayalo_chat_v1" explícitamente. -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="jayalo_alerts" />
+            android:value="jayalo_alerts_v2" />
 
         <!-- image_cropper (UCrop): pantalla de recorte de la foto al solicitar. -->
         <activity

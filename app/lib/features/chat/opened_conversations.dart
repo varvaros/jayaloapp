@@ -53,3 +53,13 @@ class OpenedConversationsStore extends ChangeNotifier {
 }
 
 final openedConversationsStore = OpenedConversationsStore();
+
+/// Conversación que el usuario tiene ABIERTA en pantalla ahora mismo (null si
+/// ninguna). La fija `ChatScreen` mientras vive.
+///
+/// La lee `initPush`: cuando entra un push de mensaje con la app en foreground,
+/// si es de ESTA conversación el sonido ya lo pone la pantalla al recibirlo por
+/// realtime — sonar también desde el push lo duplicaría. Es una variable pelada
+/// a propósito (no un ChangeNotifier): nadie se repinta con esto, solo se
+/// consulta en el instante en que llega el push.
+String? activeConversationId;

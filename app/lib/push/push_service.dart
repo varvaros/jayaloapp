@@ -8,7 +8,10 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/session_state.dart';
+import '../core/sfx.dart';
+import '../domain/chat.dart';
 import '../domain/notifications.dart';
+import '../features/chat/opened_conversations.dart';
 import 'chat_notifications.dart';
 
 /// Handler de mensajes FCM con la app en background/terminada. DEBE ser una
@@ -86,8 +89,12 @@ Future<void> initPush(GoRouter router) async {
 
   await initChatNotifications(onNotifResponse);
   FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
-  // Con la app en foreground el SO no pinta los data-message: los dibujamos.
+  // Con la app en foreground el SO no pinta NADA por su cuenta (ni los
+  // data-message ni los notification-message).
   FirebaseMessaging.onMessage.listen((m) {
+    // Rama del chat data-only: hoy INERTE (send-push v17 manda los mensajes
+    // como notification-message, `kind:'message_new'`). Se conserva por si se
+    // retoma el botón "Responder" desde la notificación.
     if (m.data['kind'] == 'chat') {
       showChatReplyNotification(
         conversationId: m.data['conversation_id'] ?? '',
@@ -95,6 +102,18 @@ Future<void> initPush(GoRouter router) async {
         body: m.data['body'] ?? '',
         badge: int.tryParse(m.data['badge'] ?? ''),
       );
+      return;
+    }
+    // Mensaje nuevo con la app ABIERTA. Antes de esto entraba en silencio
+    // absoluto: el SO no pinta los notification-message en foreground y nadie
+    // escuchaba este kind. No dibujamos banner —la lista y los badges ya se
+    // actualizan solos—, solo avisamos al oído (pedido PO 2026-07-28).
+    if (m.data['kind'] == 'message_new') {
+      // Si estás DENTRO de esa conversación, el sonido ya lo puso ChatScreen al
+      // recibir el mensaje por realtime; sonar aquí sería un eco.
+      final cid = convIdFromMessageLink(m.data['link'] as String?);
+      if (cid != null && cid == activeConversationId) return;
+      playSfx(Sfx.messageElsewhere);
     }
   });
 
