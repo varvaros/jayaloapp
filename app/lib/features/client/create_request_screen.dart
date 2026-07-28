@@ -730,10 +730,15 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 borderRadius: BorderRadius.circular(28),
                 borderSide: BorderSide(color: cs.primary, width: 2),
               ),
-              prefixIcon: IconButton(
-                tooltip: 'Tomar o subir foto',
-                icon: const Icon(Icons.photo_camera_outlined),
-                onPressed: _busy ? null : _showPickSheet,
+              prefixIcon: OnboardingGuide(
+                guideKey: 'client.request_photo.v1',
+                steps: onboardingCopy['client.request_photo.v1']!,
+                order: 2,
+                child: IconButton(
+                  tooltip: 'Tomar o subir foto',
+                  icon: const Icon(Icons.photo_camera_outlined),
+                  onPressed: _busy ? null : _showPickSheet,
+                ),
               ),
               suffixIcon: OnboardingGuide(
                 guideKey: 'client.create_request.v1',
@@ -818,32 +823,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
           ),
-          const SizedBox(height: 8),
-          // El botón de HACER la foto, visible desde el arranque
-          // (pedido PO): cámara primero, galería al lado. La foto
-          // viaja con el primer mensaje.
-          OnboardingGuide(
-            guideKey: 'client.request_photo.v1',
-            steps: onboardingCopy['client.request_photo.v1']!,
-            order: 2,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              alignment: WrapAlignment.center,
-              children: [
-                ActionChip(
-                  avatar: const Icon(Icons.photo_camera_outlined, size: 18),
-                  label: const Text('Tomar foto'),
-                  onPressed: () => _pickPhoto(ImageSource.camera),
-                ),
-                ActionChip(
-                  avatar: const Icon(Icons.photo_library_outlined, size: 18),
-                  label: const Text('Galería'),
-                  onPressed: () => _pickPhoto(ImageSource.gallery),
-                ),
-              ],
-            ),
-          ),
+          // Los chips "Tomar foto"/"Galería" que iban aquí se QUITARON (pedido
+          // PO 2026-07-28): la cámara ya está dos veces a la vista — el ícono
+          // de la barra de búsqueda y el botón central de la navbar, que dentro
+          // de esta pantalla es una cámara. Su guía de onboarding se mudó al
+          // ícono de la barra, que es lo que ahora señala.
         ],
       ),
     );
@@ -877,9 +861,15 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
         padding: const EdgeInsets.symmetric(vertical: 14),
+        // VIOLETA también sin elegir (pedido PO 2026-07-28: "que se noten
+        // más"). Antes eran gris `surfaceContainerHighest` y se perdían bajo
+        // la barra de búsqueda. Sin elegir copian el borde violeta de esa
+        // barra, que está justo encima; elegida se rellena de violeta sólido,
+        // que es lo que distingue los dos estados.
         decoration: BoxDecoration(
-          color: selected ? cs.primary : cs.surfaceContainerHighest,
+          color: selected ? cs.primary : cs.surface,
           borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: cs.primary, width: selected ? 0 : 1.6),
         ),
         child: Text(
           label,
@@ -888,7 +878,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           style: TextStyle(
             fontSize: 14.5,
             fontWeight: FontWeight.w600,
-            color: selected ? cs.onPrimary : cs.onSurface,
+            color: selected ? cs.onPrimary : cs.primary,
           ),
         ),
       ),

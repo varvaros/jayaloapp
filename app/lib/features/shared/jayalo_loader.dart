@@ -445,17 +445,13 @@ class _MascotPainter extends CustomPainter {
         ..quadraticBezierTo(78, 130 + 20 * smile, 98, 130);
       canvas.drawPath(mouth, m);
     }
-    // Boca de sorpresa: la "o" que pone mientras el aire la va apretando.
-    // Va en el mismo sitio que la sonrisa, y crece un poco con la sorpresa.
+    // Boca de sorpresa: un CÍRCULO LLENO (pedido PO 2026-07-28 — en anillo se
+    // leía como la letra "o", no como una boca abierta). Va en el mismo sitio
+    // que la sonrisa y crece con la sorpresa.
     if (oMouth > 0) {
       final o = oMouth.clamp(0.0, 1.0);
-      canvas.drawCircle(
-          const Offset(78, 135),
-          6 + 4 * o,
-          Paint()
-            ..color = inkColor.withValues(alpha: o)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 7);
+      canvas.drawCircle(const Offset(78, 135), 5 + 4 * o,
+          Paint()..color = inkColor.withValues(alpha: o));
     }
     // Boquita ladeada de duda ("mmm…").
     if (doubtMouth > 0) {

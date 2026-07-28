@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
-import 'package:jayalo_app/core/brand.dart';
 import 'package:jayalo_app/core/center_action.dart';
 import 'package:jayalo_app/core/session_state.dart';
 import 'package:jayalo_app/features/shell/floating_nav_bar.dart';
