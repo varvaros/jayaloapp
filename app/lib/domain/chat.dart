@@ -64,6 +64,30 @@ String sanitizeChatText(String raw) {
   return cleaned.length > maxMessageLen ? cleaned.substring(0, maxMessageLen) : cleaned;
 }
 
+/// SQLSTATE propio del anti-flood del servidor (trigger
+/// `enforce_chat_message_rate_limit`, migración 20260728120000): 10 mensajes
+/// por 30 s y emisor.
+const String chatRateLimitCode = 'JY429';
+
+/// SQLSTATE de `check_violation`: lo lanza el mismo trigger cuando un 'text'
+/// pasa de [maxMessageLen] (red server-side del tope del composer).
+const String chatCheckViolationCode = '23514';
+
+/// Qué mostrarle al usuario cuando rebota un envío. Si el rechazo viene de una
+/// de NUESTRAS guardas, el servidor ya manda una explicación en español
+/// ("Vas muy rápido…") y repetirla es mucho mejor que el genérico: "intenta de
+/// nuevo" invita a reintentar justo lo que acaba de rebotar. Para cualquier
+/// otro fallo (red, RLS, chat cerrado) se queda el genérico, que no filtra
+/// detalles internos.
+String sendFailureMessage({String? code, String? serverMessage}) {
+  final msg = serverMessage?.trim() ?? '';
+  if ((code == chatRateLimitCode || code == chatCheckViolationCode) &&
+      msg.isNotEmpty) {
+    return msg;
+  }
+  return 'No se pudo enviar. Intenta de nuevo.';
+}
+
 // ── Imagen ──────────────────────────────────────────────────────────────────
 
 final _dataImg = RegExp(r'^data:image/(png|jpe?g|webp|gif|svg\+xml);base64,', caseSensitive: false);

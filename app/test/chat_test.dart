@@ -35,6 +35,32 @@ void main() {
           sanitizeChatText('a' * (maxMessageLen + 500)).length, maxMessageLen);
     });
   });
+  group('sendFailureMessage', () {
+    test('anti-flood: repite el texto del servidor, no el genérico', () {
+      expect(
+          sendFailureMessage(
+              code: chatRateLimitCode,
+              serverMessage:
+                  'Vas muy rápido. Espera unos segundos antes de enviar otro mensaje.'),
+          'Vas muy rápido. Espera unos segundos antes de enviar otro mensaje.');
+    });
+    test('tope de longitud: también se repite', () {
+      expect(
+          sendFailureMessage(
+              code: chatCheckViolationCode,
+              serverMessage: 'El mensaje supera los 300 caracteres.'),
+          'El mensaje supera los 300 caracteres.');
+    });
+    test('otro error (RLS, red) → genérico, sin filtrar detalles internos', () {
+      expect(sendFailureMessage(code: '42501', serverMessage: 'permission denied for table'),
+          'No se pudo enviar. Intenta de nuevo.');
+      expect(sendFailureMessage(), 'No se pudo enviar. Intenta de nuevo.');
+    });
+    test('nuestro código pero sin mensaje → genérico', () {
+      expect(sendFailureMessage(code: chatRateLimitCode, serverMessage: '  '),
+          'No se pudo enviar. Intenta de nuevo.');
+    });
+  });
   group('isRenderableImageSrc', () {
     test('https ok', () => expect(isRenderableImageSrc('https://x.co/a.jpg'), isTrue));
     test('data ok', () => expect(isRenderableImageSrc('data:image/jpeg;base64,AAAA'), isTrue));

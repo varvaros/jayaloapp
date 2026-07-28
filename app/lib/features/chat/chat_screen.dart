@@ -338,12 +338,16 @@ class _ChatScreenState extends State<ChatScreen> {
       _session.confirmOptimistic(tempId, row);
       if (mounted) setState(() {});
       return true;
-    } catch (_) {
+    } catch (e) {
       _session.removeOptimistic(tempId);
       if (mounted) {
         setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No se pudo enviar. Intenta de nuevo.')));
+        // El anti-flood y el tope de longitud del servidor traen su propio
+        // texto en español; los demás fallos caen al genérico.
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(sendFailureMessage(
+                code: e is PostgrestException ? e.code : null,
+                serverMessage: e is PostgrestException ? e.message : null))));
       }
       return false;
     }
