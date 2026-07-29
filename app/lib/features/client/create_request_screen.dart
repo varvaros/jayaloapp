@@ -527,7 +527,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     // (armado uniendo bullets con ' • ', ver `submitRequest` en
     // data/repos.dart) y wholesale_note; recurrence_note siempre viaja vacío.
     // Revisar el texto YA unido de `description` cubre también un dato de
-    // contacto que quedara partido entre dos bullets.
+    // contacto que quedara partido entre dos bullets. MANTENIMIENTO: si
+    // agregas un campo de texto libre nuevo que llegue a una columna vigilada
+    // de `customer_requests`, súmalo también aquí (no hay Map único que
+    // enumerar — ver la nota del reporte de la Task 4 sobre por qué es a mano).
     final wholesaleNoteValue =
         (!isService &&
                 effectiveWholesale &&

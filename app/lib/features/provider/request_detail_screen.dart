@@ -511,7 +511,10 @@ class _ProviderRequestDetailScreenState
     // makeOffer/updateOffer (ver `_offerFields` en data/repos.dart): el
     // mensaje ya compuesto y, según producto/servicio, disponibilidad/
     // duración o marca/garantía/entrega/colores — las mismas columnas que
-    // vigila el trigger para `provider_offers`.
+    // vigila el trigger para `provider_offers`. MANTENIMIENTO: si agregas un
+    // campo de texto libre nuevo que llegue a una columna vigilada de
+    // `provider_offers`, súmalo también aquí (no hay Map único que enumerar —
+    // ver la nota del reporte de la Task 4 sobre por qué es a mano).
     final contactCheckValues = <String>[
       message,
       isService ? _availability.text.trim() : '',
@@ -674,6 +677,24 @@ class _ProviderRequestDetailScreenState
     if (save != true) return;
     final name = nameCtrl.text.trim();
     if (name.isEmpty) return;
+    final description = (_req?['description'] as String? ?? '').trim();
+    final color = isService ? '' : (_colors.isEmpty ? '' : _colors.first);
+    // Anti-elusión (PO 2026-07-29): mismas columnas vigiladas por el trigger
+    // `enforce_no_contact_info` para `provider_products` — name/description/
+    // color. Este es el ÚNICO camino de escritura a `provider_products` en la
+    // app (provider_packages no tiene ninguno), así que cerrarlo aquí cubre la
+    // app entera. Si agregas un campo de texto libre nuevo a este guardado que
+    // llegue a una columna vigilada, súmalo a esta lista también.
+    //
+    // La OFERTA ya se envió con éxito en este punto (este método se llama
+    // después de `makeOffer`) — lo que se bloquea aquí es solo el guardado en
+    // la tienda, así que el aviso no debe leerse como que la oferta se perdió.
+    // `contactInfoMessage` no la menciona, y aparece dentro del contexto del
+    // propio sheet "Guardar en mi tienda" que el proveedor acaba de tocar.
+    if ([name, description, color].any(containsContactInfo)) {
+      if (mounted) _toast(contactInfoMessage);
+      return;
+    }
     ({String? categoryId, String? rubro}) cr;
     try {
       cr = await myBusinessCategoryRubro(bid);
@@ -690,11 +711,11 @@ class _ProviderRequestDetailScreenState
       await saveProductToStore(
         businessId: bid,
         name: name,
-        description: (_req?['description'] as String? ?? '').trim(),
+        description: description,
         categoryId: cr.categoryId!,
         rubro: cr.rubro!,
         kind: isService ? 'servicio' : 'producto',
-        color: isService ? '' : (_colors.isEmpty ? '' : _colors.first),
+        color: color,
         price: price,
         priceMin: priceMin,
         priceMax: priceMax,
@@ -711,8 +732,15 @@ class _ProviderRequestDetailScreenState
         requiresEvaluation: isService ? false : _requiresEvaluation,
       );
       if (mounted) _toast('Guardado en tu tienda ✓');
-    } catch (_) {
-      if (mounted) _toast('No se pudo guardar en tu tienda.');
+    } catch (e) {
+      // Red de seguridad: si el chequeo de arriba no atrapó algo, el trigger
+      // de la BD (JY422) sí lo bloquea — traducirlo al mismo mensaje humano en
+      // vez del genérico, sin implicar que la oferta (ya enviada) falló.
+      if (mounted) {
+        _toast(isContactInfoError(e)
+            ? contactInfoMessage
+            : 'No se pudo guardar en tu tienda.');
+      }
     }
   }
 
