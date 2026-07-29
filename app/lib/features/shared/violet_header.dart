@@ -32,6 +32,7 @@ class VioletHeader extends StatelessWidget {
     this.greeting,
     this.below,
     this.bottomRadius = 30,
+    this.titleTrailing,
   });
 
   /// Ranura izquierda: avatar, botón de atrás, o nada (se rellena con un hueco
@@ -42,6 +43,15 @@ class VioletHeader extends StatelessWidget {
 
   /// Subtítulo bajo el título (contexto del pedido en el chat).
   final String? subtitle;
+
+  /// Slot opcional pegado al título (p. ej. un sello de verificación). `null`
+  /// por defecto: sin este parámetro la cabecera se pinta EXACTAMENTE como
+  /// antes — cero cambios visuales para el resto de pantallas. Cuando viene,
+  /// se pinta en un `Row` con `mainAxisSize: MainAxisSize.min` junto al texto
+  /// del título (nunca junto al subtítulo, que sigue debajo sin tocar) para
+  /// que el título siga truncando con ellipsis y el bloque completo se siga
+  /// centrando bien.
+  final Widget? titleTrailing;
 
   /// Si se pasa, el bloque de título+subtítulo es tocable (chat: abre el
   /// detalle del acuerdo).
@@ -67,7 +77,7 @@ class VioletHeader extends StatelessWidget {
         (leading == null || actions.isEmpty);
 
     Widget titleWidget() {
-      final t = Text(
+      Widget t = Text(
         title!,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -79,6 +89,21 @@ class VioletHeader extends StatelessWidget {
         style: const TextStyle(
             fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
       );
+      // `Flexible` (no `Expanded`) para que el Row se achique a su contenido
+      // real (mainAxisSize.min) — así el bloque título+sello se sigue
+      // centrando como una unidad, y el texto sigue truncando porque el Row
+      // igual le pasa un ancho máximo acotado.
+      if (titleTrailing != null) {
+        t = Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Flexible(child: t),
+            const SizedBox(width: 6),
+            titleTrailing!,
+          ],
+        );
+      }
       if (subtitle == null) return t;
       return Column(
         crossAxisAlignment: titleAlign == HeaderTitleAlign.center

@@ -23,6 +23,7 @@ import '../shared/jayalo_loader.dart';
 import '../shared/violet_header.dart';
 import '../shared/onboarding_guide.dart';
 import '../shared/onboarding_copy.dart';
+import '../shared/verified_badges.dart';
 
 const _pageSize = 50;
 
@@ -48,6 +49,10 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _loadingOlder = false;
   String? _peerAvatarUrl;
   String? _peerName;
+  // Sellos de la contraparte, junto al nombre de la cabecera (PO 2026-07-28,
+  // paso 7 — slot `titleTrailing` de `VioletHeader`). Best-effort: null si no
+  // hay relación registrada o la RPC falla; la cabecera se pinta igual.
+  PeerBadges? _peerBadges;
   int _tempSeq = 0;
   bool _greeted = false;
   bool _sending = false;
@@ -131,6 +136,9 @@ class _ChatScreenState extends State<ChatScreen> {
       _setupRealtime();
       _afterLoad();
       _maybeLoadProviderReview(conv);
+      // Sellos de la contraparte — best-effort, no bloquea la UI (mismo
+      // patrón fire-and-forget que las notificaciones leídas de abajo).
+      _loadPeerBadges(conv);
       // Notificaciones leídas — best-effort, no bloquea la UI. Al leer este
       // chat, el badge de "Mensajes" de la barra debe bajar (pedido PO
       // 2026-07-21): se recuenta tras marcar leído.
@@ -140,6 +148,23 @@ class _ChatScreenState extends State<ChatScreen> {
       _jumpToBottom();
     } catch (_) {
       if (mounted) setState(() => _error = true);
+    }
+  }
+
+  /// Sellos de verificación de la contraparte, junto al nombre de la
+  /// cabecera. Best-effort a propósito (try/catch propio, no `await`ado desde
+  /// `_load`): si la RPC falla o `conv` viene sin los ids esperados, el chat
+  /// se pinta igual, sin sello — nunca debe dejar la pantalla en blanco.
+  Future<void> _loadPeerBadges(Map<String, dynamic> conv) async {
+    try {
+      final peerId = (conv['customer_id'] == _uid
+          ? conv['provider_user_id']
+          : conv['customer_id']) as String?;
+      if (peerId == null) return;
+      final badges = (await peerVerificationBadges([peerId]))[peerId];
+      if (mounted) setState(() => _peerBadges = badges);
+    } catch (_) {
+      // best-effort: sin sello, la cabecera se pinta igual.
     }
   }
 
@@ -854,6 +879,17 @@ class _ChatScreenState extends State<ChatScreen> {
       title: _peerName ?? (conv['product_name'] as String? ?? 'Acuerdo'),
       subtitle: conv['product_name'] as String?,
       titleAlign: HeaderTitleAlign.center,
+      // El sello se SUMA, nunca sustituye: title/subtitle intactos. `null`
+      // (no un `VerifiedLabel` vacío) cuando no hay sello, para que
+      // `VioletHeader` se pinte EXACTAMENTE como sin este slot — sin el
+      // espaciado extra de un `Row` que solo contendría un `SizedBox.shrink()`.
+      titleTrailing: (_peerBadges?.whatsappVerified ?? false) ||
+              (_peerBadges?.idVerified ?? false)
+          ? VerifiedLabel(
+              whatsappVerified: _peerBadges?.whatsappVerified ?? false,
+              idVerified: _peerBadges?.idVerified ?? false,
+            )
+          : null,
       onTitleTap: () => showAgreementDetails(context, conv,
           peerName: _peerName, isProvider: _isProvider),
       actions: [
