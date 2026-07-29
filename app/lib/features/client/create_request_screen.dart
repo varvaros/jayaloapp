@@ -14,6 +14,7 @@ import '../../data/repos.dart';
 import '../../domain/ai_question_options.dart';
 import '../../domain/ai_turns.dart';
 import '../../core/safe_image_picker.dart';
+import '../../domain/contact_info.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/request_progress.dart';
 import '../../domain/request_seed.dart';
@@ -521,6 +522,28 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         : _wantsUsed
         ? 'usado'
         : '';
+    // Anti-elusión (PO 2026-07-29): mismas columnas que vigila el trigger
+    // `enforce_no_contact_info` para `customer_requests` — title, description
+    // (armado uniendo bullets con ' • ', ver `submitRequest` en
+    // data/repos.dart) y wholesale_note; recurrence_note siempre viaja vacío.
+    // Revisar el texto YA unido de `description` cubre también un dato de
+    // contacto que quedara partido entre dos bullets.
+    final wholesaleNoteValue =
+        (!isService &&
+                effectiveWholesale &&
+                (_wsPackaging == 'otro' ||
+                    _wsSplit == 'cantidades_especificas'))
+        ? _wsNote.trim()
+        : '';
+    final contactCheckValues = <String>[
+      r.title,
+      r.bullets.join(' • '),
+      wholesaleNoteValue,
+    ];
+    if (contactCheckValues.any(containsContactInfo)) {
+      _toast(contactInfoMessage);
+      return;
+    }
     setState(() => _busy = true);
     try {
       // Subir las fotos a Storage antes de insertar (nunca base64 en la BD).
@@ -568,8 +591,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       // central vuelve a ser el ＋ de siempre mientras se ve el éxito.
       releaseCenterAction(_centerCamera);
       setState(() => _submitted = true);
-    } catch (_) {
-      _toast('No se pudo enviar la solicitud.');
+    } catch (e) {
+      // Red de seguridad: si el aviso previo no atrapó algo, el trigger de la
+      // BD (JY422) sí lo bloquea — traducir su SQLSTATE al mismo mensaje
+      // humano en vez del genérico de abajo.
+      _toast(isContactInfoError(e) ? contactInfoMessage : 'No se pudo enviar la solicitud.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }

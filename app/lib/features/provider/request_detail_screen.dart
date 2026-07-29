@@ -10,6 +10,7 @@ import '../../core/config.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../core/safe_image_picker.dart';
+import '../../domain/contact_info.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
 import '../../domain/offer_message.dart';
@@ -503,6 +504,27 @@ class _ProviderRequestDetailScreenState
       condition: isService ? '' : _condition,
     );
 
+    // Anti-elusión (PO 2026-07-29): mismo aviso ANTES de subir fotos — que el
+    // trigger `enforce_no_contact_info` (JY422) rechace la fila DESPUÉS de
+    // subirlas le haría perder trabajo real al proveedor. Se revisan
+    // exactamente los valores condicionados que después viajan a
+    // makeOffer/updateOffer (ver `_offerFields` en data/repos.dart): el
+    // mensaje ya compuesto y, según producto/servicio, disponibilidad/
+    // duración o marca/garantía/entrega/colores — las mismas columnas que
+    // vigila el trigger para `provider_offers`.
+    final contactCheckValues = <String>[
+      message,
+      isService ? _availability.text.trim() : '',
+      isService ? _duration.text.trim() : '',
+      isService ? '' : _brand.text.trim(),
+      isService ? '' : _warranty.text.trim(),
+      isService ? '' : _delivery.text.trim(),
+      if (!isService) ..._colors,
+    ];
+    if (contactCheckValues.any(containsContactInfo)) {
+      return _toast(contactInfoMessage);
+    }
+
     setState(() => _busy = true);
     try {
       // Subir las fotos NUEVAS a Storage antes de guardar (nunca base64 en la
@@ -736,6 +758,14 @@ class _ProviderRequestDetailScreenState
   /// el proveedor no tenía idea de qué le faltaba. Ahora mostramos el motivo y,
   /// para ese caso, un atajo para completar la identidad en la web.
   void _showSubmitError(Object e) {
+    // Red de seguridad: si el aviso previo no atrapó algo (p. ej. un dato de
+    // contacto colado en una foto guardada de la tienda, no en un campo de
+    // texto), el trigger de la BD (JY422) sí lo bloquea — traducir su
+    // SQLSTATE al mismo mensaje humano en vez del genérico de abajo.
+    if (isContactInfoError(e)) {
+      _toast(contactInfoMessage);
+      return;
+    }
     final msg = e is PostgrestException ? e.message : e.toString();
     if (msg.contains('ID_DOC_REQUIRED')) {
       final reason = msg.replaceFirst(RegExp(r'^ID_DOC_REQUIRED:\s*'), '');
