@@ -41,6 +41,15 @@ class VerifiedTick extends StatelessWidget {
 
 /// Etiqueta textual junto al nombre. La identidad manda sobre el WhatsApp:
 /// es el sello más fuerte y mostrar los dos satura la fila.
+///
+/// El copy es NEUTRO a propósito ("Identidad verificada", no "Proveedor
+/// verificado"): este widget pinta el sello de la CONTRAPARTE, y la contraparte
+/// es un cliente tantas veces como un proveedor. Con el copy viejo, un
+/// proveedor que abría el chat de un cliente con identidad verificada leía
+/// "Proveedor verificado" junto al nombre de ese cliente — falso.
+/// `provider_store_screen.dart` mantiene su propia lista de sellos con
+/// "Proveedor verificado", y ahí sí es correcto: el sujeto siempre es un
+/// proveedor.
 class VerifiedLabel extends StatelessWidget {
   const VerifiedLabel({
     super.key,
@@ -54,7 +63,7 @@ class VerifiedLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!whatsappVerified && !idVerified) return const SizedBox.shrink();
-    final label = idVerified ? 'Proveedor verificado' : 'WhatsApp verificado';
+    final label = idVerified ? 'Identidad verificada' : 'WhatsApp verificado';
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Icon(Icons.verified, size: 14, color: _tickColor(context)),
       const SizedBox(width: 4),

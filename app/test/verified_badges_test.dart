@@ -30,7 +30,16 @@ void main() {
     await tester.pumpWidget(wrap(
       const VerifiedLabel(whatsappVerified: true, idVerified: true),
     ));
-    expect(find.text('Proveedor verificado'), findsOneWidget);
+    expect(find.text('Identidad verificada'), findsOneWidget);
     expect(find.text('WhatsApp verificado'), findsNothing);
+  });
+
+  testWidgets('VerifiedLabel NO dice "Proveedor verificado" — el peer puede ser un cliente',
+      (tester) async {
+    await tester.pumpWidget(wrap(
+      const VerifiedLabel(whatsappVerified: false, idVerified: true),
+    ));
+    expect(find.text('Proveedor verificado'), findsNothing);
+    expect(find.text('Identidad verificada'), findsOneWidget);
   });
 }
