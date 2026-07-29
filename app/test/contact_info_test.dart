@@ -22,11 +22,47 @@ void main() {
     '',
   ];
 
+  // Casos NUEVOS de la revision final (2026-07-29). Van aparte de la bateria
+  // canonica de 14 (que no se toca) y son los mismos, uno a uno, que
+  // `src/lib/contactInfo.test.ts` de la web. Los guiones Unicode se escriben
+  // con `String.fromCharCode` porque en el codigo fuente son indistinguibles
+  // del `-` ASCII a simple vista.
+  final bloqueaNuevos = <String, String>{
+    // El SQL usa `[[:alnum:]]`, que con el lc_ctype UTF-8 de Supabase casa
+    // letras acentuadas: antes la BD los rechazaba y el aviso del formulario
+    // no, y el usuario perdia lo escrito.
+    'correo con tilde en el nombre': 'josé@gmail.com',
+    'correo con tilde en el dominio': 'ventas@ferretería.do',
+    'telefono con guion largo U+2013':
+        '809${String.fromCharCode(0x2013)}555${String.fromCharCode(0x2013)}1234',
+    'telefono con guion U+2010':
+        '809${String.fromCharCode(0x2010)}555${String.fromCharCode(0x2010)}1234',
+    'telefono con signo menos U+2212':
+        '809${String.fromCharCode(0x2212)}555${String.fromCharCode(0x2212)}1234',
+    // Ruta de Storage con `Date.now()` que empieza por 1829: el detector SI la
+    // casa (al quitar `-`/`.` el timestamp queda como bloque de digitos
+    // contiguo). En la app NO es un problema porque los call sites revisan
+    // listas explicitas de campos de texto, nunca URLs de imagen; en la web si
+    // lo era, y por eso `payloadHasContactInfo` salta las URLs (ver
+    // `src/lib/contactInfo.test.ts`). El caso se replica aqui para que las dos
+    // implementaciones sigan dando el MISMO veredicto sobre la misma entrada.
+    'ruta de Storage con timestamp 1829':
+        'https://mfaiklvobnvgusbcssbx.supabase.co/storage/v1/object/public/'
+            'business-logos/8e2b0f4a-1111-2222-3333-444455556666/requests/'
+            '1829773255605-3i726g-p0.webp',
+  };
+
   for (final entrada in bloquea) {
     test('bloquea: $entrada', () {
       expect(containsContactInfo(entrada), isTrue);
     });
   }
+
+  bloqueaNuevos.forEach((nombre, entrada) {
+    test('bloquea (caso nuevo) $nombre', () {
+      expect(containsContactInfo(entrada), isTrue);
+    });
+  });
 
   for (final entrada in pasa) {
     test('deja pasar: $entrada', () {

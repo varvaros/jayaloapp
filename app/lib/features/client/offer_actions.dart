@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../core/motion.dart';
 import '../../data/repos.dart';
+import '../../domain/contact_info.dart';
 import '../../domain/money.dart';
 import '../shared/brand_kit.dart';
 import '../shared/celebration.dart';
@@ -621,6 +622,36 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
           ? JayaloColors.dPrimary
           : JayaloColors.primary;
 
+  void _snack(String msg) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+
+  /// Guarda compartida por [_reject] y [_discard]: las dos escriben el texto
+  /// libre del "por que" en `provider_offers.rejection_reason`, una columna que
+  /// el PROVEEDOR lee y que viaja ANTES de que nadie haya pagado el desbloqueo
+  /// -- o sea, otra via para colar un telefono gratis (PO 2026-07-29). Si el
+  /// motivo esta sucio avisa y NO toca la BD; si algo se cuela, el trigger
+  /// `enforce_no_contact_info` (JY422) lo rechaza igual y [_guardarMotivo]
+  /// traduce ese error al mismo mensaje humano.
+  Future<void> _guardarMotivo(String reason) async {
+    if (containsContactInfo(reason)) {
+      _snack(contactInfoMessage);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await rejectOffer(offerId: widget.offer['id'] as String, reason: reason);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      _snack(isContactInfoError(e)
+          ? contactInfoMessage
+          : 'No se pudo guardar. Intenta de nuevo.');
+      return;
+    }
+    if (!mounted) return;
+    Navigator.pop(context);
+  }
+
   Future<void> _reject() async {
     final ctrl = TextEditingController();
     final ok = await showDialog<bool>(
@@ -645,11 +676,7 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
               ],
             ));
     if (ok != true || !mounted) return;
-    setState(() => _busy = true);
-    await rejectOffer(
-        offerId: widget.offer['id'] as String, reason: ctrl.text.trim());
-    if (!mounted) return;
-    Navigator.pop(context);
+    await _guardarMotivo(ctrl.text.trim());
   }
 
   /// Descartar un finalista ACEPTADO aún no desbloqueado: pone la oferta en
@@ -686,11 +713,7 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
               ],
             ));
     if (ok != true || !mounted) return;
-    setState(() => _busy = true);
-    await rejectOffer(
-        offerId: widget.offer['id'] as String, reason: ctrl.text.trim());
-    if (!mounted) return;
-    Navigator.pop(context);
+    await _guardarMotivo(ctrl.text.trim());
   }
 
   /// Abre (o crea) la conversación de la oferta y navega al chat — la vía para
