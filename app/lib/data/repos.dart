@@ -2117,6 +2117,30 @@ Future<BusinessStorefrontStats?> businessStorefrontStats(
   );
 }
 
+/// Sellos de verificación de una contraparte (RPC `get_peer_verification_badges`,
+/// migración 20260728120000). Devuelve SOLO booleanos: la RPC nunca expone el
+/// número ni el documento. Best-effort: si falla, se omiten los sellos.
+typedef PeerBadges = ({bool whatsappVerified, bool idVerified});
+
+Future<Map<String, PeerBadges>> peerVerificationBadges(
+  List<String> userIds,
+) async {
+  if (userIds.isEmpty) return const {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa.rpc(
+      'get_peer_verification_badges',
+      params: {'_user_ids': userIds},
+    ),
+  );
+  return {
+    for (final r in rows)
+      r['user_id'] as String: (
+        whatsappVerified: r['whatsapp_verified'] == true,
+        idVerified: r['id_verified'] == true,
+      ),
+  };
+}
+
 // ── Opiniones con texto (Mi tienda) ────────────────────────────────────────
 // Anónimas a propósito: solo rating/comment/created_at, NUNCA reviewer_id
 // (misma restricción que `get_business_ratings`). La web lee estas mismas

@@ -7,6 +7,7 @@ import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/network_image.dart';
+import '../shared/verified_badges.dart';
 import '../shared/violet_header.dart';
 import 'funnel_status_store.dart';
 import 'opened_conversations.dart';
@@ -77,6 +78,11 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   /// no está inicializado → guarda en try/catch (queda null, sin funnel).
   String? _uid;
 
+  /// Sellos de verificación de la contraparte, por peer user id (PO
+  /// 2026-07-28: "deberían aparecer... sobre el avatar"). Best-effort: si la
+  /// RPC falla, queda vacío y la lista se pinta igual, sin ✓.
+  Map<String, PeerBadges> _badges = const {};
+
   @override
   void initState() {
     super.initState();
@@ -130,6 +136,25 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     setState(() => _error = false);
     try {
       final rows = await widget.loadConversations();
+      // Sellos de la contraparte (RPC de la migración 20260728120000).
+      // Best-effort: si falla (o si alguna fila viniera sin los ids esperados),
+      // la lista se pinta igual, sin ✓ — nunca debe tumbar la carga de la
+      // lista. Va en un viaje aparte a propósito: los ids del peer salen de
+      // `rows`, así que no puede ir en paralelo con la carga de la lista.
+      try {
+        final uid = supa.auth.currentUser?.id;
+        final peerIds = <String>{
+          for (final r in rows)
+            if ((r['customer_id'] == uid
+                    ? r['provider_user_id']
+                    : r['customer_id'])
+                case final String id)
+              id,
+        }.toList();
+        _badges = await peerVerificationBadges(peerIds);
+      } catch (_) {
+        _badges = const {};
+      }
       // Contador EXACTO del badge de la barra: aquí ya tenemos el unread real
       // de cada conversación, sin un fetch extra.
       messagesBadge.set(
@@ -227,18 +252,25 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                           .colorScheme
                           .outlineVariant
                           .withValues(alpha: .5)),
-                  itemBuilder: (context, i) => _ConversationRow(
-                        c: filtered[i],
-                        onOpen: _open,
-                        isNew: !openedConversationsStore
-                            .contains(filtered[i]['id'] as String),
-                        // Estado de embudo SOLO en las conversaciones donde soy
-                        // el proveedor (es mi herramienta privada).
-                        funnel: filtered[i]['provider_user_id'] == _uid
-                            ? funnelStatusByKey(
-                                funnelStatusStore.statusKey(filtered[i]['id'] as String))
-                            : null,
-                      ).cascadeIn(i),
+                  itemBuilder: (context, i) {
+                    final c = filtered[i];
+                    final peerId = (c['customer_id'] == _uid
+                        ? c['provider_user_id']
+                        : c['customer_id']) as String?;
+                    return _ConversationRow(
+                      c: c,
+                      onOpen: _open,
+                      isNew: !openedConversationsStore
+                          .contains(c['id'] as String),
+                      // Estado de embudo SOLO en las conversaciones donde soy
+                      // el proveedor (es mi herramienta privada).
+                      funnel: c['provider_user_id'] == _uid
+                          ? funnelStatusByKey(
+                              funnelStatusStore.statusKey(c['id'] as String))
+                          : null,
+                      badge: peerId != null ? _badges[peerId] : null,
+                    ).cascadeIn(i);
+                  },
                 ),
               ),
       ),
@@ -303,7 +335,11 @@ class _SearchPill extends StatelessWidget {
 /// tinte tenue y suma el badge violeta; al día, va limpia sobre el blanco.
 class _ConversationRow extends StatelessWidget {
   const _ConversationRow(
-      {required this.c, required this.onOpen, this.isNew = false, this.funnel});
+      {required this.c,
+      required this.onOpen,
+      this.isNew = false,
+      this.funnel,
+      this.badge});
   final Map<String, dynamic> c;
   final void Function(Map<String, dynamic>) onOpen;
 
@@ -313,6 +349,11 @@ class _ConversationRow extends StatelessWidget {
   /// Estado de embudo (privado del proveedor) o null. Tiene prioridad sobre
   /// el chip "Nueva".
   final FunnelStatus? funnel;
+
+  /// Sellos de verificación de la contraparte (o null si no hay relación
+  /// registrada / la RPC falló). Pasado explícito desde `_ConversationsScreenState`
+  /// — nunca leído de un `static` ni de una global.
+  final PeerBadges? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -341,15 +382,26 @@ class _ConversationRow extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              CircleAvatar(
-                radius: 23,
-                backgroundImage: c['peer_avatar_url'] != null
-                    ? jayaloAvatarImage(c['peer_avatar_url'] as String, 46, context)
-                    : null,
-                child: c['peer_avatar_url'] == null
-                    ? const Icon(Icons.person_outline)
-                    : null,
-              ),
+              Stack(clipBehavior: Clip.none, children: [
+                CircleAvatar(
+                  radius: 23,
+                  backgroundImage: c['peer_avatar_url'] != null
+                      ? jayaloAvatarImage(
+                          c['peer_avatar_url'] as String, 46, context)
+                      : null,
+                  child: c['peer_avatar_url'] == null
+                      ? const Icon(Icons.person_outline)
+                      : null,
+                ),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: VerifiedTick(
+                    whatsappVerified: badge?.whatsappVerified ?? false,
+                    idVerified: badge?.idVerified ?? false,
+                  ),
+                ),
+              ]),
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
