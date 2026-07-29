@@ -235,6 +235,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                         // El guardia vive en el helper y mira la pila VIVA del
                         // router: `loc` viene del build y va un frame por
                         // detrás, así que dos toques rápidos lo burlaban.
+                        //
+                        // `pushCreateRequestOnce` empuja la CONSTANTE, no
+                        // `d.route`. Hoy coinciden para ambos roles
+                        // (`nav_destinations.dart`), pero si el centro vuelve a
+                        // divergir por rol el botón navegaría a la pantalla
+                        // equivocada sin que ningún test lo notara. El assert
+                        // sella ese acoplamiento.
+                        assert(d.route == kCreateRequestRoute,
+                            'El destino central (${d.route}) dejó de ser $kCreateRequestRoute: '
+                            'pushCreateRequestOnce ya no sirve para este rol.');
                         pushCreateRequestOnce(context);
                       }
                     } else {

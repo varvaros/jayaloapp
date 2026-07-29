@@ -4,11 +4,11 @@ import 'package:flutter/widgets.dart';
 /// pantalla al frente la tenga registrada (pedido PO 2026-07-28).
 ///
 /// El centro de la barra es "＋ / Crear solicitud", pero DENTRO de
-/// `/client/create` no hacía nada: `home_shell` tiene una guarda
-/// (`if (loc != d.route)`) para no apilar dos copias de la ventana, así que
-/// tocarlo ahí era un no-op. En vez de dejarlo muerto, la pantalla de crear
-/// solicitud registra aquí su selector de foto y el botón pasa a ser una
-/// CÁMARA mientras esa pantalla vive.
+/// `/client/create` no hacía nada: `pushCreateRequestOnce`
+/// (`core/create_request_nav.dart`) mira la pila VIVA del router para no apilar
+/// dos copias de la ventana, así que tocarlo ahí era un no-op. En vez de
+/// dejarlo muerto, la pantalla de crear solicitud registra aquí su selector de
+/// foto y el botón pasa a ser una CÁMARA mientras esa pantalla vive.
 ///
 /// Vive en `core/` y no en `data/repos.dart` (donde están los badges) porque es
 /// estado de la CÁSCARA, no un dato del backend: meterlo ahí obligaría a
