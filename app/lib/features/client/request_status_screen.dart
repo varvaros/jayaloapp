@@ -13,6 +13,7 @@ import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/onboarding_guide.dart';
 import '../shared/onboarding_copy.dart';
+import '../shared/verified_badges.dart';
 
 /// Tono ámbar del panel del detalle (la doctrina lo pide cálido, NO lila —
 /// así el detalle no se confunde con el chat). Claro sale del mockup
@@ -260,6 +261,19 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
     } catch (_) {
       verified = {};
     }
+    // Identidad pública (avatar/nombre/sellos) de los negocios que ofertaron
+    // (PO 2026-07-29): UN solo viaje para toda la hoja, no una consulta por
+    // tarjeta. Best-effort: si falla, cada tarjeta se pinta sin cabecera de
+    // identidad — nunca deja la hoja en blanco ni rota.
+    Map<String, BusinessCardInfo> identities = {};
+    try {
+      identities = await businessesCardInfo([
+        for (final o in list)
+          if (o['business_id'] != null) o['business_id'] as String,
+      ]);
+    } catch (_) {
+      identities = {};
+    }
     if (!context.mounted) return;
     await showModalBottomSheet(
       context: context,
@@ -287,6 +301,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
         offers: list,
         cheapestId: cheapest,
         verified: verified,
+        identities: identities,
         acceptedCount: acceptedCount,
         initialUnread: _unreadOfferIds,
         onSeen: _markOfferSeen,
@@ -305,6 +320,7 @@ class _OffersSheet extends StatefulWidget {
     required this.offers,
     required this.cheapestId,
     required this.verified,
+    required this.identities,
     required this.acceptedCount,
     required this.initialUnread,
     required this.onSeen,
@@ -314,6 +330,11 @@ class _OffersSheet extends StatefulWidget {
   final List<Map<String, dynamic>> offers;
   final String? cheapestId;
   final Map<String, bool> verified;
+
+  /// Avatar/nombre/sellos por `business_id`, cargados en un solo viaje por
+  /// `_showOffers` (PO 2026-07-29). Un negocio ausente del mapa = tarjeta sin
+  /// cabecera de identidad.
+  final Map<String, BusinessCardInfo> identities;
   final int acceptedCount;
   final Set<String> initialUnread;
   final ValueChanged<String> onSeen;
@@ -392,6 +413,7 @@ class _OffersSheetState extends State<_OffersSheet> {
                         offer: o,
                         cheapest: o['id'] == widget.cheapestId,
                         unverified: widget.verified[o['business_id']] == false,
+                        providerInfo: widget.identities[o['business_id']],
                         unread: _unread.contains(o['id']),
                         statusChip: offerStatusChip(
                             context, o, isClosedToOffers(widget.acceptedCount)),
@@ -836,8 +858,11 @@ class _DetailSheet extends StatelessWidget {
   }
 }
 
-/// Círculos anónimos apilados = proveedores que ofertaron (las ofertas son
-/// anónimas; solo se insinúa cuántas hay).
+/// Círculos apilados = cuántos proveedores ofertaron, en el resumen ANTES de
+/// abrir la lista. Ya NO son anónimos (PO 2026-07-28: el cliente ve nombre y
+/// logo de quien oferta) — siguen siendo un contador genérico aquí porque este
+/// resumen no trae `business_id` por tarjeta, solo el total; el avatar real
+/// vive en la cabecera de cada `_OfferCard` dentro de la lista.
 class _ProviderDots extends StatelessWidget {
   const _ProviderDots({required this.count});
   final int count;
@@ -879,6 +904,72 @@ class _ProviderDots extends StatelessWidget {
   }
 }
 
+/// Cabecera de identidad del proveedor dentro de una `_OfferCard` (PO
+/// 2026-07-29): avatar redondo (logo o el mismo ícono de tienda que usa la
+/// hoja de detalle, `offer_actions.dart`), nombre y sellos. Público y sin
+/// estado a propósito — `_OfferCard` es privado a este archivo, así que un
+/// test de widget no puede montarlo desde afuera; este widget sí es
+/// importable y testeable aislado.
+///
+/// `info == null` no pinta NADA (`SizedBox.shrink`): ni un "Proveedor"
+/// fantasma ni un avatar vacío. Pasa eso cuando la consulta por lote falló o
+/// el negocio no resolvió (borrado, suspendido).
+class OfferCardProviderHeader extends StatelessWidget {
+  const OfferCardProviderHeader({super.key, required this.info});
+
+  final BusinessCardInfo? info;
+
+  @override
+  Widget build(BuildContext context) {
+    final info = this.info;
+    if (info == null) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final logoUrl = info.logoUrl;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: .12),
+              shape: BoxShape.circle,
+              image: logoUrl != null
+                  ? DecorationImage(
+                      image: jayaloAvatarImage(logoUrl, 26, context),
+                      fit: BoxFit.cover)
+                  : null,
+            ),
+            child: logoUrl == null
+                ? Icon(Icons.storefront_outlined, size: 14, color: cs.primary)
+                : null,
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              info.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: jayaloHead(context),
+              ),
+            ),
+          ),
+          const SizedBox(width: 5),
+          VerifiedTick(
+            whatsappVerified: info.whatsappVerified,
+            idVerified: info.identityVerified || info.businessVerified,
+            size: 14,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Tarjeta de oferta dentro de la hoja: precio grande, chip verde "Más
 /// económica" en la más barata, mensaje a 2 líneas y su estado. Tocarla abre
 /// `showOfferSheet` (aceptar/rechazar), sin cambiar ese flujo.
@@ -890,6 +981,7 @@ class _OfferCard extends StatelessWidget {
     required this.onTap,
     this.unverified = false,
     this.unread = false,
+    this.providerInfo,
   });
 
   final Map<String, dynamic> offer;
@@ -903,8 +995,15 @@ class _OfferCard extends StatelessWidget {
 
   /// El negocio del proveedor aún no está verificado por Jayalo — se avisa al
   /// cliente con un badge rojo (decisión PO 2026-07-20: ofertar ya no exige
-  /// verificación, la transparencia pasa a este aviso).
+  /// verificación, la transparencia pasa a este aviso). NO se fusiona con los
+  /// sellos nuevos de `providerInfo`: este badge avisa de un riesgo, aquellos
+  /// premian una virtud — son señales opuestas.
   final bool unverified;
+
+  /// Avatar/nombre/sellos del negocio (PO 2026-07-29). `null` = no se pinta
+  /// cabecera (best-effort: la consulta por lote falló, o el negocio no
+  /// resolvió — borrado o suspendido). Nunca un "Proveedor" fantasma.
+  final BusinessCardInfo? providerInfo;
 
   @override
   Widget build(BuildContext context) {
@@ -918,6 +1017,7 @@ class _OfferCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          OfferCardProviderHeader(info: providerInfo),
           Row(
             children: [
               Text(

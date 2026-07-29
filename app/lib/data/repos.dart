@@ -1936,6 +1936,55 @@ Future<BusinessIdentity?> businessPublicIdentity(String businessId) async {
   );
 }
 
+/// Cabecera de identidad de un negocio para una TARJETA: nombre, logo y los 3
+/// sellos crudos (PO 2026-07-29 — la lista de ofertas del cliente cierra el
+/// hueco que dejó `offer_actions.dart`/la tienda/el catálogo el 2026-07-28).
+/// Mismas columnas públicas que [BusinessIdentity] más `whatsapp_verified_at`,
+/// `identity_verified_at` y `business_verified_at`: son de lectura pública
+/// (grants por columna a `authenticated`/`anon`, RLS permite cualquier
+/// negocio no suspendido), así que no hace falta una RPC nueva.
+typedef BusinessCardInfo = ({
+  String name,
+  String? logoUrl,
+  bool whatsappVerified,
+  bool identityVerified,
+  bool businessVerified,
+});
+
+/// Versión POR LOTE de [businessPublicIdentity]: una sola consulta con
+/// `.inFilter('id', ...)` para toda una pantalla con N tarjetas, en vez de una
+/// consulta por tarjeta (N+1). De-duplica ids y no llama a la red con lista
+/// vacía. Un negocio que no resuelve (borrado, suspendido) simplemente no
+/// aparece en el mapa devuelto — quien lo consuma debe tratar la ausencia como
+/// "sin cabecera", nunca como un "Proveedor" fantasma.
+Future<Map<String, BusinessCardInfo>> businessesCardInfo(
+  List<String> businessIds,
+) async {
+  final ids = businessIds.toSet().toList();
+  if (ids.isEmpty) return const {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('provider_businesses')
+        .select('id,name,logo_url,whatsapp_verified_at,'
+            'identity_verified_at,business_verified_at')
+        .inFilter('id', ids),
+  );
+  return {
+    for (final r in rows)
+      r['id'] as String: (
+        name: (r['name'] as String?)?.trim().isNotEmpty == true
+            ? (r['name'] as String).trim()
+            : 'Proveedor',
+        logoUrl: (r['logo_url'] as String?)?.isNotEmpty == true
+            ? r['logo_url'] as String
+            : null,
+        whatsappVerified: r['whatsapp_verified_at'] != null,
+        identityVerified: r['identity_verified_at'] != null,
+        businessVerified: r['business_verified_at'] != null,
+      ),
+  };
+}
+
 // ── Mi tienda: productos/servicios del propio negocio ──────────────────────
 // Incluye los campos que autocompletan una oferta al elegir un producto de la
 // tienda (color/logística/estado/rubro), no solo lo que pinta la lista.
