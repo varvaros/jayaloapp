@@ -6,9 +6,10 @@ import 'package:jayalo_app/features/client/product_detail_screen.dart';
 
 /// `/catalog/:id` (Task 7): el detalle pinta nombre/precio/negocio, el
 /// estado idempotente "ya enviaste tu interés" reemplaza el CTA, el negocio
-/// no se revela antes del unlock (paridad `products.$productId.tsx`: nunca
-/// se regala gratis la identidad del proveedor), y un error de la RPC
-/// `create_product_interest` avisa sin reventar la pantalla.
+/// se muestra con su nombre y logo reales SIEMPRE (PO 2026-07-28: el
+/// cliente ve la identidad del proveedor sin desbloquear nada, paridad
+/// `products.$productId.tsx`), y un error de la RPC `create_product_interest`
+/// avisa sin reventar la pantalla.
 ///
 /// `sendInterest`/`loadAddress`/`uploadPhoto` se inyectan (mismo patrón que
 /// `CatalogFetch` en `catalog_screen_test.dart`) para probar sin tocar Supabase.
@@ -56,14 +57,12 @@ void main() {
     BusinessLite? business = negocio,
     bool hasInterest = false,
     bool isOwner = false,
-    bool businessRevealed = true,
   }) =>
       ProductDetailData(
         product: product ?? producto,
         business: business,
         hasInterest: hasInterest,
         isOwner: isOwner,
-        businessRevealed: businessRevealed,
       );
 
   Widget view(
@@ -82,7 +81,8 @@ void main() {
         uploadPhoto: (_) async => 'https://cdn.example.com/foto.jpg',
       );
 
-  testWidgets('pinta nombre, precio y el negocio (revelado)', (tester) async {
+  testWidgets('pinta nombre, precio y el negocio con su identidad real',
+      (tester) async {
     setPhoneSize(tester);
     await tester.pumpWidget(host(view(dataFor())));
     await tester.pumpAndSettle();
@@ -113,15 +113,16 @@ void main() {
   });
 
   testWidgets(
-      'negocio NO revelado muestra "Proveedor" genérico, nunca el nombre real',
+      'el negocio muestra su nombre real aunque el cliente no tenga interés '
+      'registrado (PO 2026-07-28: ya no hay gate de identidad por unlock)',
       (tester) async {
     setPhoneSize(tester);
     await tester
-        .pumpWidget(host(view(dataFor(businessRevealed: false))));
+        .pumpWidget(host(view(dataFor(hasInterest: false, isOwner: false))));
     await tester.pumpAndSettle();
 
-    expect(find.text('Proveedor'), findsOneWidget);
-    expect(find.text('Ferretería Pérez'), findsNothing);
+    expect(find.text('Ferretería Pérez'), findsOneWidget);
+    expect(find.text('Proveedor'), findsNothing);
   });
 
   testWidgets('error de la RPC muestra un aviso y no revienta la pantalla',

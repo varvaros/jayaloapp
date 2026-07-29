@@ -38,7 +38,6 @@ class ProductDetailData {
     required this.business,
     required this.hasInterest,
     required this.isOwner,
-    required this.businessRevealed,
   });
 
   final Map<String, dynamic> product;
@@ -51,12 +50,6 @@ class ProductDetailData {
   /// El usuario actual es el dueño del producto (nunca se le ofrece
   /// interesarse en lo suyo).
   final bool isOwner;
-
-  /// Gate de identidad (paridad web): el nombre/logo del negocio solo se
-  /// revela si es el propio dueño o si algún proveedor ya pagó por
-  /// desbloquear el interés de este cliente en este producto. Antes de eso
-  /// se muestra un negocio genérico — nunca se regala la identidad gratis.
-  final bool businessRevealed;
 }
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
@@ -74,17 +67,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ? businessLite(businessId)
           : businessLiteByOwner(ownerUserId),
       isOwner
-          ? Future.value((exists: false, unlocked: false))
-          : productInterestStatus(widget.productId),
+          ? Future.value(false)
+          : productInterestExists(widget.productId),
     ]);
     final business = results[0] as BusinessLite?;
-    final interest = results[1] as ({bool exists, bool unlocked});
+    final hasInterest = results[1] as bool;
     return ProductDetailData(
       product: product,
       business: business,
-      hasInterest: interest.exists,
+      hasInterest: hasInterest,
       isOwner: isOwner,
-      businessRevealed: isOwner || interest.unlocked,
     );
   }
 
@@ -285,10 +277,7 @@ class _ProductDetailViewState extends State<ProductDetailView> {
                       label: 'Instalación incluida'),
               ]),
               if (widget.data.business != null)
-                _BusinessCard(
-                        business: widget.data.business!,
-                        revealed: widget.data.businessRevealed)
-                    .cascadeIn(0),
+                _BusinessCard(business: widget.data.business!).cascadeIn(0),
               const SizedBox(height: 20),
               _CtaArea(data: widget.data, onOpenInterest: _openInterest),
             ],
@@ -441,25 +430,24 @@ class _Tag extends StatelessWidget {
   }
 }
 
-/// "Ofrecido por" — antes de [revealed] muestra un negocio genérico (nunca
-/// se regala la identidad gratis, paridad `products.$productId.tsx`). Tocarlo
-/// abre la TIENDA anónima del proveedor (pedido PO 2026-07-22): productos,
-/// servicios y trabajos, sin revelar el contacto.
+/// "Ofrecido por" — nombre y logo reales SIEMPRE (PO 2026-07-28: el cliente
+/// ve la identidad del proveedor sin desbloquear nada; paridad
+/// `products.$productId.tsx`, Task 8 ya aplicada en la web). Tocarlo abre la
+/// tienda del proveedor: productos, servicios y trabajos, sin revelar el
+/// contacto (eso sigue detrás del desbloqueo pagado).
 class _BusinessCard extends StatelessWidget {
-  const _BusinessCard({required this.business, required this.revealed});
+  const _BusinessCard({required this.business});
   final BusinessLite business;
-  final bool revealed;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final tone = dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight;
-    final logoUrl = revealed ? business.logoUrl : null;
+    final logoUrl = business.logoUrl;
     return JayaloCard(
       margin: const EdgeInsets.only(top: 20),
-      onTap: () => context.push('/store/${business.id}'
-          '?alias=${Uri.encodeComponent(revealed ? business.name : 'Proveedor')}'),
+      onTap: () => context.push('/store/${business.id}'),
       child: Row(children: [
         CircleAvatar(
           radius: 24,
@@ -467,9 +455,7 @@ class _BusinessCard extends StatelessWidget {
           backgroundImage:
               logoUrl != null ? jayaloAvatarImage(logoUrl, 48, context) : null,
           child: logoUrl == null
-              ? Icon(
-                  revealed ? Icons.storefront_outlined : Icons.help_outline,
-                  color: cs.onSurfaceVariant)
+              ? Icon(Icons.storefront_outlined, color: cs.onSurfaceVariant)
               : null,
         ),
         const SizedBox(width: 12),
@@ -479,12 +465,12 @@ class _BusinessCard extends StatelessWidget {
             children: [
               Text('Ofrecido por',
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-              Text(revealed ? business.name : 'Proveedor',
+              Text(business.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       fontSize: 14, fontWeight: FontWeight.w600)),
-              if (revealed && business.verified) ...[
+              if (business.verified) ...[
                 const SizedBox(height: 4),
                 StatusChip(
                     label: 'Negocio verificado',

@@ -163,15 +163,15 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
     super.dispose();
   }
 
-  // Info pública ANÓNIMA del proveedor (pedido PO 2026-07-22, paridad web):
+  // Info pública del proveedor (pedido PO 2026-07-22, paridad web):
   // reputación, verificado y tiempo de respuesta. `null` mientras carga.
   BusinessRating? _rep;
   bool? _verified;
 
-  /// Alias estable durante la vida de la hoja (derivado del id de la oferta,
-  /// no aleatorio por frame como la web) — es la etiqueta "Proveedor 2820".
-  late final String _alias =
-      'Proveedor ${1000 + (widget.offer['id'].hashCode.abs() % 9000)}';
+  /// Identidad real del proveedor (PO 2026-07-28: el cliente ve nombre y
+  /// logo sin desbloquear nada). `null` mientras carga o si falla — el
+  /// header degrada a "Proveedor" sin logo, nunca rompe la pantalla.
+  BusinessIdentity? _identity;
 
   @override
   void initState() {
@@ -187,11 +187,13 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
       final res = await Future.wait([
         businessRatings([bid]),
         businessesVerified([bid]),
+        businessPublicIdentity(bid),
       ]);
       if (!mounted) return;
       setState(() {
         _rep = (res[0] as Map<String, BusinessRating>)[bid];
         _verified = (res[1] as Map<String, bool>)[bid];
+        _identity = res[2] as BusinessIdentity?;
       });
     } catch (_) {/* best-effort: si falla, se omite el bloque */}
   }
@@ -212,14 +214,15 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
   void _openStore() {
     final bid = widget.offer['business_id'] as String?;
     if (bid == null) return;
-    context.push('/store/$bid?alias=${Uri.encodeComponent(_alias)}');
+    context.push('/store/$bid');
   }
 
-  /// Bloque de encabezado del proveedor: alias tocable (→ tienda) + reputación
-  /// + verificado + tiempo de respuesta.
+  /// Bloque de encabezado del proveedor: nombre/logo reales tocables (→
+  /// tienda) + reputación + verificado + tiempo de respuesta.
   Widget _providerHeader(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final rep = _rep;
+    final logoUrl = _identity?.logoUrl;
     return Material(
       color: cs.surfaceContainerHighest.withValues(alpha: .5),
       borderRadius: BorderRadius.circular(kCardRadius),
@@ -235,8 +238,15 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
               decoration: BoxDecoration(
                 color: cs.primary.withValues(alpha: .12),
                 shape: BoxShape.circle,
+                image: logoUrl != null
+                    ? DecorationImage(
+                        image: jayaloAvatarImage(logoUrl, 44, context),
+                        fit: BoxFit.cover)
+                    : null,
               ),
-              child: Icon(Icons.storefront_outlined, color: cs.primary),
+              child: logoUrl == null
+                  ? Icon(Icons.storefront_outlined, color: cs.primary)
+                  : null,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -245,7 +255,7 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
                 children: [
                   Row(children: [
                     Flexible(
-                      child: Text(_alias,
+                      child: Text(_identity?.name ?? 'Proveedor',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

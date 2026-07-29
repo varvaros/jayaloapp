@@ -252,9 +252,9 @@ GoRouter buildRouter() => GoRouter(
         // (incluida la barra flotante) al apilarse con push. Ver el gotcha
         // documentado junto a `_rootNavigatorKey`.
         //
-        // Tienda ANÓNIMA de un proveedor (desde una oferta o el catálogo):
-        // `?alias=` es la etiqueta "Proveedor 2820". Entra como VENTANA
-        // deslizando DESDE LA DERECHA (pedido PO 2026-07-22).
+        // Tienda de un proveedor (desde una oferta o el catálogo): identidad
+        // real (PO 2026-07-28). Entra como VENTANA deslizando DESDE LA
+        // DERECHA (pedido PO 2026-07-22).
         GoRoute(
             path: '/store/:bid',
             pageBuilder: (context, s) => CustomTransitionPage(
@@ -277,9 +277,7 @@ GoRouter buildRouter() => GoRouter(
                   ),
                   child: BackGuard(
                       child: ProviderStoreScreen(
-                          businessId: s.pathParameters['bid']!,
-                          alias:
-                              s.uri.queryParameters['alias'] ?? 'Proveedor')),
+                          businessId: s.pathParameters['bid']!)),
                 )),
         // Detalle de producto ABIERTO DESDE LA TIENDA (`/store/:bid`): como la
         // tienda vive en el navigator raíz, empujar la ruta del shell

@@ -1914,6 +1914,28 @@ Future<String?> providerBusinessType(String businessId) async {
   return row?['business_type'] as String?;
 }
 
+/// Identidad PÚBLICA de un negocio: nombre y logo (PO 2026-07-28 — el cliente
+/// ve nombre, tienda y logo sin desbloquear nada). Lectura directa: los grants
+/// por columna de `provider_businesses` conceden `name`/`logo_url` y NO
+/// conceden whatsapp/address/rnc, así que el contacto sigue siendo ilegible.
+typedef BusinessIdentity = ({String name, String? logoUrl});
+
+Future<BusinessIdentity?> businessPublicIdentity(String businessId) async {
+  final row = await supa
+      .from('provider_businesses')
+      .select('name,logo_url')
+      .eq('id', businessId)
+      .maybeSingle();
+  if (row == null) return null;
+  final logo = row['logo_url'] as String?;
+  return (
+    name: (row['name'] as String?)?.trim().isNotEmpty == true
+        ? (row['name'] as String).trim()
+        : 'Proveedor',
+    logoUrl: (logo != null && logo.isNotEmpty) ? logo : null,
+  );
+}
+
 // ── Mi tienda: productos/servicios del propio negocio ──────────────────────
 // Incluye los campos que autocompletan una oferta al elegir un producto de la
 // tienda (color/logística/estado/rubro), no solo lo que pinta la lista.
@@ -2265,27 +2287,24 @@ Future<BusinessLite?> businessLiteByOwner(String userId) async =>
           .maybeSingle(),
     );
 
-/// Estado de interés del cliente actual sobre un producto: `exists` alimenta
-/// el estado idempotente "ya enviaste tu interés" (el SELECT sigue permitido
-/// tras la migración 20260718150000, que solo revocó INSERT/UPDATE de tabla);
-/// `unlocked` es el gate de identidad del negocio (paridad
-/// `products.$productId.tsx`: el negocio se muestra genérico hasta que algún
-/// proveedor pagó por desbloquear el interés de este cliente en este
-/// producto — nunca se revela gratis por adelantado).
-Future<({bool exists, bool unlocked})> productInterestStatus(
-  String productId,
-) async {
+/// Ya existe una fila de interés del cliente actual para este producto —
+/// alimenta el estado idempotente "ya enviaste tu interés" (el SELECT sigue
+/// permitido tras la migración 20260718150000, que solo revocó
+/// INSERT/UPDATE de tabla). El gate de identidad del negocio que antes vivía
+/// aquí (`unlocked`) se eliminó (PO 2026-07-28): el cliente ve nombre/logo
+/// del proveedor siempre, vía `businessPublicIdentity`, sin relación con si
+/// algún proveedor pagó por desbloquear este interés.
+Future<bool> productInterestExists(String productId) async {
   final uid = supa.auth.currentUser?.id;
-  if (uid == null) return (exists: false, unlocked: false);
+  if (uid == null) return false;
   final row = await supa
       .from('product_interests')
-      .select('id,unlocked_at')
+      .select('id')
       .eq('product_id', productId)
       .eq('customer_id', uid)
       .limit(1)
       .maybeSingle();
-  if (row == null) return (exists: false, unlocked: false);
-  return (exists: true, unlocked: row['unlocked_at'] != null);
+  return row != null;
 }
 
 /// Registra el interés vía la RPC SECURITY DEFINER `create_product_interest`

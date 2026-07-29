@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import '../shared/network_image.dart';
 
@@ -10,23 +8,16 @@ import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
 
-/// Tienda ANÓNIMA de un proveedor (pedido PO 2026-07-22): al tocar
-/// "enviado por Proveedor 2820" en una oferta, el cliente ve los productos,
-/// servicios y trabajos anteriores del negocio SIN saber quién es (el nombre
-/// real solo se revela al desbloquear). `provider_products` y
-/// `provider_portfolio_items` tienen lectura pública, así que se leen por
-/// `business_id` sin exponer datos de contacto.
+/// Tienda de un proveedor: al tocar el nombre del proveedor en una oferta o
+/// en el catálogo, el cliente ve los productos, servicios y trabajos
+/// anteriores del negocio, con su identidad real (PO 2026-07-28: nombre y
+/// logo sin desbloquear nada — el contacto sigue sin ser accesible).
+/// `provider_products` y `provider_portfolio_items` tienen lectura pública,
+/// así que se leen por `business_id` sin exponer datos de contacto.
 class ProviderStoreScreen extends StatefulWidget {
-  const ProviderStoreScreen({
-    super.key,
-    required this.businessId,
-    this.alias = 'Proveedor',
-  });
+  const ProviderStoreScreen({super.key, required this.businessId});
 
   final String businessId;
-
-  /// Etiqueta anónima que traía la oferta ("Proveedor 2820").
-  final String alias;
 
   @override
   State<ProviderStoreScreen> createState() => _ProviderStoreScreenState();
@@ -46,6 +37,9 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
   // Bloque de confianza bajo el nombre (adorno, no bloquea la tienda si falla):
   // rating, trabajos completados, tiempo de respuesta, miembro-desde y sellos.
   BusinessStorefrontStats? _stats;
+  // Identidad real del negocio (PO 2026-07-28). `null` mientras carga o si
+  // falla — degrada a "Proveedor" sin logo, nunca rompe la pantalla.
+  BusinessIdentity? _identity;
   // Orden por defecto (productos primero); se recalcula tras cargar según el
   // tipo de negocio.
   List<_Section> _sections = const [
@@ -70,6 +64,10 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       // simplemente no aparece — nunca se tira la tienda a la pantalla de error.
       final statsF = businessStorefrontStats(widget.businessId)
           .catchError((_) => null);
+      // Identidad: si falla, degrada a "Proveedor" sin logo (no rompe la
+      // pantalla — mismo trato best-effort que el resto de este bloque).
+      final identityF =
+          businessPublicIdentity(widget.businessId).catchError((_) => null);
       final results = await Future.wait([
         myStoreProducts(widget.businessId),
         myPortfolioItems(widget.businessId),
@@ -78,6 +76,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       final portfolio = results[1];
       final type = await typeF;
       final stats = await statsF;
+      final identity = await identityF;
       // Perfil de servicios: técnico, o (heurística de respaldo) sin productos
       // pero con servicios/trabajos publicados.
       final servicesFirst = type == 'tecnico' ||
@@ -88,6 +87,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
         _servicios = serv;
         _portfolio = portfolio;
         _stats = stats;
+        _identity = identity;
         _sections = servicesFirst
             ? const [_Section.servicios, _Section.trabajos, _Section.productos]
             : const [_Section.productos, _Section.servicios, _Section.trabajos];
@@ -114,15 +114,17 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
     return '~$d ${d == 1 ? 'día' : 'días'}';
   }
 
-  /// Bloque de confianza bajo el nombre (paridad con la tienda web): avatar
-  /// BLUREADO del proveedor (identidad anónima hasta desbloquear) + grid de
-  /// rating / trabajos completados / tiempo de respuesta / miembro-desde +
-  /// sellos de verificación. `null` mientras carga o si no hay datos.
+  /// Bloque de confianza bajo el nombre (paridad con la tienda web): logo
+  /// real del proveedor (PO 2026-07-28: identidad siempre visible, sin
+  /// desbloquear nada) + grid de rating / trabajos completados / tiempo de
+  /// respuesta / miembro-desde + sellos de verificación. `null` mientras
+  /// carga o si no hay datos.
   Widget? _repCard() {
     final s = _stats;
     if (s == null) return null;
     final cs = Theme.of(context).colorScheme;
     final hasRating = s.avgRating != null && s.reviewsCount > 0;
+    final logoUrl = _identity?.logoUrl;
     final badges = <(IconData, String)>[
       if (s.identityVerified || s.businessVerified || s.whatsappVerified)
         (Icons.verified_outlined, 'Proveedor verificado'),
@@ -134,34 +136,23 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          // Avatar BLUREADO: placeholder casi imperceptible (no hay foto real
-          // hasta desbloquear), mismo trato que el avatar del cliente.
-          ClipOval(
-            child: ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-              child: Container(
-                width: 46,
-                height: 46,
-                color: cs.primary.withValues(alpha: .35),
-                child: Icon(Icons.person, size: 28, color: cs.primary),
-              ),
-            ),
+          CircleAvatar(
+            radius: 23,
+            backgroundColor: cs.primary.withValues(alpha: .12),
+            backgroundImage: logoUrl != null
+                ? jayaloAvatarImage(logoUrl, 46, context)
+                : null,
+            child: logoUrl == null
+                ? Icon(Icons.storefront_outlined, color: cs.primary)
+                : null,
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(widget.alias,
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: jayaloHead(context))),
-                Text('Nombre y foto al desbloquear',
-                    style:
-                        TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
-              ],
-            ),
+            child: Text(_identity?.name ?? 'Proveedor',
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: jayaloHead(context))),
           ),
         ]),
         const SizedBox(height: 14),
@@ -273,7 +264,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
             tooltip: 'Atrás',
             onTap: () => Navigator.of(context).maybePop(),
           ),
-          title: widget.alias,
+          title: _identity?.name ?? 'Proveedor',
           subtitle: 'Tienda del proveedor',
           below: HeaderSegmented(
             options: [for (final s in _sections) _sectionLabel(s)],
@@ -305,7 +296,8 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       padding:
           EdgeInsets.only(top: 8, bottom: 12 + navBarReservedSpace(context)),
       itemCount: items.length,
-      // Anónimo: la tarjeta NO navega a un detalle que revele el negocio.
+      // La tarjeta no navega a un detalle propio: ya estás dentro de la
+      // tienda de este negocio.
       itemBuilder: (_, i) => ProductListCard(item: items[i]).cascadeIn(i),
     );
   }
