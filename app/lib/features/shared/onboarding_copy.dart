@@ -3,9 +3,13 @@ import 'onboarding_guide.dart';
 /// Copys de cada guía, en un solo lugar (DRY). El PO puede ajustarlos aquí sin
 /// tocar las pantallas. Claves versionadas: subir a `.v2` reaparece la guía.
 const Map<String, List<OnboardingStep>> onboardingCopy = {
-  'client.create_request.v1': [
+  // v2 (PO 2026-07-28): el copy nuevo describe el RESULTADO (le llega a los
+  // proveedores ideales), no la acción. La clave sube de v1 a v2 a propósito:
+  // quien ya vio la v1 la tiene marcada en el backend y sin subir versión el
+  // texto nuevo sería invisible para todos los usuarios actuales.
+  'client.create_request.v2': [
     OnboardingStep(
-        'Aquí puedes contarnos qué necesitas para que los proveedores te hagan ofertas.'),
+        'Aquí creas una solicitud que le llegará a los proveedores ideales.'),
   ],
   'client.view_offers.v1': [
     OnboardingStep(

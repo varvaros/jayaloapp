@@ -741,8 +741,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 ),
               ),
               suffixIcon: OnboardingGuide(
-                guideKey: 'client.create_request.v1',
-                steps: onboardingCopy['client.create_request.v1']!,
+                guideKey: 'client.create_request.v2',
+                steps: onboardingCopy['client.create_request.v2']!,
                 order: 3,
                 child: IconButton(
                   icon: const Icon(Icons.send),

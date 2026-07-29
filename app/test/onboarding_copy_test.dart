@@ -10,6 +10,7 @@ void main() {
     // suyas, para que la suite quede verde en cada frontera de task.
     const keys = [
       'client.plus.v1',
+      'client.create_request.v2',
       'client.my_requests.v1',
       'client.others_requests.v1',
       'client.request_kind.v1',
@@ -25,5 +26,12 @@ void main() {
       expect(onboardingCopy[k]!.first.message.trim(), isNotEmpty,
           reason: '$k con mensaje vacío');
     }
+  });
+
+  test('la guía de crear solicitud lleva el copy nuevo del PO y ya no la v1', () {
+    expect(onboardingCopy.containsKey('client.create_request.v1'), isFalse,
+        reason: 'la v1 debe desaparecer: si sobrevive, quien ya la vio nunca ve el texto nuevo');
+    expect(onboardingCopy['client.create_request.v2']!.first.message,
+        'Aquí creas una solicitud que le llegará a los proveedores ideales.');
   });
 }
