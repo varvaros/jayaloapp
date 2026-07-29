@@ -3,6 +3,7 @@ import '../shared/network_image.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
+import '../../core/create_request_nav.dart';
 import '../../data/repos.dart';
 import '../../domain/phase.dart';
 import '../shell/floating_nav_bar.dart';
@@ -515,7 +516,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                 Center(
                                   child: FilledButton(
                                     onPressed: () =>
-                                        context.push('/client/create'),
+                                        pushCreateRequestOnce(context),
                                     child: const Text('Crear solicitud'),
                                   ),
                                 ),

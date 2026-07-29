@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/center_action.dart';
+import '../../core/create_request_nav.dart';
 import '../../core/motion.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart' show solicitudesBadge, messagesBadge, AppCaches;
@@ -230,8 +231,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                       final taken = centerAction.value;
                       if (taken != null) {
                         taken();
-                      } else if (loc != d.route) {
-                        context.push(d.route);
+                      } else {
+                        // El guardia vive en el helper y mira la pila VIVA del
+                        // router: `loc` viene del build y va un frame por
+                        // detrás, así que dos toques rápidos lo burlaban.
+                        pushCreateRequestOnce(context);
                       }
                     } else {
                       context.go(d.route);

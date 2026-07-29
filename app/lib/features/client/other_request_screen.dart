@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../shared/network_image.dart';
-import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
+import '../../core/create_request_nav.dart';
 import '../../data/repos.dart';
 import '../shared/brand_kit.dart';
 
@@ -57,7 +57,7 @@ class _OtherRequestScreenState extends State<OtherRequestScreen> {
       ),
     );
     if (ok == true && mounted) {
-      context.push('/client/create?seedFrom=${widget.requestId}');
+      pushCreateRequestOnce(context, seedFrom: widget.requestId);
     }
   }
 
