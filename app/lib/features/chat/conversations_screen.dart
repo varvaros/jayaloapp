@@ -420,9 +420,7 @@ class _ConversationRow extends StatelessWidget {
                           child: Text(c['peer_name'] as String? ?? '',
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                  fontWeight: tinted
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
+                                  fontWeight: FontWeight.bold,
                                   fontSize: 14,
                                   color: tinted ? jayaloHead(context) : fg))),
                       // Estado de embudo (privado del proveedor) tiene
