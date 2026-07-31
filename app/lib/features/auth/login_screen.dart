@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,10 +8,16 @@ import '../../core/turnstile.dart';
 import '../shared/jayalo_loader.dart';
 import 'drifting_iso_pattern.dart';
 
+/// El usuario cerró el selector de cuenta de Google. No es un fallo: no hay que
+/// enseñarle ningún error.
+class SignInCancelled implements Exception {
+  const SignInCancelled();
+}
+
 Future<void> signInWithGoogleNative(BuildContext context) async {
   final google = GoogleSignIn(serverClientId: AppConfig.googleWebClientId);
   final account = await google.signIn();
-  if (account == null) throw Exception('Inicio de sesión cancelado');
+  if (account == null) throw const SignInCancelled();
   final auth = await account.authentication;
   final idToken = auth.idToken;
   if (idToken == null) throw Exception('Google no devolvió idToken');
@@ -54,10 +61,21 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _busy = true);
     try {
       await signInWithGoogleNative(context);
+    } on SignInCancelled {
+      // Sin ruido: cerrar el selector de cuenta es una decisión del usuario.
     } catch (e) {
+      // Nada de `$e` crudo: esta es la ÚNICA puerta de entrada de la app, y el
+      // usuario leía cosas como `PlatformException(sign_in_failed, ...
+      // ApiException: 10...)`, que no le dicen qué hacer. El detalle va al log
+      // de desarrollo; a la pantalla va un mensaje accionable.
+      if (kDebugMode) debugPrint('[login] $e');
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('No se pudo iniciar sesión: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'No pudimos iniciar sesión. Revisa tu conexión e inténtalo de nuevo.'),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _busy = false);

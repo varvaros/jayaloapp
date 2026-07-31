@@ -53,11 +53,6 @@ abstract final class JayaloMotion {
   /// → 900 ("todavía muy rápida, +300ms") → 2000 ("pongámosle 2 segundos").
   static const modalRise = Duration(milliseconds: 2000);
 
-  /// Deslizado de pantalla entre secciones (PO 2026-07-19: "con un frenado
-  /// de 2 segundos"): junto con [brake], casi todo el recorrido sucede al
-  /// principio y el resto es una frenada larga y suave.
-  static const screenSlide = Duration(milliseconds: 2000);
-
   /// La curva de ese frenado largo: quinta potencia — sale rápido y aterriza
   /// despacio, la mayor parte de la duración es deceleración.
   static const brake = Curves.easeOutQuint;
@@ -122,8 +117,8 @@ abstract final class JayaloMotion {
   /// (easeOutQuint), no [enter]: con quinta potencia el recorrido se hace casi
   /// todo al principio y el resto de la duración es una frenada larga: eso es
   /// lo que se percibe como "la ventana llegando despacio al tope" y no como
-  /// "la ventana tardando". Es la misma familia que [screenSlide], la del
-  /// deslizado entre secciones.
+  /// "la ventana tardando". Es la misma familia que
+  /// [modalRise], la del modal de crear solicitud.
   ///
   /// Los 520ms de easeOutCubic que tenían "ver ofertas" y "aceptar oferta"
   /// (aprobados el 2026-07-21) quedan reemplazados por esto en TODAS las

@@ -48,16 +48,20 @@ class RoleStore extends ChangeNotifier {
   RoleState value = RoleState.unknown;
 
   Future<void> refresh() async {
-    debugPrint('[gate] refresh: inicio');
+    // `kDebugMode`: `debugPrint` NO se elimina en release (a diferencia de los
+    // asserts) y `avoid_print` tampoco lo cubre, así que estas trazas escribían
+    // `account_type` y el estado de sesión a logcat en el binario de producción,
+    // donde cualquier app con permiso de lectura de logs las ve.
+    if (kDebugMode) debugPrint('[gate] refresh: inicio');
     final p = await myProfile();
     final type = p?['account_type'] as String?;
-    debugPrint('[gate] myProfile OK -> account_type=$type');
+    if (kDebugMode) debugPrint('[gate] myProfile OK -> account_type=$type');
     // Solo se consulta el negocio si dice ser proveedor (una query de más
     // únicamente en ese caso).
     final hasBusiness = type == 'provider' ? (await myBusinessId()) != null : false;
-    debugPrint('[gate] hasBusiness=$hasBusiness');
+    if (kDebugMode) debugPrint('[gate] hasBusiness=$hasBusiness');
     value = roleFrom(accountType: type, hasBusiness: hasBusiness);
-    debugPrint('[gate] rol resuelto=$value');
+    if (kDebugMode) debugPrint('[gate] rol resuelto=$value');
     notifyListeners();
   }
 

@@ -54,7 +54,20 @@
             <!-- Deep link de retorno tras recargar por PayPal en la web
                  (jayalo://wallet). El pago sigue en la web; esto solo trae la
                  app al frente y refresca el saldo. singleTop reutiliza la
-                 instancia viva (no crea otra). -->
+                 instancia viva (no crea otra).
+
+                 Sobre `autoVerify`/assetlinks.json: NO aplican aquí. La
+                 verificación de App Links solo existe para intent-filters
+                 `http`/`https`; un esquema propio como `jayalo://` no es
+                 verificable por diseño, así que otra app PUEDE registrar el
+                 mismo esquema y aparecer en el selector. Es aceptable porque
+                 este link no lleva ningún secreto: `_handleLink` (app.dart)
+                 exige el host `wallet` y el saldo lo relee del backend, así que
+                 lo peor que consigue un impostor es abrir su propia pantalla.
+                 Si algún día esto pasa a `https://jayalo.com/...`, entonces sí
+                 hará falta publicar `/.well-known/assetlinks.json` con el
+                 SHA-256 de Play App Signing (que hoy no existe: no hay cuenta
+                 de Play Console todavía). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
