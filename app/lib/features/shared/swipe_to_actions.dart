@@ -174,18 +174,24 @@ class _SwipeToActionsState extends State<SwipeToActions>
     // Reduce motion: se marca como enseñada IGUAL, para no dejar una pista
     // pendiente para siempre en un dispositivo que no anima.
     if (!MediaQuery.disableAnimationsOf(context)) {
-      await Future<void>.delayed(const Duration(milliseconds: 600));
-      // Si el usuario ya arrastró por su cuenta, no interrumpirlo.
-      if (!mounted || _dx != 0) return;
-      // Un solo `animateWith` continuo (asoma instantáneo + sostiene 420ms +
-      // resorte de vuelta), no `_springTo` + `Future.delayed` sueltos: un
-      // temporizador aislado no mantiene vivo ningún ticker, así que
-      // cualquier código que dependa de "hay una animación en curso" (p. ej.
-      // `pumpAndSettle` en los tests) daría la UI por asentada y dejaría de
-      // bombear frames a mitad del sostenido.
+      // Si el usuario ya está arrastrando por su cuenta, no interrumpirlo.
+      if (_dx != 0) return;
+      // TODA la secuencia (espera + sale + sostiene + resorte de vuelta) en
+      // un único `animateWith`, no un `Future.delayed` suelto seguido de una
+      // animación posterior: un ticker que arranca "en frío" en medio de un
+      // `Future.delayed` reporta su primer tick con elapsed=0 (así es
+      // `Ticker._tick`: fija su `_startTime` de forma perezosa al timestamp
+      // de ESE primer tick), así que el progreso real de la fase de salida
+      // quedaría invisible dentro de un solo `pump(duration)` de test.
+      // Arrancando el ticker YA (con la espera codificada como una fase más
+      // de la simulación, en vez de como un timer aparte) su primer tick
+      // ocurre temprano, con el widget recién montado, y los ticks
+      // posteriores sí acumulan tiempo real — visible en un pump posterior.
       _snap.stop();
-      await _snap.animateWith(_HoldThenSpring(
-        hold: 28,
+      await _snap.animateWith(_PeekSimulation(
+        delaySeconds: 0.6,
+        reveal: 28,
+        outSeconds: 0.18,
         holdSeconds: 0.42,
         after: SpringSimulation(_spring, 28, 0, 0),
       ));
@@ -351,31 +357,65 @@ class _SwipeToActionsState extends State<SwipeToActions>
   }
 }
 
-/// Se queda fija en [hold] durante [holdSeconds] y luego delega en [after]
-/// (el resorte del retorno). Un único [Simulation] continuo — en vez de un
-/// `Future.delayed` suelto seguido de un segundo `animateWith` — para que el
-/// ticker permanezca activo durante todo el sostenido: cualquier código que
-/// consulte "¿sigue habiendo una animación en curso?" (como `pumpAndSettle`
-/// en los tests) debe verlo así de principio a fin, no solo durante el
-/// resorte final.
-class _HoldThenSpring extends Simulation {
-  _HoldThenSpring({
-    required this.hold,
+/// Las cuatro fases del auto-peek en un único [Simulation] continuo. Un solo
+/// ticker de principio a fin — incluida la espera inicial — porque uno que
+/// arranca "en frío" a mitad de un `Future.delayed` reporta su primer tick
+/// con elapsed=0 (ver [Ticker._tick]): no hay forma de que el resto del
+/// código (incluido cualquiera que consulte "¿sigue habiendo una animación
+/// en curso?", como `pumpAndSettle` en los tests) vea progreso real de una
+/// fase que empieza a mitad de un temporizador aislado.
+///
+/// 1. ESPERA quieta en 0 durante [delaySeconds] (da tiempo a que el usuario
+///    termine de mirar la lista antes de moverle algo).
+/// 2. SALE animada de 0 a [reveal] en [outSeconds], desacelerando al llegar
+///    (`Curves.easeOut`). Nunca un resorte subamortiguado aquí: rebotaría al
+///    asomar, y asomarse debe leerse como un gesto suave, no como una
+///    sacudida.
+/// 3. SOSTIENE en [reveal] durante [holdSeconds].
+/// 4. VUELVE delegando en [after] (el resorte de siempre).
+class _PeekSimulation extends Simulation {
+  _PeekSimulation({
+    required this.delaySeconds,
+    required this.reveal,
+    required this.outSeconds,
     required this.holdSeconds,
     required this.after,
   });
 
-  final double hold;
+  final double delaySeconds;
+  final double reveal;
+  final double outSeconds;
   final double holdSeconds;
   final Simulation after;
+  static const Curve _outCurve = Curves.easeOut;
+
+  double get _outEnd => delaySeconds + outSeconds;
+  double get _holdEnd => _outEnd + holdSeconds;
 
   @override
-  double x(double time) => time < holdSeconds ? hold : after.x(time - holdSeconds);
+  double x(double time) {
+    if (time < delaySeconds) return 0;
+    if (time < _outEnd) {
+      final t =
+          outSeconds <= 0 ? 1.0 : ((time - delaySeconds) / outSeconds).clamp(0.0, 1.0);
+      return reveal * _outCurve.transform(t);
+    }
+    if (time < _holdEnd) return reveal;
+    return after.x(time - _holdEnd);
+  }
 
   @override
-  double dx(double time) => time < holdSeconds ? 0 : after.dx(time - holdSeconds);
+  double dx(double time) {
+    if (time >= _holdEnd) return after.dx(time - _holdEnd);
+    // Diferencias finitas para las fases 1-3: alcanza para la única cosa que
+    // consume esta velocidad (una pista al detener la simulación a medio
+    // camino, p. ej. si el usuario arrastra durante el peek); no hace falta
+    // la derivada analítica de la curva.
+    const epsilon = 0.001;
+    return (x(time + epsilon) - x(time - epsilon)) / (2 * epsilon);
+  }
 
   @override
   bool isDone(double time) =>
-      time >= holdSeconds && after.isDone(time - holdSeconds);
+      time >= _holdEnd && after.isDone(time - _holdEnd);
 }

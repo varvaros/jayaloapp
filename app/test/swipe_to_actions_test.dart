@@ -187,6 +187,26 @@ void main() {
       expect(onboardingStore.isDone('requests.swipe.v1'), isTrue);
     });
 
+    testWidgets(
+        'durante la salida la tarjeta pasa por una posición intermedia (no salta directo a 28)',
+        (tester) async {
+      await tester.pumpWidget(peekHost());
+      final baseX = tester.getTopLeft(find.text('card')).dx;
+      await tester.pump(); // post-frame que dispara _maybePeek
+      await tester.pump(
+          const Duration(milliseconds: 600)); // cumple la espera inicial
+
+      var sawMid = false;
+      for (var i = 0; i < 30 && !sawMid; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+        final delta = tester.getTopLeft(find.text('card')).dx - baseX;
+        if (delta > 0 && delta < 28) sawMid = true;
+      }
+      expect(sawMid, isTrue,
+          reason:
+              'la salida debe animarse (0 → 28), no saltar directo al valor final');
+    });
+
     testWidgets('con la clave ya marcada NO se asoma', (tester) async {
       await onboardingStore.markDone('requests.swipe.v1');
       await tester.pumpWidget(peekHost());
