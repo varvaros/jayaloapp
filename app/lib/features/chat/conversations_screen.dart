@@ -7,10 +7,12 @@ import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/network_image.dart';
+import '../shared/swipe_to_actions.dart';
 import '../shared/verified_badges.dart';
 import '../shared/violet_header.dart';
 import 'funnel_status_store.dart';
 import 'opened_conversations.dart';
+import 'widgets/conversation_actions.dart';
 
 const _tabs = [
   ('abierto', 'Abierto'),
@@ -60,6 +62,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   bool _error = false;
   String _tab = 'abierto';
   String _q = '';
+
+  /// Un solo row de swipe abierto a la vez (mismo patrón que Solicitudes).
+  final ValueNotifier<Object?> _openRow = ValueNotifier<Object?>(null);
 
   /// Refresh al VOLVER a esta pantalla (badges/último mensaje). No puede
   /// depender del future de `context.push`: el atrás del chat hace
@@ -129,6 +134,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     _router?.routeInformationProvider.removeListener(_onRouteChanged);
     funnelStatusStore.removeListener(_onStoreChanged);
     openedConversationsStore.removeListener(_onStoreChanged);
+    _openRow.dispose();
     super.dispose();
   }
 
@@ -188,13 +194,35 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   }
 
   Widget _body(List<Map<String, dynamic>> all) {
+    // Los archivados salen de las tres pestañas normales y de sus conteos:
+    // archivar es "quítamelo de la bandeja".
+    final archived = all.where(conversationArchived).toList();
+    final live = all.where((c) => !conversationArchived(c)).toList();
     final counts = <String, int>{};
-    for (final c in all) {
+    for (final c in live) {
       counts[c['status'] as String] = (counts[c['status'] as String] ?? 0) + 1;
     }
+    // La cuarta píldora solo existe si hay algo que mostrar en ella.
+    final tabs = [
+      ..._tabs,
+      if (archived.isNotEmpty) ('archivados', 'Archivados'),
+    ];
+    // Si la píldora desaparece (se desarchivó el último), el estado efectivo
+    // vuelve a Abierto — NO solo el índice pintado. Se resuelve como variable
+    // local derivada (nunca `setState` durante `build`): si `_tab` sigue
+    // siendo 'archivados' cuando esa pestaña ya no existe, todo lo que lee
+    // `effectiveTab` (contenido, resaltado de la píldora, acciones del swipe,
+    // mensaje vacío) cae a 'abierto' de forma consistente, en vez de dejar la
+    // píldora pintada como "Abierto" mientras el contenido sigue filtrando
+    // por archivados (lista vacía y píldora mintiendo).
+    final tabIndex = tabs.indexWhere((t) => t.$1 == _tab);
+    final effectiveTab = tabIndex == -1 ? 'abierto' : _tab;
+    final safeIndex = tabIndex == -1 ? 0 : tabIndex;
     final term = _q.trim().toLowerCase();
-    final filtered = all
-        .where((c) => c['status'] == _tab)
+    final source = effectiveTab == 'archivados'
+        ? archived
+        : live.where((c) => c['status'] == effectiveTab);
+    final filtered = source
         .where((c) =>
             term.isEmpty ||
             ((c['product_name'] as String?) ?? '').toLowerCase().contains(term) ||
@@ -205,11 +233,15 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
         child: PillSegmented(
           options: [
-            for (final (v, label) in _tabs)
-              counts[v] == null ? label : '$label ${counts[v]}',
+            for (final (v, label) in tabs)
+              v == 'archivados'
+                  ? '$label ${archived.length}'
+                  : counts[v] == null
+                      ? label
+                      : '$label ${counts[v]}',
           ],
-          index: _tabs.indexWhere((t) => t.$1 == _tab),
-          onChanged: (i) => setState(() => _tab = _tabs[i].$1),
+          index: safeIndex,
+          onChanged: (i) => setState(() => _tab = tabs[i].$1),
         ),
       ),
       Padding(
@@ -225,11 +257,13 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       Expanded(
         child: filtered.isEmpty
             ? EmptyState(
-                message: _tab == 'abierto'
-                    ? 'Sin conversaciones abiertas.\nLas conversaciones empiezan cuando contactas a un proveedor.'
-                    : _tab == 'cerrado'
-                        ? 'Sin conversaciones completadas.'
-                        : 'Sin conversaciones no concretadas.',
+                message: effectiveTab == 'archivados'
+                    ? 'Sin conversaciones archivadas.'
+                    : effectiveTab == 'abierto'
+                        ? 'Sin conversaciones abiertas.\nLas conversaciones empiezan cuando contactas a un proveedor.'
+                        : effectiveTab == 'cerrado'
+                            ? 'Sin conversaciones completadas.'
+                            : 'Sin conversaciones no concretadas.',
               )
             : Container(
                 margin: const EdgeInsets.only(top: 4),
@@ -257,24 +291,85 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                     final peerId = (c['customer_id'] == _uid
                         ? c['provider_user_id']
                         : c['customer_id']) as String?;
-                    return _ConversationRow(
+                    final convId = c['id'] as String;
+                    final asProvider = c['provider_user_id'] == _uid;
+                    final row = _ConversationRow(
                       c: c,
                       onOpen: _open,
-                      isNew: !openedConversationsStore
-                          .contains(c['id'] as String),
+                      isNew: !openedConversationsStore.contains(convId),
                       // Estado de embudo SOLO en las conversaciones donde soy
                       // el proveedor (es mi herramienta privada).
                       funnel: c['provider_user_id'] == _uid
                           ? funnelStatusByKey(
-                              funnelStatusStore.statusKey(c['id'] as String))
+                              funnelStatusStore.statusKey(convId))
                           : null,
                       badge: peerId != null ? _badges[peerId] : null,
+                    );
+                    return SwipeToActions(
+                      id: convId,
+                      group: _openRow,
+                      // La lista de chats es PLANA (filas con divisor, no
+                      // tarjetas): sin radio ni margen propio.
+                      radius: 0,
+                      margin: EdgeInsets.zero,
+                      actions: [
+                        // "No concretado" solo tiene sentido en un chat vivo.
+                        if (effectiveTab == 'abierto')
+                          SwipeAction(
+                            icon: Icons.cancel_outlined,
+                            label: 'No concretado',
+                            color: Theme.of(context).colorScheme.error,
+                            onTap: () => _markLost(convId),
+                          ),
+                        SwipeAction(
+                          icon: effectiveTab == 'archivados'
+                              ? Icons.unarchive_outlined
+                              : Icons.archive_outlined,
+                          label: effectiveTab == 'archivados'
+                              ? 'Desarchivar'
+                              : 'Archivar',
+                          color: Theme.of(context).colorScheme.outline,
+                          onTap: () => _setArchived(
+                            convId,
+                            effectiveTab != 'archivados',
+                            asProvider,
+                          ),
+                        ),
+                      ],
+                      child: row,
                     ).cascadeIn(i);
                   },
                 ),
               ),
       ),
     ]);
+  }
+
+  /// Marcar no concretado: IRREVERSIBLE, así que siempre pasa por confirmación.
+  Future<void> _markLost(String convId) async {
+    if (!await confirmMarkLost(context)) return;
+    try {
+      await markConversationLost(convId);
+    } catch (_) {
+      if (mounted) {
+        showJayaloToast(context, 'No se pudo marcar. Intenta de nuevo.');
+      }
+      return;
+    }
+    if (mounted) await _load();
+  }
+
+  Future<void> _setArchived(
+      String convId, bool archived, bool asProvider) async {
+    try {
+      await setConversationArchived(convId, archived, asProvider: asProvider);
+    } catch (_) {
+      if (mounted) {
+        showJayaloToast(context, 'No se pudo archivar. Intenta de nuevo.');
+      }
+      return;
+    }
+    if (mounted) await _load();
   }
 
   void _open(Map<String, dynamic> c) {

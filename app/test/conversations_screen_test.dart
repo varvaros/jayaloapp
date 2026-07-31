@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/features/chat/conversations_screen.dart';
+import 'package:jayalo_app/features/shared/swipe_to_actions.dart';
 import 'package:jayalo_app/features/shared/violet_header.dart';
 
 /// I1 (invariante de navegación, preservada tras el rediseño al header
@@ -100,5 +101,153 @@ void main() {
     // vuelve a concatenarlos.
     expect(find.text('Buenas, ¿sigue disponible?'), findsOneWidget,
         reason: 'el asunto volvió a concatenarse al último mensaje');
+  });
+
+  Map<String, dynamic> conv(String id,
+          {String status = 'abierto', bool archived = false}) =>
+      {
+        'id': id,
+        'status': status,
+        'archived': archived,
+        'customer_id': 'me',
+        'provider_user_id': 'peer',
+        'peer_name': 'Peer $id',
+        'product_name': 'Asunto $id',
+        'unread_count': 0,
+        'last_kind': 'text',
+        'last_body': 'hola',
+        'last_created_at': '2026-07-31T10:00:00Z',
+        'updated_at': '2026-07-31T10:00:00Z',
+      };
+
+  Future<void> mount(
+          WidgetTester tester, List<Map<String, dynamic>> rows) async {
+    await tester.pumpWidget(MaterialApp(
+      home: ConversationsScreen(
+        leading: const SizedBox(),
+        actions: const [SizedBox()],
+        loadConversations: () async => rows,
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+
+  testWidgets('la píldora Archivados NO aparece sin conversaciones archivadas',
+      (tester) async {
+    await mount(tester, [conv('a')]);
+    expect(find.textContaining('Archivados'), findsNothing);
+  });
+
+  testWidgets('la píldora Archivados aparece con al menos una', (tester) async {
+    await mount(tester, [conv('a'), conv('b', archived: true)]);
+    expect(find.textContaining('Archivados'), findsOneWidget);
+  });
+
+  testWidgets('las archivadas NO salen en la pestaña Abierto', (tester) async {
+    await mount(tester, [conv('a'), conv('b', archived: true)]);
+    expect(find.text('Peer a'), findsOneWidget);
+    expect(find.text('Peer b'), findsNothing,
+        reason: 'archivar oculta de la bandeja');
+  });
+
+  testWidgets('las archivadas no cuentan en la píldora de su estado',
+      (tester) async {
+    await mount(tester, [conv('a'), conv('b', archived: true)]);
+    expect(find.text('Abierto 1'), findsOneWidget,
+        reason: 'el conteo debe excluir las archivadas');
+  });
+
+  /// La píldora de la pestaña "perdido" YA dice, literal, "No concretado"
+  /// (sin sufijo de conteo cuando no hay ninguna) — mismo texto exacto que la
+  /// acción de swipe. Esa píldora vive SIEMPRE en pantalla (no dentro del
+  /// `SwipeToActions` de la fila), así que un `find.text('No concretado')`
+  /// sin ámbito encuentra dos widgets con el swipe abierto y es ambiguo tanto
+  /// para `expect` como para `tap`. Se acota a los descendientes del
+  /// `SwipeToActions` de la fila para apuntar a la franja de swipe y no a la
+  /// píldora del filtro.
+  Finder swipeText(String label) => find.descendant(
+      of: find.byType(SwipeToActions), matching: find.text(label));
+
+  testWidgets('deslizar una conversación abierta revela No concretado y '
+      'Archivar', (tester) async {
+    await mount(tester, [conv('a')]);
+    await tester.drag(find.text('Peer a'), const Offset(220, 0));
+    await tester.pumpAndSettle();
+    expect(swipeText('No concretado'), findsOneWidget);
+    expect(swipeText('Archivar'), findsOneWidget);
+  });
+
+  testWidgets('en la pestaña Archivados la acción es Desarchivar',
+      (tester) async {
+    await mount(tester, [conv('b', archived: true)]);
+    await tester.tap(find.textContaining('Archivados'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.text('Peer b'), const Offset(220, 0));
+    await tester.pumpAndSettle();
+    expect(swipeText('Desarchivar'), findsOneWidget);
+    expect(swipeText('No concretado'), findsNothing);
+  });
+
+  testWidgets('No concretado pide confirmación y cancelar no hace nada',
+      (tester) async {
+    await mount(tester, [conv('a')]);
+    await tester.drag(find.text('Peer a'), const Offset(220, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(swipeText('No concretado'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('no se puede reabrir'), findsOneWidget,
+        reason: 'marcar perdido es irreversible: hay que decirlo');
+    await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Peer a'), findsOneWidget);
+  });
+
+  /// Punto 6 del brief: el fallo lógico en el cálculo original de `_body` —
+  /// corregía el ÍNDICE de la píldora (`safeIndex`) para que no se saliera de
+  /// rango cuando la pestaña Archivados desaparece, pero dejaba el ESTADO
+  /// `_tab` clavado en 'archivados'. Resultado: la píldora se pintaría como
+  /// "Abierto" mientras el contenido seguía filtrando por archivados — lista
+  /// vacía con una píldora que miente.
+  ///
+  /// Se reproduce sin depender de Supabase (los widget-tests no lo
+  /// inicializan): se está viendo la pestaña Archivados cuando, por una
+  /// recarga (`loadConversations` inyectable + pull-to-refresh real vía
+  /// `JayaloRefresh`/`RefreshIndicator`), el servidor deja de reportar
+  /// conversaciones archivadas. `_tab` queda en 'archivados' (nadie tocó la
+  /// píldora), así que esto ejercita exactamente la rama que `effectiveTab`
+  /// tiene que resolver sin un `setState` en `build`.
+  testWidgets(
+      'si la recarga deja sin archivadas estando en esa pestaña, cae a '
+      'Abierto de verdad (contenido y píldora), no una Archivados vacía',
+      (tester) async {
+    var archivedGone = false;
+    await tester.pumpWidget(MaterialApp(
+      home: ConversationsScreen(
+        leading: const SizedBox(),
+        actions: const [SizedBox()],
+        loadConversations: () async =>
+            archivedGone ? [conv('a')] : [conv('a'), conv('b', archived: true)],
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+
+    await tester.tap(find.textContaining('Archivados'));
+    await tester.pumpAndSettle();
+    expect(find.text('Peer b'), findsOneWidget);
+
+    // La próxima recarga (pull-to-refresh real) ya no trae archivadas.
+    archivedGone = true;
+    await tester.fling(find.byType(ListView), const Offset(0, 300), 1000);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+
+    // La píldora Archivados desapareció (ya no hay nada que mostrar en ella)
+    // y el contenido visible es el de Abierto, no una lista vacía.
+    expect(find.textContaining('Archivados'), findsNothing);
+    expect(find.text('Peer a'), findsOneWidget);
+    expect(find.text('Abierto 1'), findsOneWidget);
   });
 }
