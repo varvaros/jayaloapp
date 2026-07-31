@@ -207,6 +207,28 @@ void main() {
               'la salida debe animarse (0 → 28), no saltar directo al valor final');
     });
 
+    testWidgets(
+        'si el usuario arrastra durante el peek, la clave NO se marca (se puede ofrecer otra vez)',
+        (tester) async {
+      await tester.pumpWidget(peekHost());
+      await tester.pump(); // post-frame que dispara _maybePeek
+      await tester.pump(const Duration(milliseconds: 700)); // a mitad de la salida
+
+      // Arrastre real del usuario mientras el peek sigue en curso.
+      final gesture =
+          await tester.startGesture(tester.getCenter(find.text('card')));
+      await gesture.moveBy(const Offset(20, 0));
+      await tester.pump();
+      await gesture.moveBy(const Offset(100, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(onboardingStore.isDone('requests.swipe.v1'), isFalse,
+          reason:
+              'una pista cortada a medias no se le enseñó a nadie: debe poder ofrecerse otra vez');
+    });
+
     testWidgets('con la clave ya marcada NO se asoma', (tester) async {
       await onboardingStore.markDone('requests.swipe.v1');
       await tester.pumpWidget(peekHost());

@@ -85,6 +85,19 @@ class _SwipeToActionsState extends State<SwipeToActions>
   late final AnimationController _snap;
   bool _busy = false;
 
+  /// True mientras el auto-peek tiene una animación en curso sobre ESTA fila
+  /// (ver [_maybePeek]). Es lo que le permite a `onHorizontalDragStart`
+  /// distinguir "el usuario arrastró esta tarjeta de verdad" de cualquier
+  /// otra cosa que también pare el resorte (p. ej. `_onGroupChanged` cuando
+  /// otra fila se abre y esta se cierra de rebote — eso NO cuenta).
+  bool _peekActive = false;
+
+  /// Se activa solo si el usuario arrastra ESTA fila mientras `_peekActive`
+  /// es true. Si termina en true, `_maybePeek` no marca la clave como vista:
+  /// una pista cortada a medias no le enseñó el gesto a nadie, y es de una
+  /// sola vez — consumirla igual la perdería para siempre.
+  bool _peekInterrupted = false;
+
   bool get _blocked => widget.blockedReason != null;
 
   /// Bloqueado: una sola franja con texto de una línea, no N íconos de 88.
@@ -187,15 +200,29 @@ class _SwipeToActionsState extends State<SwipeToActions>
       // de la simulación, en vez de como un timer aparte) su primer tick
       // ocurre temprano, con el widget recién montado, y los ticks
       // posteriores sí acumulan tiempo real — visible en un pump posterior.
+      _peekActive = true;
+      _peekInterrupted = false;
       _snap.stop();
-      await _snap.animateWith(_PeekSimulation(
-        delaySeconds: 0.6,
-        reveal: 28,
-        outSeconds: 0.18,
-        holdSeconds: 0.42,
-        after: SpringSimulation(_spring, 28, 0, 0),
-      ));
-      if (!mounted) return;
+      try {
+        // `.orCancel`: por defecto, si algo llama `_snap.stop()` mientras
+        // esta simulación corre (un arrastre real, o `_onGroupChanged`
+        // cerrando esta fila de rebote), el `TickerFuture` base NUNCA se
+        // completa — este `await` se quedaría colgado para siempre. Con
+        // `.orCancel` sí se completa (con `TickerCanceled`), así que
+        // podemos seguir y decidir, según `_peekInterrupted`, si la
+        // interrupción vino de un arrastre real de esta fila o no.
+        await _snap.animateWith(_PeekSimulation(
+          delaySeconds: 0.6,
+          reveal: 28,
+          outSeconds: 0.18,
+          holdSeconds: 0.42,
+          after: SpringSimulation(_spring, 28, 0, 0),
+        )).orCancel;
+      } on TickerCanceled {
+        // Manejado abajo vía `_peekInterrupted`.
+      }
+      _peekActive = false;
+      if (!mounted || _peekInterrupted) return;
     }
     await onboardingStore.markDone(key);
   }
@@ -287,6 +314,10 @@ class _SwipeToActionsState extends State<SwipeToActions>
       padding: widget.margin,
       child: GestureDetector(
         onHorizontalDragStart: (_) {
+          // Arrastre real del usuario sobre esta fila: si el auto-peek
+          // estaba en curso, se corta y NO cuenta como "vista" (ver
+          // `_maybePeek`/`_peekInterrupted`).
+          if (_peekActive) _peekInterrupted = true;
           _snap.stop(); // toma el control del resorte si venía asentándose
           _dragRaw = _dx; // reanuda desde donde está (en rango, resist≈1:1)
         },
