@@ -4,6 +4,7 @@ import '../quick_replies_store.dart';
 import '../../shared/jayalo_loader.dart';
 import '../../shared/onboarding_guide.dart';
 import '../../shared/onboarding_copy.dart';
+import '../../../core/motion.dart';
 
 enum PlusAction {
   sendAddress,
@@ -22,12 +23,18 @@ class ChatComposer extends StatefulWidget {
     required this.onSendText,
     required this.onPlusAction,
     required this.onQuickItem,
+    this.onTyping,
   });
   final bool isProvider;
   final bool sending;
   final Future<bool> Function(String text) onSendText;
   final void Function(PlusAction) onPlusAction;
   final void Function(QuickItem) onQuickItem;
+
+  /// Se llama en CADA pulsación del campo de texto. El composer no sabe (ni
+  /// debe) cómo viaja el aviso ni cada cuánto: el throttle vive en la pantalla,
+  /// junto al canal por donde se emite.
+  final VoidCallback? onTyping;
 
   @override
   State<ChatComposer> createState() => _ChatComposerState();
@@ -74,6 +81,7 @@ class _ChatComposerState extends State<ChatComposer> {
             (PlusAction.sendPhoto, Icons.add_photo_alternate_outlined, 'Enviar foto'),
           ];
     showModalBottomSheet<void>(
+        sheetAnimationStyle: JayaloMotion.sheetMenu,
         context: context,
         builder: (ctx) => SafeArea(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -90,6 +98,7 @@ class _ChatComposerState extends State<ChatComposer> {
 
   void _openEmojis() {
     showModalBottomSheet<void>(
+        sheetAnimationStyle: JayaloMotion.sheetMenu,
         context: context,
         builder: (ctx) => SafeArea(
                 child: GridView.count(
@@ -114,6 +123,7 @@ class _ChatComposerState extends State<ChatComposer> {
     // ensureLoaded en initState.
     final list = quickRepliesStore.forProvider(widget.isProvider);
     showModalBottomSheet<void>(
+        sheetAnimationStyle: JayaloMotion.sheetMenu,
         context: context,
         isScrollControlled: true,
         builder: (ctx) => SafeArea(
@@ -180,6 +190,10 @@ class _ChatComposerState extends State<ChatComposer> {
         Expanded(
           child: TextField(
             controller: _ctrl,
+            // Borrar también cuenta como "estoy escribiendo": el usuario sigue
+            // trabajando en el mensaje. Por eso el aviso va en `onChanged` y no
+            // condicionado a que el texto crezca.
+            onChanged: (_) => widget.onTyping?.call(),
             maxLines: 4,
             minLines: 1,
             maxLength: maxMessageLen,

@@ -102,6 +102,7 @@ Future<void> startUnlockFlow(
   unawaited(onboardingStore.ensureLoaded());
   final holdProgress = ValueNotifier<double>(0);
   showModalBottomSheet(
+    sheetAnimationStyle: JayaloMotion.sheetRise,
     context: context,
     showDragHandle: true,
     useRootNavigator: true,
@@ -109,20 +110,50 @@ Future<void> startUnlockFlow(
     // Sube casi al centro (pedido PO 2026-07-22): hoja alta con el contenido
     // centrado, en vez de una franja pegada al borde inferior.
     builder: (ctx) => _TallSheet(
-      overlay: needsRecharge ? null : HoldMascotLayer(progress: holdProgress),
       child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              width: 56,
+            // La mascota vive EN LA COLUMNA, en el sitio exacto que ocupaba el
+            // círculo del candado (ícono eliminado, PO 2026-07-30: el candado
+            // sigue abajo en el botón, tenerlo dos veces era redundante).
+            //
+            // Antes se posicionaba sobre la hoja entera con un `Alignment`
+            // proporcional, y eso la desalineaba según el alto del teléfono: la
+            // columna mide siempre lo mismo en px, pero la hoja crece con la
+            // pantalla. Acá queda clavada al hueco en cualquier device.
+            //
+            // 👉 EL TRUCO es el `OverflowBox`: la columna solo RESERVA 56px,
+            // pero la mascota puede dibujarse mucho más grande sin que eso
+            // cuente para el layout. Sin él, inflarse hasta 1.8× empujaría el
+            // título, el costo y el botón hacia abajo — el botón se movería
+            // bajo el dedo a media pulsación, que es justo lo que no puede
+            // pasar en un hold. Con él, crece por encima del contenido igual
+            // que antes.
+            SizedBox(
               height: 56,
-              decoration: BoxDecoration(
-                color: Theme.of(ctx).colorScheme.primary.withValues(alpha: .12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.lock_outline_rounded,
-                  color: Theme.of(ctx).colorScheme.primary, size: 28),
+              child: needsRecharge
+                  ? null
+                  : Center(
+                      child: OverflowBox(
+                        minWidth: 0,
+                        maxWidth: double.infinity,
+                        minHeight: 0,
+                        maxHeight: double.infinity,
+                        // Caja de dibujo de la mascota + la onda del ¡PUM!
+                        // (`_PumPainter` pinta 300×300 centrado).
+                        child: SizedBox(
+                          width: 300,
+                          height: 300,
+                          child: HoldMascotLayer(
+                            progress: holdProgress,
+                            // Centrada en SU caja: ya no hay que adivinar una
+                            // proporción sobre la hoja.
+                            alignment: Alignment.center,
+                          ),
+                        ),
+                      ),
+                    ),
             ),
             const SizedBox(height: 14),
             Text('Desbloquear contacto',
@@ -233,6 +264,7 @@ Future<void> showOfferContactSheet(
   }
   if (!context.mounted) return;
   showModalBottomSheet(
+    sheetAnimationStyle: JayaloMotion.sheetRise,
     context: context,
     showDragHandle: true,
     useRootNavigator: true,
@@ -378,13 +410,15 @@ class _StartChatButtonState extends State<StartChatButton> {
 /// Hoja alta que sube casi al centro (pedido PO 2026-07-22): reserva una
 /// fracción de la pantalla y centra su contenido, en vez de una franja pegada
 /// al borde inferior. Suma el inset del sistema para no quedar tras el navbar.
-/// [overlay] (opcional) se pinta ENCIMA del contenido, dentro de un
-/// IgnorePointer — la capa de la mascota que se infla con el hold.
+///
+/// Tenía un `overlay` para pintar la mascota del hold ENCIMA de todo el
+/// contenido; se retiró el 2026-07-30 cuando la mascota se mudó a su sitio
+/// dentro de la columna (ver `openUnlockSheet`), que la deja clavada al hueco
+/// del candado en cualquier tamaño de pantalla.
 class _TallSheet extends StatelessWidget {
-  const _TallSheet({required this.child, this.heightFactor = .5, this.overlay});
+  const _TallSheet({required this.child, this.heightFactor = .5});
   final Widget child;
   final double heightFactor;
-  final Widget? overlay;
 
   @override
   Widget build(BuildContext context) {
@@ -402,10 +436,21 @@ class _TallSheet extends StatelessWidget {
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [Flexible(child: SingleChildScrollView(child: child))],
+              children: [
+                Flexible(
+                  child: SingleChildScrollView(
+                    // `Clip.none` (el default es `hardEdge`): la mascota vive
+                    // DENTRO de esta columna, en el hueco del candado, y se
+                    // dibuja mucho más grande que el hueco que reserva (ver el
+                    // `OverflowBox` de `openUnlockSheet`). Con el recorte por
+                    // defecto, inflarse le cortaba la cabeza contra el borde
+                    // del área scrolleable, y la onda del ¡PUM! salía partida.
+                    clipBehavior: Clip.none,
+                    child: child,
+                  ),
+                ),
+              ],
             ),
-            if (overlay != null)
-              Positioned.fill(child: IgnorePointer(child: overlay!)),
           ],
         ),
       ),

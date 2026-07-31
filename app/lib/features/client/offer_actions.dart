@@ -17,6 +17,7 @@ void showOfferSheet(BuildContext context, Map<String, dynamic> request,
     Map<String, dynamic> offer,
     {required bool hasAcceptedElsewhere}) {
   showModalBottomSheet(
+    sheetAnimationStyle: JayaloMotion.sheetRise,
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
@@ -25,17 +26,6 @@ void showOfferSheet(BuildContext context, Map<String, dynamic> request,
     // sheet se apila en el navigator interno del shell y el navbar (que es un
     // bottomNavigationBar) lo tapa por abajo.
     useRootNavigator: true,
-    // "Que suba más lenta y desacelere al llegar al final" (pedido PO):
-    // easeOutCubic arranca rápido y frena suave; 520 ms lo hace notable sin
-    // sentirse pesado. Se logra sin un controller propio (que rompía el
-    // arrastre-para-cerrar en versiones anteriores) — `sheetAnimationStyle`
-    // solo ajusta la curva/duración de la transición estándar.
-    sheetAnimationStyle: AnimationStyle(
-      duration: const Duration(milliseconds: 520),
-      reverseDuration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    ),
     // Altura FIJA casi al tope (92%, pedido PO: "los detalles de la oferta
     // deben subir casi al tope de la ventana") — misma técnica del sheet de la
     // lista (altura fija, sin DraggableScrollableSheet: el DSS anidado se
@@ -535,9 +525,13 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
             child: IgnorePointer(
               child: HoldMascotLayer(
                 progress: _acceptProgress,
-                // Baja: el detalle de la oferta ocupa arriba; la mascota vive
-                // sobre el botón de aceptar, en el tercio inferior.
-                alignment: const Alignment(0, .34),
+                // PEGADA al botón de aceptar (PO 2026-07-30, con captura):
+                // en `.34` quedaba flotando entre el detalle del producto y la
+                // letra chica de "puedes aceptar hasta 3 ofertas", lejos del
+                // pulgar — se leía como un adorno suelto y no como la reacción
+                // al gesto. `.60` la sienta justo encima del botón verde, que
+                // es lo que el usuario está manteniendo presionado.
+                alignment: const Alignment(0, .60),
               ),
             ),
           ),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'config.dart';
+import 'motion.dart';
 
 class TurnstileException implements Exception {
   TurnstileException(this.message);
@@ -61,6 +62,7 @@ Future<String> getTurnstileToken(BuildContext context) async {
   final nav = Navigator.of(context, rootNavigator: true);
   var sheetOpen = true;
   unawaited(showModalBottomSheet(
+    sheetAnimationStyle: JayaloMotion.sheetMenu,
     context: context,
     isDismissible: false,
     enableDrag: false,

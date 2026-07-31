@@ -107,9 +107,82 @@ class AppCaches {
   static final isProvider = TtlCache<bool>(const Duration(minutes: 5));
   static final isAdmin = TtlCache<bool>(const Duration(minutes: 5));
 
+  // ── Listas de pestaña (stale-while-revalidate) ────────────────────────────
+  //
+  // POR QUÉ (PO 2026-07-30: "el JayaloLoader sigue saliendo cada vez que cambio
+  // de pantalla"): el `ShellRoute` destruye el `State` de la pestaña que dejas,
+  // así que al volver se re-evalúa su `Future` de carga desde cero. Sin caché
+  // eso era un round-trip completo a Supabase en CADA cambio de pestaña, y
+  // pasados los 400ms del umbral aparecía la mascota. Con `readFresh` la
+  // pantalla pinta lo último que tenía al instante y la red corre por detrás.
+  //
+  // Solo se cachean las lecturas SIN PARÁMETROS. `providerInbox`,
+  // `allOpenRequests` y `catalogProducts` reciben filtros, y un `TtlCache`
+  // guarda UN valor: cachearlas acá le serviría al usuario el resultado de otro
+  // filtro. Necesitan un caché por clave — pendiente aparte.
+  //
+  // TTL por tipo, según qué tan rápido envejece cada cosa PARA EL USUARIO:
+  static final myRequests = TtlCache<List<Map<String, dynamic>>>(
+    // Las ofertas que le llegan al cliente son lo que está esperando ver.
+    const Duration(seconds: 30),
+  );
+  static final myOffers = TtlCache<List<Map<String, dynamic>>>(
+    // Del lado proveedor, que le acepten una oferta es LA noticia.
+    const Duration(seconds: 30),
+  );
+  static final conversations = TtlCache<List<Map<String, dynamic>>>(
+    // Más corto: la lista de chats es de las que más cambia, y el realtime de
+    // la conversación ya la desactualiza mientras conversas.
+    const Duration(seconds: 20),
+  );
+
+  /// Vacía las listas que dependen de las solicitudes y ofertas del usuario.
+  ///
+  /// Se llama tras CADA mutación que las cambia (crear solicitud, cancelar,
+  /// ofertar, editar oferta, aceptar, rechazar). Sin esto el usuario haría una
+  /// acción y al volver a la pestaña vería una lista que todavía no la refleja
+  /// — que es peor que la carga que este caché vino a quitar.
+  static void invalidateRequestLists() {
+    myRequests.clear();
+    myOffers.clear();
+  }
+
+  /// ¿Dos páginas de lista son "la misma"?
+  ///
+  /// Hace falta porque [TtlCache.readFresh] compara por identidad, y dos listas
+  /// recién deserializadas de la red NUNCA son idénticas: sin esto cada
+  /// revalidación en segundo plano avisaría "cambió" y la pantalla recargaría
+  /// de más — justo el parpadeo que el caché vino a evitar.
+  ///
+  /// Compara tamaño y, por fila, `id` + los dos campos que mueven la aguja en
+  /// estas listas (`updated_at` y `status`). Es una heurística deliberada: no
+  /// compara la fila entera para no pagar un deep-equals en cada revalidación.
+  /// El costo de equivocarse es que un cambio en un campo no vigilado tarde un
+  /// TTL en verse; el servidor sigue siendo la autoridad.
+  static bool sameRows(
+    List<Map<String, dynamic>> a,
+    List<Map<String, dynamic>> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i]['id'] != b[i]['id'] ||
+          a[i]['updated_at'] != b[i]['updated_at'] ||
+          a[i]['status'] != b[i]['status']) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /// Lo que pudo cambiar MIENTRAS la app estaba en background. Lo llama el
   /// shell en `AppLifecycleState.resumed`, junto al refresh de los badges.
-  static void onResume() => wallet.clear();
+  /// Las listas también: en background pudieron llegar ofertas o mensajes.
+  static void onResume() {
+    wallet.clear();
+    myRequests.clear();
+    myOffers.clear();
+    conversations.clear();
+  }
 }
 
 /// Al cerrar sesión (o cambiar de cuenta) se vacía TODO: sin esto el saldo o el
@@ -133,7 +206,17 @@ void wireCacheInvalidation() {
 
 // ── Cliente: mis solicitudes y ofertas ──────────────────────────────────────
 
-Future<List<Map<String, dynamic>>> myRequests() async {
+/// Mis solicitudes, amortiguadas: al volver a la pestaña pinta lo último que
+/// había y refresca por detrás. Si lo que vuelve es distinto, sube
+/// `requestsChanged` — el mismo tick que ya escuchan las pantallas para
+/// recargarse, así que no hace falta que ninguna sepa que existe un caché.
+Future<List<Map<String, dynamic>>> myRequests() => AppCaches.myRequests.readFresh(
+      _fetchMyRequests,
+      equals: AppCaches.sameRows,
+      onChanged: () => requestsChanged.value++,
+    );
+
+Future<List<Map<String, dynamic>>> _fetchMyRequests() async {
   final uid = supa.auth.currentUser!.id;
   return List<Map<String, dynamic>>.from(
     await supa
@@ -428,6 +511,7 @@ Future<void> submitRequest({
     // fan-out de notificaciones a proveedores).
     if (e.code != '23505') rethrow;
   }
+  AppCaches.invalidateRequestLists();
   requestsChanged.value++;
 }
 
@@ -438,6 +522,7 @@ Future<void> submitRequest({
 /// `unlocked_offer_exists` (el llamador lo detecta en el mensaje del error).
 Future<void> cancelCustomerRequest(String requestId) async {
   await supa.rpc('cancel_customer_request', params: {'_request_id': requestId});
+  AppCaches.invalidateRequestLists();
   requestsChanged.value++;
 }
 
@@ -447,6 +532,11 @@ Future<bool> acceptOffer({required String offerId}) async {
   // caller envuelve en catchError, así que una excepción (p.ej. "ya tiene 3
   // finalistas") cae al mensaje genérico "esta oferta ya no está disponible".
   final res = await supa.rpc('accept_offer', params: {'_offer_id': offerId});
+  // Aceptar mueve las DOS listas: la solicitud del cliente gana un finalista y
+  // la oferta del proveedor pasa a 'accepted'. Se invalida aunque la RPC diga
+  // que no (idempotencia, o cupo lleno): en ese caso el estado real tampoco es
+  // el que la lista tiene guardado.
+  AppCaches.invalidateRequestLists();
   return res is Map && res['ok'] == true;
 }
 
@@ -458,6 +548,7 @@ Future<void> rejectOffer({
       .from('provider_offers')
       .update({'status': 'rejected', 'rejection_reason': reason})
       .eq('id', offerId);
+  AppCaches.invalidateRequestLists();
 }
 
 Future<void> submitReview({
@@ -647,6 +738,10 @@ Future<void> makeOffer({
     // en silencio para que la UI muestre éxito, no un fallo.
     if (e.code == '23505') return;
     rethrow;
+  } finally {
+    // También en el camino idempotente del 23505: si la oferta ya existía, la
+    // lista guardada tampoco la tiene.
+    AppCaches.invalidateRequestLists();
   }
 }
 
@@ -702,6 +797,7 @@ Future<void> updateOffer({
         ),
       )
       .eq('id', offerId);
+  AppCaches.invalidateRequestLists();
 }
 
 /// Fila COMPLETA de una oferta propia (todas las columnas) para prefijar el
@@ -718,7 +814,15 @@ Future<Map<String, dynamic>?> offerForEdit(String offerId) async {
 Future<void> deleteOffer(String offerId) =>
     supa.from('provider_offers').delete().eq('id', offerId);
 
-Future<List<Map<String, dynamic>>> myOffers() async {
+/// Mis ofertas, amortiguadas (ver [myRequests] para el porqué). No avisa por
+/// `requestsChanged`: esa pantalla no lo escucha, y su propio pull-to-refresh
+/// más el `onResume` del shell ya cubren el caso de datos viejos.
+Future<List<Map<String, dynamic>>> myOffers() => AppCaches.myOffers.readFresh(
+      _fetchMyOffers,
+      equals: AppCaches.sameRows,
+    );
+
+Future<List<Map<String, dynamic>>> _fetchMyOffers() async {
   final uid = supa.auth.currentUser!.id;
   return List<Map<String, dynamic>>.from(
     await supa
@@ -1327,7 +1431,20 @@ String _imageContentType(String ext) => switch (ext) {
 
 const chatMsgCols = 'id,sender_id,kind,body,created_at';
 
-Future<List<Map<String, dynamic>>> conversationsList() async =>
+/// La lista de chats, amortiguada (ver [myRequests] para el porqué).
+///
+/// Ojo con el TTL corto: acá `sameRows` compara por `id`/`updated_at`/`status`,
+/// pero lo que de verdad cambia en esta lista es `last_message_at` y el conteo
+/// de no leídos. Se deja así a propósito — el badge de Mensajes tiene su propio
+/// store en vivo y el chat trae realtime, así que la lista no es la fuente por
+/// la que el usuario se entera de un mensaje nuevo.
+Future<List<Map<String, dynamic>>> conversationsList() =>
+    AppCaches.conversations.readFresh(
+      _fetchConversationsList,
+      equals: AppCaches.sameRows,
+    );
+
+Future<List<Map<String, dynamic>>> _fetchConversationsList() async =>
     List<Map<String, dynamic>>.from(
       await supa.rpc('get_my_conversations_list'),
     );

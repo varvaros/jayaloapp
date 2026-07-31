@@ -6,6 +6,7 @@ import 'package:smart_auth/smart_auth.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../shared/jayalo_loader.dart';
+import '../../core/motion.dart';
 
 /// Hoja compartida de verificación por OTP (spec §6.2). Envía el código al
 /// abrir; copy SIEMPRE dice SMS (el canal real es app_settings.otp_channel,
@@ -18,6 +19,7 @@ Future<bool> showOtpSheet(BuildContext context,
     return false;
   }
   final ok = await showModalBottomSheet<bool>(
+    sheetAnimationStyle: JayaloMotion.sheetRise,
     context: context,
     showDragHandle: true,
     isScrollControlled: true,

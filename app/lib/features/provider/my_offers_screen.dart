@@ -3,7 +3,7 @@ import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
-import '../client/my_requests_screen.dart' show timeAgo;
+import '../client/my_requests_screen.dart' show MyRequestsScreen, timeAgo;
 import '../client/request_status_screen.dart' show offerPriceLabel;
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
@@ -23,6 +23,11 @@ class _MyOffersScreenState extends State<MyOffersScreen>
   List<Map<String, dynamic>> _offers = [];
   int? _balance;
   bool _loading = true;
+
+  /// Segmento activo: 0 = Mis ofertas (lo que vendo), 1 = Mis pedidos (lo que
+  /// compro). Arranca en ofertas — es el motivo principal por el que un
+  /// proveedor entra acá.
+  int _tab = 0;
 
   @override
   void initState() {
@@ -88,22 +93,48 @@ class _MyOffersScreenState extends State<MyOffersScreen>
             title: 'Mis ofertas',
             actions: [HeaderBell()],
           ),
+          // Segmentado "Mis ofertas · Mis pedidos" (PO 2026-07-30).
+          //
+          // El eje NO es "¿oferta o solicitud?" sino "¿qué papel juego?": acá
+          // vive TODO lo mío, lo que vendo y lo que compro. La pestaña
+          // Solicitudes se queda intacta con la demanda AJENA — es la
+          // superficie de ingresos del proveedor y meterla detrás de un
+          // segmento le bajaría la mitad de la prominencia.
+          //
+          // Resuelve el agujero real: el proveedor podía crear una solicitud
+          // desde el ＋ de la barra y después no tenía dónde encontrarla salvo
+          // abriendo el menú lateral. Crear y consultar ahora están a la misma
+          // profundidad.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: PillSegmented(
+              options: const ['Mis ofertas', 'Mis pedidos'],
+              index: _tab,
+              onChanged: (i) => setState(() => _tab = i),
+            ),
+          ),
           Expanded(
-            child: _loading
-                ? const JayaloLoaderBlock()
-                : RefreshIndicator(
-                    onRefresh: _refetch,
-                    child: ListView(
-                      padding: EdgeInsets.only(
-                        top: 12,
-                        bottom: 12 + navBarReservedSpace(context),
+            child: _tab == 1
+                // La pantalla del cliente en modo incrustado: mismas tarjetas,
+                // misma carga, mismo vacío, mismo pull-to-refresh. Cero
+                // duplicación — ver `MyRequestsScreen.embedded`.
+                ? const MyRequestsScreen(embedded: true)
+                : _loading
+                    ? const JayaloLoaderBlock()
+                    : JayaloRefresh(
+                        onRefresh: _refetch,
+                        child: ListView(
+                          padding: EdgeInsets.only(
+                            top: 12,
+                            bottom: 12 + navBarReservedSpace(context),
+                          ),
+                          // Cascada de entrada (fade + slide) en cada tarjeta,
+                          // igual que Solicitudes y Catálogo: `_ci` es el
+                          // índice corrido para escalonar el stagger de arriba
+                          // hacia abajo.
+                          children: _buildOfferList(toUnlock, pending, rest),
+                        ),
                       ),
-                      // Cascada de entrada (fade + slide) en cada tarjeta, igual
-                      // que Solicitudes y Catálogo: `_ci` es el índice corrido
-                      // para escalonar el stagger de arriba hacia abajo.
-                      children: _buildOfferList(toUnlock, pending, rest),
-                    ),
-                  ),
           ),
         ],
       ),

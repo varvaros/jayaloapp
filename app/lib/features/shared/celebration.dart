@@ -632,15 +632,27 @@ class HoldMascotLayer extends StatefulWidget {
   const HoldMascotLayer({
     super.key,
     required this.progress,
-    this.alignment = const Alignment(0, -.55),
+    this.alignment = Alignment.center,
   });
 
   /// Progreso del hold (0→1) — el `progress` del [HoldToConfirmButton].
   final ValueListenable<double> progress;
 
-  /// Dónde se ancla la mascota dentro de su caja. Por defecto arriba-centro
-  /// (hoja de desbloqueo de oferta, contenido corto); la hoja de DETALLE de un
-  /// interés de la tienda la baja para no chocar con el detalle del producto.
+  /// Dónde se ancla la mascota dentro de su caja, en coordenadas de [Alignment]
+  /// (-1 = borde superior, 0 = centro, +1 = borde inferior).
+  ///
+  /// Sirve para las hojas que siguen posicionando la mascota SOBRE todo su
+  /// contenido con una proporción (`inbox_screen` .12, `offer_actions` .60).
+  ///
+  /// El default es el centro porque el desbloqueo de contacto —que era el único
+  /// que lo usaba— dejó de necesitarlo: su mascota ahora vive DENTRO de la
+  /// columna, en el hueco que dejó el ícono del candado, dibujándose a través de
+  /// un `OverflowBox` (ver `openUnlockSheet`). Ese camino es el bueno y quedó
+  /// documentado ahí: clava la mascota al sitio exacto en cualquier tamaño de
+  /// pantalla, mientras que una proporción sobre la hoja entera se desalinea
+  /// según el alto del teléfono (la columna mide siempre lo mismo en px, la
+  /// hoja crece). Las otras dos hojas conservan el modo proporcional porque su
+  /// mascota no tiene que calzar con ningún elemento concreto.
   final Alignment alignment;
 
   @override

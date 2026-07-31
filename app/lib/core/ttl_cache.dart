@@ -60,6 +60,14 @@ class TtlCache<T> {
   /// [has] para desambiguar.
   T? get value => has ? _entry!.value : null;
 
+  /// `true` si hay un valor guardado AUNQUE haya expirado. Es lo que separa
+  /// "nunca se cargó" (hay que ir a la red y esperar) de "está viejo" (se puede
+  /// pintar ya y refrescar por detrás). Lo usa [readFresh].
+  bool get hasStale => _entry != null;
+
+  /// El último valor guardado, vencido o no. `null` solo si nunca hubo uno.
+  T? get staleValue => _entry?.value;
+
   void set(T value) {
     _entry = _Entry(value, _clock().add(ttl));
   }
@@ -108,6 +116,56 @@ class TtlCache<T> {
       f.then<void>((_) => releaseSlot(), onError: (Object _) => releaseSlot()),
     );
     return f;
+  }
+
+  /// Lectura STALE-WHILE-REVALIDATE: nunca hace esperar si ya se cargó alguna
+  /// vez.
+  ///
+  /// - Valor vigente → se sirve, sin tocar la red.
+  /// - Valor VENCIDO → se sirve igual, **de inmediato**, y se dispara un
+  ///   refresco en segundo plano. Si lo que vuelve es distinto de lo que se
+  ///   pintó, se llama [onChanged] para que la pantalla se entere.
+  /// - Nada guardado → se va a la red y se espera (única vez que hay carga
+  ///   visible).
+  ///
+  /// Ese "servir vencido" es justamente lo que quita el loader al volver a una
+  /// pestaña: el `ShellRoute` destruye el `State` al cambiar de pestaña, así que
+  /// cada regreso re-evalúa el `Future` de carga — con [read] eso era un
+  /// round-trip completo cada vez, y a más de 400ms el `JayaloLoaderBlock`
+  /// aparecía. Con esto la pantalla pinta al instante y la red corre detrás.
+  ///
+  /// [equals] decide si "cambió"; por defecto compara por identidad, que para
+  /// listas recién deserializadas es SIEMPRE distinto. Quien cachee listas debe
+  /// pasar una comparación real (ver `AppCaches` en `repos.dart`) o [onChanged]
+  /// se disparará en cada revalidación y la pantalla recargará de más.
+  ///
+  /// El refresco de fondo es best-effort: si falla, se traga el error y la
+  /// pantalla se queda con lo que ya tenía. No hay a quién avisarle — el
+  /// usuario no pidió esta petición.
+  Future<T> readFresh(
+    Future<T> Function() fetch, {
+    void Function()? onChanged,
+    bool Function(T previous, T next)? equals,
+  }) {
+    if (has) return Future.value(_entry!.value);
+
+    if (hasStale) {
+      final previous = _entry!.value;
+      // No se encadena con `_inFlight`: si ya hay una revalidación en vuelo,
+      // `read` se cuelga de ella sola y no se duplica la petición.
+      unawaited(
+        read(fetch).then(
+          (next) {
+            final same = equals?.call(previous, next) ?? identical(previous, next);
+            if (!same) onChanged?.call();
+          },
+          onError: (Object _) {},
+        ),
+      );
+      return Future.value(previous);
+    }
+
+    return read(fetch);
   }
 }
 

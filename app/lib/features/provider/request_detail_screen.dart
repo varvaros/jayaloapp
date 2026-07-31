@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/config.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
+import '../../core/motion.dart';
 import '../../core/safe_image_picker.dart';
 import '../../domain/contact_info.dart';
 import '../../domain/image_pick.dart';
@@ -112,6 +113,9 @@ class _ProviderRequestDetailScreenState
   /// proveedor la ve para decidir si le conviene ofertar. No expone contacto.
   Map<String, dynamic>? _custRep;
 
+  /// Sellos de verificación del cliente (PO 2026-07-29).
+  PeerBadges? _custBadges;
+
   /// Cuántas ofertas ha recibido esta solicitud (FOMO, pedido PO 2026-07-21):
   /// solo el número, no se pueden ver. 0 = no se muestra.
   int _offerCount = 0;
@@ -142,6 +146,9 @@ class _ProviderRequestDetailScreenState
       if (cid != null) {
         customerReputation(cid)
             .then((rep) => mounted ? setState(() => _custRep = rep) : null)
+            .catchError((_) => null);
+        peerVerificationBadges([cid])
+            .then((m) => mounted ? setState(() => _custBadges = m[cid]) : null)
             .catchError((_) => null);
       }
     });
@@ -350,6 +357,7 @@ class _ProviderRequestDetailScreenState
       {String titleKey = 'name'}) {
     final cs = Theme.of(context).colorScheme;
     return showModalBottomSheet<Map<String, dynamic>>(
+      sheetAnimationStyle: JayaloMotion.sheetRise,
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -528,6 +536,10 @@ class _ProviderRequestDetailScreenState
       return _toast(contactInfoMessage);
     }
 
+    // Espejo del proveedor de "enviar solicitud": pasados todos los gates, la
+    // oferta se va. Mismo criterio que allá — el pulso marca el envío real, no
+    // el toque del botón (un `return _toast(...)` de validación no vibra).
+    JayaloHaptics.sent();
     setState(() => _busy = true);
     try {
       // Subir las fotos NUEVAS a Storage antes de guardar (nunca base64 en la
@@ -629,6 +641,7 @@ class _ProviderRequestDetailScreenState
     final nameCtrl = TextEditingController(
         text: (_req?['title'] as String? ?? '').trim());
     final save = await showModalBottomSheet<bool>(
+      sheetAnimationStyle: JayaloMotion.sheetRise,
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -892,6 +905,16 @@ class _ProviderRequestDetailScreenState
             ),
           ),
         ]),
+        if (_custBadges != null &&
+            (_custBadges!.idVerified || _custBadges!.whatsappVerified)) ...[
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 6, children: [
+            if (_custBadges!.idVerified)
+              _verifyPill(cs, 'Id verificado'),
+            if (_custBadges!.whatsappVerified)
+              _verifyPill(cs, 'WS verificado'),
+          ]),
+        ],
         const SizedBox(height: 12),
         if (chips.isEmpty)
           Text('Cliente nuevo — aún sin historial.',
@@ -918,6 +941,26 @@ class _ProviderRequestDetailScreenState
                 ]),
               ),
           ]),
+      ]),
+    );
+  }
+
+  Widget _verifyPill(ColorScheme cs, String label) {
+    final green = Theme.of(context).brightness == Brightness.dark
+        ? JayaloColors.dSuccess
+        : JayaloColors.success;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: green.withValues(alpha: .1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.verified, size: 13, color: green),
+        const SizedBox(width: 4),
+        Text(label,
+            style: TextStyle(
+                fontSize: 11.5, fontWeight: FontWeight.w600, color: green)),
       ]),
     );
   }

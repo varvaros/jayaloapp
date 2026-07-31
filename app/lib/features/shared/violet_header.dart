@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'network_image.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/motion.dart';
 import '../../domain/notifications.dart' show badgeLabel;
 import '../notifications/notification_bell.dart' show notifCountStore;
 import 'profile_avatar_button.dart';
@@ -595,7 +596,12 @@ class HeaderSegmented extends StatelessWidget {
           for (var i = 0; i < options.length; i++)
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => onChanged(i),
+              // Tic de selección solo al cambiar de verdad de segmento
+              // (mismo criterio que la barra flotante).
+              onTap: () {
+                if (i != index) JayaloHaptics.tabChange();
+                onChanged(i);
+              },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOut,

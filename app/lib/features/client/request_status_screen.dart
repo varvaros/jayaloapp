@@ -14,6 +14,7 @@ import '../shared/brand_kit.dart';
 import '../shared/onboarding_guide.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/verified_badges.dart';
+import '../../core/motion.dart';
 
 /// Tono ámbar del panel del detalle (la doctrina lo pide cálido, NO lila —
 /// así el detalle no se confunde con el chat). Claro sale del mockup
@@ -276,6 +277,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
     }
     if (!context.mounted) return;
     await showModalBottomSheet(
+      sheetAnimationStyle: JayaloMotion.sheetRise,
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -283,14 +285,9 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      // "Ver ofertas debe subir más lento" (pedido PO 2026-07-21): la misma
-      // subida suave de la hoja de la oferta (arranca rápido, frena al llegar).
-      sheetAnimationStyle: AnimationStyle(
-        duration: const Duration(milliseconds: 520),
-        reverseDuration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      ),
+      // El frenado de la subida ("ver ofertas debe subir más lento", PO
+      // 2026-07-21) ya no vive acá: subió a `JayaloMotion.sheetRise`, que es
+      // lo que ahora usan TODAS las hojas de la app.
       // Altura FIJA (70%), sin DraggableScrollableSheet: el DSS anidado en un
       // showModalBottomSheet se atascaba en su minChildSize al arrastrar hacia
       // abajo y el sheet NUNCA se cerraba (reproducido en el Redmi — "sube
@@ -923,49 +920,61 @@ class OfferCardProviderHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final info = this.info;
     if (info == null) return const SizedBox.shrink();
-    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Flexible(
+          child: Text(
+            info.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: jayaloHead(context),
+            ),
+          ),
+        ),
+        const SizedBox(width: 5),
+        VerifiedTick(
+          whatsappVerified: info.whatsappVerified,
+          idVerified: info.identityVerified || info.businessVerified,
+          size: 14,
+        ),
+      ],
+    );
+  }
+
+  /// Avatar grande (64px, rounded 14) para el layout horizontal de la card.
+  static Widget avatar(BusinessCardInfo? info, BuildContext context) {
+    if (info == null) {
+      return Container(
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: .12),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(Icons.storefront_outlined,
+            color: Theme.of(context).colorScheme.primary),
+      );
+    }
     final logoUrl = info.logoUrl;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Container(
-            width: 26,
-            height: 26,
-            decoration: BoxDecoration(
-              color: cs.primary.withValues(alpha: .12),
-              shape: BoxShape.circle,
-              image: logoUrl != null
-                  ? DecorationImage(
-                      image: jayaloAvatarImage(logoUrl, 26, context),
-                      fit: BoxFit.cover)
-                  : null,
-            ),
-            child: logoUrl == null
-                ? Icon(Icons.storefront_outlined, size: 14, color: cs.primary)
-                : null,
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              info.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: jayaloHead(context),
-              ),
-            ),
-          ),
-          const SizedBox(width: 5),
-          VerifiedTick(
-            whatsappVerified: info.whatsappVerified,
-            idVerified: info.identityVerified || info.businessVerified,
-            size: 14,
-          ),
-        ],
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(14),
+        image: logoUrl != null
+            ? DecorationImage(
+                image: jayaloAvatarImage(logoUrl, 64, context),
+                fit: BoxFit.cover)
+            : null,
       ),
+      child: logoUrl == null
+          ? Icon(Icons.storefront_outlined,
+              color: Theme.of(context).colorScheme.primary)
+          : null,
     );
   }
 }
@@ -1012,57 +1021,66 @@ class _OfferCard extends StatelessWidget {
     final message = offer['message'] as String? ?? '';
     return JayaloCard(
       onTap: onTap,
-      // Sin abrir: borde grueso oscuro (violeta de marca) para destacarla.
+      padding: const EdgeInsets.all(10),
       border: unread ? Border.all(color: cs.primary, width: 2) : null,
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OfferCardProviderHeader(info: providerInfo),
-          Row(
-            children: [
-              Text(
-                offerPriceLabel(offer),
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  color: jayaloHead(context),
+          OfferCardProviderHeader.avatar(providerInfo, context),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                OfferCardProviderHeader(info: providerInfo),
+                Row(
+                  children: [
+                    Text(
+                      offerPriceLabel(offer),
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: jayaloHead(context),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (cheapest)
+                      StatusChip(
+                        label: 'Más económica',
+                        tone: dark
+                            ? JayaloStatus.unlockedDark
+                            : JayaloStatus.unlockedLight,
+                      ),
+                    const Spacer(),
+                    statusChip,
+                  ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              if (cheapest)
-                StatusChip(
-                  label: 'Más económica',
-                  tone: Theme.of(context).brightness == Brightness.dark
-                      ? JayaloStatus.unlockedDark
-                      : JayaloStatus.unlockedLight,
-                ),
-              const Spacer(),
-              statusChip,
-            ],
+                if (unverified) ...[
+                  const SizedBox(height: 4),
+                  StatusChip(
+                    label: 'Negocio sin verificar',
+                    icon: Icons.gpp_maybe_outlined,
+                    tone: dark
+                        ? (bg: const Color(0x33F14E46), ink: const Color(0xFFF6A7A2))
+                        : (bg: const Color(0xFFFDE8E8), ink: const Color(0xFFC0261C)),
+                  ),
+                ],
+                if (message.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.4,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-          if (unverified) ...[
-            const SizedBox(height: 6),
-            StatusChip(
-              label: 'Negocio sin verificar',
-              icon: Icons.gpp_maybe_outlined,
-              tone: dark
-                  ? (bg: const Color(0x33F14E46), ink: const Color(0xFFF6A7A2))
-                  : (bg: const Color(0xFFFDE8E8), ink: const Color(0xFFC0261C)),
-            ),
-          ],
-          if (message.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              message,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12.5,
-                height: 1.4,
-                color: cs.onSurfaceVariant,
-              ),
-            ),
-          ],
         ],
       ),
     );

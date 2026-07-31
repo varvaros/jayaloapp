@@ -150,4 +150,99 @@ void main() {
       },
     );
   });
+
+  group('readFresh (stale-while-revalidate)', () {
+    test('sin nada guardado: espera a la red (única carga visible)', () async {
+      final c = TtlCache<int>(const Duration(seconds: 60));
+      var llamadas = 0;
+      final v = await c.readFresh(() async {
+        llamadas++;
+        return 7;
+      });
+      expect(v, 7);
+      expect(llamadas, 1);
+    });
+
+    test('valor VIGENTE: sirve sin tocar la red', () async {
+      var now = DateTime(2026, 7, 30, 12);
+      final c = TtlCache<int>(const Duration(seconds: 60), clock: () => now);
+      await c.readFresh(() async => 1);
+      var llamadas = 0;
+      final v = await c.readFresh(() async {
+        llamadas++;
+        return 2;
+      });
+      expect(v, 1);
+      expect(llamadas, 0, reason: 'dentro del TTL no se revalida');
+    });
+
+    test(
+      'valor VENCIDO: sirve lo viejo YA y refresca por detrás',
+      () async {
+        var now = DateTime(2026, 7, 30, 12);
+        final c = TtlCache<int>(const Duration(seconds: 60), clock: () => now);
+        await c.readFresh(() async => 1);
+        now = now.add(const Duration(seconds: 61));
+
+        final completer = Completer<int>();
+        // Devuelve lo VIEJO sin esperar a que la red conteste — esto es lo que
+        // impide que el JayaloLoader aparezca al volver a una pestaña.
+        final v = await c.readFresh(() => completer.future);
+        expect(v, 1);
+
+        completer.complete(2);
+        await Future<void>.delayed(Duration.zero);
+        expect(c.value, 2, reason: 'la revalidación de fondo dejó el nuevo');
+      },
+    );
+
+    test('onChanged solo si el valor REALMENTE cambió', () async {
+      var now = DateTime(2026, 7, 30, 12);
+      final c = TtlCache<int>(const Duration(seconds: 60), clock: () => now);
+      await c.readFresh(() async => 1);
+
+      var avisos = 0;
+      now = now.add(const Duration(seconds: 61));
+      await c.readFresh(() async => 1, onChanged: () => avisos++);
+      await Future<void>.delayed(Duration.zero);
+      expect(avisos, 0, reason: 'mismo valor: la pantalla no debe recargar');
+
+      now = now.add(const Duration(seconds: 61));
+      await c.readFresh(() async => 9, onChanged: () => avisos++);
+      await Future<void>.delayed(Duration.zero);
+      expect(avisos, 1);
+    });
+
+    test('equals a medida: listas nuevas pero equivalentes no avisan', () async {
+      var now = DateTime(2026, 7, 30, 12);
+      final c = TtlCache<List<int>>(
+        const Duration(seconds: 60),
+        clock: () => now,
+      );
+      await c.readFresh(() async => [1, 2, 3]);
+      var avisos = 0;
+      now = now.add(const Duration(seconds: 61));
+      // Lista DISTINTA en identidad pero igual en contenido: sin `equals` el
+      // default por identidad avisaría siempre y la pantalla recargaría de más.
+      await c.readFresh(
+        () async => [1, 2, 3],
+        equals: (a, b) => a.length == b.length,
+        onChanged: () => avisos++,
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(avisos, 0);
+    });
+
+    test('si la revalidación FALLA, se conserva lo que ya había', () async {
+      var now = DateTime(2026, 7, 30, 12);
+      final c = TtlCache<int>(const Duration(seconds: 60), clock: () => now);
+      await c.readFresh(() async => 1);
+      now = now.add(const Duration(seconds: 61));
+
+      final v = await c.readFresh(() async => throw StateError('sin red'));
+      expect(v, 1, reason: 'el usuario sigue viendo su lista');
+      await Future<void>.delayed(Duration.zero);
+      expect(c.staleValue, 1);
+    });
+  });
 }

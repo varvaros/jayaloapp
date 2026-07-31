@@ -186,6 +186,26 @@ class _JayaloAppState extends State<JayaloApp> {
           darkTheme: jayaloTheme(Brightness.dark),
           themeMode: mode,
           scrollBehavior: const JayaloScrollBehavior(),
+          // Overlay de rendimiento, apagado salvo que se pida al compilar:
+          //
+          //   flutter build apk --profile --dart-define=PERF_OVERLAY=true
+          //
+          // Pinta las dos barras de Flutter (arriba el hilo de UI = construir
+          // y hacer layout de widgets; abajo el de RASTER = pintar en la GPU).
+          // Cada barra son 300 frames; la línea verde es el presupuesto de
+          // 16ms. Las barras que la cruzan son los frames perdidos, y CUÁL de
+          // las dos se pasa dice dónde está el problema: arriba es código
+          // Dart, abajo son efectos de pintado (sombras, blur, clips).
+          //
+          // Va por `dart-define` y no por una constante a mano para que nadie
+          // la deje encendida por olvido: en un build normal es `false`
+          // constante y el árbol del overlay ni se compila.
+          //
+          // ⚠️ Medir SOLO en `--profile`. En debug los números mienten (el JIT
+          // y los asserts pesan más que el código real) y en release no hay
+          // instrumentación.
+          showPerformanceOverlay:
+              const bool.fromEnvironment('PERF_OVERLAY'),
           routerConfig: widget.router,
         ),
       );

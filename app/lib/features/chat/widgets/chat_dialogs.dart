@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../shared/network_image.dart';
 import '../../../domain/money.dart';
+import '../../../core/motion.dart';
 
 /// Disclaimer de bienvenida (1 vez por conversación).
 Future<void> showWelcomeDialog(BuildContext context,
@@ -42,6 +43,7 @@ void showAgreementDetails(BuildContext context, Map<String, dynamic> conv,
         Flexible(child: Text(v, textAlign: TextAlign.end, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500))),
       ]));
   showModalBottomSheet<void>(
+      sheetAnimationStyle: JayaloMotion.sheetMenu,
       context: context,
       showDragHandle: true,
       builder: (ctx) => SafeArea(

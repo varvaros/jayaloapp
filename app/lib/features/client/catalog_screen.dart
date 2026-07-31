@@ -257,7 +257,7 @@ class _CatalogViewState extends State<CatalogView> {
           Expanded(
             child: NotificationListener<ScrollNotification>(
               onNotification: _onListScroll,
-              child: RefreshIndicator(
+              child: JayaloRefresh(
               onRefresh: () async => _refetch(),
               child: FutureBuilder<List<Map<String, dynamic>>>(
                 future: _load,

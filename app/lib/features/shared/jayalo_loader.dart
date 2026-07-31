@@ -61,8 +61,31 @@ class JayaloLoader extends StatefulWidget {
 
 class _JayaloLoaderState extends State<JayaloLoader>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: _cycle)..repeat();
+  // ⚠️ En `initState`, NO como `late final … = AnimationController(…)`: el
+  // `build` de abajo retorna antes de tocar `_c` cuando el sistema tiene
+  // "reducir animaciones", así que un `late final` se inicializaría por primera
+  // vez DENTRO de `dispose()` — y ahí `createTicker` busca el `TickerMode` de
+  // un elemento ya desactivado ("Looking up a deactivated widget's ancestor is
+  // unsafe"). Mismo motivo en [_JayaloMascotFaceState] y en `SkeletonCard`.
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: _cycle);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Con reduce-motion el ticker se DETIENE (no solo se ignora su valor): un
+    // `repeat()` que nadie lee le pide un frame por vsync a toda la app.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat();
+    }
+  }
 
   @override
   void dispose() {
@@ -495,7 +518,14 @@ class _MascotPainter extends CustomPainter {
 }
 
 /// Estados de ánimo de la mascota para la gamificación de crear-solicitud.
-enum MascotMood { idle, thinking, happy, celebrate }
+///
+/// [MascotMood.surprised] llegó después, para el pull-to-refresh (PO
+/// 2026-07-30: "la carita se estira un poco y pone la cara de sorprendido").
+/// Es la MISMA expresión de "¡uy!" que ya sabía poner la mascota al inflarse
+/// en el hold — ojo bien abierto + boquita "o" — pero desacoplada de
+/// `inflate`: ahí la sorpresa venía atada a que el cuerpo se redondeara hasta
+/// la esfera, y para el refresco hace falta la cara SIN el globo.
+enum MascotMood { idle, thinking, happy, celebrate, surprised }
 
 /// Parámetros de cara/cuerpo de un instante; se interpolan entre ánimos.
 class _MoodFrame {
@@ -592,15 +622,35 @@ class JayaloMascotFace extends StatefulWidget {
 
 class _JayaloMascotFaceState extends State<JayaloMascotFace>
     with TickerProviderStateMixin {
-  late final AnimationController _clock =
-      AnimationController(vsync: this, duration: _cycle)..repeat();
+  // Ver la nota de [_JayaloLoaderState]: los tres se crean en `initState`
+  // porque el `build` de reduce-motion no los toca y un `late final` acabaría
+  // inicializándose dentro de `dispose()`.
+  late final AnimationController _clock;
   // Fundido entre el ánimo anterior y el nuevo (morph: ease-in-out cúbico).
-  late final AnimationController _blend = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 240), value: 1);
+  late final AnimationController _blend;
   // Pop de reacción a pregunta nueva.
-  late final AnimationController _pulse = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 240), value: 1);
+  late final AnimationController _pulse;
   late MascotMood _prevMood = widget.mood;
+
+  @override
+  void initState() {
+    super.initState();
+    _clock = AnimationController(vsync: this, duration: _cycle);
+    _blend = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 240), value: 1);
+    _pulse = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 240), value: 1);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _clock.stop();
+    } else if (!_clock.isAnimating) {
+      _clock.repeat();
+    }
+  }
 
   @override
   void didUpdateWidget(covariant JayaloMascotFace old) {
@@ -662,6 +712,17 @@ class _JayaloMascotFaceState extends State<JayaloMascotFace>
             pupilDy: 3,
             bodyDy: 2 - 4 * _pingPong(t, 2.0),
           ),
+        MascotMood.surprised => _MoodFrame(
+            // "¡Uy!": ojo redondo bien abierto, boquita "o" y las antenas
+            // tiesas hacia arriba (sorpresa, no vibración). La pupila sube un
+            // poco — mira hacia donde la están jalando.
+            antennaLeft: -9 + 3 * _pingPong(t, 1.1),
+            antennaRight: 9 - 3 * _pingPong(t, 1.3),
+            eyeScaleY: 1,
+            pupilDx: -2,
+            pupilDy: -5,
+            oMouth: 1,
+          ),
         MascotMood.celebrate => _MoodFrame(
             // Fiesta: saltitos, antenas a toda vibración, giro juguetón.
             antennaLeft: 10 * math.sin(t * math.pi * 2 / .5),
@@ -684,6 +745,8 @@ class _JayaloMascotFaceState extends State<JayaloMascotFace>
             doubtMouth: 1,
             bodyRotate: -3),
         MascotMood.happy => const _MoodFrame(happyEye: .45, smile: .8),
+        MascotMood.surprised =>
+          const _MoodFrame(pupilDx: -2, pupilDy: -5, oMouth: 1),
         MascotMood.celebrate => const _MoodFrame(happyEye: 1, smile: 1),
       };
 

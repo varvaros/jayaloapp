@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +12,7 @@ import '../../domain/chat_session.dart';
 import '../../domain/chat_time.dart';
 import '../../core/safe_image_picker.dart';
 import '../../core/sfx.dart';
+import '../../core/motion.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
 import 'widgets/bubbles.dart';
@@ -19,6 +22,7 @@ import 'opened_conversations.dart';
 import '../shared/brand_kit.dart';
 import 'widgets/composer.dart';
 import 'widgets/rating_form.dart';
+import 'widgets/typing_indicator.dart';
 import '../shared/jayalo_loader.dart';
 import '../shared/violet_header.dart';
 import '../shared/onboarding_guide.dart';
@@ -66,6 +70,28 @@ class _ChatScreenState extends State<ChatScreen> {
   AppLifecycleListener? _lifecycle;
   final _scroll = ScrollController();
 
+  // ── "…está escribiendo" ────────────────────────────────────────────────────
+  // Viaja por BROADCAST en el canal que el chat ya tiene abierto: no toca la BD
+  // (no hay fila que escribir ni RLS que pasar) y no deja rastro — es estado
+  // efímero, que es exactamente lo que es "estoy escribiendo".
+  //
+  // Se apoya en que las DOS puntas corran esta app. Un peer que esté en la web
+  // no emite `typing`, así que el indicador simplemente no aparece: el chat se
+  // comporta igual que antes, sin degradarse.
+  static const _typingEvent = 'typing';
+
+  /// Cada cuánto, como MÁXIMO, se emite mientras el usuario teclea. Sin este
+  /// tope se mandaría un frame de websocket por pulsación.
+  static const _typingThrottle = Duration(seconds: 2);
+
+  /// Cuánto sobrevive el indicador sin recibir un `typing` nuevo. Tiene que ser
+  /// holgadamente mayor que [_typingThrottle], si no titila entre emisiones.
+  static const _typingTimeout = Duration(seconds: 5);
+
+  bool _peerTyping = false;
+  DateTime? _lastTypingSent;
+  Timer? _peerTypingTimer;
+
   String get _uid => supa.auth.currentUser!.id;
   bool get _isProvider => _conv?['provider_user_id'] == _uid;
   bool get _isOpen => _conv?['status'] == 'abierto';
@@ -90,6 +116,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    // ORDEN: bajar el indicador a mano ANTES de `_teardownRealtime`, que
+    // también lo baja. Acá el State se está yendo y `setState` ya no es legal,
+    // así que se apagan el timer y la bandera en crudo; con `_peerTyping` ya en
+    // false, el `_clearPeerTyping` de adentro del teardown no llama a setState.
+    _peerTypingTimer?.cancel();
+    _peerTypingTimer = null;
+    _peerTyping = false;
     _teardownRealtime();
     // Solo si sigue siendo la mía: si ya se abrió otra conversación, el dispose
     // tardío de esta no debe borrar la marca de la que está en pantalla.
@@ -279,6 +312,10 @@ class _ChatScreenState extends State<ChatScreen> {
               column: 'conversation_id',
               value: widget.conversationId),
           callback: (payload) {
+            // Llegó el mensaje: ya terminó de escribir. Bajar el indicador acá
+            // (y no esperar el timeout) evita que los tres puntos queden
+            // rebotando debajo del mensaje que acaban de anunciar.
+            if (payload.newRecord['sender_id'] != _uid) _clearPeerTyping();
             if (_session.mergeServer(payload.newRecord)) {
               // Aviso discreto: ya estás mirando el chat, solo confirma que
               // llegó algo. Solo para lo que escribe el OTRO (mi propio eco del
@@ -307,12 +344,62 @@ class _ChatScreenState extends State<ChatScreen> {
             if (mounted) setState(() {});
           },
         )
+        .onBroadcast(
+          event: _typingEvent,
+          callback: (payload) {
+            // El broadcast le llega también al que lo emitió: filtrar por uid es
+            // lo que evita verse a sí mismo "escribiendo".
+            if (payload['uid'] == _uid) return;
+            _markPeerTyping();
+          },
+        )
         .subscribe();
+  }
+
+  /// Levanta el indicador y (re)arma su vencimiento. Cada `typing` que llega
+  /// corre el plazo hacia adelante, así que mientras el peer siga teclando el
+  /// indicador se sostiene; si deja de teclar (o cierra la app, o se le cae la
+  /// red) baja solo pasado [_typingTimeout] — nunca queda colgado.
+  void _markPeerTyping() {
+    _peerTypingTimer?.cancel();
+    _peerTypingTimer = Timer(_typingTimeout, _clearPeerTyping);
+    if (!_peerTyping && mounted) setState(() => _peerTyping = true);
+  }
+
+  void _clearPeerTyping() {
+    _peerTypingTimer?.cancel();
+    _peerTypingTimer = null;
+    if (_peerTyping && mounted) setState(() => _peerTyping = false);
+  }
+
+  /// Avisa que ESTE usuario está escribiendo. Lo llama el composer en cada
+  /// pulsación; el throttle vive acá para que la pantalla no tenga que saber
+  /// nada del transporte.
+  void _notifyTyping() {
+    final ch = _channel;
+    if (ch == null) return;
+    final now = DateTime.now();
+    final last = _lastTypingSent;
+    if (last != null && now.difference(last) < _typingThrottle) return;
+    _lastTypingSent = now;
+    // Best-effort y deliberadamente sin `await`: si el envío falla lo único que
+    // pasa es que al peer no le aparecen los puntos. Nada de esto debe poder
+    // interponerse entre el usuario y su teclado — `ignore()` descarta también
+    // el error, para que un socket caído no suba una excepción sin capturar.
+    ch
+        .sendBroadcastMessage(event: _typingEvent, payload: {'uid': _uid})
+        .ignore();
   }
 
   void _teardownRealtime() {
     final ch = _channel;
     _channel = null;
+    // El canal se va: ningún `typing` nuevo va a llegar, así que el indicador
+    // no debe quedar arriba, y `_lastTypingSent` se limpia para que el primer
+    // tecleo tras reconectar avise de una (no herede el throttle del canal
+    // viejo).
+    _clearPeerTyping();
+    _lastTypingSent = null;
     if (ch != null) supa.removeChannel(ch);
   }
 
@@ -366,6 +453,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<bool> _sendRaw(String kind, String body,
       {String? senderIdOverride, bool systemSender = false}) async {
     final sender = systemSender ? null : (senderIdOverride ?? _uid);
+    // Golpecito de "salió": este es el embudo ÚNICO de todo lo que el usuario
+    // manda al chat (texto, respuesta rápida, foto, dirección, contacto,
+    // ubicación, artículo de tienda), así que el pulso va acá y no repetido en
+    // cada handler. Se excluye `systemSender`: esos son carteles del servidor,
+    // no algo que el usuario haya enviado.
+    if (!systemSender) JayaloHaptics.sent();
     final tempId = 'temp-${DateTime.now().microsecondsSinceEpoch}-${_tempSeq++}';
     _session.addOptimistic(
         tempId: tempId, senderId: sender, kind: kind, body: body, now: DateTime.now());
@@ -460,6 +553,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _pickAndSendPhoto() async {
     // Cámara o galería (pedido PO 2026-07-21: "imágenes del dispositivo").
     final source = await showModalBottomSheet<ImageSource>(
+      sheetAnimationStyle: JayaloMotion.sheetMenu,
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -515,6 +609,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final (productos, servicios) = partitionStoreItems(items);
     final it = await showModalBottomSheet<Map<String, dynamic>>(
+      // Contenido: es el catálogo de la tienda, se navega y se lee.
+      sheetAnimationStyle: JayaloMotion.sheetRise,
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -600,6 +696,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
     final current = funnelStatusStore.statusKey(widget.conversationId);
     final picked = await showModalBottomSheet<String?>(
+      sheetAnimationStyle: JayaloMotion.sheetMenu,
       context: context,
       showDragHandle: true,
       builder: (ctx) {
@@ -817,8 +914,20 @@ class _ChatScreenState extends State<ChatScreen> {
                   reverse: true,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  itemCount: ms.length + (_loadingOlder ? 1 : 0),
+                  itemCount: ms.length +
+                      (_loadingOlder ? 1 : 0) +
+                      (_peerTyping ? 1 : 0),
                   itemBuilder: (context, j) {
+                    // Lista invertida: j=0 es el BORDE INFERIOR. El indicador
+                    // va justo ahí, debajo del último mensaje, que es donde
+                    // aparecería el que el peer está escribiendo. Los demás
+                    // índices se corren uno.
+                    if (_peerTyping) {
+                      if (j == 0) {
+                        return TypingIndicator(peerAvatarUrl: _peerAvatarUrl);
+                      }
+                      j -= 1;
+                    }
                     if (j >= ms.length) {
                       return const Padding(
                           padding: EdgeInsets.all(12),
@@ -1031,6 +1140,7 @@ class _ChatScreenState extends State<ChatScreen> {
       isProvider: _isProvider,
       sending: _sending || _uploadingImage,
       onSendText: _sendText,
+      onTyping: _notifyTyping,
       onPlusAction: _handlePlus,
       onQuickItem: _sendQuickItem,
     );

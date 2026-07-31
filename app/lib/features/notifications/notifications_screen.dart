@@ -309,9 +309,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     // por decisión PO — el resto de la app carga con la mascota).
     if (_loading) return const SkeletonList(count: 7);
     if (_error) return _ErrorRetry(onRetry: _loadFirst);
-    // El vacío también entra al RefreshIndicator: sin datos igual se puede
+    // El vacío también entra al pull-to-refresh: sin datos igual se puede
     // deslizar para reintentar (spec: no dejar el estado vacío sin salida).
-    return RefreshIndicator(
+    return JayaloRefresh(
       onRefresh: _loadFirst,
       child: _items.isEmpty ? const _Empty() : _list(context),
     );

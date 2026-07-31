@@ -242,6 +242,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     final imageUrl = row['image_url'] as String?;
     final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');
     showModalBottomSheet(
+      sheetAnimationStyle: JayaloMotion.sheetRise,
       context: context,
       // Navigator RAÍZ + área segura: si no, la hoja queda bajo la navbar.
       useRootNavigator: true,
@@ -559,7 +560,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
           Expanded(
             child: NotificationListener<ScrollNotification>(
               onNotification: _onListScroll,
-              child: RefreshIndicator(
+              child: JayaloRefresh(
                 onRefresh: () async => _refetch(),
                 child: FutureBuilder(
                   future: _load,

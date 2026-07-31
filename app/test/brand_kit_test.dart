@@ -163,10 +163,16 @@ void main() {
           height: 400, width: 300, child: SkeletonList(count: 3))));
       expect(find.byType(SkeletonCard), findsNWidgets(3));
       // El shimmer es un loop: se avanza a mano (pumpAndSettle nunca acaba).
-      for (var i = 0; i < 5; i++) {
-        await tester.pump(const Duration(milliseconds: 300));
+      // Se recorre un ciclo completo (1800ms) en pasos chicos para cruzar
+      // tanto la fase de barrido como la pausa en que no se pinta ShaderMask.
+      var sawSweep = false;
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 150));
+        if (find.byType(ShaderMask).evaluate().isNotEmpty) sawSweep = true;
       }
       expect(tester.takeException(), isNull);
+      expect(sawSweep, isTrue,
+          reason: 'la banda de luz debe pintarse en algún punto del ciclo');
     });
 
     testWidgets('SkeletonCard queda quieto con "reducir animaciones"',
@@ -178,7 +184,12 @@ void main() {
           child: Scaffold(body: SkeletonCard()),
         ),
       ));
-      expect(find.byType(Animate), findsNothing);
+      // Sin movimiento no se monta el ShaderMask del barrido en NINGÚN frame
+      // del ciclo (antes esto miraba `Animate`, que ya no se usa acá).
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 150));
+        expect(find.byType(ShaderMask), findsNothing);
+      }
     });
   });
 

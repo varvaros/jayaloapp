@@ -192,8 +192,21 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         ),
         child: showNavBar
             ? ListenableBuilder(
-                listenable: Listenable.merge(
-                    [solicitudesBadge, messagesBadge, centerAction]),
+                // ⚠️ `centerActionIcon` va en la lista aunque parezca que
+                // basta con `centerAction`: los dos se escriben juntos en
+                // `takeCenterAction`, pero el PRIMERO en asignarse notifica, y
+                // en ese instante el segundo todavía tiene el valor viejo.
+                // Escuchando solo `centerAction`, este builder corría con
+                // `centerActionIcon` aún en null y después ya nadie lo
+                // despertaba → el ＋ nunca se volvía cámara (bug PO
+                // 2026-07-30). Regla: si el builder LEE un notifier, lo
+                // escucha. Cubierto por `center_action_shell_test.dart`.
+                listenable: Listenable.merge([
+                  solicitudesBadge,
+                  messagesBadge,
+                  centerAction,
+                  centerActionIcon,
+                ]),
                 builder: (context, _) => FloatingNavBar(
                   key: const ValueKey('nav-bar-visible'),
                   centerButtonKey: isClient ? _plusAnchorKey : null,
@@ -203,9 +216,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                   // crear solicitud lo vuelve una CÁMARA, porque ahí dentro
                   // navegar es un no-op — ver el guard de `onSelected`), la
                   // barra se pinta con SU ícono y SU etiqueta.
-                  centerIconOverride: centerActionIcon.value,
+                  // Guard por ruta: `dispose()` del `CreateRequestScreen`
+                  // corre DESPUÉS de que el shell se reconstruya con la ruta
+                  // nueva, así que `centerActionIcon` puede seguir con el
+                  // valor viejo por un frame. Condicionar a que `loc` siga
+                  // en la ruta que tomó el centro evita el parpadeo.
+                  centerIconOverride: loc == kCreateRequestRoute
+                      ? centerActionIcon.value
+                      : null,
                   centerLabelOverride:
-                      centerAction.value == null ? null : 'Añadir foto',
+                      centerAction.value != null && loc == kCreateRequestRoute
+                          ? 'Añadir foto'
+                          : null,
                   // Badges de la barra: "Solicitudes" (índice 0, significado por
                   // rol) y "Mensajes" (mensajes de chat sin leer, pedido PO
                   // 2026-07-21). Cada pantalla mantiene su contador al día.
@@ -227,9 +249,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                     final d = dests[i];
                     if (d.isCenter) {
                       // Si la pantalla al frente tomó el centro, gana ella: es
-                      // justo el caso en que navegar no haría nada.
+                      // justo el caso en que navegar no haría nada. El guard
+                      // de ruta evita invocar un callback de un State que ya
+                      // salió pero cuyo `dispose` aún no corrió.
                       final taken = centerAction.value;
-                      if (taken != null) {
+                      if (taken != null && loc == kCreateRequestRoute) {
                         taken();
                       } else {
                         // El guardia vive en el helper y mira la pila VIVA del
@@ -248,6 +272,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                         pushCreateRequestOnce(context);
                       }
                     } else {
+                      // Tic de selección SOLO si la pestaña cambia de verdad:
+                      // re-tocar la que ya está activa hace un `go` a la misma
+                      // ruta (no-op visual) y vibrar ahí se sentiría como un
+                      // falso positivo.
+                      if (i != idx) JayaloHaptics.tabChange();
                       context.go(d.route);
                     }
                   },

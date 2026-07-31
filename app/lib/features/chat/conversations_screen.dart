@@ -181,7 +181,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                   onRetry: _load, message: 'No pudimos cargar tus mensajes')
               : all == null
                   ? const JayaloLoaderBlock()
-                  : RefreshIndicator(onRefresh: _load, child: _body(all)),
+                  : JayaloRefresh(onRefresh: _load, child: _body(all)),
         ),
       ]),
     );

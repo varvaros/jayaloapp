@@ -26,6 +26,12 @@ import 'jayalo_loader.dart';
 // extra — decisión PO: el skeleton solo se queda en Notificaciones.
 export 'jayalo_loader.dart';
 
+// Misma razón para el pull-to-refresh: las 6 pantallas que lo usan ya importan
+// el kit, así que `JayaloRefresh` entra por acá y ninguna necesita un import
+// nuevo. (`jayalo_refresh.dart` importa de vuelta `jayaloCardShadow` de este
+// archivo; el ciclo es legal en Dart y no hay nombres en conflicto.)
+export 'jayalo_refresh.dart';
+
 /// Tono de estado por fase de solicitud — el mismo mapa que usa la web con
 /// sus `--status-*` (y que notificaciones usa por familia). Única fuente:
 /// nada de `Colors.amber`/`green` sueltos para pintar fases.
@@ -250,6 +256,12 @@ class MetricTile extends StatelessWidget {
       children: [
         Icon(icon, color: cs.primary, size: 22),
         const SizedBox(height: 6),
+        // Los números aparecen ya en su valor. Hubo un conteo animado
+        // (`CountUpText`, 2026-07-30) y el PO lo retiró tras verlo en device:
+        // "se siente confuso y no añade estética" — un número que sube solo
+        // parece que el dato está cambiando, no que está llegando.
+        // `tabularFigures` se queda: alinea las cifras entre las dos columnas
+        // de métricas.
         Text(value,
             style: TextStyle(
                 fontSize: 22,
@@ -376,8 +388,101 @@ extension CascadeIn on Widget {
 /// skeletons son el estado de carga de TODAS las pantallas con datos — la
 /// mascota [JayaloLoaderBlock] hacía sentir la carga lenta. La mascota
 /// sigue viva como identidad en los demás usos de [JayaloLoader].
-class SkeletonCard extends StatelessWidget {
-  const SkeletonCard({super.key});
+class SkeletonCard extends StatefulWidget {
+  const SkeletonCard({super.key, this.index = 0});
+
+  /// Posición en la lista. Solo desfasa el barrido de luz: la tarjeta `i`
+  /// empieza su brillo [_shimmerStagger] después que la `i-1`, y así la luz se
+  /// lee como UNA que baja por la lista en vez de N destellos simultáneos.
+  final int index;
+
+  @override
+  State<SkeletonCard> createState() => _SkeletonCardState();
+}
+
+/// Ciclo completo del barrido. El brillo cruza durante [_shimmerSweep] y el
+/// resto del ciclo la banda queda FUERA de la tarjeta: sin esa pausa el
+/// skeleton estrobea, que es lo que separa un shimmer premium de un GIF de
+/// carga. La banda viaja a velocidad CONSTANTE (`linear`, sin curva): es una
+/// animación de tiempo, y cualquier easing la haría parecer que titubea a
+/// mitad de camino.
+const _shimmerCycle = Duration(milliseconds: 1800);
+const _shimmerSweep = Duration(milliseconds: 1200);
+
+/// Cuánto se atrasa cada tarjeta respecto de la anterior.
+const _shimmerStagger = Duration(milliseconds: 90);
+
+/// Semiancho de la banda de luz en unidades de [Alignment] (1 = medio ancho de
+/// la tarjeta). Una banda ancha y tenue lee como reflejo; una angosta y fuerte,
+/// como un escáner.
+const _shimmerBand = .55;
+
+class _SkeletonCardState extends State<SkeletonCard>
+    with SingleTickerProviderStateMixin {
+  // Un ticker por tarjeta, pero TODOS con la misma duración y arrancados en el
+  // mismo frame (SkeletonList construye sus hijos de una sola pasada, no con
+  // `.builder`), así que sus `value` van en fase y el desfase sale solo del
+  // índice. Si en vez de eso el desfase viviera en la duración de cada
+  // controller, los barridos se irían despegando ciclo a ciclo.
+  //
+  // ⚠️ Se crea en `initState`, NO como `late final … = AnimationController(…)`.
+  // Con "reducir animaciones" el `build` retorna antes de tocar el campo, así
+  // que un `late final` quedaría sin inicializar hasta que `dispose()` lo
+  // leyera — y ahí `createTicker` va a buscar el `TickerMode` de un elemento ya
+  // desactivado ("Looking up a deactivated widget's ancestor is unsafe").
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: _shimmerCycle);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // El ticker se DETIENE con reduce-motion, no se ignora: un controller en
+    // `repeat()` cuyo valor nadie lee le sigue pidiendo un frame por vsync a
+    // toda la app. Corre acá (no en `initState`) porque leer el MediaQuery es
+    // una dependencia, y así también reacciona si el ajuste cambia en vivo.
+    if (JayaloMotion.reduced(context)) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  /// Gradiente de la banda para la fase `t` (0-1 del ciclo). Devuelve null
+  /// cuando la banda está fuera de la tarjeta: ahí no hay que pintar nada.
+  LinearGradient? _sweep(double t, Color glint) {
+    final staggered =
+        (t - widget.index * (_shimmerStagger.inMilliseconds / _shimmerCycle.inMilliseconds)) % 1.0;
+    // Reparte el ciclo: el barrido ocupa `_shimmerSweep`, el resto es pausa.
+    final sweepFraction =
+        _shimmerSweep.inMilliseconds / _shimmerCycle.inMilliseconds;
+    if (staggered > sweepFraction) return null;
+    final p = staggered / sweepFraction;
+    // El CENTRO de la banda entra por la izquierda fuera de cuadro y sale por
+    // la derecha fuera de cuadro, así que nunca se ve aparecer ni cortarse.
+    final center = -(1 + _shimmerBand) + p * 2 * (1 + _shimmerBand);
+    // `begin`/`end` admiten coordenadas fuera de [-1,1] y el TileMode.clamp de
+    // los extremos transparentes deja el resto limpio — por eso se desliza el
+    // TRAMO del gradiente en vez de mover los `stops` (mover stops obliga a
+    // recortarlos a 0-1, y ahí la banda se achata contra los bordes).
+    // El desnivel en Y la inclina: una banda diagonal lee como reflejo, una
+    // perfectamente vertical lee como barra de progreso.
+    return LinearGradient(
+      begin: Alignment(center - _shimmerBand, -.6),
+      end: Alignment(center + _shimmerBand, .6),
+      colors: [glint.withValues(alpha: 0), glint, glint.withValues(alpha: 0)],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -391,38 +496,62 @@ class SkeletonCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(radius),
           ),
         );
-    final card = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(kCardRadius),
-          boxShadow: jayaloCardShadow(context),
+    // Solo los bloques grises: el barrido se aplica ACÁ y no sobre la tarjeta
+    // entera a propósito. Con `srcATop` el ShaderMask tiñe todo lo que su hijo
+    // pinte, y eso incluiría la superficie de la tarjeta y su `boxShadow` — la
+    // sombra aclarándose al pasar la luz se veía como un halo sucio.
+    final blocks = Row(children: [
+      block(width: 40, height: 40, radius: 12),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            block(height: 14),
+            const SizedBox(height: 6),
+            FractionallySizedBox(widthFactor: .6, child: block(height: 12)),
+          ],
         ),
-        child: Row(children: [
-          block(width: 40, height: 40, radius: 12),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                block(height: 14),
-                const SizedBox(height: 6),
-                FractionallySizedBox(
-                    widthFactor: .6, child: block(height: 12)),
-              ],
-            ),
-          ),
-        ]),
       ),
-    );
-    if (JayaloMotion.reduced(context)) return card;
-    return card
-        .animate(onPlay: (c) => c.repeat())
-        .shimmer(
-            duration: 1200.ms,
-            color: cs.onSurface.withValues(alpha: .08));
+    ]);
+
+    Widget shell(Widget child) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(kCardRadius),
+              boxShadow: jayaloCardShadow(context),
+            ),
+            child: child,
+          ),
+        );
+
+    if (JayaloMotion.reduced(context)) return shell(blocks);
+
+    // El brillo es BLANCO en ambos temas: un glint tiene que ser más CLARO que
+    // el bloque que cruza. El shimmer anterior usaba `onSurface`, que en tema
+    // claro es casi negro — la banda oscurecía la tarjeta y se leía como una
+    // sombra pasando, justo lo contrario de un destello. En claro el bloque ya
+    // es gris pálido y hace falta bastante alpha para que el brillo se note;
+    // en oscuro el bloque es casi negro y con poco alcanza.
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final glint = Colors.white.withValues(alpha: dark ? .16 : .70);
+
+    return shell(AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) {
+        final gradient = _sweep(_c.value, glint);
+        if (gradient == null) return child!;
+        return ShaderMask(
+          blendMode: BlendMode.srcATop,
+          shaderCallback: gradient.createShader,
+          child: child,
+        );
+      },
+      child: blocks,
+    ));
   }
 }
 
@@ -435,7 +564,10 @@ class SkeletonList extends StatelessWidget {
   Widget build(BuildContext context) => ListView(
         physics: const NeverScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 8),
-        children: [for (var i = 0; i < count; i++) const SkeletonCard()],
+        // `children` (no `.builder`) a propósito: construir las N tarjetas en
+        // el MISMO frame es lo que mantiene sus tickers en fase, y es de donde
+        // el desfase por índice saca su coherencia.
+        children: [for (var i = 0; i < count; i++) SkeletonCard(index: i)],
       );
 }
 
@@ -658,7 +790,12 @@ class PillSegmented extends StatelessWidget {
             Expanded(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => onChanged(i),
+                // Tic de selección solo al cambiar de verdad de segmento
+                // (mismo criterio que la barra flotante).
+                onTap: () {
+                  if (i != index) JayaloHaptics.tabChange();
+                  onChanged(i);
+                },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeOut,

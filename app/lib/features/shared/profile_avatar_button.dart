@@ -112,8 +112,10 @@ final profileStore = ProfileStore();
 const _kWalletAction = '__wallet__';
 
 /// Abre el menú de perfil (role-aware). Proveedor: encabezado con nombre +
-/// saldo de créditos, luego su lado comprador (Mis solicitudes, Reputación,
-/// Otros proveedores), su negocio (Estadísticas, Recargar créditos) y Ajustes.
+/// saldo de créditos, luego su lado comprador (Reputación, Otros proveedores),
+/// su negocio (Estadísticas, Recargar créditos) y Ajustes. "Mis solicitudes"
+/// salió de acá el 2026-07-30 — vive en el segmento "Mis pedidos" de la
+/// pestaña Mis ofertas.
 /// Consumidor: solo Ajustes (ya alcanza el resto por su navbar). Extraído a
 /// función suelta para que lo compartan el `ProfileAvatarButton` del AppBar y
 /// el avatar del header violeta (`violet_header.dart`) — un solo menú, un solo
@@ -128,21 +130,78 @@ const _kWalletAction = '__wallet__';
 ///
 /// [balanceFetch] es inyectable solo para test; en la app real es null y se usa
 /// `walletBalance`.
+/// El panel lateral como ruta propia.
+///
+/// `showGeneralDialog` alcanzaría para todo menos para UNA cosa: no expone
+/// `reverseTransitionDuration`, así que la salida hereda la duración de la
+/// entrada. Con el frenado de 1.5s de [JayaloMotion.sheetRise] eso significaría
+/// segundo y medio para cerrar el menú. Un [PopupRoute] sí permite las dos
+/// duraciones por separado — entra frenando, se va rápido.
+class _SideMenuRoute<T> extends PopupRoute<T> {
+  _SideMenuRoute({required this.pageBuilder, required this.reduced});
+
+  final Widget Function(BuildContext context) pageBuilder;
+
+  /// "Reducir animaciones" del sistema: el panel aparece y desaparece sin
+  /// deslizamiento (la duración cero deja el `SlideTransition` en su posición
+  /// final desde el primer frame).
+  final bool reduced;
+
+  @override
+  bool get barrierDismissible => true;
+
+  @override
+  String get barrierLabel => 'Cerrar menú';
+
+  @override
+  Color get barrierColor => Colors.black38;
+
+  @override
+  Duration get transitionDuration =>
+      reduced ? Duration.zero : JayaloMotion.sheetRise.duration!;
+
+  @override
+  Duration get reverseTransitionDuration =>
+      reduced ? Duration.zero : JayaloMotion.sheetRise.reverseDuration!;
+
+  @override
+  Widget buildPage(BuildContext context, Animation<double> animation,
+          Animation<double> secondaryAnimation) =>
+      pageBuilder(context);
+
+  @override
+  Widget buildTransitions(BuildContext context, Animation<double> animation,
+          Animation<double> secondaryAnimation, Widget child) =>
+      SlideTransition(
+        position: Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero)
+            .animate(CurvedAnimation(
+                parent: animation,
+                // Misma curva que las hojas: quinta potencia — el panel recorre
+                // casi todo el camino al principio y el resto del tiempo es
+                // una frenada larga hasta asentarse.
+                curve: JayaloMotion.sheetRise.curve!,
+                reverseCurve: JayaloMotion.sheetRise.reverseCurve!)),
+        child: child,
+      );
+}
+
 Future<void> openProfileMenu(BuildContext context,
     {Future<int?> Function()? balanceFetch}) async {
   final isProvider = roleStore.value == RoleState.provider;
   final fetch = balanceFetch ?? walletBalance;
-  final route = await showGeneralDialog<String>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: 'Cerrar menú',
-    barrierColor: Colors.black38,
-    // Más lento y con ease-out marcado (pedido PO): el panel entra deslizando
-    // desde la izquierda, arranca con brío y frena suave antes de asentarse.
-    transitionDuration: JayaloMotion.reduced(context)
-        ? Duration.zero
-        : const Duration(milliseconds: 480),
-    pageBuilder: (ctx, _, _) => Align(
+  // El panel entra deslizando desde la izquierda con el MISMO frenado que las
+  // hojas que suben (PO 2026-07-30: "el efecto de frenado lento a las ventanas
+  // que se deslizan… y el menú lateral"). Antes tenía su propia receta a mano
+  // (480ms easeOutCubic); ahora sale de `sheetRise`.
+  //
+  // Se usa [_SideMenuRoute] y no `showGeneralDialog` por una sola razón: esa
+  // función no expone `reverseTransitionDuration`, así que la salida heredaría
+  // los 1.5s de la entrada — y un menú que tarda segundo y medio en QUITARSE
+  // del medio se siente roto, no premium.
+  final route = await Navigator.of(context, rootNavigator: true)
+      .push<String>(_SideMenuRoute<String>(
+    reduced: JayaloMotion.reduced(context),
+    pageBuilder: (ctx) => Align(
       alignment: Alignment.centerLeft,
       child: Material(
         borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)),
@@ -168,11 +227,11 @@ Future<void> openProfileMenu(BuildContext context,
                 // Lado "yo como comprador": pantallas que existen en el router
                 // pero que el proveedor no alcanza por su navbar.
                 if (isProvider) ...[
-                  ListTile(
-                    leading: const Icon(Icons.receipt_long_outlined),
-                    title: const Text('Mis solicitudes'),
-                    onTap: () => Navigator.pop(ctx, '/client'),
-                  ),
+                  // "Mis solicitudes" ya NO vive acá (PO 2026-07-30): pasó al
+                  // segmento "Mis pedidos" de Mis ofertas, en la barra. Estaba
+                  // enterrada en este menú mientras el ＋ de la misma barra
+                  // dejaba CREAR solicitudes — se podía crear algo que después
+                  // no había dónde encontrar.
                   ListTile(
                     leading: const Icon(Icons.workspace_premium_outlined),
                     title: const Text('Reputación'),
@@ -216,16 +275,7 @@ Future<void> openProfileMenu(BuildContext context,
         ),
       ),
     ),
-    transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-      position: Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero)
-          .animate(CurvedAnimation(
-              parent: anim,
-              // easeOutCubic: desaceleración clara al final del deslizamiento.
-              curve: Curves.easeOutCubic,
-              reverseCurve: Curves.easeInCubic)),
-      child: child,
-    ),
-  );
+  ));
   if (route == null || !context.mounted) return;
   if (route == _kWalletAction) {
     await openExternalWallet(context);

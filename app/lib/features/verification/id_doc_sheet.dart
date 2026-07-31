@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/safe_image_picker.dart';
 import '../../data/repos.dart';
 import '../shared/brand_kit.dart';
+import '../../core/motion.dart';
 
 /// Hoja para registrar la cédula del proveedor informal/técnico (Ajustes →
 /// "Validar negocio"). Número + foto → `uploadIdDocPhoto` (bucket privado) +
@@ -16,6 +17,7 @@ Future<bool> showIdDocSheet(
   String? currentNumber,
 }) async {
   final saved = await showModalBottomSheet<bool>(
+    sheetAnimationStyle: JayaloMotion.sheetRise,
     context: context,
     showDragHandle: true,
     isScrollControlled: true,

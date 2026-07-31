@@ -68,7 +68,26 @@ class MyRequestsScreen extends StatefulWidget {
     this.myFetch,
     this.othersFetch,
     this.actions = const [HeaderBell()],
+    this.embedded = false,
   });
+
+  /// Modo INCRUSTADO: solo la lista de "mis solicitudes", sin `Scaffold`, sin
+  /// header violeta y sin los botones de filtro.
+  ///
+  /// Lo usa el segmento "Mis pedidos" de Mis ofertas (PO 2026-07-30): el
+  /// proveedor puede CREAR una solicitud desde el ＋ de la barra pero no tenía
+  /// dónde encontrarla salvo entrando al menú lateral — crear y consultar
+  /// tienen que estar a la misma profundidad.
+  ///
+  /// Se incrusta la pantalla entera en vez de extraer la lista a un widget
+  /// aparte para no duplicar NADA: carga, estado vacío con la tarjeta de
+  /// ejemplo, onboarding, pull-to-refresh y las tarjetas siguen siendo los
+  /// mismos de la pestaña del cliente, y cualquier arreglo futuro cae en los
+  /// dos sitios solo.
+  ///
+  /// El toggle "Ver solicitudes de usuarios" NO viaja al modo incrustado: para
+  /// un proveedor eso es literalmente su pestaña Solicitudes.
+  final bool embedded;
 
   /// Inyectables para tests (por defecto los fetch reales).
   final Future<List<(Map<String, dynamic>, RequestPhase, int)>> Function()?
@@ -363,13 +382,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   @override
   Widget build(BuildContext context) {
     _refetchIfStale();
-    return Scaffold(
-      body: Column(
+    final body = Column(
         children: [
           // Header violeta: avatar → menú de perfil, "Jayalo" centrado, campana,
           // saludo grande y el buscador (envuelto por el header, doctrina).
           // Al navegar la lista se pliega COMPLETO (avatar y campana incluidos,
           // pedido PO 2026-07-21) y queda solo la flecha para bajarlo.
+          //
+          // Incrustada no lleva header: el de la pantalla anfitriona ya está
+          // arriba, y dos headers violeta apilados serían absurdos.
+          if (!widget.embedded)
           CollapsibleHeader(
             hidden: _searchHidden,
             onReveal: () => setState(() => _searchHidden = false),
@@ -399,6 +421,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
               ),
             ),
           ),
+          // Incrustada tampoco lleva los botones de filtro: el segmentado de la
+          // pantalla anfitriona ya cumple ese papel, y "Ver solicitudes de
+          // usuarios" para un proveedor es su propia pestaña Solicitudes.
+          if (!widget.embedded)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
             // Botones violeta alineados a la izquierda (Wrap: si no caben en un
@@ -467,7 +493,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                         );
                       },
                     )
-                  : RefreshIndicator(
+                  : JayaloRefresh(
                       // onRefresh espera Future<void>; setState para no devolver Future.
                       onRefresh: () async {
                         setState(() {
@@ -631,8 +657,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
             ),
           ),
         ],
-      ),
-    );
+      );
+    // Incrustada NO abre su propio Scaffold: iría uno dentro de otro y el de
+    // adentro se comería el `extendBody` del shell (el hueco que la barra
+    // flotante necesita para flotar sobre el contenido).
+    return widget.embedded ? body : Scaffold(body: body);
   }
 }
 

@@ -13,6 +13,7 @@ import '../../domain/interest_message.dart';
 import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../../core/motion.dart';
 
 /// `/catalog/:id` (Task 7): detalle del producto/servicio + "Me interesa".
 ///
@@ -551,6 +552,7 @@ Future<void> showInterestSheet(
   required VoidCallback onSent,
 }) {
   return showModalBottomSheet(
+    sheetAnimationStyle: JayaloMotion.sheetRise,
     context: context,
     isScrollControlled: true,
     showDragHandle: true,

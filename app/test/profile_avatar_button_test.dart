@@ -110,7 +110,11 @@ void main() {
     await tester.pumpAndSettle();
     await abrirMenu(tester);
 
-    expect(find.text('Mis solicitudes'), findsOneWidget);
+    // "Mis solicitudes" YA NO está acá (PO 2026-07-30): se mudó al segmento
+    // "Mis pedidos" de la pestaña Mis ofertas. Enterrada en este menú, el
+    // proveedor podía CREAR una solicitud desde el ＋ de la barra y después no
+    // tenía dónde encontrarla.
+    expect(find.text('Mis solicitudes'), findsNothing);
     expect(find.text('Reputación'), findsOneWidget);
     expect(find.text('Otros proveedores'), findsOneWidget);
     expect(find.text('Estadísticas'), findsOneWidget);
@@ -162,17 +166,21 @@ void main() {
     expect(find.text('Ajustes'), findsOneWidget);
   });
 
-  testWidgets('proveedor: tocar "Mis solicitudes" navega a /client',
+  testWidgets('proveedor: tocar "Reputación" navega a /client/reputation',
       (tester) async {
     roleStore.value = RoleState.provider;
     await tester.pumpWidget(host(balanceFetch: () async => 0));
     await tester.pumpAndSettle();
     await abrirMenu(tester);
 
-    await tester.tap(find.text('Mis solicitudes'));
+    // Reemplaza al caso de "Mis solicitudes", que dejó de vivir en este menú
+    // (PO 2026-07-30). Se conserva un caso de NAVEGACIÓN real desde el panel:
+    // lo que se prueba acá es que tocar una fila cierra el menú y empuja su
+    // ruta, no la fila concreta.
+    await tester.tap(find.text('Reputación'));
     await tester.pumpAndSettle();
 
-    expect(find.text('pantalla de mis solicitudes'), findsOneWidget);
+    expect(find.text('pantalla de reputación'), findsOneWidget);
   });
 
   testWidgets('sin foto de perfil, el avatar muestra la inicial del nombre',

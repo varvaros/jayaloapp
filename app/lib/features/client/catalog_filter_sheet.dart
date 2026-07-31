@@ -4,6 +4,7 @@ import '../../core/brand.dart';
 import '../../data/repos.dart' show rubrosForCategories;
 import '../../domain/catalog.dart';
 import '../shared/brand_kit.dart';
+import '../../core/motion.dart';
 
 /// Resultado de la hoja: categoría (+ rubro) elegidos. `null` como retorno de
 /// `showCatalogFilterSheet` = el usuario cerró sin cambiar. Un resultado con
@@ -17,6 +18,7 @@ class CatalogFilterResult {
 Future<CatalogFilterResult?> showCatalogFilterSheet(BuildContext context,
         {String? categoryId, String? rubro}) =>
     showModalBottomSheet<CatalogFilterResult>(
+      sheetAnimationStyle: JayaloMotion.sheetRise,
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
