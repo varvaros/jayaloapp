@@ -103,7 +103,9 @@ void main() {
     expect(find.text('Ya aceptaste una oferta'), findsNothing);
     final gesture =
         await tester.startGesture(tester.getCenter(find.text('card')));
-    await gesture.moveBy(const Offset(120, 0));
+    await gesture.moveBy(const Offset(20, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(100, 0));
     await tester.pump();
     expect(find.text('Ya aceptaste una oferta'), findsOneWidget);
     expect(find.byIcon(Icons.lock_outline), findsOneWidget);

@@ -271,7 +271,7 @@ class _SwipeToActionsState extends State<SwipeToActions>
             // Franjas de color reveladas a la izquierda (clip redondeado a la
             // tarjeta). Solo se pintan con el swipe abierto: cerradas, el fondo
             // asomaba por las esquinas redondeadas de la tarjeta (arcos rojos).
-            if (_dx > 0)
+            if (_dx > 0.5)
               Positioned.fill(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(widget.radius),
