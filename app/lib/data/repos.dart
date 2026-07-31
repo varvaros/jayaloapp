@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/ttl_cache.dart';
 import '../domain/chat.dart' show QuickItem;
+import '../domain/contact_info.dart'
+    show contactInfoCode, contactInfoMessage, payloadHasContactInfo;
 import '../domain/phase.dart';
 import '../domain/profile_address.dart';
 
@@ -619,6 +621,10 @@ Future<String?> myBusinessId() async {
 /// oferta. Aísla la forma del payload en un solo lugar para no duplicar la
 /// regla de "guardar el costo solo si el toggle está activo Y > 0 (0 = gratis)"
 /// ni la de "por hora solo aplica en ese modo".
+///
+/// Todo campo de texto que entre a este mapa queda cubierto AUTOMÁTICAMENTE por
+/// el barrido anti-elusión de [makeOffer]/[updateOffer] (`payloadHasContactInfo`,
+/// espejo del de la web): no hay lista de campos que mantener a mano.
 Map<String, dynamic> _offerFields({
   double? price,
   double? priceMin,
@@ -700,6 +706,35 @@ Future<void> makeOffer({
   String deliveryTime = '',
 }) async {
   final uid = supa.auth.currentUser!.id;
+  final fields = _offerFields(
+    price: price,
+    priceMin: priceMin,
+    priceMax: priceMax,
+    message: message,
+    imageUrls: imageUrls,
+    pricingMode: pricingMode,
+    offersShipping: offersShipping,
+    shippingPrice: shippingPrice,
+    offersInstallation: offersInstallation,
+    installationPrice: installationPrice,
+    requiresEvaluation: requiresEvaluation,
+    evaluationPrice: evaluationPrice,
+    hourlyRate: hourlyRate,
+    estimatedHours: estimatedHours,
+    availabilityNote: availabilityNote,
+    estimatedDuration: estimatedDuration,
+    productBrand: productBrand,
+    productColors: productColors,
+    productWarranty: productWarranty,
+    deliveryTime: deliveryTime,
+  );
+  // Red de seguridad anti-elusión: barre el payload ENTERO en vez de confiar en
+  // la lista de campos que la pantalla revisa a mano antes de subir fotos. Así
+  // una columna vigilada nueva no puede quedarse sin cobertura por olvido. El
+  // JY422 del trigger sigue siendo la autoridad; esto solo evita el viaje.
+  if (payloadHasContactInfo(fields)) {
+    throw PostgrestException(message: contactInfoMessage, code: contactInfoCode);
+  }
   try {
     await supa.from('provider_offers').insert({
       'user_id': uid,
@@ -707,28 +742,7 @@ Future<void> makeOffer({
       'request_id': request['id'],
       'request_title': request['title'],
       'status': 'pending',
-      ..._offerFields(
-        price: price,
-        priceMin: priceMin,
-        priceMax: priceMax,
-        message: message,
-        imageUrls: imageUrls,
-        pricingMode: pricingMode,
-        offersShipping: offersShipping,
-        shippingPrice: shippingPrice,
-        offersInstallation: offersInstallation,
-        installationPrice: installationPrice,
-        requiresEvaluation: requiresEvaluation,
-        evaluationPrice: evaluationPrice,
-        hourlyRate: hourlyRate,
-        estimatedHours: estimatedHours,
-        availabilityNote: availabilityNote,
-        estimatedDuration: estimatedDuration,
-        productBrand: productBrand,
-        productColors: productColors,
-        productWarranty: productWarranty,
-        deliveryTime: deliveryTime,
-      ),
+      ...fields,
     });
   } on PostgrestException catch (e) {
     // 23505 = choque con el índice UNIQUE parcial
@@ -770,33 +784,33 @@ Future<void> updateOffer({
   String productWarranty = '',
   String deliveryTime = '',
 }) async {
-  await supa
-      .from('provider_offers')
-      .update(
-        _offerFields(
-          price: price,
-          priceMin: priceMin,
-          priceMax: priceMax,
-          message: message,
-          imageUrls: imageUrls,
-          pricingMode: pricingMode,
-          offersShipping: offersShipping,
-          shippingPrice: shippingPrice,
-          offersInstallation: offersInstallation,
-          installationPrice: installationPrice,
-          requiresEvaluation: requiresEvaluation,
-          evaluationPrice: evaluationPrice,
-          hourlyRate: hourlyRate,
-          estimatedHours: estimatedHours,
-          availabilityNote: availabilityNote,
-          estimatedDuration: estimatedDuration,
-          productBrand: productBrand,
-          productColors: productColors,
-          productWarranty: productWarranty,
-          deliveryTime: deliveryTime,
-        ),
-      )
-      .eq('id', offerId);
+  final fields = _offerFields(
+    price: price,
+    priceMin: priceMin,
+    priceMax: priceMax,
+    message: message,
+    imageUrls: imageUrls,
+    pricingMode: pricingMode,
+    offersShipping: offersShipping,
+    shippingPrice: shippingPrice,
+    offersInstallation: offersInstallation,
+    installationPrice: installationPrice,
+    requiresEvaluation: requiresEvaluation,
+    evaluationPrice: evaluationPrice,
+    hourlyRate: hourlyRate,
+    estimatedHours: estimatedHours,
+    availabilityNote: availabilityNote,
+    estimatedDuration: estimatedDuration,
+    productBrand: productBrand,
+    productColors: productColors,
+    productWarranty: productWarranty,
+    deliveryTime: deliveryTime,
+  );
+  // Misma red de seguridad que en [makeOffer]: barrido del payload entero.
+  if (payloadHasContactInfo(fields)) {
+    throw PostgrestException(message: contactInfoMessage, code: contactInfoCode);
+  }
+  await supa.from('provider_offers').update(fields).eq('id', offerId);
   AppCaches.invalidateRequestLists();
 }
 

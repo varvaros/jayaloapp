@@ -669,8 +669,12 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
                     child: const Text('Rechazar')),
               ],
             ));
+    // El controller nace y muere con el diálogo: sin este dispose queda vivo
+    // con sus listeners cada vez que el cliente abre "Rechazar".
+    final reason = ctrl.text.trim();
+    ctrl.dispose();
     if (ok != true || !mounted) return;
-    await _guardarMotivo(ctrl.text.trim());
+    await _guardarMotivo(reason);
   }
 
   /// Descartar un finalista ACEPTADO aún no desbloqueado: pone la oferta en
@@ -706,8 +710,10 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
                     child: const Text('Descartar')),
               ],
             ));
+    final reason = ctrl.text.trim();
+    ctrl.dispose();
     if (ok != true || !mounted) return;
-    await _guardarMotivo(ctrl.text.trim());
+    await _guardarMotivo(reason);
   }
 
   /// Abre (o crea) la conversación de la oferta y navega al chat — la vía para

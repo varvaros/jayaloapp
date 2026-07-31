@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/brand.dart';
 import '../../core/editor_link_client.dart';
+import '../../core/secure_web_launch.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../shell/floating_nav_bar.dart';
@@ -99,8 +99,9 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
     try {
       final url = await EditorLinkClient()
           .fetchEditorUrl(businessId: businessId, accessToken: token);
-      final ok =
-          await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      // Custom Tabs, NO intent público: este URL también lleva un token de
+      // sesión de un solo uso (ver `core/secure_web_launch.dart`).
+      final ok = await launchAuthenticatedUrl(Uri.parse(url));
       if (!ok) _toast('No pudimos abrir el navegador.');
     } catch (_) {
       _toast('No se pudo abrir el editor. Intenta de nuevo.');

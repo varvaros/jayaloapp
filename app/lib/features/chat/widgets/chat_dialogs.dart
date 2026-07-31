@@ -101,6 +101,8 @@ const _reportReasons = [
 Future<(String, String?)?> showReportDialog(BuildContext context, {String? reportedName}) {
   String? reason;
   final details = TextEditingController();
+  // El controller nace y muere con el diálogo: sin el `whenComplete` de abajo se
+  // queda vivo con sus listeners en cada apertura de "Denunciar".
   return showDialog<(String, String?)?>(
     context: context,
     builder: (ctx) => StatefulBuilder(
@@ -136,5 +138,5 @@ Future<(String, String?)?> showReportDialog(BuildContext context, {String? repor
                     child: const Text('Enviar denuncia')),
               ],
             )),
-  );
+  ).whenComplete(details.dispose);
 }

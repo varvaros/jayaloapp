@@ -498,11 +498,15 @@ class _ChatScreenState extends State<ChatScreen> {
       final confirm = p.replies[option] ?? quickConfirmation(p.question, option);
       await _sendRaw('text', confirm);
     } catch (_) {
-      setState(() => m.body = prevBody); // rollback
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No se pudo responder. Intenta de nuevo.')));
-      }
+      // El rollback NO puede depender de que el widget siga vivo: si el usuario
+      // salió del chat mientras viajaba el update, `setState` LANZA antes de
+      // restaurar y el mensaje se queda pintado con una respuesta que nunca se
+      // guardó. Primero se deshace el modelo, después se repinta si hay a quién.
+      m.body = prevBody;
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo responder. Intenta de nuevo.')));
     }
   }
 

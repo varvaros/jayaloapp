@@ -1682,7 +1682,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                   firstDate: DateTime.now(),
                   lastDate: DateTime.now().add(const Duration(days: 365)),
                 );
-                if (picked != null) {
+                // `showDatePicker` tarda lo que el usuario quiera: sin el guard
+                // el `setState` corre sobre un widget que pudo desmontarse.
+                if (picked != null && mounted) {
                   setState(() => _serviceEventDate = picked);
                 }
               },

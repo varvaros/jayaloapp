@@ -93,8 +93,14 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
         _snack('Sin permiso de ubicación — puedes escribir tu dirección igual.');
         return;
       }
+      // `timeLimit` no es opcional en la práctica: sin él, si el GPS no fija
+      // (bajo techo, en un pasillo), el Future NO resuelve NUNCA y `_locating`
+      // se queda en true — el botón "Usar mi ubicación" gira para siempre en la
+      // PRIMERA experiencia de la app. Al expirar lanza y cae al catch de abajo,
+      // que ya ofrece escribir la dirección a mano.
       final pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium));
+          locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.medium, timeLimit: Duration(seconds: 15)));
       if (!mounted) return;
       setState(() {
         _lat = pos.latitude;

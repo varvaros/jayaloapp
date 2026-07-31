@@ -1254,7 +1254,9 @@ class _ProviderRequestDetailScreenState
         initialDate: now,
         firstDate: now,
         lastDate: now.add(const Duration(days: 365)));
-    if (d == null) return;
+    // `showDatePicker` tarda lo que el usuario quiera: sin el guard, el
+    // `setState` de abajo corre sobre un widget que pudo desmontarse.
+    if (d == null || !mounted) return;
     final today = DateTime(now.year, now.month, now.day);
     final target = DateTime(d.year, d.month, d.day);
     final days = target.difference(today).inDays;

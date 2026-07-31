@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import '../shared/network_image.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../core/brand.dart';
 import '../../core/config.dart';
+import '../../core/secure_web_launch.dart';
 import '../../core/motion.dart';
 import '../../data/repos.dart';
 import '../../domain/inbox_load.dart';
@@ -195,10 +195,8 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     try {
       target = Uri.parse(await createWalletLoginLink());
     } catch (_) {}
-    var ok = false;
-    try {
-      ok = await launchUrl(target, mode: LaunchMode.externalApplication);
-    } catch (_) {}
+    // Custom Tabs, NO intent público (ver `core/secure_web_launch.dart`).
+    final ok = await launchAuthenticatedUrl(target);
     if (!ok && mounted) {
       _snack('No se pudo abrir el navegador. Visita jayalo.com para recargar.');
     }

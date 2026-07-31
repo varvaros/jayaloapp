@@ -21,6 +21,15 @@ if (hasReleaseSigning) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// Sin key.properties el release caía a las DEBUG KEYS EN SILENCIO. Play rechaza
+// ese artefacto en la subida, así que no es explotable — pero
+// `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` es `protectionLevel="signature"`, y
+// un binario "de release" firmado con la clave de debug (que es pública y la
+// misma en todas las máquinas de dev) deja de estar protegido por la firma.
+// Ahora hay que PEDIRLO: `-PallowDebugSigning=true` para `flutter run --release`
+// en una máquina sin keystore. Sin el flag, el build falla en voz alta.
+val allowDebugSigning = (project.findProperty("allowDebugSigning") as String?) == "true"
+
 android {
     namespace = "com.jayalo.app"
     compileSdk = flutter.compileSdkVersion
@@ -77,15 +86,25 @@ android {
 
     buildTypes {
         release {
-            // Firma con el keystore de subida cuando está disponible; si no,
-            // debug keys (para que el release siga compilando en dev).
             // ⚠️ El keystore de release tiene un SHA-1 DISTINTO al de debug:
             // hay que registrarlo en Firebase + Google Cloud Console o
             // Google Sign-In deja de funcionar en el APK firmado de producción.
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("release")
-            } else {
+            } else if (allowDebugSigning) {
+                logger.warn(
+                    "⚠️  Build de RELEASE firmado con las DEBUG KEYS (-PallowDebugSigning=true). " +
+                        "Este artefacto NO es publicable: Play lo rechaza y los permisos " +
+                        "protectionLevel=\"signature\" quedan sin protección."
+                )
                 signingConfigs.getByName("debug")
+            } else {
+                throw GradleException(
+                    "No existe android/key.properties: el build de release NO puede firmarse. " +
+                        "Antes caía a las debug keys en silencio. Crea el key.properties " +
+                        "(ver docs/build-release.md) o, si solo quieres correr en local, " +
+                        "reconstruye con -PallowDebugSigning=true."
+                )
             }
 
             // R8 (ofusca + optimiza la capa Kotlin/Java) + shrink de recursos.

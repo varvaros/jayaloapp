@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/brand.dart';
 import 'core/motion.dart';
+import 'data/repos.dart';
 import 'core/theme_store.dart';
 import 'features/shared/onboarding_store.dart';
 
@@ -155,13 +156,38 @@ class _JayaloAppState extends State<JayaloApp> {
     }
   }
 
-  void _handleLink(Uri uri) {
-    if (uri.scheme != 'jayalo' || !mounted) return;
+  /// El único deep link declarado en el manifest es `jayalo://wallet`.
+  ///
+  /// Antes esto solo miraba el `scheme`: CUALQUIER `jayalo://loquesea` navegaba
+  /// a "Mis ofertas" y cantaba "¡Listo! Tus créditos ya están disponibles" sin
+  /// mirar el host ni consultar el saldo. Tras CANCELAR en PayPal el usuario leía
+  /// que tenía créditos que no tenía. No había riesgo de fraude (el saldo es
+  /// server-side) pero sí de confianza y de tickets de soporte.
+  ///
+  /// Ahora: se exige el host, y el aviso se arma con el SALDO REAL releído del
+  /// backend en vez de darlo por hecho.
+  Future<void> _handleLink(Uri uri) async {
+    if (uri.scheme != 'jayalo' || uri.host != 'wallet' || !mounted) return;
     widget.router.go('/provider/offers');
+
+    // `?paid=1` lo pone el botón "Volver a la app" de la web, que aparece
+    // vuelva o no de un pago exitoso: es una pista, no una prueba.
+    if (uri.queryParameters['paid'] != '1') return;
+
+    AppCaches.wallet.clear();
+    int? balance;
+    try {
+      balance = await walletBalance();
+    } catch (_) {
+      balance = null;
+    }
+    if (!mounted) return;
     _messengerKey.currentState
       ?..clearSnackBars()
-      ..showSnackBar(const SnackBar(
-          content: Text('¡Listo! Tus créditos ya están disponibles.')));
+      ..showSnackBar(SnackBar(
+          content: Text(balance == null
+              ? 'Volviste de la recarga. Revisa tu saldo en Billetera.'
+              : 'Tu saldo es de $balance créditos.')));
   }
 
   @override

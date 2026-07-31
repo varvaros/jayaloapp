@@ -58,6 +58,14 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   final _sectorInput = TextEditingController();
   final _address = TextEditingController();
   bool _locating = false;
+  // Coordenada de "Usar mi ubicación". Ahora se PERSISTE: antes se pedía
+  // `ACCESS_FINE_LOCATION`, se usaba solo para rellenar ciudad/sector de texto y
+  // se tiraba. Sin ella el negocio no tiene con qué alimentar
+  // `get_business_distance_km` y no hay pantalla de edición para corregirlo; y
+  // "rellenar un campo de texto" no justifica el permiso ante Google Play. El
+  // flujo de consumidor ya las guardaba.
+  double? _lat;
+  double? _lng;
 
   // Paso 3 — WhatsApp (chequeo de "ocupado" inmediato, con rebote)
   String _prefix = '809';
@@ -262,9 +270,19 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         _snack('Sin permiso de ubicación — escribe tu ciudad y sector.');
         return;
       }
+      // `timeLimit`: sin él, si el GPS no fija el Future no resuelve NUNCA y
+      // `_locating` se queda en true — el botón gira para siempre.
       final pos = await Geolocator.getCurrentPosition(
-          locationSettings:
-              const LocationSettings(accuracy: LocationAccuracy.medium));
+          locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.medium,
+              timeLimit: Duration(seconds: 15)));
+      // La coordenada se guarda ANTES del geocoder: si el reverse geocoding
+      // falla o no devuelve nada, igual conservamos la ubicación del negocio.
+      if (!mounted) return;
+      setState(() {
+        _lat = pos.latitude;
+        _lng = pos.longitude;
+      });
       final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
       if (!mounted || marks.isEmpty) return;
       final m = marks.first;
@@ -366,6 +384,11 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           'experience_years': '',
           'logo_url': '',
           'owner_photo_url': '',
+          // Coordenada de "Usar mi ubicación" (puede no haberla: permiso
+          // denegado o GPS que no fijó). La RPC ignora un valor vacío o fuera
+          // de rango y deja las columnas en NULL, como hasta ahora.
+          'lat': _lat?.toString() ?? '',
+          'lng': _lng?.toString() ?? '',
         },
         termsVersion: AppConfig.termsVersion,
       );

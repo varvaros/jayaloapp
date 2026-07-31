@@ -128,15 +128,42 @@ Future<void> initPush(GoRouter router) async {
   });
 
   // Los taps en caliente (onMessageOpenedApp) rutean bien por rol porque
-  // roleStore ya está resuelto cuando el usuario toca la notificación. Los
-  // taps en frío (getInitialMessage) siguen perdiendo el deep link: initPush
-  // corre ANTES de resolver el rol (roleState.unknown → cae a provider:false)
-  // y además el redirect de /gate descarta el destino al arrancar. Pendiente:
-  // guardar el link y navegar recién cuando el rol se resuelva.
+  // roleStore ya está resuelto cuando el usuario toca la notificación.
+  //
+  // Los taps en FRÍO (getInitialMessage) perdían el destino: `initPush` corre
+  // ANTES de que se resuelva el rol (RoleState.unknown → `provider:false`, ruta
+  // equivocada) y encima `redirectTarget` manda todo a `/gate` mientras el rol
+  // esté sin resolver, así que el destino se descartaba. Eso rompía el bucle de
+  // re-enganche que justifica todo el trabajo de push.
+  //
+  // Fix: si el rol no está resuelto, el link se GUARDA y se navega en cuanto
+  // `roleStore` notifique. `needsOnboarding` no navega a propósito — el gate
+  // debe llevarlo a completar el alta, no a un chat que todavía no puede usar.
   void goFrom(RemoteMessage m) {
     final link = m.data['link'] as String? ?? '';
-    router.go(mapLinkToRoute(link,
-        provider: roleStore.value == RoleState.provider));
+    if (link.isEmpty) return;
+
+    void navigate() {
+      router.go(mapLinkToRoute(link,
+          provider: roleStore.value == RoleState.provider));
+    }
+
+    if (roleStore.value != RoleState.unknown) {
+      if (roleStore.value != RoleState.needsOnboarding) navigate();
+      return;
+    }
+
+    late final VoidCallback onRoleResolved;
+    onRoleResolved = () {
+      if (roleStore.value == RoleState.unknown) return;
+      roleStore.removeListener(onRoleResolved);
+      if (roleStore.value == RoleState.needsOnboarding) return;
+      // Microtask: deja que el redirect del propio router reaccione primero al
+      // cambio de rol (gate → /provider|/client) y navegamos encima. Al revés,
+      // ese redirect pisaría el destino que acabamos de fijar.
+      Future.microtask(navigate);
+    };
+    roleStore.addListener(onRoleResolved);
   }
 
   final initial = await fcm.getInitialMessage();

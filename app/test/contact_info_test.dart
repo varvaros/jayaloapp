@@ -115,4 +115,67 @@ void main() {
       expect(isContactInfoError(Exception('red caída')), isFalse);
     });
   });
+
+  group('payloadHasContactInfo — barrido del payload entero', () {
+    test('detecta el dato sucio en CUALQUIER campo, no solo en `message`', () {
+      expect(
+        payloadHasContactInfo({
+          'message': 'Todo bien',
+          'product_warranty': 'Garantía: escríbeme a ventas@ferreteria.do',
+        }),
+        isTrue,
+      );
+    });
+
+    test('mira dentro de las listas de strings (product_colors)', () {
+      expect(
+        payloadHasContactInfo({
+          'message': 'Todo bien',
+          'product_colors': const ['rojo', '809-555-1234'],
+        }),
+        isTrue,
+      );
+    });
+
+    test('un payload limpio pasa, con números y precios incluidos', () {
+      expect(
+        payloadHasContactInfo({
+          'message': 'Medida 809 x 1234567 mm, RNC 130123456',
+          'price': 1500.0,
+          'offers_shipping': true,
+          'product_colors': const ['rojo', 'azul'],
+        }),
+        isFalse,
+      );
+    });
+
+    test('una URL de Storage con un timestamp de 13 dígitos NO es falso positivo',
+        () {
+      // El bloque `1829...` casaría el patrón de móvil RD si no se saltaran las
+      // URLs: es el caso que rompería TODO envío con foto en ciertas fechas.
+      expect(
+        payloadHasContactInfo({
+          'message': 'Listo',
+          'image_urls': const [
+            'https://x.supabase.co/storage/v1/object/public/b/u/1829551234567-ab.webp',
+          ],
+        }),
+        isFalse,
+      );
+    });
+
+    test('pero un wa.me sí se detecta aunque venga como URL', () {
+      expect(
+        payloadHasContactInfo({'message': 'https://wa.me/18095551234'}),
+        isTrue,
+      );
+    });
+
+    test('ignora valores que no son string ni lista de strings', () {
+      expect(
+        payloadHasContactInfo({'price': null, 'hourly_rate': 250.0, 'x': 1}),
+        isFalse,
+      );
+    });
+  });
 }

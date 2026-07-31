@@ -77,6 +77,46 @@ bool containsContactInfo(String? value) {
       _correo.hasMatch(value);
 }
 
+/// Un valor que ES una URL no es texto redactado por el usuario: es una ruta de
+/// Storage o un data URI de una foto sin subir. NINGUNA columna vigilada por el
+/// trigger es una URL, asi que saltarlas no pierde cobertura -- y NO saltarlas
+/// da falsos positivos duros: la ruta lleva un `Date.now()` de 13 digitos y,
+/// como `-` y `.` son separadores que se eliminan, el timestamp queda como un
+/// bloque de digitos contiguo. Entre 2027-04-30 y 2027-05-10 (y otra vez del
+/// 2027-12-17 al 2027-12-28) empieza por 1829.../1849..., asi que TODO envio con
+/// foto casaria `(809|829|849)[0-9]{7}`.
+///
+/// La regla de WhatsApp SI se aplica sobre URLs: es la unica de las tres que
+/// apunta a enlaces a proposito. Espeja `valorTieneContacto` de la web.
+final RegExp _esUrl = RegExp(r'^(https?:|data:)', caseSensitive: false);
+
+bool _valorTieneContacto(String v) {
+  if (_esUrl.hasMatch(v.trimLeft())) return _whatsapp.hasMatch(v);
+  return containsContactInfo(v);
+}
+
+/// Barre TODO el payload que va a la BD (strings y listas de strings) buscando
+/// datos de contacto. Espejo de `payloadHasContactInfo` de la web.
+///
+/// Por que existe: la app venia manteniendo A MANO cuatro listas de campos a
+/// revisar, mientras la web recorria el payload entero "asi no se desincroniza".
+/// La logica de deteccion estaba en paridad exacta; lo que divergia era la
+/// COBERTURA. Al sumar una columna vigilada nueva, el usuario de la app escribia,
+/// subia fotos, enviaba, y recien ahi recibia un JY422 -- perdiendo trabajo real.
+/// Con esto ningun campo del payload puede quedarse fuera por olvido.
+bool payloadHasContactInfo(Map<String, dynamic> payload) {
+  for (final v in payload.values) {
+    if (v is String) {
+      if (_valorTieneContacto(v)) return true;
+    } else if (v is List) {
+      for (final el in v) {
+        if (el is String && _valorTieneContacto(el)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 /// Este error de Supabase es el rechazo del trigger anti-elusion? Espeja la
 /// forma exacta en que `chat_screen.dart` lee el codigo de un
 /// PostgrestException para el JY429 del anti-flood (`e is PostgrestException

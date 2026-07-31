@@ -14,7 +14,20 @@ import '../core/config.dart';
 /// respuesta directa. El envío del texto ocurre en [notificationBackgroundHandler],
 /// un entry-point de nivel superior que corre en un isolate propio incluso con
 /// la app cerrada.
-const kChatChannelId = 'chat_replies';
+/// Canal de las notificaciones locales de chat. Es el MISMO que crea
+/// `MainActivity` (`CHAT_CHANNEL_ID`), a propósito.
+///
+/// Antes valía `'chat_replies'`, un id que MainActivity no creaba nunca: Android
+/// lo auto-creaba al primer uso con **sonido por defecto**, así que el pop de
+/// burbuja (`msg_bubble`) no sonaba aquí. Es exactamente la desalineación
+/// canal↔sonido que este módulo documenta como el bug que dejó el sonido mudo
+/// desde el 2026-07-22 — el sonido es propiedad del CANAL, no del push. Hoy está
+/// latente (send-push v17+ manda `message_new` como notification-message y lo
+/// pinta el SO), pero se dispara en cuanto el chat vuelva a ir por data-message.
+///
+/// De paso: un solo canal "Mensajes" en los Ajustes del sistema, así el usuario
+/// silencia los chats de una vez sin perder los avisos de dinero.
+const kChatChannelId = 'jayalo_chat_v1';
 const kReplyActionId = 'REPLY';
 
 final flnp = FlutterLocalNotificationsPlugin();

@@ -29,6 +29,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/config.dart';
+import '../../core/secure_web_launch.dart';
 import '../../core/motion.dart';
 import '../../data/repos.dart';
 import '../../domain/pricing.dart';
@@ -62,10 +63,9 @@ Future<void> openProviderWallet(BuildContext context) async {
   try {
     target = Uri.parse(await createWalletLoginLink());
   } catch (_) {}
-  var ok = false;
-  try {
-    ok = await launchUrl(target, mode: LaunchMode.externalApplication);
-  } catch (_) {}
+  // Custom Tabs, NO intent público: el magic link es canjeable por una sesión
+  // completa. Ver `core/secure_web_launch.dart`.
+  final ok = await launchAuthenticatedUrl(target);
   if (!ok && context.mounted) {
     _snack(context, 'No se pudo abrir el navegador. Visita jayalo.com para recargar.');
   }
