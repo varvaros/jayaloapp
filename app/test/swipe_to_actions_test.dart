@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/features/shared/swipe_to_actions.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:jayalo_app/features/shared/onboarding_store.dart';
 
 /// Contrato del swipe de la lista de solicitudes (pedido PO 2026-07-20):
 /// arrastrar a la derecha revela las acciones y tocarlas dispara su callback.
@@ -141,5 +143,82 @@ void main() {
     await tester.pumpAndSettle();
     expect(group.value, isNull,
         reason: 'un row que nunca se queda abierto no debe cerrar a los demás');
+  });
+
+  group('auto-peek', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      onboardingStore.reset(); // el store es un singleton: aislar cada test
+    });
+
+    Widget peekHost() => MaterialApp(
+          home: Scaffold(
+            body: ListView(
+              children: [
+                SwipeToActions(
+                  id: 'p',
+                  group: ValueNotifier<Object?>(null),
+                  peekKey: 'requests.swipe.v1',
+                  actions: [
+                    SwipeAction(
+                      icon: Icons.delete_outline,
+                      label: 'Eliminar',
+                      color: Colors.red,
+                      onTap: () async {},
+                    ),
+                  ],
+                  child: const SizedBox(
+                      height: 80, width: double.infinity, child: Text('card')),
+                ),
+              ],
+            ),
+          ),
+        );
+
+    testWidgets('la primera vez se asoma y marca la clave', (tester) async {
+      await tester.pumpWidget(peekHost());
+      await tester.pump(); // post-frame que dispara _maybePeek
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(find.text('Eliminar'), findsOneWidget,
+          reason: 'al asomarse, la franja debe verse');
+      await tester.pumpAndSettle();
+      expect(find.text('Eliminar'), findsNothing,
+          reason: 'la pista se recoge sola');
+      expect(onboardingStore.isDone('requests.swipe.v1'), isTrue);
+    });
+
+    testWidgets('con la clave ya marcada NO se asoma', (tester) async {
+      await onboardingStore.markDone('requests.swipe.v1');
+      await tester.pumpWidget(peekHost());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(find.text('Eliminar'), findsNothing);
+    });
+
+    testWidgets('sin peekKey no se asoma nunca', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: ListView(children: [
+            SwipeToActions(
+              id: 'q',
+              group: ValueNotifier<Object?>(null),
+              actions: [
+                SwipeAction(
+                  icon: Icons.delete_outline,
+                  label: 'Eliminar',
+                  color: Colors.red,
+                  onTap: () async {},
+                ),
+              ],
+              child: const SizedBox(
+                  height: 80, width: double.infinity, child: Text('card')),
+            ),
+          ]),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(find.text('Eliminar'), findsNothing);
+    });
   });
 }

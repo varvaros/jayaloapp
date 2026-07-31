@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
+import 'onboarding_store.dart';
+
 /// Una acción revelada por swipe (franja de color con ícono + texto).
 class SwipeAction {
   const SwipeAction({
@@ -37,6 +39,7 @@ class SwipeToActions extends StatefulWidget {
     this.actionWidth = 88,
     this.margin = const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
     this.blockedReason,
+    this.peekKey,
   }) : assert(actions.length > 0 || blockedReason != null,
             'un row sin acciones necesita un blockedReason que explicar');
 
@@ -56,6 +59,11 @@ class SwipeToActions extends StatefulWidget {
   /// al dedo cuando la fila existe pero sus acciones no aplican — antes la
   /// tarjeta quedaba inerte y el gesto no producía nada.
   final String? blockedReason;
+
+  /// Clave de onboarding con la que enseñar el gesto UNA sola vez: la tarjeta
+  /// se asoma y vuelve (patrón iOS Mail). Null = sin pista. Se pasa solo en la
+  /// PRIMERA fila no bloqueada de una lista.
+  final String? peekKey;
 
   @override
   State<SwipeToActions> createState() => _SwipeToActionsState();
@@ -105,6 +113,13 @@ class _SwipeToActionsState extends State<SwipeToActions>
       setState(() => _dx = _snap.value.clamp(0.0, _revealW + _maxOver));
     });
     widget.group.addListener(_onGroupChanged);
+    // Post-frame: `_maybePeek` lee el MediaQuery, que no está disponible en
+    // initState, y la pista solo tiene sentido con la lista ya pintada.
+    if (widget.peekKey != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _maybePeek(widget.peekKey!);
+      });
+    }
   }
 
   @override
@@ -144,6 +159,39 @@ class _SwipeToActionsState extends State<SwipeToActions>
   void _close() {
     if (widget.group.value == widget.id) widget.group.value = null;
     _springTo(0, 0);
+  }
+
+  /// Enseña el gesto una sola vez por usuario: la tarjeta se asoma 28 px y
+  /// vuelve. Best-effort de principio a fin — una pista que falla nunca puede
+  /// tumbar una lista.
+  Future<void> _maybePeek(String key) async {
+    try {
+      await onboardingStore.ensureLoaded();
+    } catch (_) {
+      // Sin backend de guías la pista se muestra igual: es inocua.
+    }
+    if (!mounted || onboardingStore.isDone(key)) return;
+    // Reduce motion: se marca como enseñada IGUAL, para no dejar una pista
+    // pendiente para siempre en un dispositivo que no anima.
+    if (!MediaQuery.disableAnimationsOf(context)) {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      // Si el usuario ya arrastró por su cuenta, no interrumpirlo.
+      if (!mounted || _dx != 0) return;
+      // Un solo `animateWith` continuo (asoma instantáneo + sostiene 420ms +
+      // resorte de vuelta), no `_springTo` + `Future.delayed` sueltos: un
+      // temporizador aislado no mantiene vivo ningún ticker, así que
+      // cualquier código que dependa de "hay una animación en curso" (p. ej.
+      // `pumpAndSettle` en los tests) daría la UI por asentada y dejaría de
+      // bombear frames a mitad del sostenido.
+      _snap.stop();
+      await _snap.animateWith(_HoldThenSpring(
+        hold: 28,
+        holdSeconds: 0.42,
+        after: SpringSimulation(_spring, 28, 0, 0),
+      ));
+      if (!mounted) return;
+    }
+    await onboardingStore.markDone(key);
   }
 
   Future<void> _run(SwipeAction a) async {
@@ -301,4 +349,33 @@ class _SwipeToActionsState extends State<SwipeToActions>
       ),
     );
   }
+}
+
+/// Se queda fija en [hold] durante [holdSeconds] y luego delega en [after]
+/// (el resorte del retorno). Un único [Simulation] continuo — en vez de un
+/// `Future.delayed` suelto seguido de un segundo `animateWith` — para que el
+/// ticker permanezca activo durante todo el sostenido: cualquier código que
+/// consulte "¿sigue habiendo una animación en curso?" (como `pumpAndSettle`
+/// en los tests) debe verlo así de principio a fin, no solo durante el
+/// resorte final.
+class _HoldThenSpring extends Simulation {
+  _HoldThenSpring({
+    required this.hold,
+    required this.holdSeconds,
+    required this.after,
+  });
+
+  final double hold;
+  final double holdSeconds;
+  final Simulation after;
+
+  @override
+  double x(double time) => time < holdSeconds ? hold : after.x(time - holdSeconds);
+
+  @override
+  double dx(double time) => time < holdSeconds ? 0 : after.dx(time - holdSeconds);
+
+  @override
+  bool isDone(double time) =>
+      time >= holdSeconds && after.isDone(time - holdSeconds);
 }
