@@ -13,6 +13,7 @@ import '../../core/center_action.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_question_options.dart';
 import '../../domain/ai_turns.dart';
+import '../../core/motion.dart';
 import '../../core/safe_image_picker.dart';
 import '../../domain/contact_info.dart';
 import '../../domain/image_pick.dart';
@@ -190,6 +191,13 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   @override
   void dispose() {
     releaseCenterAction(_centerCamera);
+    // Faltaban (auditoría 2026-07-30). Esta es la pantalla que más se abre y
+    // cierra del producto — el ＋ de la barra la lanza una y otra vez — así que
+    // cada apertura dejaba colgando un TextEditingController con sus listeners
+    // y un ScrollController con su ScrollPosition viva. En una sesión larga se
+    // degrada, y en la gama baja que es el parque real en RD termina en OOM.
+    _input.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -231,6 +239,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     // correcciones tras el ready).
     final record =
         !_correcting && (_current is AiQuestion || _current is AiKindSwitch);
+    // Mismo pulso que el chat entre personas: acá el usuario también le está
+    // MANDANDO algo a alguien (la IA que arma la solicitud).
+    JayaloHaptics.sent();
     setState(() {
       _busy = true;
       _correcting = false;
@@ -255,8 +266,15 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         imageDataUrl2: _photos.length > 1 ? _photos[1].dataUrl : null,
       );
       _messages.add(AiMessage('assistant', jsonEncode(_turnToJson(turn))));
+      // `sendTurn` tarda 2-8 s en datos móviles y el usuario puede cerrar el
+      // compositor mientras tanto. Sin este guard, `_handleTurn` y los dos
+      // `catch` de abajo llamaban `setState` sobre un State ya desmontado
+      // ("setState() called after dispose()"): el turno se perdía y el error
+      // ensuciaba el tracking. El `finally` ya lo hacía bien; estas ramas no.
+      if (!mounted) return;
       await _handleTurn(turn);
     } on AiHttpException catch (e) {
+      if (!mounted) return;
       _toast(
         e.status == 429
             ? 'Un momento… demasiadas solicitudes. Espera 1 minuto.'
@@ -270,6 +288,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         }
       });
     } catch (e) {
+      if (!mounted) return;
       _toast('Algo falló. Intenta de nuevo.');
       setState(() {
         _messages.removeLast();
@@ -344,14 +363,43 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   }
 
   /// Adjuntar espontáneo desde la barra de entrada.
+  /// Contexto de la hoja de elegir foto MIENTRAS está abierta (null = cerrada).
+  ///
+  /// Es lo que vuelve al botón un INTERRUPTOR: el ＋ de la barra se convirtió en
+  /// cámara dentro de esta pantalla y se puede tocar tantas veces como el
+  /// usuario quiera. Sin este guardia cada toque apilaba otra hoja encima de la
+  /// anterior (bug PO: "ventanas múltiples al presionar el botón de la cámara
+  /// varias veces"), y había que cerrarlas una por una.
+  ///
+  /// Se guarda el CONTEXTO de la hoja y no un `bool`: para cerrarla hay que
+  /// hacer pop de SU ruta. Un `Navigator.pop(context)` con el contexto de la
+  /// pantalla sacaría lo que esté al tope del navigator, que no tiene por qué
+  /// ser la hoja (p. ej. si encima se abrió el selector nativo de la galería).
+  BuildContext? _pickSheetCtx;
+
   Future<void> _showPickSheet() async {
+    // Segundo toque = cerrar (pedido PO: "el botón debe sacar la ventana y al
+    // darle otra vez al botón debe ocultarla"). El `mounted` cubre el caso de
+    // que la hoja se haya ido por otra vía (atrás, tocar fuera) entre medio.
+    final open = _pickSheetCtx;
+    if (open != null) {
+      if (open.mounted) Navigator.of(open).pop();
+      _pickSheetCtx = null;
+      return;
+    }
     if (_photos.length >= _maxRequestPhotos) {
       _toast('Puedes subir hasta $_maxRequestPhotos fotos.');
       return;
     }
     final source = await showModalBottomSheet<ImageSource>(
+      sheetAnimationStyle: JayaloMotion.sheetMenu,
       context: context,
-      builder: (_) => SafeArea(
+      builder: (sheetCtx) {
+        // Se registra en el build de la hoja: a partir de acá el botón cierra
+        // en vez de abrir. Se limpia SIEMPRE al terminar el `await` de abajo,
+        // sin importar cómo se haya cerrado (elección, atrás o tocar fuera).
+        _pickSheetCtx = sheetCtx;
+        return SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -367,8 +415,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             ),
           ],
         ),
-      ),
+      );
+      },
     );
+    _pickSheetCtx = null;
     if (source != null) await _pickPhoto(source);
   }
 
@@ -547,6 +597,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _toast(contactInfoMessage);
       return;
     }
+    // Pasaron TODOS los gates: la solicitud se va de verdad. El pulso va acá y
+    // no al tocar el botón, para que un rechazo por validación (que solo saca
+    // un toast) no se sienta igual que un envío exitoso.
+    JayaloHaptics.sent();
     setState(() => _busy = true);
     try {
       // Subir las fotos a Storage antes de insertar (nunca base64 en la BD).

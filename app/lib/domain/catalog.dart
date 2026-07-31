@@ -53,4 +53,11 @@ const List<Category> kCategories = [
   (id: 'contenido', name: 'Contenido y Publicaciones'),
   (id: 'investigacion', name: 'Investigación'),
   (id: 'editorial', name: 'Producción Editorial'),
-  (id: 'locucion', name: 'Locución y Presentación'),];
+  (id: 'locucion', name: 'Locución y Presentación'),
+  // `musica` existía en la BD (13 rubros) y la IA la ofrecía, pero faltaba en
+  // los DOS catálogos de cliente (este y el de la web): `categoryNameById`
+  // devolvía null y el rótulo salía vacío en catalog_screen, my_business_screen
+  // y product_list_card. Peor: ningún proveedor podía elegirla, así que una
+  // solicitud de música no le llegaba a nadie.
+  (id: 'musica', name: 'Música'),
+];
