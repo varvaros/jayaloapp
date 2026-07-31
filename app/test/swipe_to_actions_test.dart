@@ -77,4 +77,67 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Eliminar'), findsNothing);
   });
+
+  Widget blockedHost(String reason) => MaterialApp(
+        home: Scaffold(
+          body: ListView(
+            children: [
+              SwipeToActions(
+                id: 'b',
+                group: ValueNotifier<Object?>(null),
+                actions: const [],
+                blockedReason: reason,
+                child: const SizedBox(
+                  height: 80,
+                  width: double.infinity,
+                  child: Text('card'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  testWidgets('bloqueado: arrastrar revela el motivo', (tester) async {
+    await tester.pumpWidget(blockedHost('Ya aceptaste una oferta'));
+    expect(find.text('Ya aceptaste una oferta'), findsNothing);
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.text('card')));
+    await gesture.moveBy(const Offset(120, 0));
+    await tester.pump();
+    expect(find.text('Ya aceptaste una oferta'), findsOneWidget);
+    expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('bloqueado: al soltar SIEMPRE vuelve a cero', (tester) async {
+    await tester.pumpWidget(blockedHost('Solicitud completada'));
+    await tester.drag(find.text('card'), const Offset(300, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Solicitud completada'), findsNothing,
+        reason: 'la franja bloqueada no puede quedarse abierta');
+  });
+
+  testWidgets('bloqueado: no reclama el slot del group', (tester) async {
+    final group = ValueNotifier<Object?>(null);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ListView(children: [
+          SwipeToActions(
+            id: 'b',
+            group: group,
+            actions: const [],
+            blockedReason: 'Solicitud completada',
+            child: const SizedBox(
+                height: 80, width: double.infinity, child: Text('card')),
+          ),
+        ]),
+      ),
+    ));
+    await tester.drag(find.text('card'), const Offset(300, 0));
+    await tester.pumpAndSettle();
+    expect(group.value, isNull,
+        reason: 'un row que nunca se queda abierto no debe cerrar a los demás');
+  });
 }

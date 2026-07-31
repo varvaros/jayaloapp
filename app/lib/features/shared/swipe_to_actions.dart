@@ -36,7 +36,9 @@ class SwipeToActions extends StatefulWidget {
     this.radius = 18,
     this.actionWidth = 88,
     this.margin = const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-  });
+    this.blockedReason,
+  }) : assert(actions.length > 0 || blockedReason != null,
+            'un row sin acciones necesita un blockedReason que explicar');
 
   /// Identidad del row (para la coordinación de "uno abierto a la vez").
   final Object id;
@@ -48,6 +50,12 @@ class SwipeToActions extends StatefulWidget {
   final double radius;
   final double actionWidth;
   final EdgeInsets margin;
+
+  /// Si no es null, el row NO ejecuta acciones: revela UNA franja gris con
+  /// candado + este texto y SIEMPRE vuelve a cero al soltar. Es la respuesta
+  /// al dedo cuando la fila existe pero sus acciones no aplican — antes la
+  /// tarjeta quedaba inerte y el gesto no producía nada.
+  final String? blockedReason;
 
   @override
   State<SwipeToActions> createState() => _SwipeToActionsState();
@@ -69,7 +77,11 @@ class _SwipeToActionsState extends State<SwipeToActions>
   late final AnimationController _snap;
   bool _busy = false;
 
-  double get _revealW => widget.actions.length * widget.actionWidth;
+  bool get _blocked => widget.blockedReason != null;
+
+  /// Bloqueado: una sola franja con texto de una línea, no N íconos de 88.
+  double get _revealW =>
+      _blocked ? 140 : widget.actions.length * widget.actionWidth;
 
   /// Cuánto se puede estirar de más (con goma) pasado el ancho revelado.
   static const double _maxOver = 56;
@@ -114,9 +126,12 @@ class _SwipeToActionsState extends State<SwipeToActions>
 
   /// Traduce la posición cruda del dedo a la posición con resistencia.
   double _resist(double raw) {
-    if (raw <= 0) return -_rubber(-raw, _maxOver * 0.6); // resistencia al cerrar
+    if (raw <= 0) return -_rubber(-raw, _maxOver * 0.6);
+    // Bloqueado: goma desde el PRIMER píxel. Cede y muestra el motivo, pero
+    // nunca se siente como un cajón a punto de quedarse abierto.
+    if (_blocked) return _rubber(raw, _revealW);
     if (raw <= _revealW) return raw; // dentro del rango: 1:1
-    return _revealW + _rubber(raw - _revealW, _maxOver); // goma al abrir de más
+    return _revealW + _rubber(raw - _revealW, _maxOver);
   }
 
   /// Asienta al objetivo con física de resorte, respetando la velocidad de
@@ -142,6 +157,76 @@ class _SwipeToActionsState extends State<SwipeToActions>
     }
   }
 
+  /// Franja de "esto no aplica aquí": gris de superficie, candado y el motivo.
+  Widget _blockedStrip(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ColoredBox(
+      color: cs.surfaceContainerHighest,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(
+          width: _revealW,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.lock_outline, size: 20, color: cs.onSurfaceVariant),
+                const SizedBox(height: 4),
+                Text(
+                  widget.blockedReason!,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _actionsRow() {
+    return Row(
+      children: [
+        for (final a in widget.actions)
+          SizedBox(
+            width: widget.actionWidth,
+            child: Material(
+              color: a.color,
+              child: InkWell(
+                onTap: _dx > 4 ? () => _run(a) : null,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(a.icon, color: Colors.white, size: 22),
+                    const SizedBox(height: 4),
+                    Text(
+                      a.label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        // Rellena el resto (y el rebote del resorte al abrir de
+        // más) con el color de la acción contigua a la tarjeta,
+        // para que un sobre-estiramiento no deje asomar el fondo.
+        if (widget.actions.isNotEmpty)
+          Expanded(
+            child: ColoredBox(color: widget.actions.last.color),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -157,6 +242,12 @@ class _SwipeToActionsState extends State<SwipeToActions>
         },
         onHorizontalDragEnd: (d) {
           final v = d.primaryVelocity ?? 0;
+          // Bloqueado: no hay snap abierto ni reclamo del group — la franja es
+          // una revelación momentánea.
+          if (_blocked) {
+            _springTo(0, v);
+            return;
+          }
           // Decide destino por velocidad o por posición, luego SUELTA el
           // resorte con esa velocidad (asentamiento con rebote).
           final bool open;
@@ -184,41 +275,7 @@ class _SwipeToActionsState extends State<SwipeToActions>
               Positioned.fill(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(widget.radius),
-                  child: Row(
-                    children: [
-                      for (final a in widget.actions)
-                        SizedBox(
-                          width: widget.actionWidth,
-                          child: Material(
-                            color: a.color,
-                            child: InkWell(
-                              onTap: _dx > 4 ? () => _run(a) : null,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(a.icon, color: Colors.white, size: 22),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    a.label,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      // Rellena el resto (y el rebote del resorte al abrir de
-                      // más) con el color de la acción contigua a la tarjeta,
-                      // para que un sobre-estiramiento no deje asomar el fondo.
-                      Expanded(
-                        child: ColoredBox(color: widget.actions.last.color),
-                      ),
-                    ],
-                  ),
+                  child: _blocked ? _blockedStrip(context) : _actionsRow(),
                 ),
               ),
             // La tarjeta, desplazada por el arrastre. Cuando está abierta, una
