@@ -1543,6 +1543,30 @@ Future<void> markConversationCompleted(String convId) async => supa.rpc(
 Future<void> markConversationLost(String convId) async =>
     supa.from('conversations').update({'status': 'perdido'}).eq('id', convId);
 
+/// Archiva/desarchiva la conversación por MI lado. La otra columna es del otro
+/// participante y el trigger `trg_enforce_archive_own_side` lo impone en la BD.
+/// Archivar OCULTA de la bandeja; nunca borra (la conversación es el registro
+/// de un lead pagado).
+Future<void> setConversationArchived(
+  String convId,
+  bool archived, {
+  required bool asProvider,
+}) async {
+  await supa
+      .from('conversations')
+      .update({
+        (asProvider ? 'archived_by_provider' : 'archived_by_customer'):
+            archived,
+      })
+      .eq('id', convId);
+  AppCaches.conversations.clear();
+}
+
+/// `archived` tal como lo resuelve `get_my_conversations_list` para quien
+/// llama. Ausente = no archivada: una caché escrita antes de la migración no
+/// puede hacer desaparecer conversaciones de la bandeja.
+bool conversationArchived(Map<String, dynamic> c) => c['archived'] == true;
+
 Future<void> improveOfferPrice(String convId, num newPrice) async => supa
     .from('conversations')
     .update({'agreed_price': newPrice})
