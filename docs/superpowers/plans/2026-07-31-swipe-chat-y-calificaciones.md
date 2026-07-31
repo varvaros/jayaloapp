@@ -129,9 +129,16 @@ Añadir al final de `app/test/swipe_to_actions_test.dart`, dentro de `main()`:
   testWidgets('bloqueado: arrastrar revela el motivo', (tester) async {
     await tester.pumpWidget(blockedHost('Ya aceptaste una oferta'));
     expect(find.text('Ya aceptaste una oferta'), findsNothing);
+    // El movimiento va en DOS tramos con un pump entre medias: el host envuelve
+    // el widget en un ListView, así que el reconocedor horizontal compite en la
+    // arena con el scroll vertical y el evento que RESUELVE la arena no se
+    // entrega como update. Es lo mismo que hace `tester.drag` por dentro con su
+    // `touchSlopX`. Con un solo `moveBy`, `_dx` se queda en 0.
     final gesture =
         await tester.startGesture(tester.getCenter(find.text('card')));
-    await gesture.moveBy(const Offset(120, 0));
+    await gesture.moveBy(const Offset(20, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(100, 0));
     await tester.pump();
     expect(find.text('Ya aceptaste una oferta'), findsOneWidget);
     expect(find.byIcon(Icons.lock_outline), findsOneWidget);
@@ -231,7 +238,15 @@ y con los demás campos finales:
           }
 ```
 
-3e. En `build`, sustituir el hijo del `ClipRRect` por una bifurcación:
+3e. En `build`, el guard de pintado de la franja pasa de `if (_dx > 0)` a **`if (_dx > 0.5)`**.
+
+> **Por qué:** `_dx` viene de una `SpringSimulation`, que termina dentro de una tolerancia
+> (~1e-3), así que puede asentar en +0.0009 y `> 0` se queda en true para siempre — la franja
+> nunca se recoge. Depende de la fase con la que el resorte llegue al final, por eso el camino
+> no-bloqueado venía pasando por suerte. Medio píxel es invisible y quita la dependencia de la
+> tolerancia. El `if (_dx > 2)` de la capa que captura el tap NO se toca.
+
+3e-bis. Sustituir el hijo del `ClipRRect` por una bifurcación:
 
 ```dart
                 child: ClipRRect(
