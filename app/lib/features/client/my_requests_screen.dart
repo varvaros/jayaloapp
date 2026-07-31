@@ -45,6 +45,16 @@ String timeAgo(DateTime d) {
   RequestPhase.completed => (Icons.done_all, 'Completada'),
 };
 
+/// Motivo por el que una solicitud NO se puede editar/eliminar, o null si sí.
+/// El swipe pasa esto a [SwipeToActions] para que el gesto ceda y explique en
+/// vez de quedar inerte (antes la tarjeta ni siquiera llevaba detector).
+String? blockedReasonForPhase(RequestPhase p) => switch (p) {
+  RequestPhase.waiting || RequestPhase.withOffers => null,
+  RequestPhase.accepted => 'Ya aceptaste una oferta: no puede editarse',
+  RequestPhase.unlocked => 'Ya están en contacto: no puede editarse',
+  RequestPhase.completed => 'Solicitud completada',
+};
+
 /// Ordena las filas de la lista de solicitudes: las NO VISTAS primero y, dentro
 /// de cada grupo, la más reciente arriba (pedido PO 2026-07-23). Función pura
 /// (público para poder probar el orden sin Supabase).
@@ -507,6 +517,15 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                             return const JayaloLoaderBlock();
                           }
                           final items = snap.data!;
+                          // La pista de swipe se enseña en la PRIMERA tarjeta
+                          // que de verdad se puede deslizar: hacerlo en una
+                          // bloqueada enseñaría el gesto donde no funciona.
+                          // Calculado una sola vez por construcción de la
+                          // lista (no dentro del itemBuilder, que corre por
+                          // cada fila en cada scroll: sería O(n²)).
+                          final firstOpen = items.indexWhere(
+                            (r) => blockedReasonForPhase(r.$2) == null,
+                          );
                           if (items.isEmpty) {
                             return ListView(
                               controller: homeScrollController,
@@ -581,29 +600,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                         if (mounted && unseen) _reload();
                                       });
                                     }
-                                    // El swipe (eliminar/editar) solo tiene sentido
-                                    // mientras la solicitud está ABIERTA: la RPC de
-                                    // borrar solo permite `open`, y editar una ya
-                                    // aceptada/completada no aplica. En esas fases el
-                                    // card va sin swipe.
-                                    final canManage =
-                                        phase == RequestPhase.waiting ||
-                                        phase == RequestPhase.withOffers;
-                                    if (!canManage) {
-                                      return _RequestCard(
-                                        title: r['title'] as String,
-                                        createdAt: DateTime.parse(
-                                          r['created_at'] as String,
-                                        ),
-                                        phase: phase,
-                                        offerCount: offerCount,
-                                        imageUrl: _firstImage(r),
-                                        kind: r['kind'] as String?,
-                                        wholesale: r['is_wholesale'] == true,
-                                        unseen: unseen,
-                                        onTap: open,
-                                      ).cascadeIn(i);
-                                    }
+                                    // El swipe (eliminar/editar) solo aplica
+                                    // mientras la solicitud está viva. En el
+                                    // resto de fases la tarjeta YA NO queda
+                                    // inerte: cede con goma y dice por qué (la
+                                    // RPC de borrar solo permite `open`, y
+                                    // editar una aceptada no aplica).
+                                    final blocked =
+                                        blockedReasonForPhase(phase);
                                     final card = _RequestCard(
                                       title: r['title'] as String,
                                       createdAt: DateTime.parse(
@@ -622,28 +626,35 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                     return SwipeToActions(
                                       id: id,
                                       group: _openRow,
-                                      actions: [
-                                        SwipeAction(
-                                          icon: Icons.delete_outline,
-                                          label: 'Eliminar',
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.error,
-                                          onTap: () =>
-                                              _deleteRequest(id, offerCount),
-                                        ),
-                                        SwipeAction(
-                                          icon: Icons.edit_outlined,
-                                          label: 'Editar',
-                                          color: const Color(0xFF378ADD),
-                                          // Editar llega en una sesión próxima
-                                          // (decisión PO); por ahora avisa.
-                                          onTap: () async => showJayaloToast(
-                                            context,
-                                            'Editar solicitud: próximamente.',
-                                          ),
-                                        ),
-                                      ],
+                                      blockedReason: blocked,
+                                      peekKey: (blocked == null && i == firstOpen)
+                                          ? 'requests.swipe.v1'
+                                          : null,
+                                      actions: blocked != null
+                                          ? const []
+                                          : [
+                                              SwipeAction(
+                                                icon: Icons.delete_outline,
+                                                label: 'Eliminar',
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.error,
+                                                onTap: () => _deleteRequest(
+                                                    id, offerCount),
+                                              ),
+                                              SwipeAction(
+                                                icon: Icons.edit_outlined,
+                                                label: 'Editar',
+                                                color: const Color(0xFF378ADD),
+                                                // Editar llega en una sesión
+                                                // próxima (decisión PO).
+                                                onTap: () async =>
+                                                    showJayaloToast(
+                                                  context,
+                                                  'Editar solicitud: próximamente.',
+                                                ),
+                                              ),
+                                            ],
                                       child: card,
                                     ).cascadeIn(i);
                                   },
