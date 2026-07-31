@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (API 31): reglas de extracción de datos.
+
+  Se excluye TODO en las dos vías, no solo en una:
+    · <cloud-backup>       → respaldo a Google Drive
+    · <device-transfer>    → transferencia directa al cambiar de teléfono
+
+  Motivo (auditoría 2026-07-30): supabase_flutter persiste el refresh token de
+  la sesión en shared_prefs EN CLARO. Si se respalda, la credencial sale del
+  dispositivo y sobrevive al cierre de sesión. No hay nada en la app que valga
+  la pena respaldar: el estado real vive en Supabase y vuelve solo al iniciar
+  sesión.
+
+  Ojo: `android:allowBackup="false"` en el manifest ya desactiva ambas vías;
+  este fichero es la red de seguridad explícita por si alguien reactiva el flag
+  sin pensar en lo que arrastra.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+        <exclude domain="file" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+        <exclude domain="file" />
+    </device-transfer>
+</data-extraction-rules>

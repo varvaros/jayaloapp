@@ -6,7 +6,21 @@
         android:label="Jayalo"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="false"><!--
+        allowBackup=false a propósito (auditoría 2026-07-30): sin declararlo,
+        el default de Android es TRUE y Auto Backup sube shared_prefs/ al Drive
+        del usuario — y ahí es donde supabase_flutter persiste el REFRESH TOKEN
+        en claro. Con backup activo el token salía del dispositivo, se
+        restauraba al cambiar de teléfono y sobrevivía fuera del alcance del
+        cierre de sesión; en Android <=11 con depuración USB, `adb backup` lo
+        extraía directamente. Ningún dato de la app merece respaldarse: todo
+        vive en Supabase y se recupera al iniciar sesión.
+        `dataExtractionRules` cubre Android 12+ (backup en la nube y
+        transferencia directa entre dispositivos); `fullBackupContent` cubre
+        Android 11 y anteriores. --><!--
         Predictive back (OnBackInvokedCallback) DESACTIVADO a propósito
         (bug PO 2026-07-23: "el atrás del chat minimiza la app"). Con targetSdk
         36 Android lo activa por defecto; en ese modo el chat (ruta TOP-LEVEL

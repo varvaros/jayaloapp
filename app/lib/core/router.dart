@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../data/repos.dart' show isAdmin;
 import '../features/auth/login_screen.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/chat/conversations_screen.dart';
@@ -208,6 +209,15 @@ GoRouter buildRouter() => GoRouter(
                     const BackGuard(child: QuickRepliesEditorScreen())),
             GoRoute(
                 path: '/admin/quick-register',
+                // El ítem del menú ya está gateado por `isAdmin()`
+                // (profile_avatar_button), pero la RUTA no lo estaba: cualquiera
+                // podía llegar por navegación directa y ver el formulario. La
+                // barrera real es server-side — la edge function
+                // `admin-invite-provider` responde 403 a quien no sea admin — así
+                // que esto es defensa en profundidad, no el único candado.
+                // `isAdmin()` va cacheado (AppCaches.isAdmin), no pega a la BD
+                // en cada navegación.
+                redirect: (_, _) async => await isAdmin() ? null : '/gate',
                 builder: (_, _) =>
                     const BackGuard(child: AdminQuickRegisterScreen())),
             GoRoute(
