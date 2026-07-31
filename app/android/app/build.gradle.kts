@@ -36,8 +36,23 @@ android {
     }
 
     defaultConfig {
-        // applicationId PERMANENTE: atado al OAuth client Android de Google Cloud
-        // (jayalo-501005) y su SHA-1 debug. No cambiar.
+        // applicationId PERMANENTE: atado a los OAuth clients Android de Google
+        // Cloud (proyecto jayalo-501005). No cambiar.
+        //
+        // Estado verificado el 2026-07-30 en Google Cloud Console:
+        //   - "Jayalo Android (debug)"   → SHA-1 del debug.keystore local.
+        //   - "Jayalo Android (release)" → SHA-1 86:0A:76:41:30:B4:FB:01:9F:5C:
+        //     01:9C:4C:B3:19:32:E4:A6:86:A3, que coincide con el keystore de
+        //     subida (jayalo-upload.jks, alias `upload`).
+        //
+        // ⚠️ FALTA EL TERCERO: con Play App Signing, Google RE-FIRMA el AAB con
+        // un certificado propio cuyo SHA-1 es distinto de los dos de arriba. Ese
+        // hay que registrarlo como un OAuth client Android más, o Google Sign-In
+        // fallará con ApiException 10 para TODOS los usuarios que instalen desde
+        // Play — y como el login por Google es el único camino de entrada, la app
+        // queda inutilizable. Se lee en Play Console → Prueba y lanzamiento →
+        // Integridad de la app → Firma de apps de Play, y solo existe DESPUÉS de
+        // crear la ficha y subir el primer AAB.
         applicationId = "com.jayalo.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.

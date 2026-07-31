@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/account_deletion_client.dart';
 import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/session_state.dart';
@@ -170,6 +171,127 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Eliminar la cuenta — requisito de Google Play (camino in-app; la URL
+  /// pública equivalente es AppConfig.deleteAccountUrl).
+  ///
+  /// Tres barreras deliberadas, en orden: se le dice qué pierde (incluido el
+  /// saldo, que NO se reembolsa — Términos §7), se exige un hold sostenido, y
+  /// el servidor exige además que el login sea de hace <5 min. Esa última la
+  /// impone la RPC, no la UI, así que no se puede saltar por PostgREST.
+  Future<void> _deleteAccount() async {
+    final saldo = await walletBalance() ?? 0;
+    if (!mounted) return;
+
+    final cs = Theme.of(context).colorScheme;
+    final confirmado = await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          builder: (ctx) => Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Eliminar mi cuenta',
+                    style: Theme.of(ctx)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 12),
+                const Text(
+                  'Se borran tu nombre, correo, teléfono, WhatsApp, dirección, '
+                  'tus fotos y tu documento de identidad. Perderás el acceso: '
+                  'no se puede volver a entrar y no hay forma de recuperarla.',
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Tus solicitudes, ofertas y reseñas no se borran, pero dejan '
+                  'de estar asociadas a ti: aparecerán como «Usuario '
+                  'eliminado». Se conservan porque también son el historial de '
+                  'la otra persona del trato.',
+                ),
+                if (saldo > 0) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: cs.errorContainer.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(children: [
+                      Icon(Icons.warning_amber_rounded, color: cs.error),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Perderás $saldo crédito${saldo == 1 ? '' : 's'} sin '
+                          'gastar. Los créditos no se reembolsan ni se cambian '
+                          'por dinero.',
+                          style: TextStyle(color: cs.onErrorContainer),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                HoldToConfirmButton(
+                  label: 'Mantener para eliminar mi cuenta',
+                  onConfirmed: () async => Navigator.pop(ctx, true),
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancelar'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ) ??
+        false;
+
+    if (!confirmado || !mounted) return;
+
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    if (token == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tu sesión expiró. Vuelve a iniciar sesión.')),
+      );
+      return;
+    }
+
+    try {
+      await AccountDeletionClient().deleteAccount(accessToken: token);
+      // La cuenta ya no existe: cerrar sesión en local y salir al login.
+      await _signOut();
+      if (!mounted) return;
+      context.go('/login');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tu cuenta fue eliminada.')),
+      );
+    } on DeleteAccountException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.reauthRequired
+              ? 'Por seguridad, vuelve a iniciar sesión y repite el borrado.'
+              : 'No se pudo eliminar la cuenta. Intenta de nuevo.'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo eliminar la cuenta. Intenta de nuevo.')),
+      );
+    }
+  }
+
   /// Sello del negocio (spec §7.4): OTP con business_id — espeja el badge si
   /// el número verificado es el público del negocio (semántica web).
   Future<void> _verifyBusiness() async {
@@ -302,6 +424,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           titleColor: cs.error,
           title: 'Cerrar sesión',
           onTap: _signOut,
+        ),
+        // Google Play exige un camino de eliminación de cuenta DENTRO de la
+        // app. Va al final y en tono de error: es irreversible.
+        const SectionHeader(text: 'Tu cuenta'),
+        _SettingsRow(
+          icon: Icons.person_remove_outlined,
+          iconColor: cs.error,
+          titleColor: cs.error,
+          title: 'Eliminar mi cuenta',
+          subtitle: 'Borra tus datos personales. No se puede deshacer',
+          onTap: _deleteAccount,
         ),
           ]),
         ),

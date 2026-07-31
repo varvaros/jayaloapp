@@ -9,9 +9,15 @@ abstract final class AppConfig {
   static const aiEndpoint = '$siteUrl/api/ai/chat-stream';
   static const reportErrorEndpoint = '$siteUrl/api/public/hooks/report-error';
   static const editorLinkEndpoint = '$siteUrl/api/app/business-editor-link';
+  static const deleteAccountEndpoint = '$siteUrl/api/app/delete-account';
   static const walletUrl = '$siteUrl/provider/wallet';
   static const termsUrl = '$siteUrl/terminos';
   static const privacyUrl = '$siteUrl/privacidad';
+
+  /// Página pública de eliminación de cuenta. Google Play exige que exista
+  /// ADEMÁS del camino in-app, y hay que declararla en el formulario de
+  /// Seguridad de los Datos de Play Console.
+  static const deleteAccountUrl = '$siteUrl/eliminar-cuenta';
 
   /// DEBE coincidir con TERMS_VERSION de la web (src/components/legal).
   static const termsVersion = '2.0';
