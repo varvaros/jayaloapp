@@ -272,13 +272,24 @@ web": ambas quedan obsoletas con este cambio.
 
 ### C.2 Calificar desde el detalle de solicitud
 
-`lib/features/client/request_status_screen.dart`: en fase `completed`, panel de calificar bajo
-el héroe, cerrando la promesa del copy de la línea 67. Reusa `RatingPanel` (que tras C.1 ya
-escribe en las dos tablas). Si el cliente ya calificó, muestra la nota dada en vez del
-formulario, igual que hace la web en `$requestId.tsx:2195`.
+`lib/features/client/request_status_screen.dart`: en fase `completed`, panel de calificar
+dentro de `_DetailSheet`, cerrando la promesa del copy de la línea 67.
 
-Necesita `conversation_id` y `business_id` de la oferta aceptada de esa solicitud; la pantalla
-ya carga las ofertas para derivar la fase.
+**No se reusa `RatingPanel`.** Su escritura a `conversation_ratings` tiene una RLS que exige
+una conversación existente, `status='cerrado'`, con el reseñador como `customer_id`
+(`20260709204110:195`), y en el detalle de solicitud no hay garantía de que exista. Se añade un
+widget nuevo y más simple, `BusinessReviewPanel`, que escribe **solo** `business_reviews` vía
+`submitReview` — exactamente lo que hace la web en `$requestId.tsx:2212`.
+
+El `business_id` sale de la oferta aceptada, que la pantalla ya tiene en `offers` (`offerCols`
+incluye `business_id`). El "¿ya calificó?" lo resuelve un helper nuevo, `myBusinessReview()`.
+Si ya calificó, muestra la nota dada en vez del formulario, igual que la web en
+`$requestId.tsx:2195`.
+
+**Escala:** `business_reviews.rating` nació con `CHECK BETWEEN 1 AND 5` pero la migración
+`20260619014535` lo amplió a **1-10** (la misma que dobló `conversation_ratings`). El `_overall`
+de `RatingPanel` y el panel nuevo son 1-10 y mapean directo: **no hay conversión de escala**.
+`customer_reviews` sigue siendo 1-5 y no se toca.
 
 ### C.3 Calificar al cliente desde la bandeja
 
@@ -287,11 +298,29 @@ ya carga las ofertas para derivar la fase.
 (`_acceptedCard` para las aceptadas, y el grupo de cerradas que incluye `completed`, líneas
 77-85).
 
-En las ofertas `accepted` desbloqueadas y en las `completed` que no tengan reseña del cliente,
-la tarjeta gana un botón "Calificar al cliente" que abre `CustomerRatingPanel` en una hoja.
-Reusa `hasCustomerReview(offerId)` y `offerBusinessId(offerId)`, que ya existen. El estado de
-"¿ya calificó?" se resuelve en lote al cargar la lista, no por tarjeta, para no disparar N
-consultas.
+La tarjeta del historial gana un botón "Calificar al cliente" que abre `CustomerRatingPanel` en
+una hoja, con **la misma condición que la web** (`ProviderOffersSection.tsx:705`):
+
+```
+status == 'completed' && purchase_completed == true && customer_id != null && sin reseña
+```
+
+El estado de "¿ya calificó?" se resuelve **en lote** al cargar la lista (un solo
+`.in('offer_id', ids)` sobre `customer_reviews`, como la web en `ProviderOffersSection.tsx:208`),
+no por tarjeta — si no, son N consultas.
+
+**Hueco a tapar:** `offerCols` (`repos.dart:237`) **no trae `customer_id`**, y
+`submitCustomerReview` lo necesita. Se añade al `select` de `_fetchMyOffers`
+(`repos.dart:844`), no a `offerCols`, para no cambiar lo que consumen las demás pantallas.
+
+**No** se replica el `UPDATE provider_offers SET status='completed'` que la web hace tras
+calificar (`ProviderOffersSection.tsx:928`): en la app el cierre lo hace
+`mark_conversation_completed`, y duplicar el flip desde dos sitios invita a divergencia. Se
+verifica en QA que la oferta acabe en `completed` por el camino de la RPC.
+
+**No se toca `showOfferContactSheet`** (`unlock_flow.dart:235`): el PO retiró de esa hoja el
+"¿Se concretó la venta?" el 2026-07-23, y volver a meterle una acción de cierre iría contra esa
+decisión.
 
 **No** se replica el `UPDATE provider_offers SET status='completed'` que la web hace tras
 calificar (`ProviderOffersSection.tsx:928`): en la app el cierre lo hace
@@ -344,8 +373,10 @@ responder rápido"*) sigue siendo correcto: no se toca ni se sube la versión de
 - Test de `_RatingPanelState`: con el `business_id` resuelto, se llaman las dos escrituras; si
   `submitReview` lanza, el panel igual reporta éxito.
 - `interestBusinessId` devuelve el negocio de un `product_interest`.
-- Widget test: fase `completed` en `request_status_screen` renderiza el panel; con reseña
-  existente renderiza la nota.
+- Widget test: `BusinessReviewPanel` sin reseña previa muestra el formulario; con reseña
+  existente muestra la nota dada y no el formulario.
+- Test puro de la condición de "calificar al cliente": `completed` + `purchase_completed=true` +
+  `customer_id` + sin reseña → true; quitar cualquiera de los cuatro → false.
 
 **Tanda D**: verificación visual en las dos plataformas. Sin test.
 
