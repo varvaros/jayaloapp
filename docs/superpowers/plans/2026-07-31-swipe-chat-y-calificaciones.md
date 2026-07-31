@@ -1804,7 +1804,9 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `submitReview` (repo), `blockedReasonForPhase` no aplica aquí.
 - Produces:
   - `Future<({int rating, String? comment})?> myBusinessReview(String businessId)`
-  - `BusinessReviewPanel({required businessId, existing, onSaved, submit})`
+  - `BusinessReviewPanel({required businessId, onSaved, loadExisting, submit})` — **se carga a
+    sí mismo** en su `initState`. No recibe `existing` del padre ni le pide nada: así el
+    detalle de solicitud solo lo monta, sin estado nuevo ni efectos durante el `build`.
 
 > **Por qué no se reusa `RatingPanel`:** su escritura a `conversation_ratings` tiene una RLS que
 > exige una conversación con `status='cerrado'` y el reseñador como `customer_id`
@@ -1832,11 +1834,12 @@ void main() {
       home: Scaffold(
         body: BusinessReviewPanel(
           businessId: 'biz1',
-          onSaved: () {},
+          loadExisting: (_) async => null,
           submit: (b, r, c) async => guardadas.add((b, r, c)),
         ),
       ),
     ));
+    await tester.pumpAndSettle(); // el panel se carga a sí mismo
     expect(find.text('Califica al proveedor'), findsOneWidget);
     await tester.tap(find.text('10'));
     await tester.pump();
@@ -1853,16 +1856,37 @@ void main() {
       home: Scaffold(
         body: BusinessReviewPanel(
           businessId: 'biz1',
-          existing: (rating: 8, comment: 'Todo bien'),
-          onSaved: () {},
+          loadExisting: (_) async => (rating: 8, comment: 'Todo bien'),
           submit: (_, _, _) async {},
         ),
       ),
     ));
+    await tester.pumpAndSettle();
     expect(find.text('Califica al proveedor'), findsNothing);
     expect(find.textContaining('8'), findsOneWidget);
     expect(find.text('Todo bien'), findsOneWidget);
     expect(find.text('Enviar calificación'), findsNothing);
+  });
+
+  testWidgets('mientras no sabe si hay reseña, no pinta nada', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: BusinessReviewPanel(
+          businessId: 'biz1',
+          loadExisting: (_) async {
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+            return (rating: 8, comment: null);
+          },
+          submit: (_, _, _) async {},
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('Califica al proveedor'), findsNothing,
+        reason: 'pintar el formulario y luego reemplazarlo por la nota ya '
+            'dada sería un parpadeo');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('8'), findsOneWidget);
   });
 }
 ```
@@ -1916,18 +1940,18 @@ class BusinessReviewPanel extends StatefulWidget {
   const BusinessReviewPanel({
     super.key,
     required this.businessId,
-    required this.onSaved,
-    this.existing,
+    this.onSaved,
+    this.loadExisting,
     this.submit,
   });
   final String businessId;
-  final VoidCallback onSaved;
 
-  /// Mi reseña vigente, si ya califiqué: entonces se muestra la nota en vez del
-  /// formulario (mismo comportamiento que la web).
-  final ({int rating, String? comment})? existing;
+  /// Aviso opcional al padre de que se guardó (para refrescar lo suyo).
+  final VoidCallback? onSaved;
 
-  /// Inyectable para los tests (el real toca Supabase).
+  /// Inyectables para los tests (los reales tocan Supabase).
+  final Future<({int rating, String? comment})?> Function(String businessId)?
+      loadExisting;
   final Future<void> Function(String businessId, int rating, String comment)?
       submit;
 
@@ -1939,6 +1963,33 @@ class _BusinessReviewPanelState extends State<BusinessReviewPanel> {
   int _rating = 0;
   final _comment = TextEditingController();
   bool _submitting = false;
+
+  /// Mi reseña vigente, si ya califiqué. El panel se carga A SÍ MISMO: así el
+  /// detalle de solicitud solo lo monta, sin estado nuevo ni efectos durante
+  /// su `build`.
+  ({int rating, String? comment})? _existing;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  /// Best-effort: si falla, se muestra el formulario. Reseñar de nuevo hace
+  /// upsert (`uq_business_reviews_one_per_reviewer`), así que no duplica.
+  Future<void> _load() async {
+    final loader = widget.loadExisting ?? myBusinessReview;
+    ({int rating, String? comment})? r;
+    try {
+      r = await loader(widget.businessId);
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _existing = r;
+      _loaded = true;
+    });
+  }
 
   @override
   void dispose() {
@@ -1960,7 +2011,11 @@ class _BusinessReviewPanelState extends State<BusinessReviewPanel> {
       await save(widget.businessId, _rating, _comment.text);
       if (!mounted) return;
       await showRatingThanks(context);
-      if (mounted) widget.onSaved();
+      if (!mounted) return;
+      final c = _comment.text.trim();
+      setState(() => _existing =
+          (rating: _rating, comment: c.isEmpty ? null : c));
+      widget.onSaved?.call();
     } catch (_) {
       if (mounted) {
         setState(() => _submitting = false);
@@ -1973,7 +2028,10 @@ class _BusinessReviewPanelState extends State<BusinessReviewPanel> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final existing = widget.existing;
+    // Hasta saber si ya califiqué, no se pinta nada: mostrar el formulario y
+    // reemplazarlo un instante después por "ya calificaste" es un parpadeo.
+    if (!_loaded) return const SizedBox.shrink();
+    final existing = _existing;
     if (existing != null) {
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -2072,73 +2130,41 @@ En `request_status_screen.dart`:
 
 6a. Import: `import '../chat/widgets/rating_form.dart';`
 
-6b. En `_RequestStatusScreenState`, estado nuevo y su carga:
-
-```dart
-  /// Mi reseña del negocio de la oferta aceptada (fase completada). `null`
-  /// mientras carga o si no hay negocio resuelto.
-  ({int rating, String? comment})? _myReview;
-  bool _myReviewLoaded = false;
-
-  /// Carga MI reseña vigente de ese negocio, una sola vez. Best-effort: si
-  /// falla, el panel se muestra en modo formulario (reseñar de nuevo hace
-  /// upsert, así que no duplica).
-  Future<void> _loadMyReview(String businessId) async {
-    if (_myReviewLoaded) return;
-    _myReviewLoaded = true;
-    try {
-      final r = await myBusinessReview(businessId);
-      if (mounted) setState(() => _myReview = r);
-    } catch (_) {}
-  }
-```
-
-6c. Dentro de `_DetailSheet`, en la rama de fase `completed`, montar el panel. `_DetailSheet` ya
-recibe `offers`; el negocio sale de la oferta aceptada:
+6b. Dentro de `_DetailSheet`, en la rama de fase `completed`, montar el panel. **Eso es todo**:
+`_DetailSheet` no gana parámetros y `_RequestStatusScreenState` no gana estado — el panel se
+carga solo. El negocio sale de la oferta aceptada, que la pantalla ya tiene en `offers`
+(`offerCols` incluye `business_id`):
 
 ```dart
               // Fase completada: cerrar la promesa del copy de `_phaseCopy`
               // ("Califica al proveedor para ayudar a la comunidad"), que hasta
               // ahora no tenía ningún control detrás.
               if (phase == RequestPhase.completed)
-                Builder(builder: (context) {
-                  final accepted = offers.firstWhere(
-                    (o) =>
-                        o['status'] == 'accepted' || o['status'] == 'completed',
-                    orElse: () => const <String, dynamic>{},
-                  );
-                  final bizId = accepted['business_id'] as String?;
-                  if (bizId == null) return const SizedBox.shrink();
-                  onNeedReview(bizId); // dispara _loadMyReview
-                  return BusinessReviewPanel(
-                    businessId: bizId,
-                    existing: myReview,
-                    onSaved: onReviewSaved,
-                  );
-                }),
+                ...() {
+                  final accepted = offers.where((o) =>
+                      o['status'] == 'accepted' || o['status'] == 'completed');
+                  final bizId = accepted.isEmpty
+                      ? null
+                      : accepted.first['business_id'] as String?;
+                  return [
+                    if (bizId != null)
+                      BusinessReviewPanel(
+                        // Key por negocio: si la oferta aceptada cambiara, el
+                        // panel se re-crea y vuelve a cargar SU reseña.
+                        key: ValueKey('review-$bizId'),
+                        businessId: bizId,
+                      ),
+                  ];
+                }(),
 ```
 
-`_DetailSheet` gana tres parámetros para no hablar con el estado del padre a escondidas:
-
-```dart
-  /// Mi reseña vigente del negocio (o null), y los avisos al padre.
-  final ({int rating, String? comment})? myReview;
-  final void Function(String businessId) onNeedReview;
-  final VoidCallback onReviewSaved;
-```
-
-y desde `build` del padre se pasan:
-
-```dart
-                  myReview: _myReview,
-                  onNeedReview: _loadMyReview,
-                  onReviewSaved: () =>
-                      setState(() => _myReviewLoaded = false),
-```
-
-> **Nota de implementación:** `onNeedReview` se llama durante el build, así que
-> `_loadMyReview` debe ser idempotente — lo es gracias al guard `_myReviewLoaded`. Tras guardar,
-> `onReviewSaved` lo reabre para que la siguiente construcción relea la nota recién escrita.
+> **Por qué así:** la versión anterior de este plan pasaba la reseña desde el padre y disparaba
+> su carga **durante el `build`** — un efecto secundario en el sitio donde Flutter menos lo
+> perdona. El panel cargándose a sí mismo (Step 4) elimina el estado del padre, los tres
+> parámetros de `_DetailSheet` y el efecto en build de una vez.
+>
+> Si el `Column`/`ListView` donde va esto no admite spread de lista, monta el `Builder`
+> equivalente — lo que NO debe reaparecer es una llamada de carga dentro del `build`.
 
 - [ ] **Step 7: Gates y commit**
 
