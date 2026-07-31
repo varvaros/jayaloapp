@@ -151,7 +151,7 @@ void main() {
       onboardingStore.reset(); // el store es un singleton: aislar cada test
     });
 
-    Widget peekHost() => MaterialApp(
+    Widget peekHost({ValueChanged<bool>? onPeekResolved}) => MaterialApp(
           home: Scaffold(
             body: ListView(
               children: [
@@ -159,6 +159,7 @@ void main() {
                   id: 'p',
                   group: ValueNotifier<Object?>(null),
                   peekKey: 'requests.swipe.v1',
+                  onPeekResolved: onPeekResolved,
                   actions: [
                     SwipeAction(
                       icon: Icons.delete_outline,
@@ -210,7 +211,15 @@ void main() {
     testWidgets(
         'si el usuario arrastra durante el peek, la clave NO se marca (se puede ofrecer otra vez)',
         (tester) async {
-      await tester.pumpWidget(peekHost());
+      // `resolved` distingue "el mecanismo detectó la interrupción" de "la
+      // continuación se quedó colgada": ambos casos dejan `isDone` en false
+      // por igual, así que una aserción solo sobre `isDone` no prueba nada —
+      // si el `await` interno nunca se resuelve (p. ej. sin `.orCancel`),
+      // `onPeekResolved` tampoco se invoca nunca y `resolved` se queda en
+      // `null`, no en `false`.
+      bool? resolved;
+      await tester.pumpWidget(
+          peekHost(onPeekResolved: (completed) => resolved = completed));
       await tester.pump(); // post-frame que dispara _maybePeek
       await tester.pump(const Duration(milliseconds: 700)); // a mitad de la salida
 
@@ -224,6 +233,38 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
+      expect(resolved, isFalse,
+          reason:
+              'el mecanismo debe resolver la interrupción como "no completada", no quedarse colgado');
+      expect(onboardingStore.isDone('requests.swipe.v1'), isFalse,
+          reason:
+              'una pista cortada a medias no se le enseñó a nadie: debe poder ofrecerse otra vez');
+    });
+
+    testWidgets(
+        'si el usuario toca la tarjeta para cerrarla durante el peek, la clave NO se marca',
+        (tester) async {
+      bool? resolved;
+      await tester.pumpWidget(
+          peekHost(onPeekResolved: (completed) => resolved = completed));
+      await tester.pump(); // post-frame que dispara _maybePeek
+      // 700 ms (a mitad de la salida) + 200 ms más para caer de lleno en el
+      // sostenido (28 px estables): así el toque cae sobre la capa
+      // transparente de "tocar para cerrar" (`if (_dx > 2)`) sin depender
+      // de en qué punto exacto de la curva de salida estemos.
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // `warnIfMissed: false`: el toque debe caer sobre la capa transparente
+      // de "tocar para cerrar" que se pinta ENCIMA de la tarjeta cuando está
+      // abierta (por diseño — ver `_close`/el `Positioned.fill` en `build`),
+      // no sobre el `Text('card')` en sí.
+      await tester.tap(find.text('card'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(resolved, isFalse,
+          reason:
+              'un toque que cierra la tarjeta también corta el peek a medias: no se le enseñó el gesto a nadie');
       expect(onboardingStore.isDone('requests.swipe.v1'), isFalse,
           reason:
               'una pista cortada a medias no se le enseñó a nadie: debe poder ofrecerse otra vez');

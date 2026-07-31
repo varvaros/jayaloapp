@@ -40,6 +40,7 @@ class SwipeToActions extends StatefulWidget {
     this.margin = const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
     this.blockedReason,
     this.peekKey,
+    this.onPeekResolved,
   }) : assert(actions.length > 0 || blockedReason != null,
             'un row sin acciones necesita un blockedReason que explicar');
 
@@ -64,6 +65,21 @@ class SwipeToActions extends StatefulWidget {
   /// se asoma y vuelve (patrón iOS Mail). Null = sin pista. Se pasa solo en la
   /// PRIMERA fila no bloqueada de una lista.
   final String? peekKey;
+
+  /// Solo para tests: se invoca cuando el auto-peek TERMINA de resolverse —
+  /// `true` si se mostró de principio a fin (y se marcó la clave), `false`
+  /// si se cortó a medias (un arrastre real o un toque que cerró la
+  /// tarjeta) y la clave NO se marcó. Nunca se invoca si el mecanismo se
+  /// queda colgado (ver `_maybePeek`): eso es justo lo que lo hace útil en
+  /// un test — distingue "detectó bien la interrupción" de "la
+  /// continuación nunca llegó a ejecutarse", algo que una aserción sobre
+  /// `onboardingStore.isDone(...)` sola no puede distinguir (ambos casos
+  /// dejan la clave sin marcar por igual). Mismo espíritu que las costuras
+  /// inyectables del resto del proyecto para testear async
+  /// (`OnboardingStore.forTest`, `loadConversations` en
+  /// `ConversationsScreen`, `submitReview` en los paneles de calificación).
+  @visibleForTesting
+  final ValueChanged<bool>? onPeekResolved;
 
   @override
   State<SwipeToActions> createState() => _SwipeToActionsState();
@@ -171,6 +187,13 @@ class _SwipeToActionsState extends State<SwipeToActions>
 
   void _close() {
     if (widget.group.value == widget.id) widget.group.value = null;
+    // Un toque que cierra la tarjeta (la capa transparente de "tocar para
+    // cerrar", o tocar una acción) corta el auto-peek igual que un
+    // arrastre: a ese usuario tampoco se le enseñó el gesto de principio a
+    // fin. `_onGroupChanged` llama a `_springTo` directo, sin pasar por
+    // aquí, así que otra fila abriéndose (y esta cerrándose de rebote)
+    // sigue sin contar como interrupción del usuario.
+    if (_peekActive) _peekInterrupted = true;
     _springTo(0, 0);
   }
 
@@ -222,9 +245,14 @@ class _SwipeToActionsState extends State<SwipeToActions>
         // Manejado abajo vía `_peekInterrupted`.
       }
       _peekActive = false;
-      if (!mounted || _peekInterrupted) return;
+      if (!mounted) return; // sin callback: nadie compone bajo un widget desmontado
+      if (_peekInterrupted) {
+        widget.onPeekResolved?.call(false);
+        return;
+      }
     }
     await onboardingStore.markDone(key);
+    widget.onPeekResolved?.call(true);
   }
 
   Future<void> _run(SwipeAction a) async {
