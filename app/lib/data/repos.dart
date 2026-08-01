@@ -2380,6 +2380,28 @@ Future<Map<String, PeerBadges>> peerVerificationBadges(
   };
 }
 
+/// MI reseña vigente de este negocio (o null). La RLS de `business_reviews`
+/// permite al reseñador leer la suya; el índice único
+/// `uq_business_reviews_one_per_reviewer` garantiza que haya como mucho una.
+Future<({int rating, String? comment})?> myBusinessReview(
+  String businessId,
+) async {
+  final uid = supa.auth.currentUser?.id;
+  if (uid == null) return null;
+  final row = await supa
+      .from('business_reviews')
+      .select('rating,comment')
+      .eq('business_id', businessId)
+      .eq('reviewer_id', uid)
+      .maybeSingle();
+  if (row == null) return null;
+  final c = (row['comment'] as String?)?.trim() ?? '';
+  return (
+    rating: (row['rating'] as num).toInt(),
+    comment: c.isEmpty ? null : c,
+  );
+}
+
 // ── Opiniones con texto (Mi tienda) ────────────────────────────────────────
 // Anónimas a propósito: solo rating/comment/created_at, NUNCA reviewer_id
 // (misma restricción que `get_business_ratings`). La web lee estas mismas

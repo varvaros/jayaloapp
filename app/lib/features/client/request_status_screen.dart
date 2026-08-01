@@ -15,6 +15,7 @@ import '../shared/onboarding_guide.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/verified_badges.dart';
 import '../../core/motion.dart';
+import '../chat/widgets/rating_form.dart';
 
 /// Tono ámbar del panel del detalle (la doctrina lo pide cálido, NO lila —
 /// así el detalle no se confunde con el chat). Claro sale del mockup
@@ -804,6 +805,26 @@ class _DetailSheet extends StatelessWidget {
                     ),
                   ),
                 ],
+                // Fase completada: cerrar la promesa del copy de `_phaseCopy`
+                // ("Califica al proveedor para ayudar a la comunidad"), que
+                // hasta ahora no tenía ningún control detrás.
+                if (phase == RequestPhase.completed)
+                  ...() {
+                    final accepted = offers.where((o) =>
+                        o['status'] == 'accepted' || o['status'] == 'completed');
+                    final bizId = accepted.isEmpty
+                        ? null
+                        : accepted.first['business_id'] as String?;
+                    return [
+                      if (bizId != null)
+                        BusinessReviewPanel(
+                          // Key por negocio: si la oferta aceptada cambiara,
+                          // el panel se re-crea y vuelve a cargar SU reseña.
+                          key: ValueKey('review-$bizId'),
+                          businessId: bizId,
+                        ),
+                    ];
+                  }(),
               ],
             ),
           ),
