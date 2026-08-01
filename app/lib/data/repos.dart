@@ -1542,8 +1542,20 @@ Future<void> markConversationCompleted(String convId) async => supa.rpc(
   params: {'_conversation_id': convId},
 );
 
-Future<void> markConversationLost(String convId) async =>
-    supa.from('conversations').update({'status': 'perdido'}).eq('id', convId);
+/// Marca la conversación como NO CONCRETADA (`perdido`). Irreversible.
+///
+/// Invalida la caché de la lista: hasta la revisión final (2026-08-01) no lo
+/// hacía, y no le hacía falta porque solo se llamaba desde el chat, cuyo
+/// `_reload()` va por `fetchConversation()` (consulta directa, sin caché).
+/// Desde que la lista de chats ofrece la acción por swipe, sin esto
+/// `readFresh` devolvía la entrada cacheada (TTL 20 s) y la fila se quedaba en
+/// "Abierto": el usuario confirmaba un diálogo que le advierte de que es
+/// IRREVERSIBLE y no veía cambiar nada. `setConversationArchived` ya lo hacía;
+/// la asimetría era el olvido.
+Future<void> markConversationLost(String convId) async {
+  await supa.from('conversations').update({'status': 'perdido'}).eq('id', convId);
+  AppCaches.conversations.clear();
+}
 
 /// Archiva/desarchiva la conversación por MI lado. La otra columna es del otro
 /// participante y el trigger `trg_enforce_archive_own_side` lo impone en la BD.

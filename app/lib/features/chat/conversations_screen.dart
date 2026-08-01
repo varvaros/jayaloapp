@@ -356,6 +356,10 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       }
       return;
     }
+    // Acuse explícito: el ⋮ del chat sí lo daba y la lista no. Sin él, una
+    // acción que el usuario acaba de confirmar como IRREVERSIBLE no producía
+    // ninguna señal y invitaba a repetirla (revisión final, 2026-08-01).
+    if (mounted) showJayaloToast(context, 'Marcado como no concretado.');
     if (mounted) await _load();
   }
 
@@ -368,6 +372,10 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         showJayaloToast(context, 'No se pudo archivar. Intenta de nuevo.');
       }
       return;
+    }
+    if (mounted) {
+      showJayaloToast(
+          context, archived ? 'Conversación archivada.' : 'Conversación restaurada.');
     }
     if (mounted) await _load();
   }

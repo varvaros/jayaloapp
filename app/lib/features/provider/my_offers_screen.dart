@@ -13,15 +13,26 @@ import '../shared/onboarding_copy.dart';
 import '../chat/widgets/rating_form.dart';
 import 'unlock_flow.dart';
 
-/// ¿Toca calificar al cliente por esta oferta? Paridad exacta con la web
-/// (`ProviderOffersSection.tsx:705`): completada + compra confirmada +
-/// cliente conocido + sin reseña previa.
+/// ¿Toca calificar al cliente por esta oferta? Completada + cliente conocido +
+/// sin reseña previa.
+///
+/// ⚠️ DIVERGE A PROPÓSITO de la web (`ProviderOffersSection.tsx:705`), que
+/// además exige `purchase_completed === true`. Copiar ese cuarto término dejó
+/// el botón INVISIBLE PARA SIEMPRE en la app (hallazgo Critical de la revisión
+/// final, 2026-08-01): en la app **nadie escribe esa columna** —
+/// `markPurchaseCompleted` no tiene ningún llamador y
+/// `mark_conversation_completed` no la toca—, así que una oferta cerrada desde
+/// la app queda con `status='completed'` y `purchase_completed = NULL`.
+///
+/// La web tiene un flujo de DOS pasos (primero "¿se concretó la venta?", luego
+/// el cierre); la app tiene uno solo: `status == 'completed'` YA significa que
+/// el proveedor confirmó el cierre, porque es él quien pulsa "Marcar como
+/// completado". Tres términos, no cuatro.
 bool needsCustomerReview(
   Map<String, dynamic> offer,
   Set<String> reviewed,
 ) =>
     offer['status'] == 'completed' &&
-    offer['purchase_completed'] == true &&
     offer['customer_id'] != null &&
     !reviewed.contains(offer['id']);
 
