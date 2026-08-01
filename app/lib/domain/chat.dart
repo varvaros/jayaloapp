@@ -80,6 +80,17 @@ const String chatCheckViolationCode = '23514';
 /// 'abierto'`, así que la conversación se cerró mientras la teníamos delante.
 const String chatPermissionDeniedCode = '42501';
 
+/// ¿Hay que RELEER la conversación antes de decidir el aviso de un envío que
+/// rebotó? Solo ante un rechazo de la RLS: es la señal de que la conversación
+/// probablemente se cerró mientras la teníamos delante, y sin releer el aviso
+/// mentiría ("intenta de nuevo" contra una puerta cerrada).
+///
+/// Pura y pública para poder fijar el disparador en un test: el camino completo
+/// (`_send` → 42501 → `_reload` → `!_isOpen` → aviso) vive en `ChatScreen`, que
+/// no se puede montar en un widget-test porque su `initState` toca Supabase.
+bool shouldRecheckConversation(String? code) =>
+    code == chatPermissionDeniedCode;
+
 /// Qué mostrarle al usuario cuando rebota un envío. Si el rechazo viene de una
 /// de NUESTRAS guardas, el servidor ya manda una explicación en español
 /// ("Vas muy rápido…") y repetirla es mucho mejor que el genérico: "intenta de

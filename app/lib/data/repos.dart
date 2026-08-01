@@ -1561,6 +1561,15 @@ Future<void> markConversationLost(String convId) async {
 /// participante y el trigger `trg_enforce_archive_own_side` lo impone en la BD.
 /// Archivar OCULTA de la bandeja; nunca borra (la conversación es el registro
 /// de un lead pagado).
+/// Qué columna de archivado le toca a cada rol. Pura y pública para poder
+/// fijar el mapeo en un test: es la única línea del archivado donde un
+/// copy-paste invertido haría que un usuario intentara archivar el lado del
+/// OTRO. El trigger `trg_enforce_archive_own_side` lo bloquearía con P0001,
+/// pero el usuario vería "No se pudo archivar" sobre una acción perfectamente
+/// legítima, y el motivo real quedaría enterrado en la BD.
+String archivedColumnFor({required bool asProvider}) =>
+    asProvider ? 'archived_by_provider' : 'archived_by_customer';
+
 Future<void> setConversationArchived(
   String convId,
   bool archived, {
@@ -1568,10 +1577,7 @@ Future<void> setConversationArchived(
 }) async {
   await supa
       .from('conversations')
-      .update({
-        (asProvider ? 'archived_by_provider' : 'archived_by_customer'):
-            archived,
-      })
+      .update({archivedColumnFor(asProvider: asProvider): archived})
       .eq('id', convId);
   AppCaches.conversations.clear();
 }

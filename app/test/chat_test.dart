@@ -81,6 +81,22 @@ void main() {
               code: chatPermissionDeniedCode, conversationClosed: false),
           'No se pudo enviar. Intenta de nuevo.');
     });
+    /// Minor #7 de la revisión final: nada fijaba el DISPARADOR de la
+    /// relectura. El camino completo (`_send` → 42501 → `_reload` → `!_isOpen`
+    /// → aviso) vive en `ChatScreen`, que no se puede montar en un
+    /// widget-test porque su `initState` toca Supabase; lo que sí se puede
+    /// fijar es la decisión, que es donde estaría el error.
+    test('solo un rechazo de la RLS dispara releer la conversación', () {
+      expect(shouldRecheckConversation(chatPermissionDeniedCode), isTrue);
+      // El anti-flood y el tope de longitud NO deben provocar una relectura:
+      // la conversación sigue abierta y el servidor ya explicó el rechazo.
+      expect(shouldRecheckConversation(chatRateLimitCode), isFalse);
+      expect(shouldRecheckConversation(chatCheckViolationCode), isFalse);
+      // Un fallo de red no trae código: tampoco.
+      expect(shouldRecheckConversation(null), isFalse);
+      expect(shouldRecheckConversation('23505'), isFalse);
+    });
+
     test('el texto del servidor gana al aviso de cerrado', () {
       // Si una de NUESTRAS guardas explicó el rechazo, ese texto es más
       // específico que "está cerrada".

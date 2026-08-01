@@ -563,7 +563,7 @@ class _ChatScreenState extends State<ChatScreen> {
       // Releemos: el composer deja paso al banner de cerrado y el aviso pasa a
       // decir la verdad en vez de invitar a reintentar contra una puerta
       // cerrada (bug del PO 2026-07-31).
-      if (code == chatPermissionDeniedCode) await _reload();
+      if (shouldRecheckConversation(code)) await _reload();
       if (mounted) {
         setState(() {});
         // El anti-flood y el tope de longitud del servidor traen su propio

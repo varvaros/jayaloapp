@@ -158,23 +158,35 @@ void main() {
         reason: 'el conteo debe excluir las archivadas');
   });
 
-  /// La píldora de la pestaña "perdido" YA dice, literal, "No concretado"
-  /// (sin sufijo de conteo cuando no hay ninguna) — mismo texto exacto que la
-  /// acción de swipe. Esa píldora vive SIEMPRE en pantalla (no dentro del
-  /// `SwipeToActions` de la fila), así que un `find.text('No concretado')`
-  /// sin ámbito encuentra dos widgets con el swipe abierto y es ambiguo tanto
-  /// para `expect` como para `tap`. Se acota a los descendientes del
-  /// `SwipeToActions` de la fila para apuntar a la franja de swipe y no a la
-  /// píldora del filtro.
+  /// Se conserva el finder acotado aunque los literales ya no colisionen: la
+  /// píldora del filtro vive SIEMPRE en pantalla y acotar al `SwipeToActions`
+  /// deja el test inmune a que alguien vuelva a acercar los dos textos.
   Finder swipeText(String label) => find.descendant(
       of: find.byType(SwipeToActions), matching: find.text(label));
 
-  testWidgets('deslizar una conversación abierta revela No concretado y '
+  /// La píldora del filtro dice "No concretado" (nombre del ESTADO) y la franja
+  /// del swipe decía el mismo literal exacto (nombre de la ACCIÓN). La
+  /// ambigüedad era tal que este fichero tuvo que introducir `swipeText` para
+  /// poder distinguirlos; si el test necesita desambiguar, el usuario también.
+  /// La franja pasó a "Marcar no concretado" (revisión final, 2026-08-01).
+  testWidgets('la franja del swipe NO usa el mismo literal que la píldora del '
+      'filtro', (tester) async {
+    await mount(tester, [conv('a')]);
+    await tester.drag(find.text('Peer a'), const Offset(220, 0));
+    await tester.pumpAndSettle();
+    expect(swipeText('No concretado'), findsNothing,
+        reason: 'la franja debe nombrar la ACCIÓN, no el estado');
+    expect(swipeText('Marcar no concretado'), findsOneWidget);
+    // Y sin acotar, cada literal apunta a un solo sitio: la ambigüedad se fue.
+    expect(find.text('Marcar no concretado'), findsOneWidget);
+  });
+
+  testWidgets('deslizar una conversación abierta revela Marcar no concretado y '
       'Archivar', (tester) async {
     await mount(tester, [conv('a')]);
     await tester.drag(find.text('Peer a'), const Offset(220, 0));
     await tester.pumpAndSettle();
-    expect(swipeText('No concretado'), findsOneWidget);
+    expect(swipeText('Marcar no concretado'), findsOneWidget);
     expect(swipeText('Archivar'), findsOneWidget);
   });
 
@@ -186,15 +198,15 @@ void main() {
     await tester.drag(find.text('Peer b'), const Offset(220, 0));
     await tester.pumpAndSettle();
     expect(swipeText('Desarchivar'), findsOneWidget);
-    expect(swipeText('No concretado'), findsNothing);
+    expect(swipeText('Marcar no concretado'), findsNothing);
   });
 
-  testWidgets('No concretado pide confirmación y cancelar no hace nada',
+  testWidgets('Marcar no concretado pide confirmación y cancelar no hace nada',
       (tester) async {
     await mount(tester, [conv('a')]);
     await tester.drag(find.text('Peer a'), const Offset(220, 0));
     await tester.pumpAndSettle();
-    await tester.tap(swipeText('No concretado'));
+    await tester.tap(swipeText('Marcar no concretado'));
     await tester.pumpAndSettle();
     expect(find.textContaining('no se puede reabrir'), findsOneWidget,
         reason: 'marcar perdido es irreversible: hay que decirlo');

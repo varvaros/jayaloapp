@@ -317,7 +317,13 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                         if (effectiveTab == 'abierto')
                           SwipeAction(
                             icon: Icons.cancel_outlined,
-                            label: 'No concretado',
+                            // "Marcar no concretado", no "No concretado" a
+                            // secas: la PÍLDORA del filtro ya usa ese literal
+                            // exacto, y la ambigüedad era tal que el propio
+                            // test tuvo que acotar el finder para distinguir
+                            // los dos (revisión final, 2026-08-01). Si el test
+                            // necesita desambiguar, el usuario también.
+                            label: 'Marcar no concretado',
                             color: Theme.of(context).colorScheme.error,
                             onTap: () => _markLost(convId),
                           ),
