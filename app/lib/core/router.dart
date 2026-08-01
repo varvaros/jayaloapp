@@ -22,6 +22,7 @@ import '../features/onboarding/provider_onboarding_screen.dart';
 import '../features/provider/inbox_screen.dart';
 import '../features/provider/my_business_screen.dart';
 import '../features/provider/my_offers_screen.dart';
+import '../features/provider/product_interest_detail_screen.dart';
 import '../features/provider/request_detail_screen.dart';
 import '../features/provider/stats_screen.dart';
 import '../features/settings/settings_screen.dart';
@@ -187,6 +188,16 @@ GoRouter buildRouter() => GoRouter(
                         // `?edit=<offerId>`: entra en modo edición de una oferta
                         // PENDIENTE propia (desde "Mis ofertas").
                         editOfferId: s.uri.queryParameters['edit']))),
+            // Interés de producto (alguien tocó "Me interesa" en el catálogo).
+            // Era una hoja dentro del inbox; el PO la pidió como pantalla,
+            // igual que el detalle de solicitud (2026-08-01). El `extra` trae
+            // la fila que el inbox ya tiene cargada, para pintar sin esperar.
+            GoRoute(
+                path: '/provider/interest/:id',
+                builder: (_, s) => BackGuard(
+                    child: ProductInterestDetailScreen(
+                        interestId: s.pathParameters['id']!,
+                        initial: s.extra as Map<String, dynamic>?))),
             GoRoute(
                 path: '/provider/offers',
                 builder: (_, _) => const BackGuard(child: MyOffersScreen())),

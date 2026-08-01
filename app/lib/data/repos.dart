@@ -937,6 +937,24 @@ unlockProductInterest(String interestId, int estimatedCost) async {
   );
 }
 
+/// `customer_id` de un interés — quién tocó "Me interesa".
+///
+/// La RPC del inbox (`get_provider_inbox_unified`) NO lo devuelve, pero el
+/// proveedor sí puede leerlo de la tabla: la política de SELECT admite
+/// `auth.uid() = provider_user_id` y `customer_id` está en el grant por
+/// columna. Con él se pinta la MISMA ficha de cliente que el detalle de
+/// solicitud (alias anónimo + reputación + sellos) — sin exponer contacto:
+/// nombre y teléfono siguen saliendo solo de
+/// `get_unlocked_product_interest_contact`, tras pagar.
+Future<String?> productInterestCustomerId(String interestId) async {
+  final row = await supa
+      .from('product_interests')
+      .select('customer_id')
+      .eq('id', interestId)
+      .maybeSingle();
+  return row?['customer_id'] as String?;
+}
+
 Future<({String? firstName, String? phone})> productInterestContact(
   String interestId,
 ) async {

@@ -315,7 +315,7 @@ Future<void> showOfferContactSheet(
             ),
             if (canWhatsapp && contact.phone != null) ...[
               const SizedBox(height: 12),
-              _WhatsappReveal(
+              WhatsappReveal(
                   phone: contact.phone!, firstName: contact.firstName),
             ],
             // "¿Se concretó la venta? Marcar completada" RETIRADO (pedido PO
@@ -461,8 +461,14 @@ class _TallSheet extends StatelessWidget {
 /// Ver el WhatsApp = doble advertencia (pedido PO 2026-07-22): una nota clara
 /// de que por WhatsApp NO hay devolución de créditos si el lead no responde
 /// (el chat interno sí queda como respaldo), y un hold-to-confirm para abrirlo.
-class _WhatsappReveal extends StatelessWidget {
-  const _WhatsappReveal({required this.phone, required this.firstName});
+///
+/// Público desde el 2026-08-01: el detalle del interés de producto enseñaba el
+/// teléfono en TEXTO PLANO en cuanto se abría, sin gate ni advertencia. El PO
+/// lo reportó ("el whatsapp queda expuesto") y la respuesta es reusar esto, no
+/// escribir otra variante.
+class WhatsappReveal extends StatelessWidget {
+  const WhatsappReveal(
+      {super.key, required this.phone, required this.firstName});
   final String phone;
   final String? firstName;
 

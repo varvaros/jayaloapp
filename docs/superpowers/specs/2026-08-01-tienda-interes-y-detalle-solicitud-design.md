@@ -314,6 +314,41 @@ seguimiento opcional, no bloqueante.
 
 Depende de T3 (el panel plegable) y hereda el orden de T4.
 
+### Estado: HECHA (2026-08-01)
+
+`ProductInterestDetailScreen` + `ProductInterestDetailView` inyectable, con
+**9 tests escritos antes** — esta vez sí hay cobertura de la pantalla, siguiendo
+el patrón de `ProviderInboxView`/`MyBusinessView` en lugar de repetir el problema
+de T3/T4. Cubren el badge, el orden de las tres secciones (comparando posiciones
+verticales reales), la ficha de cliente, el hold, el caso de saldo insuficiente,
+y sobre todo el bug reportado: **el teléfono no aparece en claro** ni con el
+contacto cargado.
+
+Dos hallazgos que cambiaron el plan:
+
+- **La ficha del cliente sí se puede pintar.** `get_provider_inbox_unified` no
+  devuelve `customer_id`, así que parecía que "datos del cliente" se quedaría
+  vacío. Pero el proveedor SÍ puede leerlo de `product_interests`: la política de
+  SELECT admite `auth.uid() = provider_user_id` y la columna está en el grant.
+  Nueva `productInterestCustomerId` en `repos.dart` — **sin migración**.
+- **`_customerRepCard` se extrajo a `features/shared/customer_rep_card.dart`**
+  (`CustomerRepCard`). Era un método privado de 110 líneas dentro del detalle de
+  solicitud; sin extraerlo, "igual que las demás solicitudes" habría sido una
+  copia. Ahora las dos pantallas usan el mismo widget.
+- `_WhatsappReveal` pasa a público `WhatsappReveal`, por lo mismo: la respuesta
+  al "whatsapp expuesto" es reusar el gate de las ofertas, no escribir otro.
+
+Limpieza que arrastró: al irse la hoja, el inbox se quedó sin usar el saldo
+(`_balance`, `_loadBalance`, `_openWallet`, el parámetro `balanceFetch` y su
+typedef) — todo eso lo carga ahora la pantalla nueva. Se retiró, y los dos tests
+de inbox que probaban la hoja se movieron a los de la pantalla.
+
+Se añadió además un test de navegación (tocar la tarjeta → push a
+`/provider/interest/:id` con la fila en `extra`), **validado rompiendo el push a
+propósito** para confirmar que lo caza.
+
+App: analyze 0, 624 tests, APK debug construido.
+
 ---
 
 ## T5 — La tienda con el diseño de la web

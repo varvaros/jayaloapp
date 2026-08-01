@@ -3,22 +3,16 @@ import '../shared/network_image.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
-import '../../core/config.dart';
-import '../../core/secure_web_launch.dart';
-import '../../core/motion.dart';
 import '../../data/repos.dart';
 import '../../domain/inbox_load.dart';
 import '../../domain/pricing.dart';
-import '../../domain/recharge.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
 import '../shell/floating_nav_bar.dart';
 import '../shell/home_scroll.dart';
 import '../shared/brand_kit.dart';
-import '../shared/celebration.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
 import '../shared/violet_header.dart';
-import 'unlock_flow.dart' show StartChatButton;
 
 /// Signature de las fuentes de datos del inbox: `providerInbox` (Para ti,
 /// filtra por rubro del proveedor) y `allOpenRequests` (Todas, cualquier
@@ -29,11 +23,6 @@ typedef InboxFetch =
       String? kind,
       required bool todas,
     });
-
-/// Saldo del proveedor, inyectado (Task 9) por la misma razón que [InboxFetch]:
-/// las tarjetas de interés necesitan saber si alcanza para desbloquear sin
-/// tocar red en los tests de widget.
-typedef BalanceFetch = Future<int?> Function();
 
 class ProviderInboxScreen extends StatelessWidget {
   const ProviderInboxScreen({super.key});
@@ -63,7 +52,6 @@ class ProviderInboxView extends StatefulWidget {
     required this.fetch,
     this.leading = const HeaderAvatar(),
     this.actions = const [HeaderBell()],
-    this.balanceFetch = walletBalance,
   });
 
   final InboxFetch fetch;
@@ -72,7 +60,6 @@ class ProviderInboxView extends StatefulWidget {
   /// `initState`, así que los tests pasan un widget inerte.
   final Widget? leading;
   final List<Widget> actions;
-  final BalanceFetch balanceFetch;
 
   @override
   State<ProviderInboxView> createState() => _ProviderInboxViewState();
@@ -110,10 +97,6 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   /// es la vista con solicitudes relevantes para ofertar.
   bool _todas = false;
 
-  /// Saldo para el desbloqueo de intereses de producto (Task 9). `null` =
-  /// aún no cargó — tratado como "sin saldo" por `shouldOfferRecharge`.
-  int? _balance;
-
   /// Estado de la oferta de este proveedor por solicitud (badge de la
   /// tarjeta): sin entrada = no ofertó; 'pending' = "Ya ofertaste";
   /// 'accepted'/'completed' = "Aceptada". Se recalcula en cada `_runFetch`.
@@ -125,12 +108,6 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   Map<String, int> _offerCounts = {};
 
   late Future<List<Map<String, dynamic>>> _load = _runFetch();
-
-  @override
-  void initState() {
-    super.initState();
-    _loadBalance();
-  }
 
   /// Carga la bandeja en DOS OLEADAS concurrentes (antes eran 4 viajes a la red
   /// en serie). La orquestación y su porqué viven en `domain/inbox_load.dart`,
@@ -157,19 +134,6 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     return data.items;
   }
 
-  Future<void> _loadBalance() async {
-    int? b;
-    try {
-      b = await widget.balanceFetch();
-    } catch (_) {
-      return; // best-effort: sin saldo confirmado, shouldOfferRecharge trata null como "sin saldo"
-    }
-    if (!mounted) return;
-    setState(() {
-      _balance = b;
-    });
-  }
-
   // Bloque, no expresión: `setState(() => _load = future)` hace que la
   // closure DEVUELVA ese future (una asignación se evalúa al valor asignado)
   // y Flutter revienta con "setState() callback argument returned a
@@ -181,300 +145,21 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     setState(() {
       _load = next;
     });
-    _loadBalance();
   }
 
-  void _snack(String msg) => ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(msg), duration: const Duration(seconds: 6)),
-  );
-
-  /// ADR-0031: el pago SIEMPRE ocurre fuera de la app (navegador del
-  /// sistema). Mismo patrón que `MyOffersScreen._openWallet`.
-  Future<void> _openWallet() async {
-    Uri target = Uri.parse(AppConfig.walletUrl);
-    try {
-      target = Uri.parse(await createWalletLoginLink());
-    } catch (_) {}
-    // Custom Tabs, NO intent público (ver `core/secure_web_launch.dart`).
-    final ok = await launchAuthenticatedUrl(target);
-    if (!ok && mounted) {
-      _snack('No se pudo abrir el navegador. Visita jayalo.com para recargar.');
-    }
-  }
-
+  /// Abre el DETALLE del interés como PANTALLA (pedido PO 2026-08-01).
+  ///
+  /// Antes esto desplegaba una `showModalBottomSheet` al 70% de alto que,
+  /// además, escribía el WhatsApp del cliente en texto plano en cuanto estaba
+  /// desbloqueado. Ahora es `ProductInterestDetailScreen`, con la misma
+  /// estructura que el detalle de solicitud y el teléfono detrás del gate con
+  /// advertencia. La fila ya cargada viaja en `extra` para pintar sin esperar
+  /// a la red.
+  ///
+  /// Al volver se refresca: el desbloqueo ocurre dentro y la tarjeta tiene que
+  /// pasar a "Desbloqueado".
   Future<void> _onInterestAction(Map<String, dynamic> row) async {
-    // Pedido PO 2026-07-23: SIEMPRE abrir el detalle primero (nunca saltar
-    // directo). El botón de acción vive DENTRO del detalle: "Abrir chat" si ya
-    // está desbloqueado, o el hold de desbloquear si no.
-    if (row['unlocked'] == true) {
-      // Ya desbloqueado: trae el contacto (nombre/WhatsApp) para mostrarlo en
-      // el detalle; si falla, igual se abre con "Abrir chat" (vía segura).
-      ({String? firstName, String? phone})? contact;
-      try {
-        contact = await productInterestContact(row['id'] as String);
-      } catch (_) {}
-      if (!mounted) return;
-      _showInterestDetailSheet(row, contact: contact);
-      return;
-    }
-    _showInterestDetailSheet(row);
-  }
-
-  /// DETALLE de la solicitud de la tienda (pedido PO 2026-07-23): el proveedor
-  /// ve el producto/mensaje ANTES de decidir, y el botón de desbloquear vive
-  /// abajo — con la MISMA mascota que se infla + ¡PUM! del desbloqueo de
-  /// ofertas. Al completar: celebración unificada + "¡Iniciar conversación!".
-  void _showInterestDetailSheet(
-    Map<String, dynamic> row, {
-    ({String? firstName, String? phone})? contact,
-  }) {
-    final id = row['id'] as String;
-    final unlocked = row['unlocked'] == true;
-    final cost = productInterestUnlockCost;
-    final needsRecharge = shouldOfferRecharge(balance: _balance, cost: cost);
-    // Espejo del progreso del hold para la mascota (mismo patrón que la oferta;
-    // sin dispose a propósito — sin listeners, lo recoge el GC).
-    final progress = ValueNotifier<double>(0);
-    final title = (row['title'] as String?) ?? 'Producto';
-    final message = (row['description'] as String?) ?? '';
-    final imageUrl = row['image_url'] as String?;
-    final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');
-    showModalBottomSheet(
-      sheetAnimationStyle: JayaloMotion.sheetRise,
-      context: context,
-      // Navigator RAÍZ + área segura: si no, la hoja queda bajo la navbar.
-      useRootNavigator: true,
-      showDragHandle: true,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (ctx) {
-        final mq = MediaQuery.of(ctx);
-        final green = Theme.of(ctx).brightness == Brightness.dark
-            ? JayaloColors.dSuccess
-            : JayaloColors.success;
-        return SizedBox(
-          height: mq.size.height * .70,
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              bottom: mq.viewInsets.bottom + mq.padding.bottom + 16,
-            ),
-            child: Stack(
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // ── Detalle del producto (arriba) ──
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _interestDetailThumb(imageUrl, green),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.favorite, size: 14, color: green),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Interesado en tu producto',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: green,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                title,
-                                style: Theme.of(ctx).textTheme.titleLarge
-                                    ?.copyWith(fontWeight: FontWeight.w600),
-                              ),
-                              if (createdAt != null) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  timeAgo(createdAt),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Theme.of(
-                                      ctx,
-                                    ).colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (message.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      Text(
-                        message,
-                        style: TextStyle(
-                          fontSize: 14,
-                          height: 1.4,
-                          color: Theme.of(ctx).colorScheme.onSurface,
-                        ),
-                      ),
-                    ],
-                    const Spacer(),
-                    // ── Acción (abajo), según el estado ──
-                    if (unlocked) ...[
-                      // Ya desbloqueado: contacto (si hay WhatsApp) + Abrir chat.
-                      Text(
-                        contact?.phone != null
-                            ? '${contact?.firstName ?? 'Cliente'} · ${contact?.phone}'
-                            : 'Conversa por el chat de Jayalo.',
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 14),
-                      FilledButton.icon(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _openInterestChat(row, peerName: contact?.firstName);
-                        },
-                        icon: const Icon(Icons.forum_outlined),
-                        label: const Text('Abrir chat'),
-                      ),
-                    ] else if (needsRecharge) ...[
-                      Text(
-                        'Costo: $cost crédito${cost == 1 ? '' : 's'} · Tu saldo: ${_balance ?? 0}',
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 14),
-                      FilledButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _openWallet();
-                        },
-                        child: const Text('Saldo insuficiente — Recargar'),
-                      ),
-                    ] else ...[
-                      Text(
-                        'Costo: $cost crédito${cost == 1 ? '' : 's'} · Tu saldo: ${_balance ?? 0}',
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 14),
-                      HoldToConfirmButton(
-                        label:
-                            'Mantener para desbloquear · $cost crédito${cost == 1 ? '' : 's'}',
-                        progress: progress,
-                        onConfirmed: () =>
-                            _unlockInterestWithMascot(ctx, id, cost),
-                      ),
-                    ],
-                  ],
-                ),
-                // La mascota solo cuando hay hold real (no en desbloqueado ni
-                // en saldo insuficiente).
-                if (!unlocked && !needsRecharge)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: HoldMascotLayer(
-                        progress: progress,
-                        // Más abajo que en la oferta: deja respirar el
-                        // detalle del producto arriba.
-                        alignment: const Alignment(0, .12),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  /// Miniatura grande del producto para la hoja de detalle.
-  Widget _interestDetailThumb(String? url, Color accent) {
-    const box = 64.0;
-    Widget placeholder() => Container(
-      width: box,
-      height: box,
-      decoration: BoxDecoration(
-        color: accent.withValues(alpha: .14),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Icon(Icons.inventory_2_outlined, size: 28, color: accent),
-    );
-    if (url == null || url.isEmpty) return placeholder();
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: JayaloNetworkImage(
-        url,
-        width: box,
-        height: box,
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, progress) =>
-            progress == null ? child : placeholder(),
-        errorBuilder: (context, error, stack) => placeholder(),
-      ),
-    );
-  }
-
-  /// Desbloqueo del interés con la mascota (paralelo al de ofertas en
-  /// `unlock_flow.dart`): el cobro arranca YA mientras la mascota hace su
-  /// "¡PUM!"; luego celebración unificada + botón "¡Iniciar conversación!".
-  Future<void> _unlockInterestWithMascot(
-    BuildContext sheetCtx,
-    String id,
-    int cost,
-  ) async {
-    // Handler inmediato para no dejar el future sin oyente durante el PUM.
-    final unlocking = unlockProductInterest(id, cost)
-        .then((r) => (ok: r.ok, newBalance: r.newBalance))
-        .catchError((_) => (ok: false, newBalance: null as int?));
-    if (!JayaloMotion.reduced(sheetCtx)) {
-      await Future<void>.delayed(JayaloMotion.mascotPum);
-    }
-    if (sheetCtx.mounted) Navigator.pop(sheetCtx);
-    final res = await unlocking;
-    if (!mounted) return;
-    if (!res.ok) {
-      _snack('No se pudo desbloquear. Intenta de nuevo.');
-      return;
-    }
-    if (res.newBalance != null) setState(() => _balance = res.newBalance);
-    _refetch();
-    await showUnlockCelebration(
-      context,
-      footer: (dismiss) => StartChatButton(
-        conversationKind: 'product_interest',
-        sourceId: id,
-        dismiss: dismiss,
-        onOpen: (convId) async {
-          if (!mounted) return;
-          await context.push('/messages/$convId');
-          if (mounted) _refetch();
-        },
-      ),
-    );
-  }
-
-  Future<void> _openInterestChat(
-    Map<String, dynamic> row, {
-    String? peerName,
-  }) async {
-    String? convId;
-    try {
-      convId = await getOrCreateConversation(
-        kind: 'product_interest',
-        sourceId: row['id'] as String,
-      );
-    } catch (_) {}
-    if (!mounted) return;
-    if (convId == null) {
-      _snack('No se pudo abrir el chat. Intenta de nuevo.');
-      return;
-    }
-    await context.push('/messages/$convId', extra: {'peer_name': peerName});
+    await context.push('/provider/interest/${row['id']}', extra: row);
     if (mounted) _refetch();
   }
 

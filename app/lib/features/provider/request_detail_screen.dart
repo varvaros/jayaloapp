@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
@@ -20,6 +19,7 @@ import '../../domain/wholesale.dart';
 import '../../domain/finalist_slots.dart';
 import '../shared/celebration.dart';
 import '../shared/collapsing_photo_panel.dart';
+import '../shared/customer_rep_card.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
 import '../shell/floating_nav_bar.dart';
@@ -829,143 +829,6 @@ class _ProviderRequestDetailScreenState
   void _toast(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
-  /// Tarjeta "Quién solicita": reputación del cliente (rating, solicitudes,
-  /// compras, tiempo de respuesta). Sin contacto — solo agregados. Se oculta
-  /// mientras carga; con cliente nuevo muestra un aviso neutro.
-  Widget _customerRepCard(BuildContext context) {
-    final cid = _req?['user_id'] as String?;
-    if (cid == null) return const SizedBox.shrink();
-    final cs = Theme.of(context).colorScheme;
-    final rep = _custRep;
-    // Identidad ANÓNIMA antes del desbloqueo (pedido PO 2026-07-22, versión
-    // mínima sin backend): foto BLUREADA (placeholder, casi imperceptible) +
-    // alias "Cliente NNNN" derivado del id. El nombre real solo al desbloquear.
-    final alias = 'Cliente ${1000 + (cid.hashCode.abs() % 9000)}';
-    final avg = (rep?['avg_rating'] as num?)?.toDouble() ?? 0;
-    final count = (rep?['reviews_count'] as num?)?.toInt() ?? 0;
-    final completed = (rep?['completed_purchases'] as num?)?.toInt() ?? 0;
-    final requests = (rep?['requests_count'] as num?)?.toInt() ?? 0;
-    final respMin = (rep?['median_response_minutes'] as num?)?.toDouble();
-    final samples = (rep?['response_samples'] as num?)?.toInt() ?? 0;
-
-    String respLabel(double m) {
-      if (m < 60) return 'Responde en ~${m.round()} min';
-      if (m < 1440) return 'Responde en ~${(m / 60).round()} h';
-      return 'Responde en ~${(m / 1440).round()} d';
-    }
-
-    final chips = <(IconData, String)>[
-      if (count > 0)
-        (Icons.star_rounded, '${avg.toStringAsFixed(1)} ($count)'),
-      if (requests > 0)
-        (Icons.receipt_long_outlined,
-            '$requests solicitud${requests == 1 ? '' : 'es'}'),
-      if (completed > 0)
-        (Icons.check_circle_outline,
-            '$completed compra${completed == 1 ? '' : 's'} cerrada${completed == 1 ? '' : 's'}'),
-      if (respMin != null && samples >= 3)
-        (Icons.schedule_outlined, respLabel(respMin)),
-    ];
-
-    return Container(
-      margin: const EdgeInsets.only(top: 16),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: .5),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          // Foto blureada: placeholder con blur fuerte (no hay foto real hasta
-          // desbloquear; la identidad queda "casi imperceptible").
-          ClipOval(
-            child: ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-              child: Container(
-                width: 44,
-                height: 44,
-                color: cs.primary.withValues(alpha: .35),
-                child: Icon(Icons.person, size: 26, color: cs.primary),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(alias,
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: jayaloHead(context))),
-                Text('Nombre y foto al desbloquear',
-                    style:
-                        TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
-              ],
-            ),
-          ),
-        ]),
-        if (_custBadges != null &&
-            (_custBadges!.idVerified || _custBadges!.whatsappVerified)) ...[
-          const SizedBox(height: 10),
-          Wrap(spacing: 8, runSpacing: 6, children: [
-            if (_custBadges!.idVerified)
-              _verifyPill(cs, 'Id verificado'),
-            if (_custBadges!.whatsappVerified)
-              _verifyPill(cs, 'WS verificado'),
-          ]),
-        ],
-        const SizedBox(height: 12),
-        if (chips.isEmpty)
-          Text('Cliente nuevo — aún sin historial.',
-              style: TextStyle(fontSize: 13, color: cs.onSurface))
-        else
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final (icon, txt) in chips)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                decoration: BoxDecoration(
-                  color: cs.surface,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(icon,
-                      size: 14,
-                      color: icon == Icons.star_rounded
-                          ? const Color(0xFFF2B705)
-                          : cs.primary),
-                  const SizedBox(width: 5),
-                  Text(txt,
-                      style: TextStyle(fontSize: 12.5, color: cs.onSurface)),
-                ]),
-              ),
-          ]),
-      ]),
-    );
-  }
-
-  Widget _verifyPill(ColorScheme cs, String label) {
-    final green = Theme.of(context).brightness == Brightness.dark
-        ? JayaloColors.dSuccess
-        : JayaloColors.success;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: green.withValues(alpha: .1),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.verified, size: 13, color: green),
-        const SizedBox(width: 4),
-        Text(label,
-            style: TextStyle(
-                fontSize: 11.5, fontWeight: FontWeight.w600, color: green)),
-      ]),
-    );
-  }
-
   /// Recarga la oferta existente tras una mutación (desbloqueo / venta
   /// marcada) para que la tarjeta refleje el estado nuevo.
   Future<void> _reloadOffer() async {
@@ -1546,7 +1409,11 @@ class _ProviderRequestDetailScreenState
                   // quedan arriba (decisión PO): son la identidad de la
                   // solicitud, no "información".
                   _sectionHeading(context, 'Datos del cliente'),
-                  _customerRepCard(context),
+                  CustomerRepCard(
+                    customerId: req['user_id'] as String?,
+                    reputation: _custRep,
+                    badges: _custBadges,
+                  ),
                   // ── 2) INFORMACIÓN ──
                   _sectionHeading(context, 'Información'),
                   if (req['is_wholesale'] == true) ...[

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/provider/inbox_screen.dart';
 import 'package:jayalo_app/features/shared/violet_header.dart';
@@ -101,8 +102,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(host(ProviderInboxView(
         fetch: fetchOnly(interestRow()),
-        leading: const SizedBox.shrink(), actions: const [],
-        balanceFetch: () async => 5)));
+        leading: const SizedBox.shrink(), actions: const [])));
     await tester.pumpAndSettle();
 
     expect(find.text('Interesado en tu producto'), findsOneWidget);
@@ -119,8 +119,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(host(ProviderInboxView(
         fetch: fetchOnly(interestRow()),
-        leading: const SizedBox.shrink(), actions: const [],
-        balanceFetch: () async => 5)));
+        leading: const SizedBox.shrink(), actions: const [])));
     await tester.pumpAndSettle();
 
     expect(find.text('1 crédito'), findsOneWidget);
@@ -134,8 +133,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(host(ProviderInboxView(
         fetch: fetchOnly(interestRow(unlocked: true)),
-        leading: const SizedBox.shrink(), actions: const [],
-        balanceFetch: () async => 5)));
+        leading: const SizedBox.shrink(), actions: const [])));
     await tester.pumpAndSettle();
 
     expect(find.text('Desbloqueado'), findsOneWidget);
@@ -145,44 +143,42 @@ void main() {
   });
 
   testWidgets(
-      'saldo insuficiente: la hoja de detalle ofrece recargar, no el hold',
+      'tocar la tarjeta de interés navega al detalle y le pasa la fila cargada',
       (tester) async {
-    await tester.pumpWidget(host(ProviderInboxView(
-        fetch: fetchOnly(interestRow()),
-        leading: const SizedBox.shrink(), actions: const [],
-        balanceFetch: () async => 0)));
+    // Sin botón en la tarjeta (T1), la ÚNICA vía al detalle es tocarla — y el
+    // detalle ya no es una hoja, es una pantalla (T2). Si el push se rompiera,
+    // el interés quedaría inalcanzable.
+    Object? extraRecibido;
+    final router = GoRouter(
+      initialLocation: '/provider',
+      routes: [
+        GoRoute(
+          path: '/provider',
+          builder: (_, _) => ProviderInboxView(
+              fetch: fetchOnly(interestRow()),
+              leading: const SizedBox.shrink(),
+              actions: const []),
+        ),
+        GoRoute(
+          path: '/provider/interest/:id',
+          builder: (_, s) {
+            extraRecibido = s.extra;
+            return Scaffold(
+                body: Text('detalle ${s.pathParameters['id']}'));
+          },
+        ),
+      ],
+    );
+    await tester.pumpWidget(MaterialApp.router(
+        theme: jayaloTheme(Brightness.light), routerConfig: router));
     await tester.pumpAndSettle();
 
-    // Toca la tarjeta → abre la hoja de DETALLE (pedido PO 2026-07-23), no
-    // salta directo al cobro. Sin `pumpAndSettle`: con saldo 0 no hay mascota,
-    // pero se mantiene el patrón de pumps cronometrados.
     await tester.tap(find.text('Taladro inalámbrico'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 450));
-
-    expect(find.text('Saldo insuficiente — Recargar'), findsOneWidget);
-    expect(find.textContaining('Mantener para desbloquear'), findsNothing);
-  });
-
-  testWidgets(
-      'saldo suficiente: la hoja de detalle muestra el hold de desbloqueo',
-      (tester) async {
-    await tester.pumpWidget(host(ProviderInboxView(
-        fetch: fetchOnly(interestRow()),
-        leading: const SizedBox.shrink(), actions: const [],
-        balanceFetch: () async => 5)));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Taladro inalámbrico'));
-    await tester.pump();
-    // NO `pumpAndSettle`: la hoja de detalle pinta la mascota, cuyo reloj se
-    // repite eternamente y colgaría el settle. Un pump cronometrado basta.
-    await tester.pump(const Duration(milliseconds: 450));
-
-    // El detalle del producto está a la vista (título) y el botón de hold con
-    // su copy nuevo; nada de recargar.
-    expect(find.textContaining('Mantener para desbloquear'), findsOneWidget);
-    expect(find.text('Saldo insuficiente — Recargar'), findsNothing);
+    expect(find.text('detalle int-1'), findsOneWidget);
+    // La fila viaja en `extra` para que el detalle pinte sin esperar a la red.
+    expect((extraRecibido as Map?)?['title'], 'Taladro inalámbrico');
   });
 
   testWidgets(
@@ -204,7 +200,7 @@ void main() {
                 interestRow(),
               ];
     await tester.pumpWidget(host(ProviderInboxView(
-        fetch: mixed, leading: const SizedBox.shrink(), actions: const [], balanceFetch: () async => 0)));
+        fetch: mixed, leading: const SizedBox.shrink(), actions: const [])));
     await tester.pumpAndSettle();
 
     expect(find.text('Necesito un plomero'), findsOneWidget);
