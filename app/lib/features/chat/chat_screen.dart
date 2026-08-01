@@ -183,7 +183,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       _setupRealtime();
       _afterLoad();
-      _maybeLoadProviderReview(conv);
+      _loadReviewContext(conv);
       // Sellos de la contraparte — best-effort, no bloquea la UI (mismo
       // patrón fire-and-forget que las notificaciones leídas de abajo).
       _loadPeerBadges(conv);
@@ -305,7 +305,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final conv = await fetchConversation(widget.conversationId);
       if (mounted && conv != null) {
         setState(() => _conv = conv);
-        _maybeLoadProviderReview(conv);
+        _loadReviewContext(conv);
       }
     } catch (_) {
       // Se conserva lo que había: el estado se corrige en el próximo resume,
@@ -313,23 +313,36 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Carga, para el PROVEEDOR en un chat de oferta, si ya calificó al cliente y
-  /// con qué business_id — para poder mostrar el panel de calificación al
-  /// cerrarse el chat. Best-effort: si falla, el panel simplemente no aparece.
-  Future<void> _maybeLoadProviderReview(Map<String, dynamic> conv) async {
+  /// Resuelve el contexto de calificación de ESTA conversación para el rol que
+  /// la mira:
+  /// - proveedor en chat de oferta: si ya calificó al cliente (panel bilateral);
+  /// - siempre: el `business_id`, que el panel del CLIENTE necesita para que su
+  ///   nota llegue a `business_reviews` (la que alimenta la reputación).
+  ///
+  /// Best-effort de punta a punta: si falla, el panel aparece igual y como
+  /// mucho se pierde la segunda escritura.
+  Future<void> _loadReviewContext(Map<String, dynamic> conv) async {
     final isProvider = conv['provider_user_id'] == _uid;
-    final offerId = conv['source_id'] as String?;
-    if (!isProvider || conv['kind'] != 'offer' || offerId == null) return;
+    final sourceId = conv['source_id'] as String?;
+    final kind = conv['kind'] as String?;
+    if (sourceId == null) return;
     try {
-      final results =
-          await Future.wait([hasCustomerReview(offerId), offerBusinessId(offerId)]);
+      // Los dos únicos tipos que crea `get_or_create_conversation`.
+      final bizId = kind == 'offer'
+          ? await offerBusinessId(sourceId)
+          : kind == 'product_interest'
+              ? await interestBusinessId(sourceId)
+              : null;
+      final reviewed = (isProvider && kind == 'offer')
+          ? await hasCustomerReview(sourceId)
+          : false;
       if (!mounted) return;
       setState(() {
-        _customerReviewed = results[0] as bool;
-        _reviewBusinessId = results[1] as String?;
+        _reviewBusinessId = bizId;
+        _customerReviewed = reviewed;
       });
     } catch (_) {
-      // El panel no se muestra; no rompe el chat.
+      // El panel no se rompe; a lo sumo no hay segunda escritura.
     }
   }
 
@@ -1143,6 +1156,7 @@ class _ChatScreenState extends State<ChatScreen> {
           convId: widget.conversationId,
           customerId: conv['customer_id'] as String,
           providerUserId: conv['provider_user_id'] as String,
+          businessId: _reviewBusinessId,
           onDone: () => setState(() => _hasRating = true));
     }
     // Lado del PROVEEDOR de la calificación bilateral (pedido PO): al cerrarse

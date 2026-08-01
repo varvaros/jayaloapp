@@ -981,7 +981,13 @@ class _RatingThanksOverlayState extends State<_RatingThanksOverlay> {
         child: _CelebrationCard(
           child: SizedBox(
             width: 280,
-            height: 220,
+            // Bug de layout (hallado 2026-08-01 al testear RatingPanel de
+            // punta a punta): con 220 el título envuelve a 2 líneas en el
+            // ancho de 232 disponibles y el Column desborda ~51px (con 260,
+            // ~11px — el contenido real mide 223px de alto). 284 deja margen
+            // de sobra sin desentonar con el resto de celebraciones
+            // (_OfferSentOverlay usa 300, más holgado todavía).
+            height: 284,
             child: Stack(
               alignment: Alignment.center,
               children: [

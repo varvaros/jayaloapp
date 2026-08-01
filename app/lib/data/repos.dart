@@ -560,10 +560,10 @@ Future<void> submitReview({
 }) async {
   // upsert (no insert): una reseña VIGENTE por (negocio, reseñador). Re-reseñar
   // EDITA la existente en vez de acumular filas que sesgarían el promedio de
-  // reputación (`get_business_ratings`). Requiere el índice UNIQUE
-  // `uq_business_reviews_one_per_reviewer` (migración 20260722180100) para que el
-  // `onConflict` resuelva; hasta que esa migración esté aplicada, NO liberar una
-  // build que ejerza este camino. `business_reviews` hoy solo la escribe la web.
+  // reputación (`get_business_ratings`), apoyado en el índice UNIQUE
+  // `uq_business_reviews_one_per_reviewer` (migración 20260722180100, ya en
+  // prod). La escribe la web (detalle de solicitud) y, desde 2026-07-31,
+  // también la app: el chat y el detalle de solicitud completada.
   await supa.from('business_reviews').upsert({
     'business_id': businessId,
     'reviewer_id': supa.auth.currentUser!.id,
@@ -1638,6 +1638,19 @@ Future<String?> offerBusinessId(String offerId) async {
       .from('provider_offers')
       .select('business_id')
       .eq('id', offerId)
+      .maybeSingle();
+  return row?['business_id'] as String?;
+}
+
+/// `business_id` de un interés de producto — el otro tipo de conversación
+/// (`get_or_create_conversation` solo acepta 'offer' y 'product_interest').
+/// `product_interests` lleva `business_id` propio, así que no hace falta pasar
+/// por `provider_products`.
+Future<String?> interestBusinessId(String interestId) async {
+  final row = await supa
+      .from('product_interests')
+      .select('business_id')
+      .eq('id', interestId)
       .maybeSingle();
   return row?['business_id'] as String?;
 }

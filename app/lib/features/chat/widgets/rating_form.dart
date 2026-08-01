@@ -131,12 +131,31 @@ class _CustomerRatingPanelState extends State<CustomerRatingPanel> {
 }
 
 class RatingPanel extends StatefulWidget {
-  const RatingPanel({super.key, required this.convId, required this.customerId,
-      required this.providerUserId, required this.onDone});
+  const RatingPanel({
+    super.key,
+    required this.convId,
+    required this.customerId,
+    required this.providerUserId,
+    required this.onDone,
+    this.businessId,
+    this.submitConversation,
+    this.submitBusinessReview,
+  });
   final String convId;
   final String customerId;
   final String providerUserId;
   final VoidCallback onDone;
+
+  /// Negocio al que pertenece esta conversación. Si viene, la nota se escribe
+  /// TAMBIÉN en `business_reviews` — la tabla que de verdad alimenta la
+  /// reputación pública. Sin ella la nota solo vive en `conversation_ratings`,
+  /// que nadie promedia.
+  final String? businessId;
+
+  /// Inyectables para los tests (los reales tocan Supabase).
+  final Future<void> Function(int overall)? submitConversation;
+  final Future<void> Function(String businessId, int rating, String comment)?
+      submitBusinessReview;
 
   @override
   State<RatingPanel> createState() => _RatingPanelState();
@@ -162,19 +181,46 @@ class _RatingPanelState extends State<RatingPanel> {
     }
     setState(() => _submitting = true);
     try {
-      await submitConversationRating(
-          convId: widget.convId,
-          customerId: widget.customerId,
-          providerUserId: widget.providerUserId,
-          overall: _overall,
-          quality: _quality,
-          fulfillment: _fulfillment,
-          service: _service,
-          condition: _condition,
-          comment: _comment.text);
+      final saveConv = widget.submitConversation ??
+          (int overall) => submitConversationRating(
+              convId: widget.convId,
+              customerId: widget.customerId,
+              providerUserId: widget.providerUserId,
+              overall: overall,
+              quality: _quality,
+              fulfillment: _fulfillment,
+              service: _service,
+              condition: _condition,
+              comment: _comment.text);
+      await saveConv(_overall);
+
+      // Segunda escritura: la que MUEVE las estrellas. Best-effort a
+      // propósito — la nota ya quedó guardada arriba, así que un fallo aquí no
+      // puede tumbar el flujo ni hacer que el usuario recalifique.
+      //
+      // Escala: `_overall` y `business_reviews.rating` son ambos 1-10
+      // (migración 20260619014535). NO convertir.
+      final bizId = widget.businessId;
+      if (bizId != null) {
+        final saveBiz = widget.submitBusinessReview ??
+            (String b, int r, String c) =>
+                submitReview(businessId: b, rating: r, comment: c);
+        try {
+          await saveBiz(bizId, _overall, _comment.text);
+        } catch (_) {
+          // Silencioso: ver arriba.
+        }
+      }
+
       if (!mounted) return;
       await showRatingThanks(context); // ⭐ estrella + "Gracias por tu calificación"
-      if (mounted) widget.onDone();
+      if (!mounted) return;
+      // El llamador normalmente saca este panel del árbol al recibir
+      // `onDone` (deja de haber algo que calificar), pero si por lo que sea
+      // sigue montado no debe quedar con el spinner girando para siempre:
+      // `JayaloSpinner` corre un ticker en `repeat()`.
+      setState(() => _submitting = false);
+      widget.onDone();
     } catch (_) {
       if (mounted) {
         setState(() => _submitting = false);
@@ -194,8 +240,14 @@ class _RatingPanelState extends State<RatingPanel> {
         padding: EdgeInsets.fromLTRB(
             16, 16, 16, 16 + MediaQuery.viewPaddingOf(context).bottom),
         color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
-        child: SingleChildScrollView(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Material transparente: sin él, los `CheckboxListTile` de abajo
+        // buscan el Material más cercano saltándose este `Container` con
+        // color y Flutter lo marca como "background/ink splashes may be
+        // invisible" (hallado 2026-08-01 al testear el envío end-to-end).
+        child: Material(
+            type: MaterialType.transparency,
+            child: SingleChildScrollView(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('¡Califica este proveedor!',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           Text('Tu opinión ayuda a otros clientes.',
@@ -261,6 +313,6 @@ class _RatingPanelState extends State<RatingPanel> {
                   child: _submitting
                       ? const JayaloSpinner(size: 16)
                       : const Text('Enviar calificación'))),
-        ])));
+        ]))));
   }
 }
