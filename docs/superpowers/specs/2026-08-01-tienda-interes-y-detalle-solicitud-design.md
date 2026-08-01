@@ -17,43 +17,62 @@ final.
 El proveedor abre el chat, toca `+` → *Mejorar oferta*, escribe un precio menor
 y recibe **"No se pudo mejorar la oferta."**
 
-### Causa raíz
+### Causa raíz: son DOS fallos encadenados, y el primero tapaba al segundo
 
-La migración `20260729210000_security_medium_rls_fixes.sql` (hallazgo M-2 del
-scan del 29-jul) reescribió la política INSERT de `conversation_messages` y
-quitó `'system'` de la lista de kinds permitidos, porque permitía a un usuario
-falsificar carteles de plataforma y saltarse el trigger anti-flood:
+Verificado contra la BD real el 2026-08-01 con UPDATE e INSERT en
+`BEGIN`/`ROLLBACK`, suplantando al proveedor con `set local role authenticated`
+y sus claims de JWT.
+
+**Fallo 1 — el guard del precio no resuelve su propio tipo (42704).**
+`enforce_agreed_price_provider_only` (creado en `20260729210000`, hallazgo M-12)
+lleva `SET search_path = ''` y dentro escribe `'admin'::app_role` **sin
+calificar**. Con el search_path vacío ese tipo no se resuelve:
+
+```
+42704: type "app_role" does not exist
+```
+
+Falla para **cualquier** UPDATE que cambie `agreed_price`,
+`agreed_hourly_rate` o `agreed_estimated_hours` — incluido el del propio
+proveedor, que es a quien la comprobación pretendía dejar pasar. No falla solo
+el atacante: falla todo el mundo, siempre. **El precio nunca llegó a
+cambiar.**
+
+Por qué sobrevivió tres días sin que nadie lo viera: plpgsql planifica cada
+sentencia la primera vez que la **ejecuta**, y el `IF` interno solo se ejecuta
+si alguna columna de precio cambió de verdad. El `IF` externo protege el 99% de
+los UPDATE sobre `conversations` — el bump de `last_message_at` de cada mensaje
+de chat—, así que el error solo aflora en el único flujo que toca el precio.
+
+Barrido de la BD: es la **única** función con `search_path` vacío que referencia
+`app_role` sin calificar. No es una clase de bug, es un caso aislado.
+
+**Fallo 2 — el aviso al cliente ya no se puede insertar desde el cliente
+(42501).** La misma migración quitó `'system'` de los kinds que `authenticated`
+puede insertar en `conversation_messages` (hallazgo M-2: permitía falsificar
+carteles de plataforma y saltarse el anti-flood):
 
 ```sql
 AND kind = ANY (ARRAY['text','address','image','quick'])
 AND sender_id = (select auth.uid())
 ```
 
-`chat_screen.dart:906` sigue llamando `_sendRaw('system', body)`. Ese INSERT
-viola el `WITH CHECK` → `PostgrestException` → el `catch (_)` de la línea 910
-muestra el mensaje genérico.
+`chat_screen.dart:906` sigue llamando `_sendRaw('system', body)` → la RLS lo
+rechaza. Este fallo estaba escondido detrás del primero: aparece en cuanto se
+arregla el trigger.
 
 El comentario de `_openImproveOffer` (líneas 861-867) documenta la política
 *anterior* ("la RLS de prod exige `sender_id = auth.uid()` para kind 'system'").
-Quedó obsoleto el 29-jul y nadie lo revisó — hay que actualizarlo.
+Quedó obsoleto el 29-jul.
 
 ### Por qué es peor que un mensaje de error feo
 
-`improveOfferPrice` (`repos.dart:1590`) corre **antes** del `_sendRaw` y son dos
-llamadas HTTP independientes:
-
-1. El `UPDATE` de `agreed_price` **sí se aplica**. Nada lo bloquea: el grant por
-   columna existe (`20260615032752`), la política `Participants can update
-   status` deja pasar a ambos participantes, el trigger
-   `enforce_agreed_price_provider_only` permite al proveedor, y
-   `enforce_archive_own_side` sale por la vía rápida (`20260801140000`).
-2. El INSERT del mensaje revienta.
-3. El `catch` se salta el `_reload()`, así que la pantalla **sigue mostrando el
-   precio viejo**.
-
-Resultado: el precio cambió en la BD, el cliente no se enteró, y el proveedor
-cree que no pasó nada. Si lo reintenta, la validación "el nuevo precio debe ser
-menor al actual" lo compara contra un precio que él cree que sigue vigente.
+Con el trigger arreglado pero sin RPC, el flujo queda en dos llamadas HTTP
+independientes: el `UPDATE` del precio pasaría, el `INSERT` del aviso no, y como
+el `catch (_)` se salta el `_reload()`, la pantalla seguiría mostrando el precio
+viejo. El precio cambiado, el cliente sin enterarse, y el proveedor creyendo que
+no pasó nada. Por eso el fix no es solo "quitar el 42704": las dos escrituras
+tienen que ir juntas.
 
 ### La web tiene la misma bomba, y peor
 
@@ -92,15 +111,30 @@ generarlo dentro de la RPC lo unifica.
 
 ### Alcance
 
-- Migración nueva: la RPC + `REVOKE EXECUTE ... FROM anon` + `GRANT EXECUTE ...
-  TO authenticated`.
+Migración `20260801150000_improve_offer_price_rpc.sql`, que hace las dos cosas:
+calificar el tipo en el trigger (`public.app_role`) y crear la RPC, con
+`REVOKE EXECUTE ... FROM PUBLIC, anon` + `GRANT EXECUTE ... TO authenticated`.
+
 - `types.ts` de la web: declarar la RPC bajo `Functions` (es manual).
 - App: `improveOfferPrice` pasa a `supa.rpc(...)`; `_openImproveOffer` deja de
-  llamar `_sendRaw`; el `catch (_)` mudo se sustituye por
-  `reportSwallowedDbError` + un mensaje que distinga fallo de red de rechazo.
-- Web: `submitImproveOffer` pasa a la RPC; se le comprueba el error.
+  llamar `_sendRaw`; el `catch (_)` mudo se sustituye por `reportError` +
+  `improveOfferErrorCopy` (`domain/improve_offer_error.dart`, 5 tests), que
+  muestra los rechazos P0001 tal cual y manda el resto al genérico.
+- Web: `submitImproveOffer` pasa a la RPC; su error va a `toastDbError`, que ya
+  deja pasar los mensajes legibles por `looksHuman`.
 - Actualizar el comentario obsoleto de `chat_screen.dart:861-867`.
-- Verificar en prod con `BEGIN; ... ROLLBACK;` antes de aplicar.
+
+### Estado
+
+Migración escrita y **verificada contra la BD real en `BEGIN`/`ROLLBACK`**
+(6 casos: caso feliz, separador de miles, el cliente intentando bajar el precio,
+el proveedor intentando subirlo, precio 0, conversación inexistente y sin
+sesión). Nada persistió — comprobado después. Código de app y web listo:
+app `flutter analyze` 0 y 611 tests; web `tsc` 0, lint 0 errores, 436 tests.
+
+**Pendiente: aplicar la migración a producción.** Hasta entonces los clientes no
+se pueden desplegar — llamarían a una RPC que no existe. El orden es migración
+primero, deploy después.
 
 ---
 

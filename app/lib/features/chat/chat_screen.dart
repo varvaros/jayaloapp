@@ -10,10 +10,12 @@ import '../../data/repos.dart';
 import '../../domain/chat.dart';
 import '../../domain/chat_session.dart';
 import '../../domain/chat_time.dart';
+import '../../core/error_reporter.dart';
 import '../../core/safe_image_picker.dart';
 import '../../core/sfx.dart';
 import '../../core/motion.dart';
 import '../../domain/image_pick.dart';
+import '../../domain/improve_offer_error.dart';
 import '../../domain/money.dart';
 import 'widgets/bubbles.dart';
 import 'widgets/chat_dialogs.dart';
@@ -858,13 +860,17 @@ class _ChatScreenState extends State<ChatScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  /// Mejorar oferta: el proveedor baja el precio acordado en un chat abierto
-  /// y se lo notifica al cliente con un mensaje system en el chat. El
-  /// mensaje va SIN `systemSender` (sender = _uid): la RLS de prod exige
-  /// `sender_id = auth.uid()` para `kind 'system'` (solo `audit` acepta
-  /// sender NULL). Como el update y el mensaje ocurren en chat abierto, no
-  /// hay problema de status (a diferencia de "completado", donde el RLS
-  /// bloquea inserts post-cierre).
+  /// Mejorar oferta: el proveedor baja el precio acordado en un chat abierto y
+  /// se lo notifica al cliente con un mensaje system.
+  ///
+  /// El aviso ya NO se manda desde aquí. `authenticated` no puede insertar
+  /// `kind='system'` desde el 2026-07-29 (hallazgo M-2: permitía falsificar
+  /// carteles de plataforma), así que el mensaje lo escribe la propia RPC
+  /// `improve_offer_price` en la misma transacción que el precio — igual que
+  /// `mark_conversation_completed` con el "✓ Marcado como completado".
+  ///
+  /// Las validaciones de abajo se quedan como feedback inmediato, pero la
+  /// autoridad es la RPC: es alcanzable directo por PostgREST.
   void _openImproveOffer() {
     final current = _conv?['agreed_price'] as num?;
     final ctrl = TextEditingController(text: current?.toString() ?? '');
@@ -900,17 +906,20 @@ class _ChatScreenState extends State<ChatScreen> {
                       try {
                         await improveOfferPrice(widget.conversationId, next);
                         if (!mounted) return;
-                        final body = current != null
-                            ? '🎉 El proveedor mejoró la oferta a ${fmtRD(next)} — ahorro de ${fmtRD(current - next)}.'
-                            : '🎉 El proveedor estableció un nuevo precio: ${fmtRD(next)}.';
-                        await _sendRaw('system', body);
-                        if (!mounted) return;
                         _snack('Oferta mejorada.');
-                        await _reload();
-                      } catch (_) {
+                      } catch (e, s) {
+                        // Nada de `catch (_)`: este flujo estuvo roto en
+                        // producción y el mensaje mudo lo tapó. Los rechazos
+                        // de negocio (P0001) se muestran tal cual; el resto va
+                        // al reporter para que se vea sin depender del PO.
+                        unawaited(reportError(e, s));
                         if (!mounted) return;
-                        _snack('No se pudo mejorar la oferta.');
+                        _snack(improveOfferErrorCopy(e));
                       }
+                      // Dentro y fuera del error: si la RPC llegó a escribir,
+                      // el precio y el mensaje nuevos tienen que aparecer, y
+                      // si falló hay que confirmar que el precio NO cambió.
+                      await _reload();
                     },
                     child: const Text('Mejorar oferta')),
               ],

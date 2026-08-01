@@ -1587,10 +1587,25 @@ Future<void> setConversationArchived(
 /// puede hacer desaparecer conversaciones de la bandeja.
 bool conversationArchived(Map<String, dynamic> c) => c['archived'] == true;
 
-Future<void> improveOfferPrice(String convId, num newPrice) async => supa
-    .from('conversations')
-    .update({'agreed_price': newPrice})
-    .eq('id', convId);
+/// Baja el precio acordado y avisa al cliente en el chat, ATÓMICAMENTE.
+///
+/// Antes eran dos viajes desde el cliente (UPDATE del precio + INSERT de un
+/// mensaje `kind='system'`) y los dos estaban rotos: el UPDATE moría en el
+/// trigger `enforce_agreed_price_provider_only` (42704, no resolvía su propio
+/// tipo con el search_path vacío) y el INSERT lo rechazaba la RLS desde que
+/// M-2 quitó 'system' de los kinds del cliente (42501). Ahora todo vive en
+/// `improve_offer_price` (migración 20260801150000), que además construye el
+/// texto del aviso — si lo mandara el cliente, volvería a poder escribir
+/// mensajes 'system' arbitrarios.
+///
+/// Lanza `PostgrestException` con `code == 'P0001'` para las reglas de negocio
+/// (precio no menor, conversación cerrada, no eres el proveedor); pasarla por
+/// [improveOfferErrorCopy] para el mensaje al usuario.
+Future<void> improveOfferPrice(String convId, num newPrice) async =>
+    supa.rpc(
+      'improve_offer_price',
+      params: {'_conversation_id': convId, '_new_price': newPrice},
+    );
 
 Future<bool> hasConversationRating(String convId) async =>
     (await supa
