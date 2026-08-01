@@ -286,11 +286,30 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// Relee la conversación (estado, precio acordado…). Best-effort DE VERDAD:
+  /// se traga el fallo de red, y por eso el guard vive aquí y no en cada
+  /// llamador.
+  ///
+  /// Motivo (hallazgo de revisión, 2026-07-31): `_resume()` la llama desde un
+  /// callback de ciclo de vida que NADIE atrapa — una excepción ahí se saltaba
+  /// el `_setupRealtime()` de la línea siguiente y el chat se quedaba SIN
+  /// realtime en silencio, justo tras volver de background, que es cuando más
+  /// probable es un tropiezo de red. Y el `catch` del envío la llama antes de
+  /// mostrar su SnackBar: una excepción ahí dejaba al usuario sin ningún aviso.
+  ///
+  /// De paso arregla tres llamadores que ya la envolvían: su `catch` cubría
+  /// también la MUTACIÓN previa, así que un "Marcar como completado" que iba
+  /// bien pero cuyo refresco fallaba avisaba "No se pudo marcar" — mentira.
   Future<void> _reload() async {
-    final conv = await fetchConversation(widget.conversationId);
-    if (mounted && conv != null) {
-      setState(() => _conv = conv);
-      _maybeLoadProviderReview(conv);
+    try {
+      final conv = await fetchConversation(widget.conversationId);
+      if (mounted && conv != null) {
+        setState(() => _conv = conv);
+        _maybeLoadProviderReview(conv);
+      }
+    } catch (_) {
+      // Se conserva lo que había: el estado se corrige en el próximo resume,
+      // envío o recarga.
     }
   }
 
