@@ -194,6 +194,28 @@ Hay que preservar, porque todo esto vive hoy dentro del `Stack` del panel:
 
 Conviene extraerlo como widget propio reutilizable: T2 lo necesita igual.
 
+### Estado: HECHA (2026-08-01)
+
+Widget nuevo `features/shared/collapsing_photo_panel.dart` con 5 tests escritos
+antes que él: alto expandido en reposo, que se encoja de verdad al bajar (no que
+se mueva un poco), que `pinned` deje la barra visible en vez de desaparecer —si
+llegara a 0 el usuario se queda sin salida—, que el atrás siga tocable plegado, y
+el ícono de respaldo sin fotos.
+
+Dos decisiones que salieron al implementarlo:
+
+- `CollapseMode.none` en vez del `parallax` por defecto: con parallax el fondo se
+  dibuja más alto que el espacio disponible y la miniatura de la 2ª foto se salía
+  del recorte al plegarse.
+- `_backFab` se renombró a `_backButton` y devuelve el botón **pelado**. Antes
+  traía su propio `Padding` + `Align`, que en el `leading` de la barra no cabe
+  (16 + 42 > 56). Ahora lo coloca cada sitio: el `leading` lo centra y la
+  pantalla de carga lo sigue poniendo arriba a la izquierda.
+- El `Expanded(ListView)` pasa a `SliverFillRemaining(hasScrollBody: false)` con
+  un `Column` dentro. La hoja sigue rellenando la pantalla cuando el contenido es
+  corto, que es lo que hacía el `Expanded`.
+- Desaparece el `+ topInset` manual: `SliverAppBar` ya reserva la barra de estado.
+
 ---
 
 ## T4 — Reordenar el detalle: Datos del cliente → Información → Acción
@@ -212,6 +234,34 @@ identidad de la solicitud, no "información". El bloque de información queda co
 el resto: detalles de mayoreo, bullets y presupuesto.
 
 Mismo archivo que T3 — se pueden hacer en la misma sesión.
+
+### Estado: HECHA (2026-08-01)
+
+`_customerRepCard` subió a justo debajo de la escalera de cupos, y las tres
+secciones se rotulan con `_sectionHeading` ("DATOS DEL CLIENTE" / "INFORMACIÓN",
+versalita discreta como el 'Detalles' que ya existía) para que la organización
+que pidió el PO se vea, no solo se intuya. El bloque de acción va tras el
+`Divider` que ya estaba.
+
+### ⚠️ Sin verificación automática
+
+`ProviderRequestDetailScreen` llama a Supabase directo en su `initState`
+(`requestById`, `customerReputation`, `peerVerificationBadges`,
+`offerCountsForRequests`) y **no tiene seam inyectable**, a diferencia de
+`ProviderInboxView` / `MyBusinessView` / `StatsView`, que sí separan la vista
+para poder montarla sin red. Así que el panel plegable tiene tests pero **su
+integración en esta pantalla y el reorden no**: se verificaron por lectura y por
+compilación (`flutter analyze` 0, 616 tests, APK debug construido), no viendo la
+pantalla.
+
+Falta mirarla en el device con sesión de proveedor sobre una solicitud abierta:
+que la foto se pliegue, que el atrás siga tocable plegado, que el formulario de
+oferta tenga la pantalla, y que el teclado no rompa el scroll al enfocar un
+campo.
+
+Extraer un `ProviderRequestDetailView` inyectable —siguiendo el patrón que el
+propio proyecto ya usa— es el arreglo de fondo, pero es una tarea aparte: son
+1800 líneas y no debe colarse dentro de un cambio de layout.
 
 ---
 

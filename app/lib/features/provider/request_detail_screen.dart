@@ -19,6 +19,7 @@ import '../../domain/pricing.dart';
 import '../../domain/wholesale.dart';
 import '../../domain/finalist_slots.dart';
 import '../shared/celebration.dart';
+import '../shared/collapsing_photo_panel.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
 import '../shell/floating_nav_bar.dart';
@@ -1184,6 +1185,21 @@ class _ProviderRequestDetailScreenState
       style: TextStyle(
           fontSize: 13, fontWeight: FontWeight.w600, color: jayaloHead(context)));
 
+  /// Encabezado de las tres secciones del detalle (pedido PO 2026-08-01):
+  /// datos del cliente → información → desbloqueo o enviar oferta. Se separa
+  /// de [_sectionLabel] (que rotula campos DENTRO del formulario) porque este
+  /// estructura la pantalla: va en versalita discreta, como 'Detalles'.
+  Widget _sectionHeading(BuildContext context, String t) => Padding(
+        padding: const EdgeInsets.only(top: 20, bottom: 2),
+        child: Text(t.toUpperCase(),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: .8,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            )),
+      );
+
   /// Chips de selección única (garantía, disponibilidad, estado). Tocar el
   /// activo lo deselecciona.
   Widget _chipSelect(
@@ -1449,99 +1465,57 @@ class _ProviderRequestDetailScreenState
       return Scaffold(
         body: Stack(children: [
           const JayaloLoaderBlock(),
-          SafeArea(child: _backFab(context)),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8, left: 16),
+                child: _backButton(context),
+              ),
+            ),
+          ),
         ]),
       );
     }
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final amberPanel = dark ? const Color(0xFF3A2C12) : const Color(0xFFF0C48C);
-    final amberInk = dark ? const Color(0xFFF0C48C) : const Color(0xFF6B4514);
     final bullets = List<String>.from(req['bullets'] as List? ?? const []);
     final images =
         ((req['image_urls'] as List?)?.cast<String>() ?? const <String>[])
             .where((u) => u.isNotEmpty)
             .toList();
-    final topInset = MediaQuery.paddingOf(context).top;
     return Scaffold(
-      body: Column(children: [
-        // Panel ámbar del detalle. La FOTO LLENA todo el panel (cover) IGUAL
-        // que en el detalle del cliente (`request_status_screen._AmberPanel`).
-        // Sin foto, el panel se pinta LILA CLARO con el ícono violeta (pedido
-        // PO 2026-07-19, mismo criterio que el detalle del cliente).
-        Container(
-          height: 300 + topInset,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: images.isEmpty
-                ? (dark
-                        ? JayaloStatus.respondedDark
-                        : JayaloStatus.respondedLight)
-                    .bg
-                : amberPanel,
-            borderRadius:
-                const BorderRadius.vertical(bottom: Radius.circular(30)),
-          ),
-          child: Stack(children: [
-            // Tocar la foto abre el visor a pantalla completa.
-            Positioned.fill(
-              child: images.isEmpty
-                  ? Center(
-                      child: Icon(
-                          req['kind'] == 'servicio'
-                              ? Icons.handyman_outlined
-                              : Icons.inventory_2_outlined,
-                          size: 120,
-                          color: (dark
-                                  ? JayaloStatus.respondedDark
-                                  : JayaloStatus.respondedLight)
-                              .ink))
-                  : GestureDetector(
-                      onTap: () => showPhotoViewer(context, images),
-                      child: JayaloNetworkImage(images.first,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Center(
-                              child: Icon(
-                                  req['kind'] == 'servicio'
-                                      ? Icons.handyman_outlined
-                                      : Icons.inventory_2_outlined,
-                                  size: 120,
-                                  color: amberInk))),
-                    ),
-            ),
-            // Miniatura de la 2ª foto pegada al borde derecho (máx. 2 visibles).
-            if (images.length > 1)
-              Positioned(
-                top: topInset + 30,
-                right: 0,
-                child: GestureDetector(
-                  onTap: () =>
-                      showPhotoViewer(context, images, initialIndex: 1),
-                  child: ClipRRect(
-                    borderRadius: const BorderRadius.horizontal(
-                        left: Radius.circular(16)),
-                    child: JayaloNetworkImage(images[1],
-                        width: 76,
-                        height: 76,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Container(
-                            width: 76, height: 76, color: amberPanel)),
-                  ),
-                ),
-              ),
-            SafeArea(child: _backFab(context)),
-          ]),
+      body: CustomScrollView(slivers: [
+        // La foto se PLIEGA al bajar (pedido PO 2026-08-01: "que se desplace
+        // hacia arriba y casi se oculte, para que la ventana se vea
+        // completa"). Antes era un panel de alto fijo con la lista debajo en
+        // un `Expanded`, y el formulario de oferta —que es largo— vivía en un
+        // tercio de pantalla. El widget se extrajo porque el detalle del
+        // interés de producto necesita exactamente el mismo panel.
+        CollapsingPhotoPanel(
+          images: images,
+          fallbackIcon: req['kind'] == 'servicio'
+              ? Icons.handyman_outlined
+              : Icons.inventory_2_outlined,
+          leading: _backButton(context),
+          onOpenViewer: (i) =>
+              showPhotoViewer(context, images, initialIndex: i),
         ),
-        Expanded(
+        SliverFillRemaining(
+          // `hasScrollBody: false`: el contenido decide su alto y, si sobra
+          // pantalla, la hoja la rellena igual — que es lo que hacía el
+          // `Expanded` de antes.
+          hasScrollBody: false,
           child: Container(
             decoration: BoxDecoration(
               color: cs.surfaceContainerLowest,
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(28)),
             ),
-            child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                    22, 22, 22, 16 + navBarReservedSpace(context)),
+            padding: EdgeInsets.fromLTRB(
+                22, 22, 22, 16 + navBarReservedSpace(context)),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(req['title'] as String,
                       style: TextStyle(
@@ -1563,6 +1537,18 @@ class _ProviderRequestDetailScreenState
                   // FOMO de cupos (modelo de hasta 3 finalistas): escalera de
                   // color + recencia + ofertas recibidas.
                   _slotLadder(context),
+                  // ── 1) DATOS DEL CLIENTE ──
+                  // Orden pedido por el PO (2026-08-01): datos del cliente →
+                  // información → desbloqueo o enviar oferta. Antes la ficha
+                  // del cliente iba al final, justo encima del formulario, y
+                  // es lo primero que el proveedor mira para decidir si le
+                  // conviene ofertar. El título y los chips de estado se
+                  // quedan arriba (decisión PO): son la identidad de la
+                  // solicitud, no "información".
+                  _sectionHeading(context, 'Datos del cliente'),
+                  _customerRepCard(context),
+                  // ── 2) INFORMACIÓN ──
+                  _sectionHeading(context, 'Información'),
                   if (req['is_wholesale'] == true) ...[
                     const SizedBox(height: 8),
                     if (req['wholesale_quantity'] != null)
@@ -1623,7 +1609,7 @@ class _ProviderRequestDetailScreenState
                       ),
                     ]),
                   ],
-                  _customerRepCard(context),
+                  // ── 3) DESBLOQUEO O ENVIAR OFERTA ──
                   const Divider(height: 32),
                   if (!_editing && _businessId == null)
           FilledButton(
@@ -1775,25 +1761,25 @@ class _ProviderRequestDetailScreenState
       );
   }
 
-  /// Atrás flotante sobre el panel ámbar (mismo gesto que el detalle del
-  /// cliente: en el detalle no hay header violeta, solo el atrás).
-  Widget _backFab(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 8, left: 16),
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: Material(
-            color: Theme.of(context).colorScheme.surfaceContainerLowest,
-            shape: const CircleBorder(),
-            clipBehavior: Clip.antiAlias,
-            elevation: 1,
-            child: InkWell(
-              onTap: () => context.pop(),
-              child: SizedBox(
-                width: 42,
-                height: 42,
-                child: Icon(Icons.arrow_back_ios_new,
-                    size: 18, color: jayaloHead(context)),
-              ),
+  /// Atrás flotante sobre el panel (mismo gesto que el detalle del cliente: en
+  /// el detalle no hay header violeta, solo el atrás).
+  ///
+  /// Devuelve el botón PELADO, sin posicionar: va al `leading` de la barra
+  /// plegable —donde sigue tocable con el panel encogido— y también al Stack
+  /// de la pantalla de carga, que sí necesita colocarlo arriba a la izquierda.
+  Widget _backButton(BuildContext context) => Center(
+        child: Material(
+          color: Theme.of(context).colorScheme.surfaceContainerLowest,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          elevation: 1,
+          child: InkWell(
+            onTap: () => context.pop(),
+            child: SizedBox(
+              width: 42,
+              height: 42,
+              child: Icon(Icons.arrow_back_ios_new,
+                  size: 18, color: jayaloHead(context)),
             ),
           ),
         ),
