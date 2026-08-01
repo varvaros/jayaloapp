@@ -841,7 +841,9 @@ Future<List<Map<String, dynamic>>> _fetchMyOffers() async {
   return List<Map<String, dynamic>>.from(
     await supa
         .from('provider_offers')
-        .select('$offerCols,request_title,points_charged,purchase_completed')
+        .select(
+          '$offerCols,request_title,points_charged,purchase_completed,customer_id',
+        )
         .eq('user_id', uid)
         .order('created_at', ascending: false),
   );
@@ -1630,6 +1632,20 @@ Future<bool> hasCustomerReview(String offerId) async =>
         .eq('offer_id', offerId)
         .maybeSingle()) !=
     null;
+
+/// Ids de las ofertas de esta tanda que YA tienen reseña del cliente. Una sola
+/// consulta para toda la lista (mismo patrón que la web en
+/// `ProviderOffersSection.tsx:208`): por tarjeta serían N viajes.
+Future<Set<String>> customerReviewsFor(List<String> offerIds) async {
+  if (offerIds.isEmpty) return {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('customer_reviews')
+        .select('offer_id')
+        .inFilter('offer_id', offerIds),
+  );
+  return rows.map((r) => r['offer_id'] as String).toSet();
+}
 
 /// `business_id` de una oferta — el proveedor es dueño de ese negocio, así que
 /// escribir el `customer_review` con él pasa la RLS.

@@ -10,7 +10,20 @@ import '../shared/brand_kit.dart';
 import '../shared/violet_header.dart';
 import '../shared/onboarding_guide.dart';
 import '../shared/onboarding_copy.dart';
+import '../chat/widgets/rating_form.dart';
 import 'unlock_flow.dart';
+
+/// ¿Toca calificar al cliente por esta oferta? Paridad exacta con la web
+/// (`ProviderOffersSection.tsx:705`): completada + compra confirmada +
+/// cliente conocido + sin reseña previa.
+bool needsCustomerReview(
+  Map<String, dynamic> offer,
+  Set<String> reviewed,
+) =>
+    offer['status'] == 'completed' &&
+    offer['purchase_completed'] == true &&
+    offer['customer_id'] != null &&
+    !reviewed.contains(offer['id']);
 
 class MyOffersScreen extends StatefulWidget {
   const MyOffersScreen({super.key});
@@ -23,6 +36,9 @@ class _MyOffersScreenState extends State<MyOffersScreen>
   List<Map<String, dynamic>> _offers = [];
   int? _balance;
   bool _loading = true;
+
+  /// Ofertas de esta tanda que ya tienen reseña del cliente (una sola consulta).
+  Set<String> _reviewed = {};
 
   /// Segmento activo: 0 = Mis ofertas (lo que vendo), 1 = Mis pedidos (lo que
   /// compro). Arranca en ofertas — es el motivo principal por el que un
@@ -50,10 +66,19 @@ class _MyOffersScreenState extends State<MyOffersScreen>
 
   Future<void> _refetch() async {
     final results = await Future.wait([myOffers(), walletBalance()]);
+    final offers = results[0] as List<Map<String, dynamic>>;
+    // En lote, no por tarjeta. Best-effort: sin esto solo se pierde el botón.
+    var reviewed = <String>{};
+    try {
+      reviewed = await customerReviewsFor(
+        offers.map((o) => o['id'] as String).toList(),
+      );
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
-      _offers = results[0] as List<Map<String, dynamic>>;
+      _offers = offers;
       _balance = results[1] as int?;
+      _reviewed = reviewed;
       _loading = false;
     });
   }
@@ -347,32 +372,73 @@ class _MyOffersScreenState extends State<MyOffersScreen>
         : '${offerPriceLabel(o)} · ${timeAgo(DateTime.parse(created))}';
     return JayaloCard(
       onTap: () => _openOffer(o),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  o['request_title'] as String? ?? '',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      o['request_title'] as String? ?? '',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      pending ? '$base · Toca para editar' : base,
+                      style:
+                          TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  pending ? '$base · Toca para editar' : base,
-                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              StatusChip(label: label, tone: tone),
+            ],
           ),
-          const SizedBox(width: 8),
-          StatusChip(label: label, tone: tone),
+          if (needsCustomerReview(o, _reviewed)) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () => _rateCustomer(o),
+                icon: const Icon(Icons.star_outline, size: 18),
+                label: const Text('Calificar al cliente'),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// Abre el calificador bilateral en una hoja. No se toca
+  /// `showOfferContactSheet`: el PO retiró de esa hoja el cierre de venta el
+  /// 2026-07-23 y volver a meterle una acción de cierre iría contra eso.
+  Future<void> _rateCustomer(Map<String, dynamic> o) async {
+    final businessId = o['business_id'] as String?;
+    final customerId = o['customer_id'] as String?;
+    if (businessId == null || customerId == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        child: CustomerRatingPanel(
+          offerId: o['id'] as String,
+          businessId: businessId,
+          customerId: customerId,
+          onDone: () => Navigator.pop(ctx),
+        ),
+      ),
+    );
+    if (mounted) await _refetch();
   }
 
   void _openOffer(Map<String, dynamic> o) {
