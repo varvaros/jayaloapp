@@ -40,6 +40,82 @@ void main() {
         ),
       );
 
+  /// Bug del PO (2026-07-31, visto en dispositivo al abrir y cerrar el swipe
+  /// en la lista de chats): las franjas se pintaban con `Positioned.fill`, o
+  /// sea a lo ANCHO de toda la fila y por DEBAJO de la tarjeta desplazada. Con
+  /// un hijo opaco no se nota; con la fila del chat, transparente por diseño,
+  /// las franjas se veían A TRAVÉS de su contenido.
+  ///
+  /// Invariante: la capa de franjas nunca rebasa el borde izquierdo del hijo.
+  Widget measuredHost({String? blockedReason}) => MaterialApp(
+        home: Scaffold(
+          body: ListView(
+            children: [
+              SwipeToActions(
+                id: 'm',
+                group: ValueNotifier<Object?>(null),
+                blockedReason: blockedReason,
+                actions: blockedReason != null
+                    ? const []
+                    : [
+                        SwipeAction(
+                          icon: Icons.delete_outline,
+                          label: 'Eliminar',
+                          color: Colors.red,
+                          onTap: () async {},
+                        ),
+                        SwipeAction(
+                          icon: Icons.edit_outlined,
+                          label: 'Editar',
+                          color: Colors.blue,
+                          onTap: () async {},
+                        ),
+                      ],
+                child: const SizedBox(
+                  key: ValueKey('hijoTarjeta'),
+                  height: 80,
+                  width: double.infinity,
+                  child: Text('card'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Future<void> expectStripNeverUnderChild(WidgetTester tester) async {
+    // Dos tramos con pump: un solo moveBy no produce update, porque el
+    // ListView compite en la arena de gestos.
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.text('card')));
+    await gesture.moveBy(const Offset(20, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(60, 0));
+    await tester.pump();
+
+    final strip = tester.getRect(find.byKey(const ValueKey('swipeStrip')));
+    final child = tester.getRect(find.byKey(const ValueKey('hijoTarjeta')));
+    expect(strip.right, lessThanOrEqualTo(child.left + 0.5),
+        reason: 'la capa de franjas no puede extenderse por debajo del hijo: '
+            'con un hijo transparente se transparenta sobre su contenido');
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('las franjas nunca se pintan por debajo de la tarjeta',
+      (tester) async {
+    await tester.pumpWidget(measuredHost());
+    await expectStripNeverUnderChild(tester);
+  });
+
+  testWidgets('bloqueado: la franja tampoco se pinta bajo la tarjeta',
+      (tester) async {
+    await tester.pumpWidget(
+        measuredHost(blockedReason: 'Solicitud completada'));
+    await expectStripNeverUnderChild(tester);
+  });
+
   testWidgets('cerrado: las acciones no se ven', (tester) async {
     await tester.pumpWidget(host(ValueNotifier(null), (_) {}));
     expect(find.text('Eliminar'), findsNothing);

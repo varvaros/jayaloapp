@@ -384,11 +384,42 @@ class _SwipeToActionsState extends State<SwipeToActions>
             // Franjas de color reveladas a la izquierda (clip redondeado a la
             // tarjeta). Solo se pintan con el swipe abierto: cerradas, el fondo
             // asomaba por las esquinas redondeadas de la tarjeta (arcos rojos).
+            //
+            // La capa se confina a los `_dx` píxeles REVELADOS. Antes era un
+            // `Positioned.fill`: ocupaba el ancho completo de la fila y se
+            // extendía POR DEBAJO del hijo desplazado. Con un hijo opaco (la
+            // tarjeta de solicitudes) no se notaba, pero la fila de la lista
+            // de chats es transparente por diseño y las franjas se veían A
+            // TRAVÉS de su contenido — sobre todo al cerrar, con la tarjeta ya
+            // de vuelta y las franjas aún pintadas a lo ancho (bug del PO,
+            // 2026-07-31). Confinarla aquí lo arregla para CUALQUIER
+            // consumidor, sea su hijo opaco o translúcido.
             if (_dx > 0.5)
               Positioned.fill(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(widget.radius),
-                  child: _blocked ? _blockedStrip(context) : _actionsRow(),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      key: const ValueKey('swipeStrip'),
+                      width: _dx,
+                      // Las franjas se MAQUETAN a su ancho natural y se
+                      // recortan a `_dx`; si se las encogiera, los íconos y
+                      // etiquetas se deformarían al abrir. El ancho máximo
+                      // incluye `_maxOver` para que el rebote del resorte
+                      // (cuando `_dx` se pasa de `_revealW`) siga cubierto por
+                      // el relleno de la última acción.
+                      child: ClipRect(
+                        child: OverflowBox(
+                          alignment: Alignment.centerLeft,
+                          minWidth: _revealW + _maxOver,
+                          maxWidth: _revealW + _maxOver,
+                          child:
+                              _blocked ? _blockedStrip(context) : _actionsRow(),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             // La tarjeta, desplazada por el arrastre. Cuando está abierta, una
