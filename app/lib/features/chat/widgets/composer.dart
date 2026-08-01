@@ -185,7 +185,10 @@ class _ChatComposerState extends State<ChatComposer> {
           order: 2,
           child: IconButton(
               onPressed: _openQuickList,
-              icon: const Icon(Icons.auto_awesome_outlined)),
+              // Burbuja con rayo = respuestas rápidas. NO `auto_awesome`: las
+              // chispitas son el ícono universal de IA y este botón abre
+              // mensajes preguardados, no una IA.
+              icon: const Icon(Icons.quickreply_outlined)),
         ),
         Expanded(
           child: TextField(
