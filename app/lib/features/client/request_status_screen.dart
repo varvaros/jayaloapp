@@ -58,6 +58,31 @@ String offerPriceLabel(Map<String, dynamic> o) {
   return 'A evaluar';
 }
 
+/// `business_id` de cada negocio con el que la solicitud REALMENTE cerró, en
+/// el detalle de una solicitud completada.
+///
+/// Filtra estrictamente por `status == 'completed'` — no por `'accepted'`: el
+/// modelo de hasta 3 finalistas permite varias ofertas `accepted` a la vez
+/// (`clientSlotsMessage`), y calificar a alguien con quien el cliente no
+/// cerró de verdad sería incorrecto. Mismo criterio "por oferta, no un
+/// ganador elegido" que `needsCustomerReview` en `my_offers_screen.dart` usa
+/// del lado del proveedor.
+///
+/// Un panel por NEGOCIO distinto (deduplicado: el mismo negocio puede tener
+/// más de una oferta completada en la misma solicitud) y en orden estable —
+/// el de aparición en `offers`, no el de un `Set` sin garantías de orden.
+List<String> completedReviewBusinessIds(List<Map<String, dynamic>> offers) {
+  final seen = <String>{};
+  final ids = <String>[];
+  for (final o in offers) {
+    if (o['status'] != 'completed') continue;
+    final bizId = o['business_id'] as String?;
+    if (bizId == null) continue;
+    if (seen.add(bizId)) ids.add(bizId);
+  }
+  return ids;
+}
+
 const _phaseCopy = {
   RequestPhase.waiting:
       'Tu solicitud está publicada. Los proveedores la están viendo.',
@@ -807,24 +832,18 @@ class _DetailSheet extends StatelessWidget {
                 ],
                 // Fase completada: cerrar la promesa del copy de `_phaseCopy`
                 // ("Califica al proveedor para ayudar a la comunidad"), que
-                // hasta ahora no tenía ningún control detrás.
+                // hasta ahora no tenía ningún control detrás. Un panel POR
+                // NEGOCIO completado (modelo de hasta 3 finalistas: puede
+                // haber más de uno), no solo el "primero" entre las ofertas.
                 if (phase == RequestPhase.completed)
-                  ...() {
-                    final accepted = offers.where((o) =>
-                        o['status'] == 'accepted' || o['status'] == 'completed');
-                    final bizId = accepted.isEmpty
-                        ? null
-                        : accepted.first['business_id'] as String?;
-                    return [
-                      if (bizId != null)
-                        BusinessReviewPanel(
-                          // Key por negocio: si la oferta aceptada cambiara,
-                          // el panel se re-crea y vuelve a cargar SU reseña.
-                          key: ValueKey('review-$bizId'),
-                          businessId: bizId,
-                        ),
-                    ];
-                  }(),
+                  for (final bizId in completedReviewBusinessIds(offers))
+                    BusinessReviewPanel(
+                      // Key por negocio: si cambian las ofertas completadas,
+                      // cada panel se re-crea y vuelve a cargar SU reseña sin
+                      // que Flutter confunda su estado con el de otro.
+                      key: ValueKey('review-$bizId'),
+                      businessId: bizId,
+                    ),
               ],
             ),
           ),
