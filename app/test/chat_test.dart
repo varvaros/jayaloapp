@@ -60,6 +60,37 @@ void main() {
       expect(sendFailureMessage(code: chatRateLimitCode, serverMessage: '  '),
           'No se pudo enviar. Intenta de nuevo.');
     });
+
+    /// Bug del PO (2026-07-31): el cron de inactividad cerró la conversación a
+    /// las 72 h, el composer seguía pintado (no hay realtime sobre
+    /// `conversations`), y el envío rebotaba contra la RLS con "intenta de
+    /// nuevo" — mandando al usuario a golpear una puerta cerrada.
+    test('chat cerrado: lo dice, en vez de invitar a reintentar', () {
+      expect(
+          sendFailureMessage(
+              code: chatPermissionDeniedCode,
+              serverMessage: 'new row violates row-level security policy',
+              conversationClosed: true),
+          'Esta conversación está cerrada: ya no se pueden enviar mensajes.');
+    });
+    test('rechazo por RLS pero la conversación SIGUE abierta → genérico', () {
+      // La pantalla releé la conversación antes de decidir el texto. Si volvió
+      // abierta, la causa fue otra y no podemos afirmar que está cerrada.
+      expect(
+          sendFailureMessage(
+              code: chatPermissionDeniedCode, conversationClosed: false),
+          'No se pudo enviar. Intenta de nuevo.');
+    });
+    test('el texto del servidor gana al aviso de cerrado', () {
+      // Si una de NUESTRAS guardas explicó el rechazo, ese texto es más
+      // específico que "está cerrada".
+      expect(
+          sendFailureMessage(
+              code: chatRateLimitCode,
+              serverMessage: 'Vas muy rápido.',
+              conversationClosed: true),
+          'Vas muy rápido.');
+    });
   });
   group('isRenderableImageSrc', () {
     test('https ok', () => expect(isRenderableImageSrc('https://x.co/a.jpg'), isTrue));

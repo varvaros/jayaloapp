@@ -417,6 +417,13 @@ class _ChatScreenState extends State<ChatScreen> {
         _jumpToBottom();
       }
     } catch (_) {/* reintenta el realtime igual */}
+    // El ESTADO de la conversación también pudo cambiar mientras estábamos en
+    // background, y no llega por realtime: `conversations` no está en la
+    // publicación (solo `conversation_messages`, `notifications` y
+    // `provider_offers`). Es justo la ventana del cron de inactividad: dejas
+    // la app, a las 72 h se cierra el chat, vuelves y el composer seguía
+    // pintado. Best-effort: si falla, se conserva lo que había.
+    if (mounted) await _reload();
     if (mounted) _setupRealtime();
   }
 
@@ -472,14 +479,25 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     } catch (e) {
       _session.removeOptimistic(tempId);
+      final code = e is PostgrestException ? e.code : null;
+      // Rechazo por RLS: la política de envío exige que la conversación esté
+      // 'abierto', así que casi seguro se cerró mientras la teníamos delante
+      // — el cron de inactividad (72 h) o la otra parte marcándola completada
+      // o no concretada. NO hay realtime sobre `conversations` (la tabla no
+      // está en la publicación), así que la pantalla no se entera sola.
+      // Releemos: el composer deja paso al banner de cerrado y el aviso pasa a
+      // decir la verdad en vez de invitar a reintentar contra una puerta
+      // cerrada (bug del PO 2026-07-31).
+      if (code == chatPermissionDeniedCode) await _reload();
       if (mounted) {
         setState(() {});
         // El anti-flood y el tope de longitud del servidor traen su propio
         // texto en español; los demás fallos caen al genérico.
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(sendFailureMessage(
-                code: e is PostgrestException ? e.code : null,
-                serverMessage: e is PostgrestException ? e.message : null))));
+                code: code,
+                serverMessage: e is PostgrestException ? e.message : null,
+                conversationClosed: !_isOpen))));
       }
       return false;
     }

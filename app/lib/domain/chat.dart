@@ -73,17 +73,36 @@ const String chatRateLimitCode = 'JY429';
 /// pasa de [maxMessageLen] (red server-side del tope del composer).
 const String chatCheckViolationCode = '23514';
 
+/// SQLSTATE `insufficient_privilege`: es lo que devuelve PostgREST cuando la
+/// RLS rechaza la fila ("new row violates row-level security policy"). En el
+/// envío de un mensaje la causa realista es UNA: la política
+/// `Participants can send messages when open` exige `conversations.status =
+/// 'abierto'`, así que la conversación se cerró mientras la teníamos delante.
+const String chatPermissionDeniedCode = '42501';
+
 /// Qué mostrarle al usuario cuando rebota un envío. Si el rechazo viene de una
 /// de NUESTRAS guardas, el servidor ya manda una explicación en español
 /// ("Vas muy rápido…") y repetirla es mucho mejor que el genérico: "intenta de
-/// nuevo" invita a reintentar justo lo que acaba de rebotar. Para cualquier
-/// otro fallo (red, RLS, chat cerrado) se queda el genérico, que no filtra
-/// detalles internos.
-String sendFailureMessage({String? code, String? serverMessage}) {
+/// nuevo" invita a reintentar justo lo que acaba de rebotar.
+///
+/// [conversationClosed] lo pasa la pantalla DESPUÉS de releer la conversación:
+/// un chat cerrado no se arregla reintentando, y decir "intenta de nuevo" ahí
+/// manda al usuario a golpear una puerta cerrada (bug del PO 2026-07-31: el
+/// cron de inactividad cerró el chat a las 72 h y el composer seguía pintado).
+/// Para cualquier otro fallo (red, permisos de otra causa) se queda el
+/// genérico, que no filtra detalles internos.
+String sendFailureMessage({
+  String? code,
+  String? serverMessage,
+  bool conversationClosed = false,
+}) {
   final msg = serverMessage?.trim() ?? '';
   if ((code == chatRateLimitCode || code == chatCheckViolationCode) &&
       msg.isNotEmpty) {
     return msg;
+  }
+  if (conversationClosed) {
+    return 'Esta conversación está cerrada: ya no se pueden enviar mensajes.';
   }
   return 'No se pudo enviar. Intenta de nuevo.';
 }
