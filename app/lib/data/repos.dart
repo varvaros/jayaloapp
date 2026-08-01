@@ -1662,6 +1662,15 @@ Future<String?> offerBusinessId(String offerId) async {
 /// (`get_or_create_conversation` solo acepta 'offer' y 'product_interest').
 /// `product_interests` lleva `business_id` propio, así que no hace falta pasar
 /// por `provider_products`.
+///
+/// ⚠️ HOY NO SE USA en el camino de calificación, a propósito: la política de
+/// INSERT de `business_reviews` (migración 20260729210000) exige una
+/// `provider_offers` desbloqueada de ese cliente con ese negocio, y un chat de
+/// producto no tiene ninguna — la escritura rebotaba con 42501 y el catch
+/// best-effort la perdía en silencio (revisión final, 2026-08-01). Se conserva
+/// porque volverá a hacer falta el día que se amplíe esa política para admitir
+/// intereses de producto desbloqueados. Ver `canResolveReviewBusiness` en
+/// `chat_screen.dart`.
 Future<String?> interestBusinessId(String interestId) async {
   final row = await supa
       .from('product_interests')

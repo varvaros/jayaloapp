@@ -46,6 +46,16 @@ List<String> chatMenuValues({required bool isProvider, required bool isOpen}) =>
       'report',
     ];
 
+/// ¿Se puede resolver el negocio de esta conversación para escribir en
+/// `business_reviews`? Pura y pública para fijar el límite en un test sin
+/// montar la pantalla (su `initState` toca Supabase).
+///
+/// Solo los chats de OFERTA. La política de INSERT de `business_reviews`
+/// (migración 20260729210000) exige una `provider_offers` desbloqueada de ese
+/// cliente con ese negocio, y un chat de producto no tiene ninguna. Ver el
+/// comentario largo en `_loadReviewContext`.
+bool canResolveReviewBusiness(String? kind) => kind == 'offer';
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen(
       {super.key, required this.conversationId, this.peerName, this.peerAvatarUrl});
@@ -327,12 +337,30 @@ class _ChatScreenState extends State<ChatScreen> {
     final kind = conv['kind'] as String?;
     if (sourceId == null) return;
     try {
-      // Los dos únicos tipos que crea `get_or_create_conversation`.
-      final bizId = kind == 'offer'
-          ? await offerBusinessId(sourceId)
-          : kind == 'product_interest'
-              ? await interestBusinessId(sourceId)
-              : null;
+      // SOLO los chats de OFERTA resuelven negocio, aunque
+      // `get_or_create_conversation` también cree los de `product_interest` y
+      // `interestBusinessId()` sepa resolverlos.
+      //
+      // Por qué (hallazgo de la revisión final, 2026-08-01): la política de
+      // INSERT de `business_reviews` (migración 20260729210000) exige
+      //   EXISTS (SELECT 1 FROM provider_offers o
+      //            WHERE o.customer_id = auth.uid()
+      //              AND o.business_id = business_reviews.business_id
+      //              AND o.unlocked_at IS NOT NULL)
+      // y en un chat de producto NO hay ninguna fila así: el cliente escribió
+      // por un artículo de la tienda, no por una oferta a una solicitud. La
+      // escritura rebotaba con 42501 y el `catch` best-effort de `RatingPanel`
+      // se la tragaba: el usuario veía "Gracias por tu calificación" y la
+      // reputación no se movía. Dejando `bizId` en null ni se intenta, así que
+      // no hay fallo silencioso; la nota sigue guardándose en
+      // `conversation_ratings`.
+      //
+      // Decisión del PO: aceptar el límite por ahora. Ampliar la política para
+      // admitir un `product_interest` desbloqueado agranda la superficie de
+      // quién puede escribir reseñas y merece su propia sesión con verificación
+      // de seguridad.
+      final bizId =
+          canResolveReviewBusiness(kind) ? await offerBusinessId(sourceId) : null;
       final reviewed = (isProvider && kind == 'offer')
           ? await hasCustomerReview(sourceId)
           : false;
