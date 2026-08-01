@@ -146,15 +146,28 @@ primero, deploy después.
 entra al detalle, y el estado se comunica con un `StatusChip` ("Ya ofertaste",
 "Aceptada", "Desbloqueado").
 
-Se quita el botón de `_InterestCard` y en su lugar va un `StatusChip` con el
-mismo criterio de color que las de solicitud. La tarjeta entera sigue siendo
-tappable.
+Se quita el botón de `_InterestCard` y en su lugar va un `StatusChip` en la
+misma `Wrap` que la hora, igual que en `_RequestCard`. La tarjeta entera sigue
+siendo tappable.
 
-`_onInterestAction` ya abre siempre el detalle primero (pedido PO del
-2026-07-23, comentado en la línea 206) — no cambia.
+Chips elegidos:
 
-**Ojo:** hay tests de widget que buscan el texto 'Abrir chat' en la lista; hay
-que reapuntarlos al detalle.
+- Desbloqueado → "Desbloqueado" con `Icons.lock_open` y
+  `offerBadgeTone(context, 'unlocked')` (violeta), idéntico al de solicitud.
+- Sin desbloquear → "N crédito(s)" con `Icons.lock_outline` y el tono `pending`
+  (ámbar). El costo se conserva: era la única información útil que daba el
+  botón, y ámbar es el color de "dinero esperando" en todo el proyecto.
+
+`_onInterestAction` ya abría siempre el detalle primero (pedido PO del
+2026-07-23, comentado en la línea 206) — no cambió nada ahí.
+
+### Estado: HECHA (2026-08-01)
+
+Tests de `inbox_screen_test.dart` actualizados primero, vistos fallar, y luego
+el widget. Los dos que codificaban el botón ahora afirman lo contrario
+(`find.byType(FilledButton)` → `findsNothing`, y ni rastro del copy
+"Conversar"); los que tocaban el botón para abrir la hoja ahora tocan el título
+de la tarjeta. App: analyze 0, 611 tests.
 
 ---
 

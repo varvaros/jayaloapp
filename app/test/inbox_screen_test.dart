@@ -109,7 +109,13 @@ void main() {
     expect(find.text('Taladro inalámbrico'), findsOneWidget);
   });
 
-  testWidgets('la tarjeta de interés bloqueada muestra el costo',
+  // Pedido PO 2026-08-01: la tarjeta de interés se comporta como las de
+  // solicitud — se toca la tarjeta y se entra al detalle. NADA de botón en la
+  // lista; el estado se comunica con un chip, igual que "Ya ofertaste" /
+  // "Aceptada" / "Desbloqueado" en `_RequestCard`.
+
+  testWidgets(
+      'la tarjeta de interés bloqueada muestra el costo en un chip, no en un botón',
       (tester) async {
     await tester.pumpWidget(host(ProviderInboxView(
         fetch: fetchOnly(interestRow()),
@@ -117,10 +123,14 @@ void main() {
         balanceFetch: () async => 5)));
     await tester.pumpAndSettle();
 
-    expect(find.text('Conversar · 1 crédito'), findsOneWidget);
+    expect(find.text('1 crédito'), findsOneWidget);
+    // El copy viejo del botón no debe sobrevivir en ninguna forma.
+    expect(find.textContaining('Conversar'), findsNothing);
+    expect(find.byType(FilledButton), findsNothing);
   });
 
-  testWidgets('la tarjeta de interés desbloqueada muestra "Abrir chat"',
+  testWidgets(
+      'la tarjeta de interés desbloqueada NO ofrece "Abrir chat": hay que entrar',
       (tester) async {
     await tester.pumpWidget(host(ProviderInboxView(
         fetch: fetchOnly(interestRow(unlocked: true)),
@@ -128,8 +138,10 @@ void main() {
         balanceFetch: () async => 5)));
     await tester.pumpAndSettle();
 
-    expect(find.text('Abrir chat'), findsOneWidget);
-    expect(find.text('Conversar · 1 crédito'), findsNothing);
+    expect(find.text('Desbloqueado'), findsOneWidget);
+    expect(find.text('Abrir chat'), findsNothing);
+    expect(find.textContaining('Conversar'), findsNothing);
+    expect(find.byType(FilledButton), findsNothing);
   });
 
   testWidgets(
@@ -144,7 +156,7 @@ void main() {
     // Toca la tarjeta → abre la hoja de DETALLE (pedido PO 2026-07-23), no
     // salta directo al cobro. Sin `pumpAndSettle`: con saldo 0 no hay mascota,
     // pero se mantiene el patrón de pumps cronometrados.
-    await tester.tap(find.text('Conversar · 1 crédito'));
+    await tester.tap(find.text('Taladro inalámbrico'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 450));
 
@@ -161,7 +173,7 @@ void main() {
         balanceFetch: () async => 5)));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Conversar · 1 crédito'));
+    await tester.tap(find.text('Taladro inalámbrico'));
     await tester.pump();
     // NO `pumpAndSettle`: la hoja de detalle pinta la mascota, cuyo reloj se
     // repite eternamente y colgaría el settle. Un pump cronometrado basta.
@@ -197,6 +209,6 @@ void main() {
 
     expect(find.text('Necesito un plomero'), findsOneWidget);
     expect(find.text('Interesado en tu producto'), findsOneWidget);
-    expect(find.text('Conversar · 1 crédito'), findsOneWidget);
+    expect(find.text('1 crédito'), findsOneWidget);
   });
 }

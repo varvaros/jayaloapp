@@ -855,11 +855,17 @@ class _InboxCard extends StatelessWidget {
 }
 
 /// Tarjeta de un interés de producto (Task 9): un comprador tocó "Me
-/// interesa" en TU producto — otra cosa que una solicitud del marketplace,
-/// así que se tiñe distinto (violeta mientras hay dinero esperando desbloqueo
-/// — pedido PO 2026-07-22, antes ámbar; verde cuando ya se desbloqueó) y lleva
-/// su propia acción: "Conversar · N crédito(s)" o
-/// "Abrir chat" si ya se pagó.
+/// interesa" en TU producto — otra cosa que una solicitud del marketplace, así
+/// que se tiñe distinto (violeta mientras hay dinero esperando desbloqueo —
+/// pedido PO 2026-07-22, antes ámbar; verde cuando ya se desbloqueó).
+///
+/// SIN botón (pedido PO 2026-08-01): antes traía un `FilledButton` con
+/// "Conversar · N crédito(s)" / "Abrir chat", y era la única tarjeta del inbox
+/// que lo hacía — las de solicitud se tocan y se entra. El PO lo señaló como
+/// inconsistencia: "vamos a ponerlo igual que las demás solicitudes, que debes
+/// entrar para abrir el chat". Ahora el estado se comunica con un [StatusChip]
+/// junto a la hora, exactamente como "Ya ofertaste" / "Aceptada" /
+/// "Desbloqueado" en [_RequestCard], y la acción vive dentro del detalle.
 class _InterestCard extends StatelessWidget {
   const _InterestCard({required this.row, required this.onAction});
 
@@ -925,25 +931,38 @@ class _InterestCard extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 4),
-                Text(
-                  timeAgo(createdAt),
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                // Misma fila que en `_RequestCard`: la hora y, al lado, el
+                // chip de estado. Violeta "Desbloqueado" cuando ya se pagó;
+                // ámbar con el costo mientras haya dinero pendiente (ámbar =
+                // espera/dinero en todo el proyecto).
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      timeAgo(createdAt),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    if (unlocked)
+                      StatusChip(
+                        label: 'Desbloqueado',
+                        icon: Icons.lock_open,
+                        tone: offerBadgeTone(context, 'unlocked'),
+                      )
+                    else
+                      StatusChip(
+                        label: '$productInterestUnlockCost crédito'
+                            '${productInterestUnlockCost == 1 ? '' : 's'}',
+                        icon: Icons.lock_outline,
+                        tone: offerBadgeTone(context, 'pending'),
+                      ),
+                  ],
                 ),
               ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: onAction,
-            style: FilledButton.styleFrom(
-              backgroundColor: green,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              unlocked
-                  ? 'Abrir chat'
-                  : 'Conversar · $productInterestUnlockCost crédito'
-                        '${productInterestUnlockCost == 1 ? '' : 's'}',
             ),
           ),
         ],
