@@ -17,6 +17,7 @@ import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
 import 'widgets/bubbles.dart';
 import 'widgets/chat_dialogs.dart';
+import 'widgets/conversation_actions.dart';
 import 'funnel_status_store.dart';
 import 'opened_conversations.dart';
 import '../shared/brand_kit.dart';
@@ -30,6 +31,20 @@ import '../shared/onboarding_copy.dart';
 import '../shared/verified_badges.dart';
 
 const _pageSize = 50;
+
+/// Qué opciones ofrece el ⋮ del chat. Pura y pública para poder probar el
+/// contrato sin montar la pantalla (su initState toca Supabase).
+///
+/// "No concretado" es de AMBOS participantes: la RLS y el grant por columna
+/// sobre `status` siempre lo permitieron y el gate era solo de UI. "Completado"
+/// sigue siendo del proveedor — cierra el trato y dispara la calificación.
+List<String> chatMenuValues({required bool isProvider, required bool isOpen}) =>
+    [
+      if (isProvider && isOpen) 'complete',
+      if (isOpen) 'lost',
+      if (isProvider) 'funnel',
+      'report',
+    ];
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen(
@@ -1047,34 +1062,18 @@ class _ChatScreenState extends State<ChatScreen> {
                   }
                 }
               case 'lost':
-                final ok = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                          title: const Text('¿Marcar como no concretado?'),
-                          content: const Text(
-                              'Esta acción es definitiva, la conversación no se puede reabrir.'),
-                          actions: [
-                            TextButton(
-                                onPressed: () => Navigator.of(ctx).pop(false),
-                                child: const Text('Cancelar')),
-                            FilledButton(
-                                style: FilledButton.styleFrom(
-                                    backgroundColor:
-                                        Theme.of(ctx).colorScheme.error),
-                                onPressed: () => Navigator.of(ctx).pop(true),
-                                child: const Text('Sí, marcar')),
-                          ],
-                        ));
+                // El diálogo vive en `widgets/conversation_actions.dart`: la
+                // lista de chats ofrece la misma acción y el aviso de que es
+                // irreversible tiene que ser idéntico en los dos sitios.
+                if (!await confirmMarkLost(context)) return;
                 if (!mounted) return;
-                if (ok == true) {
-                  try {
-                    await markConversationLost(widget.conversationId);
-                    if (!mounted) return;
-                    _snack('Marcado como no concretado.');
-                    await _reload();
-                  } catch (_) {
-                    _snack('No se pudo marcar. Intenta de nuevo.');
-                  }
+                try {
+                  await markConversationLost(widget.conversationId);
+                  if (!mounted) return;
+                  _snack('Marcado como no concretado.');
+                  await _reload();
+                } catch (_) {
+                  if (mounted) _snack('No se pudo marcar. Intenta de nuevo.');
                 }
               case 'funnel':
                 await _pickFunnelStatus();
@@ -1100,14 +1099,17 @@ class _ChatScreenState extends State<ChatScreen> {
             }
           },
           itemBuilder: (_) => [
-            if (_isProvider && _isOpen) ...[
-              const PopupMenuItem(value: 'complete', child: Text('Marcar como completado')),
-              const PopupMenuItem(value: 'lost', child: Text('Marcar como perdido')),
-            ],
-            // Estado de embudo (privado del proveedor, pedido PO 2026-07-22).
-            if (_isProvider)
-              const PopupMenuItem(value: 'funnel', child: Text('Estado del cliente')),
-            const PopupMenuItem(value: 'report', child: Text('Denunciar cuenta')),
+            for (final v in chatMenuValues(
+                isProvider: _isProvider, isOpen: _isOpen))
+              PopupMenuItem(
+                value: v,
+                child: Text(switch (v) {
+                  'complete' => 'Marcar como completado',
+                  'lost' => 'Marcar como no concretado',
+                  'funnel' => 'Estado del cliente',
+                  _ => 'Denunciar cuenta',
+                }),
+              ),
           ],
           ),
         ),
