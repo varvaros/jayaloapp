@@ -84,7 +84,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
     supa
         .from('customer_requests')
         .select(
-            'id,title,status,kind,bullets,user_id,created_at,image_urls,budget_min,budget_max,is_wholesale')
+            'id,title,status,kind,bullets,user_id,created_at,image_urls,budget_min,budget_max,is_wholesale,$requestRequirementCols')
         .eq('id', widget.requestId)
         .single()
         .then((r) => mounted ? setState(() => _request = r) : null);

@@ -16,6 +16,8 @@ void main() {
     'kind': 'producto',
     'status': 'open',
     'is_wholesale': true,
+    'with_shipping': true,
+    'requires_fiscal_receipt': true,
     'image_url': null,
     'image_urls': <String>[],
     'created_at': DateTime.now().toIso8601String(),
@@ -44,5 +46,16 @@ void main() {
 
     expect(find.text('Busco esto mismo'), findsOneWidget);
     expect(find.text('Sí, busco lo mismo'), findsOneWidget);
+  });
+
+  testWidgets('muestra los requisitos que el cliente exige', (tester) async {
+    await tester.pumpWidget(host(
+      OtherRequestScreen(requestId: 'r1', fetch: () async => row),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Requiere envío'), findsOneWidget);
+    expect(find.text('Requiere comprobante fiscal'), findsOneWidget);
+    expect(find.text('Requiere instalación'), findsNothing);
   });
 }

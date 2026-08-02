@@ -198,4 +198,36 @@ void main() {
     expect(find.text('ESTADO'), findsOneWidget);
     expect(find.text('INFORMACIÓN'), findsNothing);
   });
+
+  testWidgets('el cliente ve en su solicitud los requisitos que marcó',
+      (tester) async {
+    // Mapa aparte (no el `request` compartido de arriba): ese se reutiliza en
+    // el primer test de este fichero con un viewport angosto (400 lógicos)
+    // para probar el plegado del panel, y ahí el par de chips largos de este
+    // caso ("Requiere evaluación previa" + "Requiere suplidor del Estado")
+    // desborda el `Row` de `StatusChip` — un problema de `StatusChip` en
+    // viewports angostos, no de esta tarea, así que no se toca ese widget ni
+    // ese test.
+    final conRequisitos = {
+      ...request,
+      'requires_evaluation': true,
+      'requires_state_supplier': true,
+    };
+    await tester.pumpWidget(MaterialApp(
+      theme: jayaloTheme(Brightness.light),
+      home: Scaffold(
+        body: RequestDetailSheet(
+          request: conRequisitos,
+          phase: RequestPhase.waiting,
+          offers: const [],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // La evaluación SÍ sale: la web la excluye del detalle porque allí tiene su
+    // propio chip ámbar, y la app no lo tiene.
+    expect(find.text('Requiere evaluación previa'), findsOneWidget);
+    expect(find.text('Requiere suplidor del Estado'), findsOneWidget);
+  });
 }

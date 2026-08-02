@@ -4,10 +4,12 @@ import '../../domain/chat_time.dart';
 import '../../domain/finalist_slots.dart';
 import '../../domain/money.dart';
 import '../../domain/phase.dart';
+import '../../domain/request_requirements.dart';
 import '../chat/widgets/rating_form.dart';
 import '../shared/brand_kit.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
+import '../shared/request_requirement_badges.dart';
 import '../shared/section_heading.dart';
 import '../shell/floating_nav_bar.dart';
 import 'request_status_screen.dart';
@@ -136,6 +138,11 @@ class RequestDetailSheet extends StatelessWidget {
               ),
             ),
           ],
+          RequestRequirementBadges(
+            req: requirementsFromRow(request),
+            variant: RequirementBadgeVariant.chips,
+            padding: const EdgeInsets.only(top: 8),
+          ),
           const SizedBox(height: 14),
           Row(
             children: [

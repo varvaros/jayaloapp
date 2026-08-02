@@ -17,6 +17,8 @@ import '../../domain/offer_message.dart';
 import '../../domain/pricing.dart';
 import '../../domain/wholesale.dart';
 import '../../domain/finalist_slots.dart';
+import '../../domain/request_requirements.dart';
+import '../shared/request_requirement_badges.dart';
 import '../shared/celebration.dart';
 import '../shared/collapsing_photo_panel.dart';
 import '../shared/customer_rep_card.dart';
@@ -1391,6 +1393,15 @@ class _ProviderRequestDetailScreenState
                               ? JayaloStatus.respondedDark
                               : JayaloStatus.respondedLight),
                     ),
+                  // Lo que el cliente EXIGE. Va con el título y el chip de
+                  // mayoreo, no bajo "Información": es identidad de la
+                  // solicitud, y es lo que decide si a este proveedor le
+                  // conviene ofertar (orden pedido por el PO 2026-08-01).
+                  RequestRequirementBadges(
+                    req: requirementsFromRow(req),
+                    variant: RequirementBadgeVariant.chips,
+                    padding: const EdgeInsets.only(top: 8),
+                  ),
                   // FOMO de cupos (modelo de hasta 3 finalistas): escalera de
                   // color + recencia + ofertas recibidas.
                   _slotLadder(context),
