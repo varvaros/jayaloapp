@@ -145,4 +145,30 @@ void main() {
       expect(servs, isEmpty);
     });
   });
+
+  group('requestRequirementCols', () {
+    test('nombra las cinco columnas de requisitos', () {
+      for (final col in const [
+        'with_shipping',
+        'with_installation',
+        'requires_evaluation',
+        'requires_fiscal_receipt',
+        'requires_state_supplier',
+      ]) {
+        expect(requestRequirementCols, contains(col), reason: 'falta $col');
+      }
+    });
+
+    test('no lleva espacios: va concatenada dentro de un select de PostgREST', () {
+      expect(requestRequirementCols, isNot(contains(' ')));
+    });
+  });
+
+  group('requirementsForRequests', () {
+    test('con lista vacía devuelve mapa vacío SIN tocar la red', () async {
+      // Sin este corto‑circuito el test reventaría al tocar `supa`, que no está
+      // inicializado en un test de unidad. Que pase es la prueba de que existe.
+      expect(await requirementsForRequests(const []), isEmpty);
+    });
+  });
 }

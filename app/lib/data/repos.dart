@@ -9,6 +9,7 @@ import '../domain/contact_info.dart'
     show contactInfoCode, contactInfoMessage, payloadHasContactInfo;
 import '../domain/phase.dart';
 import '../domain/profile_address.dart';
+import '../domain/request_requirements.dart';
 
 final supa = Supabase.instance.client;
 
@@ -218,13 +219,47 @@ Future<List<Map<String, dynamic>>> myRequests() => AppCaches.myRequests.readFres
       onChanged: () => requestsChanged.value++,
     );
 
+/// Las cinco columnas de requisitos de `customer_requests`, juntas en una sola
+/// constante para que no se separen nunca: las leen cuatro pantallas y la
+/// bandeja, y añadir una sexta a un solo `select()` es exactamente el fallo que
+/// dejó estos flags invisibles durante meses.
+///
+/// Sin espacios: se concatena dentro de un `select()` de PostgREST.
+const requestRequirementCols =
+    'with_shipping,with_installation,requires_evaluation,'
+    'requires_fiscal_receipt,requires_state_supplier';
+
+/// Los requisitos de un lote de solicitudes, por id.
+///
+/// Existe por la bandeja del proveedor: `get_provider_inbox_unified` tiene una
+/// forma fija de trece columnas que no incluye ninguno de estos flags, y esa RPC
+/// la comparte la web — extenderla obligaría a un DROP/CREATE con re-grants y
+/// pondría en riesgo el inbox de los dos frentes a la vez. Sale más barato
+/// pedirlos aparte: la llamada corre en la oleada B de `loadInboxData`, en
+/// paralelo con los estados y los conteos, así que no cuesta latencia.
+Future<Map<String, RequestRequirements>> requirementsForRequests(
+  List<String> ids,
+) async {
+  if (ids.isEmpty) return {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('customer_requests')
+        .select('id,$requestRequirementCols')
+        .inFilter('id', ids),
+  );
+  return {
+    for (final r in rows) r['id'] as String: requirementsFromRow(r),
+  };
+}
+
 Future<List<Map<String, dynamic>>> _fetchMyRequests() async {
   final uid = supa.auth.currentUser!.id;
   return List<Map<String, dynamic>>.from(
     await supa
         .from('customer_requests')
         .select(
-          'id,title,kind,status,is_wholesale,created_at,image_url,image_urls',
+          'id,title,kind,status,is_wholesale,created_at,image_url,image_urls,'
+          '$requestRequirementCols',
         )
         .eq('user_id', uid)
         // Las canceladas (soft-delete de "Eliminar") desaparecen del listado; la
@@ -599,7 +634,8 @@ Future<Map<String, dynamic>?> requestById(String id) async => await supa
       // image_url/image_urls: el detalle del proveedor pinta la foto del
       // cliente en el panel ámbar (igual que el detalle del cliente). Sin
       // estas columnas el panel SIEMPRE caía al ícono — "llegan sin imágenes".
-      'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at,image_url,image_urls,budget_min,budget_max,wholesale_quantity,wholesale_split,wholesale_packaging,wholesale_note,offers_count,accepted_offers_count',
+      'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at,image_url,image_urls,budget_min,budget_max,wholesale_quantity,wholesale_split,wholesale_packaging,wholesale_note,offers_count,accepted_offers_count'
+      ',$requestRequirementCols',
     )
     .eq('id', id)
     .maybeSingle();
@@ -2098,7 +2134,8 @@ Future<List<Map<String, dynamic>>> allOpenRequests({String? kind}) async {
   var q = supa
       .from('customer_requests')
       .select(
-        'id,title,description,kind,urgency,zone,is_wholesale,created_at,image_url',
+        'id,title,description,kind,urgency,zone,is_wholesale,created_at,'
+        'image_url,$requestRequirementCols',
       )
       .eq('status', 'open')
       .neq('user_id', uid);
