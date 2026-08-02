@@ -22,6 +22,7 @@ import '../shared/collapsing_photo_panel.dart';
 import '../shared/customer_rep_card.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
+import '../shared/section_heading.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import 'unlock_flow.dart';
@@ -1056,21 +1057,6 @@ class _ProviderRequestDetailScreenState
       requestBudgetLabel(req['budget_min'] as num?, req['budget_max'] as num?) !=
           null;
 
-  /// Encabezado de las tres secciones del detalle (pedido PO 2026-08-01):
-  /// datos del cliente → información → desbloqueo o enviar oferta. Se separa
-  /// de [_sectionLabel] (que rotula campos DENTRO del formulario) porque este
-  /// estructura la pantalla: va en versalita discreta, como 'Detalles'.
-  Widget _sectionHeading(BuildContext context, String t) => Padding(
-        padding: const EdgeInsets.only(top: 20, bottom: 2),
-        child: Text(t.toUpperCase(),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: .8,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            )),
-      );
-
   /// Chips de selección única (garantía, disponibilidad, estado). Tocar el
   /// activo lo deselecciona.
   Widget _chipSelect(
@@ -1416,7 +1402,7 @@ class _ProviderRequestDetailScreenState
                   // conviene ofertar. El título y los chips de estado se
                   // quedan arriba (decisión PO): son la identidad de la
                   // solicitud, no "información".
-                  _sectionHeading(context, 'Datos del cliente'),
+                  sectionHeading(context, 'Datos del cliente'),
                   CustomerRepCard(
                     customerId: req['user_id'] as String?,
                     reputation: _custRep,
@@ -1429,7 +1415,7 @@ class _ProviderRequestDetailScreenState
                   // 2026-08-01). Mismo criterio que `BusinessDetailsCard`, que
                   // no se dibuja si no tiene filas.
                   if (_hasInfo(req, bullets))
-                    _sectionHeading(context, 'Información'),
+                    sectionHeading(context, 'Información'),
                   if (req['is_wholesale'] == true) ...[
                     const SizedBox(height: 8),
                     if (req['wholesale_quantity'] != null)
