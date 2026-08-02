@@ -299,33 +299,106 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **No hagas esta tarea si la Task 2 tumbó la hipótesis.** Si el controlador te dispachó igualmente, pregunta antes de empezar.
 
-- [ ] **Step 1: Sustituir la estructura**
+> **REVISADO 2026-08-02 tras un BLOCKED.** La primera versión de este paso metía `RequestDetailSheet` tal cual dentro de `SliverFillRemaining`. **No funciona**, y se midió: el panel se quedaba en 300.0 → 300.0 mientras el título scrolleaba 322 → 251 dentro del `ListView` propio de la hoja. Los dos scrolls quedan aislados.
+>
+> La causa: los dos consumidores que YA funcionan (detalle del proveedor, interés de producto) usan `SliverFillRemaining(hasScrollBody: false)` envolviendo un `Column` **sin scroll propio**. La hoja del cliente sí tenía el suyo. El plan daba por transferible un patrón sin comprobar esa diferencia.
+>
+> **Decisión del PO (2026-08-02):** quitarle el scroll a la hoja y sacar el CTA fuera del `CustomScrollView`.
 
-En el `build` de `_RequestStatusScreenState` (alrededor de la línea 219), el `Column` con `_AmberPanel` y `Expanded` pasa a:
+- [ ] **Step 1: Quitar el scroll a la hoja y sacar el CTA**
+
+En `request_detail_sheet.dart`, `RequestDetailSheet` pasa de
 
 ```dart
-      body: CustomScrollView(slivers: [
-        CollapsingPhotoPanel(
-          images: images,
-          fallbackIcon: phaseChip(phase, 0).$1,
-          leading: _CornerFab(
-            icon: Icons.arrow_back_ios_new,
-            tooltip: 'Atrás',
-            onTap: _goBack,
+Container(decoration: …, child: Column(children: [
+  Expanded(child: ListView(padding: EdgeInsets.fromLTRB(22, 22, 22, 8), children: [ …contenido… ])),
+  Padding(…CTA…),
+]))
+```
+
+a solo el contenido, sin scroll y sin CTA:
+
+```dart
+Container(
+  decoration: BoxDecoration(
+    color: cs.surfaceContainerLowest,
+    borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+  ),
+  padding: const EdgeInsets.fromLTRB(22, 22, 22, 8),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [ …el mismo contenido, en el mismo orden… ],
+  ),
+)
+```
+
+El `padding` del `ListView` pasa al `Container`. **El contenido no cambia** — solo deja de estar dentro de un scroll.
+
+Su constructor pierde `unreadCount` y `onSeeOffers`, que se van con el CTA.
+
+El bloque del CTA (el `Padding > OnboardingGuide > Badge > SizedBox > FilledButton`, con su `navBarReservedSpace(context)`) se **mueve entero y sin editar** a un widget nuevo en el mismo fichero:
+
+```dart
+/// CTA "Ver N ofertas". Vive FUERA del CustomScrollView, anclado abajo por el
+/// Column de la pantalla: si estuviera dentro del scroll se iría de pantalla
+/// justo cuando hace falta.
+class RequestDetailCta extends StatelessWidget {
+  const RequestDetailCta({
+    super.key,
+    required this.offers,
+    required this.unreadCount,
+    required this.onSeeOffers,
+  });
+
+  final List<Map<String, dynamic>> offers;
+  final int unreadCount;
+  final VoidCallback onSeeOffers;
+
+  @override
+  Widget build(BuildContext context) => …el bloque movido tal cual…;
+}
+```
+
+- [ ] **Step 1b: Sustituir la estructura de la pantalla**
+
+En el `build` de `_RequestStatusScreenState` (alrededor de la línea 219):
+
+```dart
+      body: Column(
+        children: [
+          Expanded(
+            child: CustomScrollView(slivers: [
+              CollapsingPhotoPanel(
+                images: images,
+                fallbackIcon: phaseChip(phase, 0).$1,
+                leading: _CornerFab(
+                  icon: Icons.arrow_back_ios_new,
+                  tooltip: 'Atrás',
+                  onTap: _goBack,
+                ),
+                onOpenViewer: (i) =>
+                    showPhotoViewer(context, images, initialIndex: i),
+              ),
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: RequestDetailSheet(
+                  request: req,
+                  phase: phase,
+                  offers: offers,
+                ),
+              ),
+            ]),
           ),
-          onOpenViewer: (i) => showPhotoViewer(context, images, initialIndex: i),
-        ),
-        SliverFillRemaining(
-          child: RequestDetailSheet(
-            request: req,
-            phase: phase,
+          RequestDetailCta(
             offers: offers,
             unreadCount: unreadCount,
             onSeeOffers: () => _showOffers(context, req, offers),
           ),
-        ),
-      ]),
+        ],
+      ),
 ```
+
+`hasScrollBody: false` es lo que hace que el contenido participe del scroll del `CustomScrollView` en vez de scrollear por su cuenta — es la diferencia exacta entre esto y la versión que falló.
 
 `images` se calcula igual que lo hacía `_AmberPanel`:
 
@@ -436,11 +509,13 @@ void main() {
 
 - [ ] **Step 4: Verificar el riesgo del sliver**
 
-El spec lo marca como el primer punto que puede salir mal: `SliverFillRemaining` con `hasScrollBody: true` da al hijo el alto del viewport y le deja scrollear por dentro. **Hay que confirmar que el scroll de la lista interna arrastra el plegado del panel externo** y no queda aislado.
+Este riesgo **ya se materializó una vez** y por eso el Step 1 cambió. Ahora hay que confirmar que la solución acordada funciona de verdad.
 
-El test 2 del Step 3 es justo esa comprobación, pero hazlo también sobre la composición real (panel + `SliverFillRemaining` con la hoja), no solo sobre el panel con una lista de juguete.
+Monta la composición REAL —`CollapsingPhotoPanel` + `SliverFillRemaining(hasScrollBody: false, child: RequestDetailSheet(...))`— arrastra el contenido hacia arriba, y mide el alto del `FlexibleSpaceBar` antes y después.
 
-Si el panel no se pliega al arrastrar la lista interna, **para y repórtalo**: la solución pasa por `NestedScrollView` o por que la hoja deje de tener su propio scroll, y eso es un cambio de diseño que no está en este plan.
+**Debe encogerse.** Si vuelve a quedarse en 300.0, para y reporta `BLOCKED` con los números: significaría que `hasScrollBody: false` tampoco basta y hace falta replantear otra vez. No improvises `NestedScrollView`.
+
+Añade ese test al fichero, con un comentario que explique por qué existe — es la regresión más cara de este trabajo y la que ya nos mordió.
 
 - [ ] **Step 5: Correr todo**
 
@@ -482,7 +557,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Mover los bloques**
 
-Dentro del `ListView` de la hoja, reordenar los `children` a: identidad → `sectionHeading(context, 'Estado')` + bloques de estado → `sectionHeading(context, 'Información')` + bloques de información.
+Dentro del `Column` de la hoja (era un `ListView` hasta que la Task 4 le quitó el scroll), reordenar los `children` a: identidad → `sectionHeading(context, 'Estado')` + bloques de estado → `sectionHeading(context, 'Información')` + bloques de información.
 
 Los bloques se mueven **enteros y sin editar su contenido**, incluidos sus `SizedBox` de separación y sus condicionales (`if (bullets.isNotEmpty) …`, `if (requestBudgetLabel(...) != null) …`, `if (offers.isNotEmpty && phase != RequestPhase.completed) …`).
 
@@ -559,23 +634,9 @@ Los rótulos se buscan en mayúsculas, porque `sectionHeading` hace `toUpperCase
     expect(find.text('INFORMACIÓN'), findsNothing);
   });
 
-  testWidgets('el CTA sigue visible tras scrollear la lista', (tester) async {
-    await tester.pumpWidget(host(req()));
-    await tester.pumpAndSettle();
-
-    final cta = find.textContaining('Ver');
-    expect(cta, findsWidgets);
-    final antes = tester.getRect(cta.first);
-
-    await tester.drag(find.byType(ListView), const Offset(0, -400));
-    await tester.pumpAndSettle();
-
-    // El CTA vive FUERA del ListView, en el Column de la hoja: no se mueve.
-    expect(tester.getRect(cta.first).top, closeTo(antes.top, 1));
-  });
 ```
 
-> Si `find.textContaining('Ver')` resulta ambiguo con el contenido real, acótalo con `find.descendant(of: find.byType(FilledButton), matching: …)` y dilo en tu reporte.
+> **El test del CTA se cae de aquí.** Tras la revisión de la Task 4, el CTA ya no vive dentro de `RequestDetailSheet`: es un `RequestDetailCta` aparte, anclado por el `Column` de la pantalla, fuera del `CustomScrollView`. Que quede fijo ya no es algo que la hoja pueda romper — es estructural. Verificarlo requeriría montar la pantalla entera, que necesita Supabase. Va al punto 5 de la checklist manual de la Task 6.
 
 - [ ] **Step 4: Correr todo**
 
