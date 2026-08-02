@@ -180,10 +180,16 @@ B pide estados y conteos por ids. La tercera llamada entra en la B.
   único que propaga es el fallo de `fetchItems`.
 
 La oleada B pide para **todas** las filas marketplace, incluidas las de "Todas" que ya llegan con
-las columnas por `allOpenRequests`. Es una query redundante en esa pestaña. Se acepta a cambio de
-un solo camino de datos en la bandeja, con un solo sitio que probar; la alternativa —detectar qué
-filas ya traen las claves— es frágil y no ahorra latencia, porque la llamada corre en paralelo con
-las otras dos.
+las columnas por `allOpenRequests`. Es una query redundante en esa pestaña, y se acepta: corre en
+paralelo con las otras dos, así que no cuesta latencia, y evita partir la bandeja en dos caminos.
+
+La tarjeta resuelve los requisitos como `requirements[id] ?? requirementsFromRow(fila)`: la oleada
+B manda, y si no hay entrada cae a la propia fila. Las dos fuentes leen las mismas cinco columnas,
+así que no pueden discrepar. Esto no es solo cinturón y tirantes: **sin el respaldo de la fila la
+tarjeta no se podría probar**. `requirementsForRequests` toca `supa` y revienta sin Supabase
+inicializado, y `loadInboxData` se traga ese fallo por diseño (best-effort), así que en un test de
+widget la oleada B siempre devuelve vacío. Con el respaldo, un test inyecta una fila con
+`with_shipping: true` por `fetch` y la tarjeta pinta su símbolo sin red de por medio.
 
 ### Por qué no se toca la RPC
 
