@@ -34,7 +34,8 @@ llamada en la oleada B de `loadInboxData`. Ninguna migración.
 - Comentarios y mensajes de commit en español, siguiendo el estilo del repo (`feat(app):`,
   `fix(app):`, `test(app):`, `docs(app):`).
 - Cada commit termina con `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
-- La suite parte de **550 tests en verde**. Ningún commit puede dejarla en rojo ni bajar ese número.
+- La suite parte de **656 tests en verde** (medido en `739b3fe`, no tomado de memoria). Ningún
+  commit puede dejarla en rojo ni bajar ese número.
 
 ## Estructura de ficheros
 
@@ -699,7 +700,7 @@ flutter analyze lib/core/brand.dart lib/features/shared/request_requirement_badg
 flutter test
 ```
 
-Esperado: `No issues found!` y la suite en verde con 550 + 11 + 7 = 568 tests.
+Esperado: `No issues found!` y la suite en verde con 656 + 11 + 7 = 674 tests.
 
 - [ ] **Step 7: Commit**
 
@@ -923,7 +924,7 @@ flutter analyze lib/data/repos.dart test/repos_test.dart
 flutter test
 ```
 
-Esperado: `No issues found!` y suite en verde (571 tests).
+Esperado: `No issues found!` y suite en verde (677 tests).
 
 - [ ] **Step 8: Commit**
 
@@ -1341,7 +1342,7 @@ flutter analyze lib
 flutter test
 ```
 
-Esperado: `No issues found!` (ya compila todo) y suite en verde, 576 tests.
+Esperado: `No issues found!` (ya compila todo) y suite en verde, 682 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1537,7 +1538,7 @@ flutter analyze lib
 flutter test
 ```
 
-Esperado: `No issues found!` y suite en verde, 578 tests.
+Esperado: `No issues found!` y suite en verde, 684 tests.
 
 - [ ] **Step 9: Commit**
 
@@ -1792,7 +1793,7 @@ flutter analyze lib
 flutter test
 ```
 
-Esperado: `No issues found!` y suite en verde, 580 tests.
+Esperado: `No issues found!` y suite en verde, 686 tests.
 
 - [ ] **Step 8: Commit**
 
@@ -1835,7 +1836,7 @@ seguir, no anotarla.
 flutter test
 ```
 
-Esperado: todos en verde, **580 tests** (550 de partida + 30 nuevos). Si el número es menor que 580,
+Esperado: todos en verde, **686 tests** (656 de partida + 30 nuevos). Si el número es menor que 686,
 falta algún caso de alguna tarea; si algún test falla, no continuar.
 
 - [ ] **Step 3: Verificar que el release compila**
