@@ -6,6 +6,8 @@ import '../../core/brand.dart';
 import '../../core/create_request_nav.dart';
 import '../../data/repos.dart';
 import '../../domain/phase.dart';
+import '../../domain/request_requirements.dart';
+import '../shared/request_requirement_badges.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shell/home_scroll.dart';
 import '../shared/brand_kit.dart';
@@ -495,6 +497,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                               imageUrl: _firstImage(r),
                               kind: r['kind'] as String?,
                               wholesale: r['is_wholesale'] == true,
+                              requirements: requirementsFromRow(r),
                               onTap: () => context.push(
                                 '/client/other-request/${r['id']}',
                               ),
@@ -619,6 +622,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                       kind: r['kind'] as String?,
                                       wholesale: r['is_wholesale'] == true,
                                       unseen: unseen,
+                                      requirements: requirementsFromRow(r),
                                       onTap: open,
                                       // Sin margen propio: lo aplica el swipe.
                                       margin: EdgeInsets.zero,
@@ -739,6 +743,7 @@ class _RequestCard extends StatelessWidget {
     required this.onTap,
     this.wholesale = false,
     this.unseen = false,
+    this.requirements = RequestRequirements.none,
     this.margin,
   });
 
@@ -757,6 +762,10 @@ class _RequestCard extends StatelessWidget {
   /// primero en la lista (pedido PO 2026-07-23). El borde quedó SOLO para las
   /// ofertas sin abrir dentro del detalle, no acá.
   final bool unseen;
+
+  /// Lo que el cliente exigió en esta solicitud: símbolos mudos junto a la
+  /// hora. El texto completo vive en el detalle.
+  final RequestRequirements requirements;
 
   /// Null = margen estándar de lista; se pasa cero cuando el card vive dentro
   /// de [SwipeToActions] (el swipe aplica el margen exterior).
@@ -815,12 +824,23 @@ class _RequestCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      timeAgo(createdAt),
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: fg.withValues(alpha: .7),
-                      ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          timeAgo(createdAt),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: fg.withValues(alpha: .7),
+                          ),
+                        ),
+                        RequestRequirementBadges(
+                          req: requirements,
+                          variant: RequirementBadgeVariant.symbols,
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     _pill(label, tone, tinted, dark),
@@ -1028,6 +1048,7 @@ class _OtherRequestCard extends StatelessWidget {
     required this.kind,
     required this.wholesale,
     required this.onTap,
+    this.requirements = RequestRequirements.none,
   });
 
   final String title;
@@ -1036,6 +1057,9 @@ class _OtherRequestCard extends StatelessWidget {
   final String? kind;
   final bool wholesale;
   final VoidCallback onTap;
+
+  /// Igual que en [_RequestCard]: símbolos mudos junto a la hora.
+  final RequestRequirements requirements;
 
   @override
   Widget build(BuildContext context) {
@@ -1099,9 +1123,21 @@ class _OtherRequestCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 3),
-                Text(
-                  timeAgo(createdAt),
-                  style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      timeAgo(createdAt),
+                      style:
+                          TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                    ),
+                    RequestRequirementBadges(
+                      req: requirements,
+                      variant: RequirementBadgeVariant.symbols,
+                    ),
+                  ],
                 ),
               ],
             ),
