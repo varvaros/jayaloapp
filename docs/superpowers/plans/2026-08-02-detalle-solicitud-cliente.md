@@ -96,7 +96,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 2: El test de la hipótesis (DEBE FALLAR)
+## Task 2: El test de la hipótesis (test de caracterización)
 
 **Files:**
 - Create: `app/test/client_request_detail_sheet_test.dart`
@@ -105,11 +105,18 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `RequestDetailSheet` (Task 1).
 - Produces: nada que consuman otras tareas.
 
-**Lee esto antes de escribir una línea.** El spec afirma que el título se ve recortado por el panel fijo. **Es una hipótesis del PO a partir de una captura, no un hecho verificado.** Esta tarea existe para probarla o tumbarla.
+**Lee esto antes de escribir una línea, porque esta tarea no funciona como las demás.**
 
-El test debe reproducir la estructura ACTUAL —panel de alto fijo + hoja debajo— y comprobar que, tras scrollear, el título queda recortado.
+**No es un RED de TDD.** No estás escribiendo un test que falla para luego hacerlo pasar. Estás escribiendo un **test de caracterización**: uno que documenta lo que el código hace HOY, para decidir si el diagnóstico del spec es cierto.
 
-**Si el test PASA en vez de fallar, la hipótesis es falsa.** No lo "arregles" para que falle, y no sigas con las tareas 4 y 5. Para, reporta `DONE_WITH_CONCERNS` explicando qué observaste, y deja que el controlador decida. Un plan construido sobre un diagnóstico falso hace daño.
+El spec afirma que el título se ve recortado por el panel fijo. **Es una hipótesis a partir de una captura de pantalla, no un hecho verificado.** Esta tarea existe para probarla o tumbarla.
+
+Lecturas del resultado:
+
+- **El test PASA** → la hipótesis queda **confirmada**: el título sí se mete bajo el panel al scrollear. Sigue adelante; el plan se sostiene.
+- **El test FALLA** → la hipótesis es **falsa**: el título no se comporta como se creía. **PARA.** No lo "arregles" para que pase, y no toques las Tasks 4 ni 5. Reporta `DONE_WITH_CONCERNS` con la geometría real que observaste y deja que el controlador decida.
+
+Un plan construido sobre un diagnóstico falso hace más daño que no tener plan. Que el test falle es un resultado perfectamente válido de esta tarea, y reportarlo es hacerlo bien.
 
 - [ ] **Step 1: Escribir el test**
 
@@ -197,13 +204,12 @@ void main() {
 
 Run: `cd app && flutter test test/client_request_detail_sheet_test.dart`
 
-**Resultado esperado: FALLA**, con el título quedándose por debajo de 300 (es decir, la lista no deja que se meta bajo el panel), o bien pasa confirmando el recorte.
+Los dos resultados son válidos. Lo que NO es válido es tocar la aserción para forzar uno.
 
-Interpreta con cuidado:
-- **El test PASA** → la hipótesis está confirmada: el título sí se mete bajo el panel. Sigue a la Task 3.
-- **El test FALLA** porque el título no sube → la lista recorta su propio contenido y el título nunca queda "tapado" en el sentido del test. La hipótesis, tal como está escrita, es falsa. **PARA.** Reporta `DONE_WITH_CONCERNS` con la geometría real que observaste (`antes.top`, `despues.top`, y el alto del viewport de la lista).
+- **PASA** → hipótesis confirmada, el título se mete bajo el panel. Sigue.
+- **FALLA** → hipótesis falsa. **PARA** y reporta `DONE_WITH_CONCERNS` con la geometría real: `antes.top`, `despues.top` y el alto del viewport de la lista. Esos tres números son lo que el controlador necesita para replantear.
 
-En ambos casos, deja el test committeado: documenta el comportamiento real, que es más de lo que había antes.
+En ambos casos, **deja el test commiteado**: documenta el comportamiento real, que es más de lo que había antes. Si falló, ajústalo para que refleje lo que de verdad ocurre (invirtiendo la aserción y explicándolo en el comentario), no lo borres — un test que dice la verdad vale aunque la verdad no fuera la esperada.
 
 - [ ] **Step 3: Commit**
 
