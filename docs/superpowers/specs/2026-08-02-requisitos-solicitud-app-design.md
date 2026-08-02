@@ -92,6 +92,12 @@ Un widget, dos variantes, elegidas por un enum `RequirementBadgeVariant`:
 Sin requisitos activos no dibuja nada: devuelve `SizedBox.shrink()`, para que quien lo use no
 tenga que envolverlo en un condicional ni le quede un `SizedBox(height: 8)` colgando.
 
+Para que esa promesa se sostenga, el widget acepta un `padding` opcional y lo aplica **solo cuando
+hay algo que pintar**. Sin él, los tres detalles tendrían que separar el bloque de lo de arriba
+desde fuera, y esa separación quedaría igual en una solicitud sin requisitos: un hueco vertical
+fantasma bajo el título, o un condicional en cada llamada que duplicaría la comprobación de vacío
+que el widget ya hace.
+
 Íconos, equivalentes Material de los que usa la web:
 
 | clave | web (lucide) | app (Material) |
