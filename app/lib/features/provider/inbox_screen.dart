@@ -506,10 +506,15 @@ class _InboxCard extends StatelessWidget {
                     ),
                     // Antes que los chips de estado a propósito: esto es lo que
                     // pide el cliente; "Ya ofertaste" es lo que hiciste tú.
-                    RequestRequirementBadges(
-                      req: requirements,
-                      variant: RequirementBadgeVariant.symbols,
-                    ),
+                    //
+                    // Guardado con `hasAnyRequirement`: un `SizedBox.shrink()`
+                    // dentro de este `Wrap` igual consume su `spacing` y corre
+                    // 8px a los chips de estado que van después.
+                    if (hasAnyRequirement(requirements))
+                      RequestRequirementBadges(
+                        req: requirements,
+                        variant: RequirementBadgeVariant.symbols,
+                      ),
                     // FOMO (pedido PO 2026-07-21): cuántas ofertas ya recibió
                     // esta solicitud — solo el número, no se pueden ver. Chip
                     // ámbar con llama = competencia/urgencia. 0 → no se muestra.

@@ -171,4 +171,42 @@ void main() {
     await tester.pumpAndSettle();
     expect(colorDelIcono(), JayaloStatus.requisitoDark.ink);
   });
+
+  testWidgets(
+      'guardado con hasAnyRequirement: sin requisitos no corre a los chips '
+      'que van después dentro de un Wrap',
+      (tester) async {
+    // Reproduce el patrón de los tres sitios de listado (inbox del proveedor
+    // y las dos tarjetas de "Mis solicitudes"): sin `hasAnyRequirement` como
+    // guarda, `RequestRequirementBadges` entra igual al `Wrap` como
+    // `SizedBox.shrink()`, y un hijo de ancho cero IGUAL consume su
+    // `spacing` — el chip siguiente se corre 8px aunque no haya nada que ver.
+    const req = RequestRequirements.none;
+    await tester.pumpWidget(host(
+      Wrap(
+        spacing: 8,
+        children: [
+          const Text('antes', key: Key('antes')),
+          if (hasAnyRequirement(req))
+            const RequestRequirementBadges(
+              req: req,
+              variant: RequirementBadgeVariant.symbols,
+            ),
+          const Text('después', key: Key('despues')),
+        ],
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final antes = tester.getRect(find.byKey(const Key('antes')));
+    final despues = tester.getRect(find.byKey(const Key('despues')));
+
+    expect(
+      despues.left,
+      antes.right + 8,
+      reason: 'sin requisitos, "después" debe pegarse justo tras el spacing '
+          'del Wrap; si el guardado faltara, quedaría a antes.right + 16 '
+          'por el spacing extra que mete el SizedBox.shrink() invisible',
+    );
+  });
 }

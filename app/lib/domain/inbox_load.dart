@@ -27,10 +27,11 @@ typedef InboxData = ({
 /// [fetchOfferedOpen] en `null` = pestaña "Todas" (ahí no se hace el merge de
 /// las solicitudes de otro rubro a las que ya ofertó).
 ///
-/// Best-effort: si fallan las ofertas de otro rubro, los estados o los conteos,
-/// la bandeja se pinta igual con lo que sí llegó. Lo ÚNICO que propaga es el
-/// fallo de [fetchItems] — sin la lista principal no hay pantalla que pintar,
-/// y el `FutureBuilder` debe poder mostrar su estado de error.
+/// Best-effort: si fallan las ofertas de otro rubro, los estados, los conteos
+/// o los requisitos, la bandeja se pinta igual con lo que sí llegó. Lo ÚNICO
+/// que propaga es el fallo de [fetchItems] — sin la lista principal no hay
+/// pantalla que pintar, y el `FutureBuilder` debe poder mostrar su estado de
+/// error.
 Future<InboxData> loadInboxData({
   required Future<List<Map<String, dynamic>>> Function() fetchItems,
   required Future<List<Map<String, dynamic>>> Function()? fetchOfferedOpen,

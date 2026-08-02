@@ -359,7 +359,10 @@ Future<Map<String, int>> offerCountsForRequests(List<String> requestIds) async {
 /// Solicitudes ABIERTAS (de otros) a las que este proveedor ya ofertó — para
 /// que una oferta hecha en OTRO rubro también aparezca en "Para ti" (pedido
 /// PO: "si alguien ofertó en otro rubro, esa oferta pasa a Para ti").
-/// Mismas columnas que [allOpenRequests] para que la tarjeta pinte igual.
+/// A propósito NO trae las cinco columnas de requisitos que sí tiene
+/// [allOpenRequests]: estas filas solo se mezclan en la bandeja del proveedor
+/// (`loadInboxData`), donde la oleada B las completa vía `fetchRequirements`
+/// igual que al resto de la lista.
 Future<List<Map<String, dynamic>>> myOfferedOpenRequests({String? kind}) async {
   final uid = supa.auth.currentUser!.id;
   final offers = List<Map<String, dynamic>>.from(

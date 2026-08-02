@@ -75,6 +75,14 @@ List<Requirement> activeRequirements(
     if (keys.contains(r) && req.has(r)) r,
 ];
 
+/// `true` si [req] tiene al menos un requisito activo. Pensado como guarda de
+/// layout: `RequestRequirementBadges` pinta `SizedBox.shrink()` cuando no hay
+/// nada, pero un hijo de ancho cero dentro de un `Wrap` igual consume su
+/// `spacing` y corre a los chips que van después. Quien lista tarjetas debe
+/// usar esto para no meter el widget en el `Wrap` cuando no hace falta.
+bool hasAnyRequirement(RequestRequirements req) =>
+    activeRequirements(req).isNotEmpty;
+
 const _labels = <Requirement, RequirementLabel>{
   Requirement.shipping: (
     chip: 'Requiere envío',

@@ -124,9 +124,30 @@ void main() {
   });
 
   group('has', () {
-    test('cubre las cinco sin lanzar por un case olvidado', () {
-      for (final r in Requirement.values) {
-        RequestRequirements.none.has(r);
+    test('cada variante mapea a su propio campo y a ningún otro', () {
+      // Uno solo en `true` por vuelta: si el `switch` de `has` tuviera un
+      // mismapeo (p.ej. `installation` leyendo `requiresFiscalReceipt`),
+      // ningún otro test de la suite lo detecta porque nadie enciende
+      // `installation` en solitario.
+      const casos = <Requirement, RequestRequirements>{
+        Requirement.shipping: RequestRequirements(withShipping: true),
+        Requirement.installation: RequestRequirements(withInstallation: true),
+        Requirement.evaluation: RequestRequirements(requiresEvaluation: true),
+        Requirement.fiscal: RequestRequirements(requiresFiscalReceipt: true),
+        Requirement.state: RequestRequirements(requiresStateSupplier: true),
+      };
+      for (final entry in casos.entries) {
+        final activo = entry.key;
+        final req = entry.value;
+        for (final r in Requirement.values) {
+          expect(
+            req.has(r),
+            r == activo,
+            reason: r == activo
+                ? '$activo debería estar activo'
+                : '$r no debería estar activo cuando solo $activo lo está',
+          );
+        }
       }
     });
   });

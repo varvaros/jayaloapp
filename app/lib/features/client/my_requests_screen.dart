@@ -836,10 +836,14 @@ class _RequestCard extends StatelessWidget {
                             color: fg.withValues(alpha: .7),
                           ),
                         ),
-                        RequestRequirementBadges(
-                          req: requirements,
-                          variant: RequirementBadgeVariant.symbols,
-                        ),
+                        // Guardado con `hasAnyRequirement`: un
+                        // `SizedBox.shrink()` dentro de este `Wrap` igual
+                        // consume su `spacing`.
+                        if (hasAnyRequirement(requirements))
+                          RequestRequirementBadges(
+                            req: requirements,
+                            variant: RequirementBadgeVariant.symbols,
+                          ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -1133,10 +1137,13 @@ class _OtherRequestCard extends StatelessWidget {
                       style:
                           TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
                     ),
-                    RequestRequirementBadges(
-                      req: requirements,
-                      variant: RequirementBadgeVariant.symbols,
-                    ),
+                    // Guardado con `hasAnyRequirement`: un `SizedBox.shrink()`
+                    // dentro de este `Wrap` igual consume su `spacing`.
+                    if (hasAnyRequirement(requirements))
+                      RequestRequirementBadges(
+                        req: requirements,
+                        variant: RequirementBadgeVariant.symbols,
+                      ),
                   ],
                 ),
               ],
