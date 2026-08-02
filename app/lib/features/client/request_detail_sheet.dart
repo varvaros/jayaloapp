@@ -271,42 +271,55 @@ class RequestDetailCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      // CTA único: "Ver N ofertas" (violeta, solo navega — aceptar vive por
-      // oferta en la hoja). El "Volver" se quitó: duplicaba la flecha de
-      // atrás flotante del panel (ambos hacían context.pop()). Reserva el
-      // alto de la barra flotante para no quedar tapado.
-      Padding(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          8,
-          16,
-          12 + navBarReservedSpace(context),
-        ),
-        // Badge rojo con el número de ofertas SIN ABRIR (pedido PO
-        // 2026-07-23), en la esquina del botón — la "notificación" que dice
-        // cuántas faltan por revisar.
-        child: OnboardingGuide(
-          guideKey: 'client.view_offers.v1',
-          enabled: offers.isNotEmpty,
-          steps: onboardingCopy['client.view_offers.v1']!,
-          child: Badge(
-            isLabelVisible: unreadCount > 0,
-            label: Text('$unreadCount'),
-            offset: const Offset(-6, 4),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: onSeeOffers,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
+      // `ColoredBox` con el mismo tono de la hoja (`surfaceContainerLowest`):
+      // este CTA se extrajo de dentro del `Container` de `RequestDetailSheet`
+      // (que pintaba ese color de fondo) para vivir fuera del scroll. Sin
+      // este envoltorio, la banda del CTA pinta sobre el `Scaffold`
+      // (`cs.surface`) en vez de sobre el color de tarjeta de la hoja — dos
+      // tokens que `brand.dart` separa a propósito para que las tarjetas se
+      // vean elevadas (hallazgo de revisión 2026-08-02: en oscuro quedaba una
+      // franja casi negra bajo la hoja).
+      ColoredBox(
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        child:
+            // CTA único: "Ver N ofertas" (violeta, solo navega — aceptar vive
+            // por oferta en la hoja). El "Volver" se quitó: duplicaba la
+            // flecha de atrás flotante del panel (ambos hacían
+            // context.pop()). Reserva el alto de la barra flotante para no
+            // quedar tapado.
+            Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            12 + navBarReservedSpace(context),
+          ),
+          // Badge rojo con el número de ofertas SIN ABRIR (pedido PO
+          // 2026-07-23), en la esquina del botón — la "notificación" que dice
+          // cuántas faltan por revisar.
+          child: OnboardingGuide(
+            guideKey: 'client.view_offers.v1',
+            enabled: offers.isNotEmpty,
+            steps: onboardingCopy['client.view_offers.v1']!,
+            child: Badge(
+              isLabelVisible: unreadCount > 0,
+              label: Text('$unreadCount'),
+              offset: const Offset(-6, 4),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: onSeeOffers,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
                   ),
-                ),
-                child: Text(
-                  offers.isEmpty
-                      ? 'Ver ofertas'
-                      : 'Ver ${offers.length} oferta${offers.length == 1 ? '' : 's'}',
+                  child: Text(
+                    offers.isEmpty
+                        ? 'Ver ofertas'
+                        : 'Ver ${offers.length} oferta${offers.length == 1 ? '' : 's'}',
+                  ),
                 ),
               ),
             ),

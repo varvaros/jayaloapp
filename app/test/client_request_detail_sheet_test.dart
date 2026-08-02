@@ -106,6 +106,14 @@ void main() {
       final antes = panelHeight(tester);
       expect(antes, closeTo(300, 1));
 
+      // El CTA ("Ver ofertas") vive FUERA del CustomScrollView, anclado por
+      // el Column exterior — esta es la propiedad que el PO pidió al mover
+      // el botón a RequestDetailCta. Sin esta aserción, nada en la suite
+      // notaría si alguien lo volviera a meter dentro de un sliver (seguiría
+      // renderizando, solo que scrolleando con el resto). Se captura su rect
+      // ANTES del arrastre para compararlo después.
+      final ctaAntes = tester.getRect(find.byType(FilledButton));
+
       final titulo = find.text(request['title'] as String);
       expect(titulo, findsOneWidget);
 
@@ -130,6 +138,19 @@ void main() {
             'si el panel se queda en 300.0 es la MISMA trampa que ya '
             'mordió una vez: hasScrollBody:false dejó de bastar y hay que '
             'pararse a investigar, no improvisar NestedScrollView.',
+      );
+
+      // El CTA no se movió ni un píxel pese al arrastre: sigue anclado
+      // fuera del scroll. Si volviera a vivir dentro de un sliver, este
+      // rect cambiaría junto con el contenido y la aserción fallaría.
+      final ctaDespues = tester.getRect(find.byType(FilledButton));
+      expect(
+        ctaDespues,
+        equals(ctaAntes),
+        reason:
+            'el CTA "Ver ofertas" debe quedarse fijo fuera del '
+            'CustomScrollView; si se movió es que volvió a colarse dentro '
+            'de un sliver.',
       );
     },
   );
