@@ -1039,7 +1039,7 @@ Los otros dos van dentro del grupo `'loadInboxData — best-effort'`, al final:
     });
 ```
 
-Y añadir `fetchRequirements: (_) async => {},` a **las diez llamadas existentes** de `loadInboxData`
+Y añadir `fetchRequirements: (_) async => {},` a **las nueve llamadas existentes** de `loadInboxData`
 en ese fichero (el parámetro es obligatorio, así que sin esto no compila ninguna).
 
 - [ ] **Step 2: Correr el test y verificar que falla**
@@ -1124,7 +1124,7 @@ Y devolverlo:
 flutter test test/inbox_load_test.dart
 ```
 
-Esperado: PASA, 11 tests (8 de antes + 3 nuevos).
+Esperado: PASA, 12 tests (9 de antes + 3 nuevos).
 
 - [ ] **Step 5: Analizar**
 
@@ -1342,7 +1342,7 @@ flutter analyze lib
 flutter test
 ```
 
-Esperado: `No issues found!` (ya compila todo) y suite en verde, 682 tests.
+Esperado: `No issues found!` (ya compila todo) y suite en verde, 683 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1538,7 +1538,7 @@ flutter analyze lib
 flutter test
 ```
 
-Esperado: `No issues found!` y suite en verde, 684 tests.
+Esperado: `No issues found!` y suite en verde, 685 tests.
 
 - [ ] **Step 9: Commit**
 
@@ -1793,7 +1793,7 @@ flutter analyze lib
 flutter test
 ```
 
-Esperado: `No issues found!` y suite en verde, 686 tests.
+Esperado: `No issues found!` y suite en verde, 687 tests.
 
 - [ ] **Step 8: Commit**
 
@@ -1836,7 +1836,7 @@ seguir, no anotarla.
 flutter test
 ```
 
-Esperado: todos en verde, **686 tests** (656 de partida + 30 nuevos). Si el número es menor que 686,
+Esperado: todos en verde, **687 tests** (656 de partida + 31, uno de ellos del bucle de revisión de la Task 3). Si el número es menor que 687,
 falta algún caso de alguna tarea; si algún test falla, no continuar.
 
 - [ ] **Step 3: Verificar que el release compila**
