@@ -1,0 +1,333 @@
+import 'package:flutter/material.dart';
+import '../../core/brand.dart';
+import '../../domain/chat_time.dart';
+import '../../domain/finalist_slots.dart';
+import '../../domain/money.dart';
+import '../../domain/phase.dart';
+import '../chat/widgets/rating_form.dart';
+import '../shared/brand_kit.dart';
+import '../shared/onboarding_copy.dart';
+import '../shared/onboarding_guide.dart';
+import '../shell/floating_nav_bar.dart';
+import 'request_status_screen.dart';
+
+const _phaseCopy = {
+  RequestPhase.waiting:
+      'Tu solicitud está publicada. Los proveedores la están viendo.',
+  RequestPhase.withOffers:
+      'Revisa las ofertas: puedes aceptar hasta 3.',
+  RequestPhase.accepted: 'El proveedor te contactará pronto.',
+  RequestPhase.unlocked: 'Ya puedes hablar con el proveedor.',
+  RequestPhase.completed: 'Califica al proveedor para ayudar a la comunidad.',
+};
+
+/// Títulos del héroe de fase (variante D1 elegida por el PO).
+const _phaseTitle = {
+  RequestPhase.waiting: 'Esperando ofertas',
+  RequestPhase.withOffers: 'Con ofertas',
+  RequestPhase.accepted: 'Oferta aceptada',
+  // "En contacto", no "desbloqueado" (pedido PO 2026-07-23): el CLIENTE nunca
+  // desbloquea nada — quien paga es el proveedor; para el cliente la fase es
+  // simplemente que ya están en contacto.
+  RequestPhase.unlocked: 'En contacto',
+  RequestPhase.completed: 'Completada',
+};
+
+/// Hoja blanca del detalle: título + chip de fase, "Desde", avatares anónimos
+/// de proveedores, chips de Detalles (los bullets de la IA), meta de publicación
+/// y el CTA "Ver N ofertas".
+class RequestDetailSheet extends StatelessWidget {
+  const RequestDetailSheet({
+    super.key,
+    required this.request,
+    required this.phase,
+    required this.offers,
+    required this.unreadCount,
+    required this.onSeeOffers,
+  });
+
+  final Map<String, dynamic> request;
+  final RequestPhase phase;
+  final List<Map<String, dynamic>> offers;
+
+  /// Ofertas sin abrir: número del badge rojo sobre el botón "Ver N ofertas".
+  final int unreadCount;
+  final VoidCallback onSeeOffers;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final bullets =
+        ((request['bullets'] as List?)?.cast<String>() ?? const <String>[])
+            .where((b) => b.trim().isNotEmpty)
+            .toList();
+    final createdAt = DateTime.parse(request['created_at'] as String);
+    final tone = toneFor(context, phase);
+    // "Desde": el total efectivo (precio + envío) más bajo entre las ofertas.
+    final cheapest = offers
+        .map(offerEffectivePrice)
+        .whereType<num>()
+        .fold<num?>(null, (a, b) => a == null ? b : (b < a ? b : a));
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLowest,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(22, 22, 22, 8),
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        request['title'] as String,
+                        style: TextStyle(
+                          // +1pt (pedido PO).
+                          fontSize: 22,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                          color: jayaloHead(context),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    StatusChip(label: _phaseTitle[phase]!, tone: tone),
+                  ],
+                ),
+                // Pill "Al por mayor" dentro de la solicitud (pedido PO
+                // 2026-07-22): chip violeta debajo del estado, no toca la
+                // etiqueta de la lista. Solo en productos mayoristas.
+                if (request['is_wholesale'] == true) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: StatusChip(
+                      label: 'Al por mayor',
+                      icon: Icons.inventory_2_outlined,
+                      tone: Theme.of(context).brightness == Brightness.dark
+                          ? JayaloStatus.respondedDark
+                          : JayaloStatus.respondedLight,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Text(
+                      cheapest != null ? 'Desde: ' : 'Aún sin ofertas',
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    if (cheapest != null)
+                      Text(
+                        fmtRD(cheapest),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: jayaloHead(context),
+                        ),
+                      ),
+                    const Spacer(),
+                    _ProviderDots(count: offers.length),
+                  ],
+                ),
+                if (bullets.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  Text(
+                    'Detalles',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final b in bullets)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: cs.surface,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            b,
+                            style: TextStyle(fontSize: 12, color: cs.onSurface),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+                if (requestBudgetLabel(request['budget_min'] as num?,
+                        request['budget_max'] as num?) !=
+                    null) ...[
+                  const SizedBox(height: 16),
+                  Row(children: [
+                    Icon(Icons.payments_outlined,
+                        size: 16, color: cs.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                          'Presupuesto estimado: ${requestBudgetLabel(request['budget_min'] as num?, request['budget_max'] as num?)}',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: jayaloHead(context))),
+                    ),
+                  ]),
+                ],
+                const SizedBox(height: 18),
+                Text(
+                  'Publicada: ${formatDayLabel(createdAt)} · ${formatTimeHM(createdAt)}',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _phaseCopy[phase]!,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.5,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+                // Cupos restantes (modelo de hasta 3 finalistas): el cliente
+                // puede aceptar más de una oferta.
+                if (offers.isNotEmpty && phase != RequestPhase.completed) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    clientSlotsMessage(
+                      offers
+                          .where((o) =>
+                              o['status'] == 'accepted' ||
+                              o['status'] == 'completed')
+                          .length,
+                    ),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: cs.primary,
+                    ),
+                  ),
+                ],
+                // Fase completada: cerrar la promesa del copy de `_phaseCopy`
+                // ("Califica al proveedor para ayudar a la comunidad"), que
+                // hasta ahora no tenía ningún control detrás. Un panel POR
+                // NEGOCIO completado (modelo de hasta 3 finalistas: puede
+                // haber más de uno), no solo el "primero" entre las ofertas.
+                if (phase == RequestPhase.completed)
+                  for (final bizId in completedReviewBusinessIds(offers))
+                    BusinessReviewPanel(
+                      // Key por negocio: si cambian las ofertas completadas,
+                      // cada panel se re-crea y vuelve a cargar SU reseña sin
+                      // que Flutter confunda su estado con el de otro.
+                      key: ValueKey('review-$bizId'),
+                      businessId: bizId,
+                    ),
+              ],
+            ),
+          ),
+          // CTA único: "Ver N ofertas" (violeta, solo navega — aceptar vive por
+          // oferta en la hoja). El "Volver" se quitó: duplicaba la flecha de
+          // atrás flotante del panel (ambos hacían context.pop()). Reserva el
+          // alto de la barra flotante para no quedar tapado.
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              8,
+              16,
+              12 + navBarReservedSpace(context),
+            ),
+            // Badge rojo con el número de ofertas SIN ABRIR (pedido PO
+            // 2026-07-23), en la esquina del botón — la "notificación" que dice
+            // cuántas faltan por revisar.
+            child: OnboardingGuide(
+              guideKey: 'client.view_offers.v1',
+              enabled: offers.isNotEmpty,
+              steps: onboardingCopy['client.view_offers.v1']!,
+              child: Badge(
+                isLabelVisible: unreadCount > 0,
+                label: Text('$unreadCount'),
+                offset: const Offset(-6, 4),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: onSeeOffers,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                    child: Text(
+                      offers.isEmpty
+                          ? 'Ver ofertas'
+                          : 'Ver ${offers.length} oferta${offers.length == 1 ? '' : 's'}',
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Círculos apilados = cuántos proveedores ofertaron, en el resumen ANTES de
+/// abrir la lista. Ya NO son anónimos (PO 2026-07-28: el cliente ve nombre y
+/// logo de quien oferta) — siguen siendo un contador genérico aquí porque este
+/// resumen no trae `business_id` por tarjeta, solo el total; el avatar real
+/// vive en la cabecera de cada `_OfferCard` dentro de la lista.
+class _ProviderDots extends StatelessWidget {
+  const _ProviderDots({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    if (count == 0) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final shown = count > 3 ? 3 : count;
+    return SizedBox(
+      width: 28.0 + (shown - 1) * 18,
+      height: 28,
+      child: Stack(
+        children: [
+          for (var i = 0; i < shown; i++)
+            Positioned(
+              left: i * 18.0,
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: cs.primaryContainer,
+                  border: Border.all(
+                    color: cs.surfaceContainerLowest,
+                    width: 2,
+                  ),
+                ),
+                child: Icon(
+                  Icons.person,
+                  size: 15,
+                  color: cs.onPrimaryContainer,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
