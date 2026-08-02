@@ -16,10 +16,21 @@ device dependen de la oleada B, que en los tests siempre viene vacía.
 
 ## 2. El proveedor se entera (el daño que esto arregla)
 
-- [ ] Con sesión de proveedor del rubro que corresponda, esa solicitud aparece en **"Para ti"** con
-      sus dos símbolos. Esta es la verificación clave: aquí los datos vienen de la oleada B, no de
-      la fila, porque la RPC del inbox no trae las columnas.
-- [ ] Cambiar a **"Todas"**: los símbolos siguen ahí.
+"Para ti" filtra por los rubros que el negocio del proveedor tiene declarados. Antes de crear la
+solicitud de la sección 1, mira qué rubros tiene la cuenta de proveedor de prueba (o al revés:
+crea primero la cuenta de proveedor y anota sus rubros) y usa uno de ellos al crear la solicitud.
+Si no hay coincidencia de rubro, la solicitud simplemente no va a aparecer en "Para ti" — y eso no
+es un fallo de los requisitos, es el filtro haciendo su trabajo.
+
+- [ ] Con sesión de proveedor cuyo negocio tenga declarado el mismo rubro que la solicitud de la
+      sección 1, esa solicitud aparece en **"Para ti"** con sus dos símbolos. Esta es la
+      verificación clave: aquí los datos vienen de la oleada B, no de la fila, porque la RPC del
+      inbox no trae las columnas. **Si no aparece, antes de reportar un bug de requisitos, descarta
+      primero la falta de coincidencia de rubro** — confirma en el detalle del negocio de prueba
+      que el rubro cubre el de la solicitud.
+- [ ] Cambiar a **"Todas"**: los símbolos siguen ahí. Esto NO sustituye la comprobación anterior:
+      en "Todas" los datos llegan por otra vía y no ejercitan la oleada B, que es todo el sentido
+      de esta sección.
 - [ ] Entrar al detalle: los dos chips bajo el título, encima de la escalera de cupos.
 
 ## 3. Los cinco a la vez, evaluación incluida
