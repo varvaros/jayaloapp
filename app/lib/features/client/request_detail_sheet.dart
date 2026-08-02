@@ -35,8 +35,8 @@ const _phaseTitle = {
 };
 
 /// Hoja blanca del detalle: título + chip de fase, "Desde", avatares anónimos
-/// de proveedores, chips de Detalles (los bullets de la IA) y meta de
-/// publicación.
+/// de proveedores, la sección ESTADO (publicación, copy de fase, cupos) y la
+/// sección INFORMACIÓN (chips con los bullets de la IA y el presupuesto).
 ///
 /// SIN scroll propio (decisión PO 2026-08-02, tras un BLOCKED): vive dentro
 /// de un `SliverFillRemaining(hasScrollBody: false)` en el `CustomScrollView`
@@ -46,6 +46,14 @@ const _phaseTitle = {
 /// 300.0 mientras el título scrolleaba solo, adentro. Por eso mismo ya NO
 /// trae el CTA "Ver N ofertas": se movió a `RequestDetailCta`, que vive FUERA
 /// del `CustomScrollView` para seguir anclado abajo.
+///
+/// CONTRATO DE LAYOUT — todo lo que se agregue aquí debe soportar ALTO
+/// INTRÍNSECO. `SliverFillRemaining(hasScrollBody: false)` le pide a su hijo
+/// `getMaxIntrinsicHeight`, y hay widgets que no saben responder: un
+/// `LayoutBuilder`, un `ListView`/`PageView` anidado, un `AspectRatio` sobre
+/// entrada sin acotar. Cualquiera de ellos **lanza en tiempo de layout en la
+/// pantalla principal del cliente**, y `flutter analyze` no avisa de nada. Si
+/// hace falta uno, envuélvelo en algo de alto fijo (`SizedBox(height: …)`).
 class RequestDetailSheet extends StatelessWidget {
   const RequestDetailSheet({
     super.key,
@@ -211,7 +219,11 @@ class RequestDetailSheet extends StatelessWidget {
           // lo mismo.
           if (hayInfo) sectionHeading(context, 'Información'),
           if (bullets.isNotEmpty) ...[
-            const SizedBox(height: 18),
+            // Un solo separador: había DOS apilados (18 + 10), escombro de
+            // borrar el `Text('Detalles')` que vivía entre ambos. Dejaba el
+            // hueco bajo INFORMACIÓN en 38px contra los 20px bajo ESTADO —
+            // dos rótulos hermanos espaciados distinto, justo en la pantalla
+            // cuyo objetivo es verse ordenada.
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,

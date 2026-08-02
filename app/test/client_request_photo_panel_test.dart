@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
-import 'package:jayalo_app/domain/phase.dart';
-import 'package:jayalo_app/features/client/request_detail_sheet.dart';
 import 'package:jayalo_app/features/shared/collapsing_photo_panel.dart';
 
 void main() {
@@ -108,92 +106,15 @@ void main() {
   // devuelve 400, así que la imagen nunca se monta. Se verifica a mano en el
   // Step 3 de la Task 6 (punto 8).
 
-  /// Riesgo del sliver (Step 4 del brief) — YA se materializó una vez en este
-  /// mismo plan: la primera versión de la Task 4 metía `RequestDetailSheet`
-  /// (que entonces tenía su propio `ListView`) tal cual dentro de un
-  /// `SliverFillRemaining` sin especificar `hasScrollBody` (default `true`).
-  /// Medido con esa composición: el panel se quedaba en 300.0 → 300.0
-  /// mientras el título de la hoja scrolleaba solo, de 322 a 251, dentro de
-  /// su propio scroll — los dos quedaban aislados y el panel jamás se
-  /// plegaba.
-  ///
-  /// La corrección (decisión PO 2026-08-02) fue doble: la hoja perdió su
-  /// `ListView` propio (ahora es un `Column` sin scroll) y el
-  /// `SliverFillRemaining` pasó a `hasScrollBody: false`, para que el
-  /// contenido participe del scroll EXTERNO en vez de scrollear por su
-  /// cuenta. Este test monta esa composición REAL (panel + hoja real, no la
-  /// lista de juguete de arriba) y confirma que el panel sí se pliega. Si
-  /// alguna vez vuelve a quedarse fijo en 300.0, es la MISMA trampa: hay que
-  /// pararse y reportar `BLOCKED`, no improvisar `NestedScrollView`.
-  testWidgets(
-    'composición real (panel + SliverFillRemaining hasScrollBody:false + '
-    'hoja) se pliega al arrastrar el contenido',
-    (tester) async {
-      final request = <String, dynamic>{
-        'id': 'req-1',
-        'title': 'Título de prueba bastante largo para ocupar espacio',
-        'bullets': <String>['bullet uno', 'bullet dos'],
-        'created_at': DateTime(2026, 1, 1).toIso8601String(),
-        'is_wholesale': false,
-        'budget_min': null,
-        'budget_max': null,
-      };
-
-      // Viewport chico a propósito: el contenido de prueba (panel + hoja con
-      // 2 bullets) es corto y en el tamaño default de flutter_test (800x600
-      // lógicos) casi no desborda — el drag apenas movía el panel 3px, no
-      // porque el scroll siguiera aislado, sino porque no había nada que
-      // scrollear. En un celular real la hoja es más larga que la pantalla
-      // (ese es justo el problema que reportó el PO), así que se imita eso
-      // con un viewport angosto en vez de inflar el contenido de prueba.
-      tester.view.physicalSize = const Size(1200, 1500);
-      tester.view.devicePixelRatio = 3.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: jayaloTheme(Brightness.light),
-          home: Scaffold(
-            body: CustomScrollView(
-              slivers: [
-                const CollapsingPhotoPanel(
-                  images: [],
-                  fallbackIcon: Icons.hourglass_top_outlined,
-                ),
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: RequestDetailSheet(
-                    request: request,
-                    phase: RequestPhase.waiting,
-                    offers: const [],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final antes = alto(tester);
-      expect(antes, closeTo(300, 1));
-
-      final titulo = find.text(request['title'] as String);
-      expect(titulo, findsOneWidget);
-
-      await tester.drag(titulo, const Offset(0, -260));
-      await tester.pumpAndSettle();
-
-      final despues = alto(tester);
-      expect(
-        despues,
-        lessThan(antes - 100),
-        reason:
-            'si el panel se queda en 300.0, hasScrollBody:false dejó de '
-            'bastar y hay que investigar de nuevo, no improvisar '
-            'NestedScrollView.',
-      );
-    },
-  );
+  // El test de "composición real (panel + hoja) se pliega al arrastrar" YA NO
+  // vive aquí (revisión 2026-08-02): era un duplicado del de
+  // `client_request_detail_sheet_test.dart`, que afirma lo mismo y además
+  // comprueba que el CTA queda anclado fuera del scroll y arrastra desde la
+  // esquina superior-izquierda del título (esta versión arrastraba desde el
+  // CENTRO, frágil con títulos que envuelven varias líneas). Ese fichero es
+  // ahora el único dueño de la regresión del plegado, y desde la misma
+  // revisión monta el widget REAL de la pantalla (`RequestDetailBody`) en vez
+  // de una réplica hecha a mano.
+  //
+  // Este fichero se queda con lo suyo: el `CollapsingPhotoPanel` aislado.
 }

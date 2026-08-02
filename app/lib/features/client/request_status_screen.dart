@@ -189,51 +189,22 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
               ((req['image_urls'] as List?)?.cast<String>() ?? const <String>[])
                   .where((u) => u.isNotEmpty)
                   .toList();
-          // La foto se PLIEGA al bajar (pedido PO 2026-08-01, portado del
-          // detalle del proveedor): `CollapsingPhotoPanel` reemplaza al
-          // antiguo `_AmberPanel` de alto fijo. La hoja va en un
-          // `SliverFillRemaining(hasScrollBody: false)` — `true` (el default)
-          // se probó y falló: con la hoja teniendo su propio `ListView` los
-          // dos scrolls quedaban aislados (panel fijo en 300.0 mientras el
-          // título scrolleaba solo por dentro). `false` deja que el
-          // `Column` sin scroll de la hoja participe del scroll EXTERNO
-          // junto con el panel.
-          return Column(
-            children: [
-              Expanded(
-                child: CustomScrollView(
-                  slivers: [
-                    CollapsingPhotoPanel(
-                      images: images,
-                      fallbackIcon: phaseChip(phase, 0).$1,
-                      leading: _CornerFab(
-                        icon: Icons.arrow_back_ios_new,
-                        tooltip: 'Atrás',
-                        onTap: _goBack,
-                      ),
-                      onOpenViewer: (i) =>
-                          showPhotoViewer(context, images, initialIndex: i),
-                    ),
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: RequestDetailSheet(
-                        request: req,
-                        phase: phase,
-                        offers: offers,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // El CTA vive FUERA del scroll, anclado abajo por este Column:
-              // si estuviera dentro se iría de pantalla justo cuando hace
-              // falta.
-              RequestDetailCta(
-                offers: offers,
-                unreadCount: unreadCount,
-                onSeeOffers: () => _showOffers(context, req, offers),
-              ),
-            ],
+          // El layout vive en `RequestDetailBody` (público y testeable); acá
+          // solo se arman los datos y los callbacks.
+          return RequestDetailBody(
+            request: req,
+            phase: phase,
+            offers: offers,
+            images: images,
+            unreadCount: unreadCount,
+            leading: _CornerFab(
+              icon: Icons.arrow_back_ios_new,
+              tooltip: 'Atrás',
+              onTap: _goBack,
+            ),
+            onOpenViewer: (i) =>
+                showPhotoViewer(context, images, initialIndex: i),
+            onSeeOffers: () => _showOffers(context, req, offers),
           );
         },
       ),
@@ -322,6 +293,95 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
         initialUnread: _unreadOfferIds,
         onSeen: _markOfferSeen,
       ),
+    );
+  }
+}
+
+/// Cuerpo del detalle de la solicitud del cliente: panel de foto plegable +
+/// hoja SIN scroll propio dentro del mismo `CustomScrollView`, y el CTA
+/// anclado abajo, FUERA de ese scroll.
+///
+/// Público, sin estado y sin tocar Supabase **a propósito**. Este layout vivía
+/// inline en el `build` de `RequestStatusScreen`, que sí necesita Supabase y
+/// por eso ningún test de widget lo podía montar: los tests de regresión del
+/// plegado montaban una RÉPLICA a mano de esta composición. Con esa réplica,
+/// devolver `hasScrollBody` a su default AQUÍ —en el fichero que la gente
+/// edita— dejaba la suite entera en verde y reintroducía el bug exacto que
+/// costó un `BLOCKED`. Ahora los tests montan ESTE widget, no una copia.
+///
+/// La pantalla sigue armando los datos y los callbacks (`_goBack`,
+/// `showPhotoViewer`, `_showOffers`); acá solo vive el layout.
+class RequestDetailBody extends StatelessWidget {
+  const RequestDetailBody({
+    super.key,
+    required this.request,
+    required this.phase,
+    required this.offers,
+    required this.images,
+    required this.unreadCount,
+    required this.onSeeOffers,
+    this.leading,
+    this.onOpenViewer,
+  });
+
+  final Map<String, dynamic> request;
+  final RequestPhase phase;
+  final List<Map<String, dynamic>> offers;
+
+  /// URLs de foto ya filtradas (sin vacías). Vacía = panel con el ícono de fase.
+  final List<String> images;
+
+  /// Ofertas sin abrir: número del badge rojo del CTA.
+  final int unreadCount;
+  final VoidCallback onSeeOffers;
+
+  /// Control flotante arriba a la izquierda del panel (el atrás de la
+  /// pantalla). Va como `leading` de la barra, así que sobrevive al plegado.
+  final Widget? leading;
+
+  /// Abre el visor a pantalla completa en la foto `index`.
+  final void Function(int index)? onOpenViewer;
+
+  @override
+  Widget build(BuildContext context) {
+    // La foto se PLIEGA al bajar (pedido PO 2026-08-01, portado del detalle
+    // del proveedor): `CollapsingPhotoPanel` reemplaza al antiguo
+    // `_AmberPanel` de alto fijo. La hoja va en un
+    // `SliverFillRemaining(hasScrollBody: false)` — `true` (el default) se
+    // probó y falló: con la hoja teniendo su propio `ListView` los dos
+    // scrolls quedaban aislados (panel fijo en 300.0 mientras el título
+    // scrolleaba solo por dentro). `false` deja que el `Column` sin scroll de
+    // la hoja participe del scroll EXTERNO junto con el panel.
+    return Column(
+      children: [
+        Expanded(
+          child: CustomScrollView(
+            slivers: [
+              CollapsingPhotoPanel(
+                images: images,
+                fallbackIcon: phaseChip(phase, 0).$1,
+                leading: leading,
+                onOpenViewer: onOpenViewer,
+              ),
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: RequestDetailSheet(
+                  request: request,
+                  phase: phase,
+                  offers: offers,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // El CTA vive FUERA del scroll, anclado abajo por este Column: si
+        // estuviera dentro se iría de pantalla justo cuando hace falta.
+        RequestDetailCta(
+          offers: offers,
+          unreadCount: unreadCount,
+          onSeeOffers: onSeeOffers,
+        ),
+      ],
     );
   }
 }

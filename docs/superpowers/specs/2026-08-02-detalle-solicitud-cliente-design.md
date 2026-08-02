@@ -102,6 +102,36 @@ Descartadas: bajar el CTA a un sliver al final (quedaría fuera de pantalla just
 cuando hace falta) y montarlo en un `Stack` flotante (gana control, se separa del
 patrón del proveedor sin necesidad).
 
+> **ENMIENDA 2026-08-02 — los dos párrafos de arriba se midieron y NO funcionan.**
+>
+> El texto original se deja intacto a propósito: hay que poder leer la secuencia
+> completa —qué se creyó, qué se midió, qué se decidió—, no una historia
+> reescrita. Este spec estaba aprobado y describía una arquitectura que la
+> medición tumbó.
+>
+> - **Lo que se creía.** Que bastaba meter `_DetailSheet` tal cual dentro de
+>   `SliverFillRemaining`, que la hoja conservaría su
+>   `Column(Expanded(ListView), CTA)`, y que sacar el CTA del scroll era una de
+>   las opciones **descartadas**.
+> - **Lo que se midió** (Task 4, primera vuelta → `BLOCKED`). Con esa
+>   composición el panel **no se plegó**: 300.0 → 300.0, mientras el título
+>   scrolleaba solo por dentro, de 322 a 251. La hoja tenía su propio `ListView`
+>   y los dos scrolls quedaban **aislados**. Los consumidores que sí funcionan
+>   (detalle del proveedor, interés de producto) usan
+>   `SliverFillRemaining(hasScrollBody: false)` sobre contenido **sin scroll
+>   propio**; este spec dio por transferible el patrón sin comprobar esa
+>   diferencia.
+> - **Lo que se decidió** (PO, 2026-08-02). La hoja **pierde su scroll** (el
+>   `ListView` pasa a ser un `Column`) y el CTA **sale del `CustomScrollView`**
+>   a un widget propio, `RequestDetailCta`, anclado abajo por el `Column` de la
+>   pantalla. Es decir: se adoptó una variante de justo lo que el párrafo
+>   "Descartadas" daba por descartado. El sliver queda
+>   `SliverFillRemaining(hasScrollBody: false)`.
+>
+> El plan se replanteó en el commit `0d5aa66`; esto es lo mismo aplicado al
+> spec. Lo que hay implementado en `request_status_screen.dart` y
+> `request_detail_sheet.dart` es la versión de esta enmienda, no la de arriba.
+
 ### Secciones
 
 **Decisión del PO (2026-08-02): estado → información → acción.** El cliente ya
@@ -184,3 +214,9 @@ de la `ListView` interna **arrastra el plegado del panel externo** y no queda
 aislado. El proveedor usa este mismo patrón y sus tests de T3 pasan, así que hay
 precedente — pero es lo primero que puede salir mal y merece su propio test (el
 número 3).
+
+> **ENMIENDA 2026-08-02 — el riesgo se materializó.** No hubo que "verificar"
+> nada: quedó aislado, 300.0 → 300.0. Y el precedente del proveedor era falso —
+> ese lado usa `hasScrollBody: **false**` sobre contenido sin scroll propio, no
+> el default. La salida no fue un test, fue rediseñar: ver la enmienda de
+> "Estructura".

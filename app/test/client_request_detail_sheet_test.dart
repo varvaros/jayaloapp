@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/domain/phase.dart';
 import 'package:jayalo_app/features/client/request_detail_sheet.dart';
-import 'package:jayalo_app/features/shared/collapsing_photo_panel.dart';
+import 'package:jayalo_app/features/client/request_status_screen.dart';
 
 /// El PO reportó (2026-08-02, captura de device) que en el detalle de su
 /// solicitud la primera línea del título aparecía cortada por el borde
@@ -31,6 +31,16 @@ import 'package:jayalo_app/features/shared/collapsing_photo_panel.dart';
 /// regresión más cara de todo el trabajo — si el panel volviera a quedarse
 /// fijo, hay que pararse igual que la primera vez, no improvisar
 /// `NestedScrollView`.
+///
+/// Monta `RequestDetailBody`, el widget REAL de la pantalla, no una réplica.
+/// Hasta la revisión del 2026-08-02 este test (y su gemelo en
+/// `client_request_photo_panel_test.dart`, ya eliminado por redundante)
+/// armaba la composición a mano: cubría que nadie devolviera el `ListView` a
+/// la hoja, pero devolver `hasScrollBody` a su default en
+/// `request_status_screen.dart` —la otra mitad del arreglo, y la que está en
+/// el fichero que la gente edita— dejaba la suite entera en verde. Por eso el
+/// layout se extrajo a un widget público: para que este test muerda el código
+/// de producción.
 void main() {
   final request = <String, dynamic>{
     'id': 'req-1',
@@ -46,38 +56,21 @@ void main() {
     'image_urls': <String>[],
   };
 
-  /// Réplica de la estructura ACTUAL de la pantalla (Task 4, Step 1b): panel
-  /// colapsable + hoja sin scroll propio en un único `CustomScrollView`, con
-  /// el CTA anclado abajo, fuera del scroll.
+  /// El widget REAL de la pantalla (`request_status_screen.dart`), no una
+  /// réplica: panel colapsable + hoja sin scroll propio en un único
+  /// `CustomScrollView`, con el CTA anclado abajo, fuera del scroll. Montarlo
+  /// de verdad es lo que hace que revertir `hasScrollBody: false` ponga este
+  /// test en rojo.
   Widget hostActual() => MaterialApp(
     theme: jayaloTheme(Brightness.light),
     home: Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: CustomScrollView(
-              slivers: [
-                const CollapsingPhotoPanel(
-                  images: [],
-                  fallbackIcon: Icons.hourglass_top_outlined,
-                ),
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: RequestDetailSheet(
-                    request: request,
-                    phase: RequestPhase.withOffers,
-                    offers: const [],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          RequestDetailCta(
-            offers: const [],
-            unreadCount: 0,
-            onSeeOffers: () {},
-          ),
-        ],
+      body: RequestDetailBody(
+        request: request,
+        phase: RequestPhase.withOffers,
+        offers: const [],
+        images: const [],
+        unreadCount: 0,
+        onSeeOffers: () {},
       ),
     ),
   );
