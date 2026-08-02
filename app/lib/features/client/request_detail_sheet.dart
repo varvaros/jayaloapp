@@ -8,6 +8,7 @@ import '../chat/widgets/rating_form.dart';
 import '../shared/brand_kit.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
+import '../shared/section_heading.dart';
 import '../shell/floating_nav_bar.dart';
 import 'request_status_screen.dart';
 
@@ -71,6 +72,17 @@ class RequestDetailSheet extends StatelessWidget {
         .map(offerEffectivePrice)
         .whereType<num>()
         .fold<num?>(null, (a, b) => a == null ? b : (b < a ? b : a));
+    // ¿La sección "Información" tiene algo que enseñar? Sin esto, una
+    // solicitud sin bullets ni presupuesto dejaba "INFORMACIÓN" flotando
+    // sobre nada (mismo hallazgo en device que en el detalle del proveedor,
+    // 2026-08-01). ESTADO no necesita el mismo guard: "Publicada …" y el
+    // copy de fase se pintan siempre.
+    final hayInfo = bullets.isNotEmpty ||
+        requestBudgetLabel(
+              request['budget_min'] as num?,
+              request['budget_max'] as num?,
+            ) !=
+            null;
 
     return Container(
       decoration: BoxDecoration(
@@ -136,12 +148,70 @@ class RequestDetailSheet extends StatelessWidget {
               _ProviderDots(count: offers.length),
             ],
           ),
+          // ── 1) ESTADO ──
+          // Orden pactado con el PO (2026-08-02): estado → información. El
+          // cliente ya sabe qué pidió (eso es la identidad, arriba); lo que
+          // no sabe es cómo va. El precio "Desde" se queda pegado al título
+          // como titular, aunque técnicamente también sea estado.
+          sectionHeading(context, 'Estado'),
+          const SizedBox(height: 18),
+          Text(
+            'Publicada: ${formatDayLabel(createdAt)} · ${formatTimeHM(createdAt)}',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _phaseCopy[phase]!,
+            style: TextStyle(
+              fontSize: 12.5,
+              height: 1.5,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          // Cupos restantes (modelo de hasta 3 finalistas): el cliente
+          // puede aceptar más de una oferta.
+          if (offers.isNotEmpty && phase != RequestPhase.completed) ...[
+            const SizedBox(height: 6),
+            Text(
+              clientSlotsMessage(
+                offers
+                    .where(
+                      (o) =>
+                          o['status'] == 'accepted' ||
+                          o['status'] == 'completed',
+                    )
+                    .length,
+              ),
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: cs.primary,
+              ),
+            ),
+          ],
+          // Fase completada: cerrar la promesa del copy de `_phaseCopy`
+          // ("Califica al proveedor para ayudar a la comunidad"), que
+          // hasta ahora no tenía ningún control detrás. Un panel POR
+          // NEGOCIO completado (modelo de hasta 3 finalistas: puede
+          // haber más de uno), no solo el "primero" entre las ofertas.
+          if (phase == RequestPhase.completed)
+            for (final bizId in completedReviewBusinessIds(offers))
+              BusinessReviewPanel(
+                // Key por negocio: si cambian las ofertas completadas,
+                // cada panel se re-crea y vuelve a cargar SU reseña sin
+                // que Flutter confunda su estado con el de otro.
+                key: ValueKey('review-$bizId'),
+                businessId: bizId,
+              ),
+          // ── 2) INFORMACIÓN ──
+          // El encabezado SOLO si hay algo debajo (`hayInfo`): una solicitud
+          // sin bullets ni presupuesto dejaba "INFORMACIÓN" flotando sobre
+          // nada. El rótulo `Text('Detalles')` que había aquí se borra: con
+          // INFORMACIÓN encima quedarían dos etiquetas anidadas diciendo casi
+          // lo mismo.
+          if (hayInfo) sectionHeading(context, 'Información'),
           if (bullets.isNotEmpty) ...[
             const SizedBox(height: 18),
-            Text(
-              'Detalles',
-              style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
-            ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
@@ -192,55 +262,6 @@ class RequestDetailSheet extends StatelessWidget {
               ],
             ),
           ],
-          const SizedBox(height: 18),
-          Text(
-            'Publicada: ${formatDayLabel(createdAt)} · ${formatTimeHM(createdAt)}',
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _phaseCopy[phase]!,
-            style: TextStyle(
-              fontSize: 12.5,
-              height: 1.5,
-              color: cs.onSurfaceVariant,
-            ),
-          ),
-          // Cupos restantes (modelo de hasta 3 finalistas): el cliente
-          // puede aceptar más de una oferta.
-          if (offers.isNotEmpty && phase != RequestPhase.completed) ...[
-            const SizedBox(height: 6),
-            Text(
-              clientSlotsMessage(
-                offers
-                    .where(
-                      (o) =>
-                          o['status'] == 'accepted' ||
-                          o['status'] == 'completed',
-                    )
-                    .length,
-              ),
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: cs.primary,
-              ),
-            ),
-          ],
-          // Fase completada: cerrar la promesa del copy de `_phaseCopy`
-          // ("Califica al proveedor para ayudar a la comunidad"), que
-          // hasta ahora no tenía ningún control detrás. Un panel POR
-          // NEGOCIO completado (modelo de hasta 3 finalistas: puede
-          // haber más de uno), no solo el "primero" entre las ofertas.
-          if (phase == RequestPhase.completed)
-            for (final bizId in completedReviewBusinessIds(offers))
-              BusinessReviewPanel(
-                // Key por negocio: si cambian las ofertas completadas,
-                // cada panel se re-crea y vuelve a cargar SU reseña sin
-                // que Flutter confunda su estado con el de otro.
-                key: ValueKey('review-$bizId'),
-                businessId: bizId,
-              ),
         ],
       ),
     );

@@ -154,4 +154,55 @@ void main() {
       );
     },
   );
+
+  /// Orden de secciones (Task 5, decisión PO 2026-08-02): identidad → ESTADO
+  /// → INFORMACIÓN. `req()` genera una solicitud con o sin bullets/presupuesto
+  /// para poder probar también la guardia de "INFORMACIÓN" huérfana.
+  Map<String, dynamic> req({bool conInfo = true}) => <String, dynamic>{
+        'id': 'req-1',
+        'user_id': 'user-1',
+        'title': 'Teclado Inalámbrico Klip Xtreme',
+        'bullets': conInfo ? <String>['Marca: Klip Xtreme'] : <String>[],
+        'created_at': DateTime.now().toIso8601String(),
+        'status': 'open',
+        'is_wholesale': false,
+        'budget_min': conInfo ? 5000 : null,
+        'budget_max': conInfo ? 12000 : null,
+        'image_urls': <String>[],
+      };
+
+  // Sin `unreadCount` ni `onSeeOffers`: desde la Task 4, `RequestDetailSheet`
+  // ya no los acepta (el CTA vive aparte, en `RequestDetailCta`).
+  Widget host(Map<String, dynamic> r) => MaterialApp(
+        theme: jayaloTheme(Brightness.light),
+        home: Scaffold(
+          body: RequestDetailSheet(
+            request: r,
+            phase: RequestPhase.withOffers,
+            offers: const [],
+          ),
+        ),
+      );
+
+  testWidgets('el orden es identidad → ESTADO → INFORMACIÓN', (tester) async {
+    await tester.pumpWidget(host(req()));
+    await tester.pumpAndSettle();
+
+    final titulo =
+        tester.getRect(find.text('Teclado Inalámbrico Klip Xtreme')).top;
+    final estado = tester.getRect(find.text('ESTADO')).top;
+    final info = tester.getRect(find.text('INFORMACIÓN')).top;
+
+    expect(titulo, lessThan(estado));
+    expect(estado, lessThan(info));
+  });
+
+  testWidgets('sin bullets ni presupuesto no queda INFORMACIÓN huérfano',
+      (tester) async {
+    await tester.pumpWidget(host(req(conInfo: false)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ESTADO'), findsOneWidget);
+    expect(find.text('INFORMACIÓN'), findsNothing);
+  });
 }
