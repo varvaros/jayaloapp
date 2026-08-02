@@ -5,6 +5,36 @@ import 'package:jayalo_app/core/brand.dart';
 import 'package:jayalo_app/domain/request_requirements.dart';
 import 'package:jayalo_app/features/shared/request_requirement_badges.dart';
 
+// GOTCHA para quien vuelva a medir el ancho de estos chips en un viewport
+// angosto (Task 6, revisión 2026-08-02): `flutter test` sin una fuente real
+// cargada mide el texto con la fuente de respaldo del entorno de test, que
+// dibuja cada carácter como un cuadrado de ~1 em — NO una fuente proporcional
+// como la que corre en el device (~0.5 em/carácter en promedio). Medido con
+// TextPainter a `fontSize: 12`: "Requiere envío" (14 car.) dio 171.5px de
+// ancho en el entorno de test (~12.25 px/car., ~1.02 em) contra ~80.9px
+// (~5.78 px/car., ~0.48 em) cargando la fuente real vía `FontLoader`. Es
+// decir: **el texto mide ~2× lo real dentro de un `testWidgets`.**
+//
+// Consecuencia concreta: si alguien monta `RequestRequirementBadges` (o
+// cualquiera de los tres detalles que la usan) dentro de un viewport angosto
+// (~320-360 lógicos) en un test, va a ver `RenderFlex overflowed` en el `Row`
+// interno de `StatusChip` — y esto NO ocurre en el device a escala de texto
+// normal. Con los números reales (~0.5 em/car.), el chip más largo,
+// "Requiere suplidor del Estado" (28 car.), mide ~172px de texto real; sumando
+// ícono + separación + relleno de `StatusChip` (~38px) da ~210px, que cabe
+// con holgura en los ~276px útiles de un teléfono de 320dp con el padding de
+// 22px por lado que usan los tres detalles.
+//
+// Donde SÍ hay un desborde real: con `textScaler` de accesibilidad alto
+// (~2.0), ese mismo chip pasaría de ~210px a ~382px, más ancho que los 276px
+// disponibles a 320dp. Pero eso es un problema de `StatusChip` en general
+// (sin protección ante escalado de texto alto), no de
+// `RequestRequirementBadges` en particular: cualquier otra píldora de la app
+// que use `StatusChip` con una etiqueta larga tiene el mismo riesgo. Nuestras
+// etiquetas de requisitos solo lo exponen primero por ser las más largas de
+// toda la app. Arreglarlo de raíz implica tocar `StatusChip` (compartido por
+// muchas pantallas), así que queda fuera del alcance de esta tarea — ver
+// seguimiento en `task_f49a193c`.
 void main() {
   Widget host(Widget child, {Brightness brightness = Brightness.light}) =>
       MaterialApp(
