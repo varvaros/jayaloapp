@@ -45,6 +45,7 @@ class CollapsingPhotoPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
     // Mismos colores que tenía inline: ámbar cuando hay foto (la foto lo tapa
     // casi todo, el ámbar solo asoma en los bordes) y lila con el ícono
@@ -63,7 +64,13 @@ class CollapsingPhotoPanel extends StatelessWidget {
     return SliverAppBar(
       pinned: true,
       expandedHeight: expandedHeight,
-      backgroundColor: images.isEmpty ? emptyTone.bg : amberPanel,
+      // El color de la BARRA PLEGADA, no el del panel abierto: `FlexibleSpaceBar`
+      // desvanece su `background` al colapsar, así que lo que queda arriba es
+      // esto. Con foto va el color de la hoja, para que la barra plegada se
+      // funda con el contenido; el ámbar solo tiñe el panel abierto, por
+      // detrás de la foto (visto en device 2026-08-01: con ámbar quedaba una
+      // franja melocotón que no pega con nada).
+      backgroundColor: images.isEmpty ? emptyTone.bg : cs.surfaceContainerLowest,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       automaticallyImplyLeading: false,

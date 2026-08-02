@@ -1048,6 +1048,14 @@ class _ProviderRequestDetailScreenState
       style: TextStyle(
           fontSize: 13, fontWeight: FontWeight.w600, color: jayaloHead(context)));
 
+  /// ¿La sección "Información" tiene algo que enseñar? Es exactamente lo que
+  /// se dibuja debajo del encabezado: datos de mayoreo, bullets y presupuesto.
+  static bool _hasInfo(Map<String, dynamic> req, List<String> bullets) =>
+      req['is_wholesale'] == true ||
+      bullets.isNotEmpty ||
+      requestBudgetLabel(req['budget_min'] as num?, req['budget_max'] as num?) !=
+          null;
+
   /// Encabezado de las tres secciones del detalle (pedido PO 2026-08-01):
   /// datos del cliente → información → desbloqueo o enviar oferta. Se separa
   /// de [_sectionLabel] (que rotula campos DENTRO del formulario) porque este
@@ -1415,7 +1423,13 @@ class _ProviderRequestDetailScreenState
                     badges: _custBadges,
                   ),
                   // ── 2) INFORMACIÓN ──
-                  _sectionHeading(context, 'Información'),
+                  // El encabezado SOLO si hay algo debajo: una solicitud sin
+                  // bullets, sin presupuesto y sin datos de mayoreo dejaba
+                  // "INFORMACIÓN" flotando sobre un divisor (visto en device
+                  // 2026-08-01). Mismo criterio que `BusinessDetailsCard`, que
+                  // no se dibuja si no tiene filas.
+                  if (_hasInfo(req, bullets))
+                    _sectionHeading(context, 'Información'),
                   if (req['is_wholesale'] == true) ...[
                     const SizedBox(height: 8),
                     if (req['wholesale_quantity'] != null)
