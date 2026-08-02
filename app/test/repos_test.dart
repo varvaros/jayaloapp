@@ -162,6 +162,20 @@ void main() {
     test('no lleva espacios: va concatenada dentro de un select de PostgREST', () {
       expect(requestRequirementCols, isNot(contains(' ')));
     });
+
+    test('las cinco, separadas por coma, en este orden exacto', () {
+      // Los dos tests de arriba pasarían igual si la constante se rompiera a
+      // 'with_shippingwith_installation...' (sin comas): cada nombre sigue
+      // siendo substring y no hay espacios. Este test fija la lista exacta que
+      // resulta de partir por coma, así que una coma perdida SÍ lo revienta.
+      expect(requestRequirementCols.split(','), [
+        'with_shipping',
+        'with_installation',
+        'requires_evaluation',
+        'requires_fiscal_receipt',
+        'requires_state_supplier',
+      ]);
+    });
   });
 
   group('requirementsForRequests', () {
