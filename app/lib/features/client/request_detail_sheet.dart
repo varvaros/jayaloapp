@@ -34,25 +34,28 @@ const _phaseTitle = {
 };
 
 /// Hoja blanca del detalle: título + chip de fase, "Desde", avatares anónimos
-/// de proveedores, chips de Detalles (los bullets de la IA), meta de publicación
-/// y el CTA "Ver N ofertas".
+/// de proveedores, chips de Detalles (los bullets de la IA) y meta de
+/// publicación.
+///
+/// SIN scroll propio (decisión PO 2026-08-02, tras un BLOCKED): vive dentro
+/// de un `SliverFillRemaining(hasScrollBody: false)` en el `CustomScrollView`
+/// de la pantalla, así que es el scroll EXTERNO el que la mueve junto con el
+/// panel de foto. Antes tenía su propio `ListView` y ese scroll quedaba
+/// aislado del panel — medido en la Task 4: el panel se quedaba fijo en
+/// 300.0 mientras el título scrolleaba solo, adentro. Por eso mismo ya NO
+/// trae el CTA "Ver N ofertas": se movió a `RequestDetailCta`, que vive FUERA
+/// del `CustomScrollView` para seguir anclado abajo.
 class RequestDetailSheet extends StatelessWidget {
   const RequestDetailSheet({
     super.key,
     required this.request,
     required this.phase,
     required this.offers,
-    required this.unreadCount,
-    required this.onSeeOffers,
   });
 
   final Map<String, dynamic> request;
   final RequestPhase phase;
   final List<Map<String, dynamic>> offers;
-
-  /// Ofertas sin abrir: número del badge rojo sobre el botón "Ver N ofertas".
-  final int unreadCount;
-  final VoidCallback onSeeOffers;
 
   @override
   Widget build(BuildContext context) {
@@ -74,216 +77,242 @@ class RequestDetailSheet extends StatelessWidget {
         color: cs.surfaceContainerLowest,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 8),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(22, 22, 22, 8),
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        request['title'] as String,
-                        style: TextStyle(
-                          // +1pt (pedido PO).
-                          fontSize: 22,
-                          height: 1.2,
-                          fontWeight: FontWeight.w600,
-                          color: jayaloHead(context),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    StatusChip(label: _phaseTitle[phase]!, tone: tone),
-                  ],
-                ),
-                // Pill "Al por mayor" dentro de la solicitud (pedido PO
-                // 2026-07-22): chip violeta debajo del estado, no toca la
-                // etiqueta de la lista. Solo en productos mayoristas.
-                if (request['is_wholesale'] == true) ...[
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: StatusChip(
-                      label: 'Al por mayor',
-                      icon: Icons.inventory_2_outlined,
-                      tone: Theme.of(context).brightness == Brightness.dark
-                          ? JayaloStatus.respondedDark
-                          : JayaloStatus.respondedLight,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Text(
-                      cheapest != null ? 'Desde: ' : 'Aún sin ofertas',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                    if (cheapest != null)
-                      Text(
-                        fmtRD(cheapest),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: jayaloHead(context),
-                        ),
-                      ),
-                    const Spacer(),
-                    _ProviderDots(count: offers.length),
-                  ],
-                ),
-                if (bullets.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  Text(
-                    'Detalles',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final b in bullets)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: cs.surface,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            b,
-                            style: TextStyle(fontSize: 12, color: cs.onSurface),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-                if (requestBudgetLabel(request['budget_min'] as num?,
-                        request['budget_max'] as num?) !=
-                    null) ...[
-                  const SizedBox(height: 16),
-                  Row(children: [
-                    Icon(Icons.payments_outlined,
-                        size: 16, color: cs.onSurfaceVariant),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                          'Presupuesto estimado: ${requestBudgetLabel(request['budget_min'] as num?, request['budget_max'] as num?)}',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: jayaloHead(context))),
-                    ),
-                  ]),
-                ],
-                const SizedBox(height: 18),
-                Text(
-                  'Publicada: ${formatDayLabel(createdAt)} · ${formatTimeHM(createdAt)}',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _phaseCopy[phase]!,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  request['title'] as String,
                   style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.5,
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-                // Cupos restantes (modelo de hasta 3 finalistas): el cliente
-                // puede aceptar más de una oferta.
-                if (offers.isNotEmpty && phase != RequestPhase.completed) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    clientSlotsMessage(
-                      offers
-                          .where((o) =>
-                              o['status'] == 'accepted' ||
-                              o['status'] == 'completed')
-                          .length,
-                    ),
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: cs.primary,
-                    ),
-                  ),
-                ],
-                // Fase completada: cerrar la promesa del copy de `_phaseCopy`
-                // ("Califica al proveedor para ayudar a la comunidad"), que
-                // hasta ahora no tenía ningún control detrás. Un panel POR
-                // NEGOCIO completado (modelo de hasta 3 finalistas: puede
-                // haber más de uno), no solo el "primero" entre las ofertas.
-                if (phase == RequestPhase.completed)
-                  for (final bizId in completedReviewBusinessIds(offers))
-                    BusinessReviewPanel(
-                      // Key por negocio: si cambian las ofertas completadas,
-                      // cada panel se re-crea y vuelve a cargar SU reseña sin
-                      // que Flutter confunda su estado con el de otro.
-                      key: ValueKey('review-$bizId'),
-                      businessId: bizId,
-                    ),
-              ],
-            ),
-          ),
-          // CTA único: "Ver N ofertas" (violeta, solo navega — aceptar vive por
-          // oferta en la hoja). El "Volver" se quitó: duplicaba la flecha de
-          // atrás flotante del panel (ambos hacían context.pop()). Reserva el
-          // alto de la barra flotante para no quedar tapado.
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              8,
-              16,
-              12 + navBarReservedSpace(context),
-            ),
-            // Badge rojo con el número de ofertas SIN ABRIR (pedido PO
-            // 2026-07-23), en la esquina del botón — la "notificación" que dice
-            // cuántas faltan por revisar.
-            child: OnboardingGuide(
-              guideKey: 'client.view_offers.v1',
-              enabled: offers.isNotEmpty,
-              steps: onboardingCopy['client.view_offers.v1']!,
-              child: Badge(
-                isLabelVisible: unreadCount > 0,
-                label: Text('$unreadCount'),
-                offset: const Offset(-6, 4),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: onSeeOffers,
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                    child: Text(
-                      offers.isEmpty
-                          ? 'Ver ofertas'
-                          : 'Ver ${offers.length} oferta${offers.length == 1 ? '' : 's'}',
-                    ),
+                    // +1pt (pedido PO).
+                    fontSize: 22,
+                    height: 1.2,
+                    fontWeight: FontWeight.w600,
+                    color: jayaloHead(context),
                   ),
                 ),
               ),
+              const SizedBox(width: 12),
+              StatusChip(label: _phaseTitle[phase]!, tone: tone),
+            ],
+          ),
+          // Pill "Al por mayor" dentro de la solicitud (pedido PO
+          // 2026-07-22): chip violeta debajo del estado, no toca la
+          // etiqueta de la lista. Solo en productos mayoristas.
+          if (request['is_wholesale'] == true) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: StatusChip(
+                label: 'Al por mayor',
+                icon: Icons.inventory_2_outlined,
+                tone: Theme.of(context).brightness == Brightness.dark
+                    ? JayaloStatus.respondedDark
+                    : JayaloStatus.respondedLight,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Text(
+                cheapest != null ? 'Desde: ' : 'Aún sin ofertas',
+                style: TextStyle(fontSize: 15, color: cs.onSurfaceVariant),
+              ),
+              if (cheapest != null)
+                Text(
+                  fmtRD(cheapest),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: jayaloHead(context),
+                  ),
+                ),
+              const Spacer(),
+              _ProviderDots(count: offers.length),
+            ],
+          ),
+          if (bullets.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Text(
+              'Detalles',
+              style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final b in bullets)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: cs.surface,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      b,
+                      style: TextStyle(fontSize: 12, color: cs.onSurface),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          if (requestBudgetLabel(
+                request['budget_min'] as num?,
+                request['budget_max'] as num?,
+              ) !=
+              null) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Icon(
+                  Icons.payments_outlined,
+                  size: 16,
+                  color: cs.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Presupuesto estimado: ${requestBudgetLabel(request['budget_min'] as num?, request['budget_max'] as num?)}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: jayaloHead(context),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 18),
+          Text(
+            'Publicada: ${formatDayLabel(createdAt)} · ${formatTimeHM(createdAt)}',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _phaseCopy[phase]!,
+            style: TextStyle(
+              fontSize: 12.5,
+              height: 1.5,
+              color: cs.onSurfaceVariant,
             ),
           ),
+          // Cupos restantes (modelo de hasta 3 finalistas): el cliente
+          // puede aceptar más de una oferta.
+          if (offers.isNotEmpty && phase != RequestPhase.completed) ...[
+            const SizedBox(height: 6),
+            Text(
+              clientSlotsMessage(
+                offers
+                    .where(
+                      (o) =>
+                          o['status'] == 'accepted' ||
+                          o['status'] == 'completed',
+                    )
+                    .length,
+              ),
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: cs.primary,
+              ),
+            ),
+          ],
+          // Fase completada: cerrar la promesa del copy de `_phaseCopy`
+          // ("Califica al proveedor para ayudar a la comunidad"), que
+          // hasta ahora no tenía ningún control detrás. Un panel POR
+          // NEGOCIO completado (modelo de hasta 3 finalistas: puede
+          // haber más de uno), no solo el "primero" entre las ofertas.
+          if (phase == RequestPhase.completed)
+            for (final bizId in completedReviewBusinessIds(offers))
+              BusinessReviewPanel(
+                // Key por negocio: si cambian las ofertas completadas,
+                // cada panel se re-crea y vuelve a cargar SU reseña sin
+                // que Flutter confunda su estado con el de otro.
+                key: ValueKey('review-$bizId'),
+                businessId: bizId,
+              ),
         ],
       ),
     );
   }
+}
+
+/// CTA "Ver N ofertas". Vive FUERA del `CustomScrollView`, anclado abajo por
+/// el `Column` de la pantalla: si estuviera dentro del scroll se iría de
+/// pantalla justo cuando hace falta.
+///
+/// Se extrajo de `RequestDetailSheet` (decisión PO 2026-08-02): esa hoja
+/// perdió su scroll propio para poder participar del scroll externo junto
+/// con el panel de foto, y el CTA necesita quedarse fijo abajo en vez de
+/// scrollear con el resto del contenido.
+class RequestDetailCta extends StatelessWidget {
+  const RequestDetailCta({
+    super.key,
+    required this.offers,
+    required this.unreadCount,
+    required this.onSeeOffers,
+  });
+
+  final List<Map<String, dynamic>> offers;
+
+  /// Ofertas sin abrir: número del badge rojo sobre el botón "Ver N ofertas".
+  final int unreadCount;
+  final VoidCallback onSeeOffers;
+
+  @override
+  Widget build(BuildContext context) =>
+      // CTA único: "Ver N ofertas" (violeta, solo navega — aceptar vive por
+      // oferta en la hoja). El "Volver" se quitó: duplicaba la flecha de
+      // atrás flotante del panel (ambos hacían context.pop()). Reserva el
+      // alto de la barra flotante para no quedar tapado.
+      Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          8,
+          16,
+          12 + navBarReservedSpace(context),
+        ),
+        // Badge rojo con el número de ofertas SIN ABRIR (pedido PO
+        // 2026-07-23), en la esquina del botón — la "notificación" que dice
+        // cuántas faltan por revisar.
+        child: OnboardingGuide(
+          guideKey: 'client.view_offers.v1',
+          enabled: offers.isNotEmpty,
+          steps: onboardingCopy['client.view_offers.v1']!,
+          child: Badge(
+            isLabelVisible: unreadCount > 0,
+            label: Text('$unreadCount'),
+            offset: const Offset(-6, 4),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: onSeeOffers,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                child: Text(
+                  offers.isEmpty
+                      ? 'Ver ofertas'
+                      : 'Ver ${offers.length} oferta${offers.length == 1 ? '' : 's'}',
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 /// Círculos apilados = cuántos proveedores ofertaron, en el resumen ANTES de

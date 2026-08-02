@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
@@ -10,26 +9,10 @@ import 'my_requests_screen.dart' show phaseChip;
 import 'offer_actions.dart';
 import 'request_detail_sheet.dart';
 import '../shared/brand_kit.dart';
+import '../shared/collapsing_photo_panel.dart';
+import '../shared/network_image.dart' show jayaloAvatarImage;
 import '../shared/verified_badges.dart';
 import '../../core/motion.dart';
-
-/// Tono ámbar del panel del detalle (la doctrina lo pide cálido, NO lila —
-/// así el detalle no se confunde con el chat). Claro sale del mockup
-/// (`#F0C48C`); oscuro cae a un ámbar apagado.
-({Color panel, Color ink, Color sheet}) _amber(BuildContext context) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  return dark
-      ? (
-          panel: const Color(0xFF3A2C12),
-          ink: const Color(0xFFF0C48C),
-          sheet: Theme.of(context).colorScheme.surfaceContainerLowest,
-        )
-      : (
-          panel: const Color(0xFFF0C48C),
-          ink: const Color(0xFF6B4514),
-          sheet: Theme.of(context).colorScheme.surfaceContainerLowest,
-        );
-}
 
 /// Precio "efectivo" con el que se comparan las ofertas: precio base + costo
 /// de envío cuando el proveedor lo cobra (pedido PO: sumar el envío al precio
@@ -202,17 +185,53 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
           // Cuántas de las ofertas mostradas siguen sin abrir (número del CTA).
           final unreadCount =
               offers.where((o) => _unreadOfferIds.contains(o['id'])).length;
+          final images =
+              ((req['image_urls'] as List?)?.cast<String>() ?? const <String>[])
+                  .where((u) => u.isNotEmpty)
+                  .toList();
+          // La foto se PLIEGA al bajar (pedido PO 2026-08-01, portado del
+          // detalle del proveedor): `CollapsingPhotoPanel` reemplaza al
+          // antiguo `_AmberPanel` de alto fijo. La hoja va en un
+          // `SliverFillRemaining(hasScrollBody: false)` — `true` (el default)
+          // se probó y falló: con la hoja teniendo su propio `ListView` los
+          // dos scrolls quedaban aislados (panel fijo en 300.0 mientras el
+          // título scrolleaba solo por dentro). `false` deja que el
+          // `Column` sin scroll de la hoja participe del scroll EXTERNO
+          // junto con el panel.
           return Column(
             children: [
-              _AmberPanel(request: req, phase: phase, onBack: _goBack),
               Expanded(
-                child: RequestDetailSheet(
-                  request: req,
-                  phase: phase,
-                  offers: offers,
-                  unreadCount: unreadCount,
-                  onSeeOffers: () => _showOffers(context, req, offers),
+                child: CustomScrollView(
+                  slivers: [
+                    CollapsingPhotoPanel(
+                      images: images,
+                      fallbackIcon: phaseChip(phase, 0).$1,
+                      leading: _CornerFab(
+                        icon: Icons.arrow_back_ios_new,
+                        tooltip: 'Atrás',
+                        onTap: _goBack,
+                      ),
+                      onOpenViewer: (i) =>
+                          showPhotoViewer(context, images, initialIndex: i),
+                    ),
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: RequestDetailSheet(
+                        request: req,
+                        phase: phase,
+                        offers: offers,
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+              // El CTA vive FUERA del scroll, anclado abajo por este Column:
+              // si estuviera dentro se iría de pantalla justo cuando hace
+              // falta.
+              RequestDetailCta(
+                offers: offers,
+                unreadCount: unreadCount,
+                onSeeOffers: () => _showOffers(context, req, offers),
               ),
             ],
           );
@@ -523,98 +542,6 @@ class _CornerFab extends StatelessWidget {
       ),
     ),
   );
-}
-
-/// Panel ámbar con la foto grande (cover) + miniaturas al borde derecho, o un
-/// ícono de fase si la solicitud no trae fotos.
-class _AmberPanel extends StatelessWidget {
-  const _AmberPanel({
-    required this.request,
-    required this.phase,
-    required this.onBack,
-  });
-  final Map<String, dynamic> request;
-  final RequestPhase phase;
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    final am = _amber(context);
-    final images =
-        ((request['image_urls'] as List?)?.cast<String>() ?? const <String>[])
-            .where((u) => u.isNotEmpty)
-            .toList();
-    // Sin foto, el panel se pinta LILA CLARO con el ícono violeta (pedido PO
-    // 2026-07-19: "color lila claro al fondo que se ve debajo del
-    // placeholder"); con foto sigue el ámbar de siempre detrás del cover.
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final ph = dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight;
-    final (icon, _) = phaseChip(phase, 0);
-    final topInset = MediaQuery.paddingOf(context).top;
-    return Container(
-      height: 300 + topInset,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: images.isEmpty ? ph.bg : am.panel,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-      ),
-      child: Stack(
-        children: [
-          // La foto LLENA todo el panel ámbar (cover) — si no hay foto queda
-          // el placeholder (ícono de fase centrado sobre lila claro). Sin
-          // cuadro interno. Tocarla abre el visor a pantalla completa.
-          Positioned.fill(
-            child: images.isEmpty
-                ? Center(child: Icon(icon, size: 120, color: ph.ink))
-                : GestureDetector(
-                    onTap: () => showPhotoViewer(context, images),
-                    child: JayaloNetworkImage(
-                      images.first,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          Center(child: Icon(icon, size: 120, color: am.ink)),
-                    ),
-                  ),
-          ),
-          // Miniatura de la 2ª foto pegada al borde derecho (máx. 2 fotos).
-          if (images.length > 1)
-            Positioned(
-              top: topInset + 30,
-              right: 0,
-              child: GestureDetector(
-                onTap: () => showPhotoViewer(context, images, initialIndex: 1),
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.horizontal(
-                    left: Radius.circular(16),
-                  ),
-                  child: JayaloNetworkImage(
-                    images[1],
-                    width: 76,
-                    height: 76,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        Container(width: 76, height: 76, color: am.panel),
-                  ),
-                ),
-              ),
-            ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 8, left: 16),
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: _CornerFab(
-                  icon: Icons.arrow_back_ios_new,
-                  tooltip: 'Atrás',
-                  onTap: onBack,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Cabecera de identidad del proveedor dentro de una `_OfferCard` (PO
