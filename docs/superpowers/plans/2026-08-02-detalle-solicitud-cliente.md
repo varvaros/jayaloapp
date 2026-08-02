@@ -126,7 +126,7 @@ Crear `app/test/client_request_detail_sheet_test.dart`:
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
-import 'package:jayalo_app/domain/request_phase.dart';
+import 'package:jayalo_app/domain/phase.dart';
 import 'package:jayalo_app/features/client/request_detail_sheet.dart';
 
 /// El PO reportó (2026-08-02, captura de device) que en el detalle de su
@@ -160,7 +160,7 @@ void main() {
               Expanded(
                 child: RequestDetailSheet(
                   request: request,
-                  phase: RequestPhase.responded,
+                  phase: RequestPhase.withOffers,
                   offers: const [],
                   unreadCount: 0,
                   onSeeOffers: () {},
@@ -530,7 +530,7 @@ Los rótulos se buscan en mayúsculas, porque `sectionHeading` hace `toUpperCase
         home: Scaffold(
           body: RequestDetailSheet(
             request: r,
-            phase: RequestPhase.responded,
+            phase: RequestPhase.withOffers,
             offers: const [],
             unreadCount: 0,
             onSeeOffers: () {},
