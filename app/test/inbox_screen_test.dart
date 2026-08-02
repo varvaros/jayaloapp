@@ -207,4 +207,71 @@ void main() {
     expect(find.text('Interesado en tu producto'), findsOneWidget);
     expect(find.text('1 crédito'), findsOneWidget);
   });
+
+  testWidgets('la tarjeta pinta los símbolos de los requisitos del cliente',
+      (tester) async {
+    // Los requisitos salen de la oleada B, que en un test siempre falla
+    // (`requirementsForRequests` toca `supa`) y `loadInboxData` se la traga por
+    // diseño. Que los símbolos aparezcan igual es la prueba de que la tarjeta
+    // cae a los de su propia fila.
+    Future<List<Map<String, dynamic>>> conRequisitos(
+            {String? kind, required bool todas}) async =>
+        todas
+            ? []
+            : [
+                {
+                  'id': 'req-req',
+                  'source': 'marketplace',
+                  'title': 'Necesito 30 sillas',
+                  'description': 'Para un salón',
+                  'kind': 'producto',
+                  'created_at': DateTime.now().toIso8601String(),
+                  'with_shipping': true,
+                  'requires_fiscal_receipt': true,
+                },
+              ];
+
+    await tester.pumpWidget(host(ProviderInboxView(
+        fetch: conRequisitos,
+        leading: const SizedBox.shrink(),
+        actions: const [])));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Necesito 30 sillas'), findsOneWidget);
+    expect(find.byIcon(Icons.local_shipping_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.receipt_long_outlined), findsOneWidget);
+    expect(
+      find.byIcon(Icons.account_balance_outlined),
+      findsNothing,
+      reason: 'no marcó suplidor del Estado: no debe salir su símbolo',
+    );
+  });
+
+  testWidgets('una solicitud sin requisitos no pinta ningún símbolo',
+      (tester) async {
+    Future<List<Map<String, dynamic>>> sinRequisitos(
+            {String? kind, required bool todas}) async =>
+        todas
+            ? []
+            : [
+                {
+                  'id': 'req-plano',
+                  'source': 'marketplace',
+                  'title': 'Necesito un plomero',
+                  'description': 'Fuga de agua',
+                  'kind': 'servicio',
+                  'created_at': DateTime.now().toIso8601String(),
+                },
+              ];
+
+    await tester.pumpWidget(host(ProviderInboxView(
+        fetch: sinRequisitos,
+        leading: const SizedBox.shrink(),
+        actions: const [])));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Necesito un plomero'), findsOneWidget);
+    expect(find.byIcon(Icons.local_shipping_outlined), findsNothing);
+    expect(find.byIcon(Icons.receipt_long_outlined), findsNothing);
+  });
 }

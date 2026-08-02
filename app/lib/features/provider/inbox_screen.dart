@@ -6,6 +6,8 @@ import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/inbox_load.dart';
 import '../../domain/pricing.dart';
+import '../../domain/request_requirements.dart';
+import '../shared/request_requirement_badges.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
 import '../shell/floating_nav_bar.dart';
 import '../shell/home_scroll.dart';
@@ -107,6 +109,10 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   /// `_runFetch`.
   Map<String, int> _offerCounts = {};
 
+  /// Requisitos que el cliente exige por solicitud (símbolos de la tarjeta).
+  /// Sin entrada = los de la propia fila. Se recalcula en cada `_runFetch`.
+  Map<String, RequestRequirements> _requirements = {};
+
   late Future<List<Map<String, dynamic>>> _load = _runFetch();
 
   /// Carga la bandeja en DOS OLEADAS concurrentes (antes eran 4 viajes a la red
@@ -125,12 +131,14 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
           : () => myOfferedOpenRequests(kind: _kind),
       fetchStatuses: myOfferedRequestStatuses,
       fetchCounts: offerCountsForRequests,
+      fetchRequirements: requirementsForRequests,
     );
     // En "Todas" no se toca el badge: ese conteo no es una alerta accionable,
     // es exploración.
     if (mounted && !_todas) solicitudesBadge.value = data.badgeCount;
     _offeredStatuses = data.statuses;
     _offerCounts = data.counts;
+    _requirements = data.requirements;
     return data.items;
   }
 
@@ -320,6 +328,12 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           wholesale: r['is_wholesale'] == true,
                           offerStatus: _offeredStatuses[r['id']],
                           offerCount: _offerCounts[r['id']] ?? 0,
+                          // La oleada B manda; si no trajo entrada (falló, o la
+                          // fila ya venía completa desde `allOpenRequests`), se
+                          // usan los de la propia fila. Las dos fuentes leen las
+                          // mismas cinco columnas, así que no pueden discrepar.
+                          requirements:
+                              _requirements[r['id']] ?? requirementsFromRow(r),
                           createdAt: DateTime.parse(r['created_at'] as String),
                           // push (no go): apila el detalle para que el atrás
                           // vuelva a la bandeja (el go reemplazaba la pila y la
@@ -375,6 +389,7 @@ class _InboxCard extends StatelessWidget {
     this.wholesale = false,
     this.offerStatus,
     this.offerCount = 0,
+    this.requirements = RequestRequirements.none,
   });
 
   final String title;
@@ -396,6 +411,11 @@ class _InboxCard extends StatelessWidget {
   /// Cuántas ofertas ha recibido la solicitud EN TOTAL (FOMO, pedido PO
   /// 2026-07-21): solo el número, no se pueden ver. 0 = no se muestra chip.
   final int offerCount;
+
+  /// Lo que el cliente EXIGE en esta solicitud (comprobante fiscal, suplidor
+  /// del Estado, envío…). Se pintan como símbolos mudos junto a la hora; el
+  /// texto completo vive en el detalle.
+  final RequestRequirements requirements;
 
   /// Miniatura de la foto del cliente (nunca ícono roto: cae al ícono si no
   /// hay foto o falla la URL). Antes la lista era solo-ícono — el PO reportó
@@ -483,6 +503,12 @@ class _InboxCard extends StatelessWidget {
                         fontSize: 11,
                         color: cs.onSurfaceVariant,
                       ),
+                    ),
+                    // Antes que los chips de estado a propósito: esto es lo que
+                    // pide el cliente; "Ya ofertaste" es lo que hiciste tú.
+                    RequestRequirementBadges(
+                      req: requirements,
+                      variant: RequirementBadgeVariant.symbols,
                     ),
                     // FOMO (pedido PO 2026-07-21): cuántas ofertas ya recibió
                     // esta solicitud — solo el número, no se pueden ver. Chip
