@@ -2026,25 +2026,37 @@ Future<
     String id,
     String name,
     String? logoUrl,
+    String? coverUrl,
     bool verified,
     String? categoryId,
     String? city,
     bool wholesale,
     String? description,
+    List<String> seals,
+    Map<String, dynamic> raw,
   })?
 >
 myBusinessProfile() async {
   final uid = supa.auth.currentUser!.id;
+  // `cover_url` y las columnas de detalle (experiencia, fundación, equipo,
+  // cobertura, horario, idiomas, pagos, garantía) entraron el 2026-08-01: la
+  // app enseñaba tres chips donde la web tiene una ficha entera, y la portada
+  // no se leía en ningún sitio. Todas son de lectura pública — verificado en
+  // los grants por columna, no hizo falta migración.
   final biz = await supa
       .from('provider_businesses')
       .select(
-        'id,name,logo_url,business_verified_at,category_id,city,is_wholesale,description',
+        'id,name,logo_url,cover_url,business_verified_at,identity_verified_at,'
+        'whatsapp_verified_at,category_id,city,is_wholesale,description,'
+        'business_type,experience_years,founded_year,employees_count,'
+        'service_area,service_hours,languages,payment_methods,warranty',
       )
       .eq('user_id', uid)
       .limit(1)
       .maybeSingle();
   if (biz == null) return null;
   final logo = biz['logo_url'] as String?;
+  final cover = biz['cover_url'] as String?;
   final city = (biz['city'] as String?)?.trim();
   final desc = (biz['description'] as String?)?.trim();
   final cat = (biz['category_id'] as String?)?.trim();
@@ -2052,13 +2064,28 @@ myBusinessProfile() async {
     id: biz['id'] as String,
     name: (biz['name'] as String?) ?? '',
     logoUrl: (logo != null && logo.isNotEmpty) ? logo : null,
+    coverUrl: (cover != null && cover.isNotEmpty) ? cover : null,
     verified: businessVerifiedFrom(biz),
     categoryId: (cat != null && cat.isNotEmpty) ? cat : null,
     city: (city != null && city.isNotEmpty) ? city : null,
     wholesale: biz['is_wholesale'] == true,
     description: (desc != null && desc.isNotEmpty) ? desc : null,
+    seals: verificationSealsFrom(biz),
+    raw: biz,
   );
 }
+
+/// Los tres sellos de verificación resueltos a ETIQUETA, en el orden de la web
+/// (identidad → RNC → WhatsApp). Lista vacía = negocio sin verificar.
+///
+/// ⚠️ "Negocio verificado" sale de `business_verified_at` (el RNC revisado por
+/// un admin) y NUNCA del WhatsApp del negocio: son credenciales distintas y
+/// confundirlas ya fue un bug (ver [businessVerifiedFrom]).
+List<String> verificationSealsFrom(Map<String, dynamic> biz) => [
+  if (biz['identity_verified_at'] != null) 'Identidad verificada',
+  if (biz['business_verified_at'] != null) 'Negocio verificado',
+  if (biz['whatsapp_verified_at'] != null) 'WhatsApp verificado',
+];
 
 /// TODAS las solicitudes abiertas, de cualquier rubro, excluyendo las propias.
 ///
@@ -2162,21 +2189,37 @@ Future<String?> providerBusinessType(String businessId) async {
 /// ve nombre, tienda y logo sin desbloquear nada). Lectura directa: los grants
 /// por columna de `provider_businesses` conceden `name`/`logo_url` y NO
 /// conceden whatsapp/address/rnc, así que el contacto sigue siendo ilegible.
-typedef BusinessIdentity = ({String name, String? logoUrl});
+/// `coverUrl` y `raw` se sumaron el 2026-08-01 con el rediseño de la tienda:
+/// la portada y las columnas de detalle también son de lectura pública (están
+/// en los mismos grants por columna), así que la tienda ajena puede lucir
+/// igual que la propia sin abrir ni un permiso nuevo.
+typedef BusinessIdentity = ({
+  String name,
+  String? logoUrl,
+  String? coverUrl,
+  Map<String, dynamic> raw,
+});
 
 Future<BusinessIdentity?> businessPublicIdentity(String businessId) async {
   final row = await supa
       .from('provider_businesses')
-      .select('name,logo_url')
+      .select(
+        'name,logo_url,cover_url,is_wholesale,business_type,experience_years,'
+        'founded_year,employees_count,service_area,service_hours,languages,'
+        'payment_methods,warranty,category_id,city',
+      )
       .eq('id', businessId)
       .maybeSingle();
   if (row == null) return null;
   final logo = row['logo_url'] as String?;
+  final cover = row['cover_url'] as String?;
   return (
     name: (row['name'] as String?)?.trim().isNotEmpty == true
         ? (row['name'] as String).trim()
         : 'Proveedor',
     logoUrl: (logo != null && logo.isNotEmpty) ? logo : null,
+    coverUrl: (cover != null && cover.isNotEmpty) ? cover : null,
+    raw: row,
   );
 }
 

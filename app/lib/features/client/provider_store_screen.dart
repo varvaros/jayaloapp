@@ -3,7 +3,10 @@ import '../shared/network_image.dart';
 
 import '../../core/brand.dart';
 import '../../data/repos.dart';
+import '../../domain/catalog.dart';
 import '../shared/brand_kit.dart';
+import '../shared/business_cover_hero.dart';
+import '../shared/business_details_card.dart';
 import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
@@ -124,7 +127,6 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
     if (s == null) return null;
     final cs = Theme.of(context).colorScheme;
     final hasRating = s.avgRating != null && s.reviewsCount > 0;
-    final logoUrl = _identity?.logoUrl;
     final badges = <(IconData, String)>[
       if (s.identityVerified || s.businessVerified || s.whatsappVerified)
         (Icons.verified_outlined, 'Proveedor verificado'),
@@ -134,28 +136,9 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
     ];
     return JayaloCard(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      // El logo y el nombre YA no van aquí: los carga `BusinessCoverHero`
+      // desde el 2026-08-01. Repetirlos era verlos dos veces seguidas.
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          CircleAvatar(
-            radius: 23,
-            backgroundColor: cs.primary.withValues(alpha: .12),
-            backgroundImage: logoUrl != null
-                ? jayaloAvatarImage(logoUrl, 46, context)
-                : null,
-            child: logoUrl == null
-                ? Icon(Icons.storefront_outlined, color: cs.primary)
-                : null,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(_identity?.name ?? 'Proveedor',
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: jayaloHead(context))),
-          ),
-        ]),
-        const SizedBox(height: 14),
         Row(children: [
           Expanded(
             child: _statCell(
@@ -215,6 +198,33 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
     );
   }
 
+  /// Categoría y ciudad en una línea bajo el nombre de la portada, igual que
+  /// en Mi negocio. Nulo si el negocio no declara ninguna de las dos.
+  String? _subtitle() {
+    final raw = _identity?.raw;
+    if (raw == null) return null;
+    final cat = categoryNameById((raw['category_id'] as String?)?.trim());
+    final city = (raw['city'] as String?)?.trim();
+    final partes = [
+      ?cat,
+      if (city != null && city.isNotEmpty) city,
+    ];
+    return partes.isEmpty ? null : partes.join(' · ');
+  }
+
+  /// Sellos para la portada. Salen de `_stats` (la RPC de confianza), no de
+  /// `_identity`: las marcas de verificación NO están en los grants por
+  /// columna de `provider_businesses` para un tercero.
+  List<String> _sealLabels() {
+    final s = _stats;
+    if (s == null) return const [];
+    return [
+      if (s.identityVerified) 'Identidad verificada',
+      if (s.businessVerified) 'RNC verificado',
+      if (s.whatsappVerified) 'WhatsApp verificado',
+    ];
+  }
+
   /// Celda de un indicador del grid: cifra grande (con estrella opcional) + una
   /// etiqueta corta debajo, sobre una píldora tenue.
   Widget _statCell(String value, String label, {bool star = false}) {
@@ -272,15 +282,33 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
             onChanged: (i) => setState(() => _tab = i),
           ),
         ),
-        ?repCard,
         Expanded(
           child: _loading
               ? const JayaloLoaderBlock()
-              : switch (section) {
-                  _Section.productos => _itemsList(_productos, section),
-                  _Section.servicios => _itemsList(_servicios, section),
-                  _Section.trabajos => _portfolioList(),
-                },
+              // Portada + confianza + ficha comparten scroll con la lista: si
+              // fueran bloques fijos encima, en un teléfono no quedaría sitio
+              // para los productos.
+              : CustomScrollView(slivers: [
+                  SliverToBoxAdapter(
+                    child: BusinessCoverHero(
+                      name: _identity?.name ?? 'Proveedor',
+                      coverUrl: _identity?.coverUrl,
+                      logoUrl: _identity?.logoUrl,
+                      subtitle: _subtitle(),
+                      seals: _sealLabels(),
+                    ),
+                  ),
+                  if (repCard != null) SliverToBoxAdapter(child: repCard),
+                  SliverToBoxAdapter(
+                    child: BusinessDetailsCard(
+                        business: _identity?.raw ?? const {}),
+                  ),
+                  switch (section) {
+                    _Section.productos => _itemsList(_productos, section),
+                    _Section.servicios => _itemsList(_servicios, section),
+                    _Section.trabajos => _portfolioList(),
+                  },
+                ]),
         ),
       ]),
     );
@@ -292,13 +320,15 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
           ? 'Este proveedor aún no publica productos.'
           : 'Este proveedor aún no publica servicios.');
     }
-    return ListView.builder(
+    return SliverPadding(
       padding:
           EdgeInsets.only(top: 8, bottom: 12 + navBarReservedSpace(context)),
+      sliver: SliverList.builder(
       itemCount: items.length,
       // La tarjeta no navega a un detalle propio: ya estás dentro de la
       // tienda de este negocio.
       itemBuilder: (_, i) => ProductListCard(item: items[i]).cascadeIn(i),
+    ),
     );
   }
 
@@ -307,9 +337,10 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       return _empty('Este proveedor aún no muestra trabajos anteriores.');
     }
     final cs = Theme.of(context).colorScheme;
-    return ListView.builder(
+    return SliverPadding(
       padding:
           EdgeInsets.only(top: 12, bottom: 12 + navBarReservedSpace(context)),
+      sliver: SliverList.builder(
       itemCount: _portfolio.length,
       itemBuilder: (_, i) {
         final it = _portfolio[i];
@@ -359,10 +390,11 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
           ),
         );
       },
+    ),
     );
   }
 
-  Widget _empty(String msg) => Center(
+  Widget _empty(String msg) => SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.all(28),
           child: Text(msg,

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../../core/brand.dart';
 import '../../core/editor_link_client.dart';
 import '../../core/secure_web_launch.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
-import '../shared/network_image.dart';
+import '../shared/business_cover_hero.dart';
+import '../shared/business_details_card.dart';
 import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
 
@@ -17,11 +17,24 @@ typedef StoreProfile = ({
   String id,
   String name,
   String? logoUrl,
+
+  /// Portada del negocio. La app NO la leía en ningún sitio hasta el
+  /// 2026-08-01, que es la mitad de por qué la tienda no se parecía a la web.
+  String? coverUrl,
   bool verified,
   String? categoryId,
   String? city,
   bool wholesale,
   String? description,
+
+  /// Sellos ya resueltos a etiqueta ("Identidad verificada", "RNC
+  /// verificado", "WhatsApp verificado") para la portada.
+  List<String> seals,
+
+  /// La fila cruda de `provider_businesses`, para `BusinessDetailsCard`: las
+  /// columnas de detalle son de lectura pública y la ficha decide sola qué
+  /// enseñar.
+  Map<String, dynamic> raw,
 });
 
 /// "Mi tienda" (spec 2026-07-20-mi-tienda-solo-lectura): *Mi negocio* muestra el
@@ -200,8 +213,17 @@ class _MyBusinessViewState extends State<MyBusinessView> {
       controller: _scroll,
       padding: EdgeInsets.only(bottom: 24 + navBarReservedSpace(context)),
       children: [
-        _BusinessHeaderCard(business: b).cascadeIn(0),
-        _DetailsRow(business: b).cascadeIn(1),
+        // Portada editorial + ficha de detalles: las dos piezas del diseño web
+        // que nunca se portaron (pedido PO 2026-08-01). Antes esto era una
+        // tarjeta con logo y nombre, y tres chips sueltos.
+        BusinessCoverHero(
+          name: b.name,
+          coverUrl: b.coverUrl,
+          logoUrl: b.logoUrl,
+          subtitle: _subtitleFor(b),
+          seals: b.seals,
+        ).cascadeIn(0),
+        BusinessDetailsCard(business: b.raw).cascadeIn(1),
         if (widget.onEditWeb != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -225,53 +247,17 @@ class _MyBusinessViewState extends State<MyBusinessView> {
     if (items.isEmpty) return [_EmptyLine(text: empty)];
     return [for (final i in items) ProductListCard(item: i)];
   }
-}
 
-/// Fila de detalles bajo la cabecera: categoría, zona y chip mayorista.
-/// Espejo de lo principal que muestra `BusinessDetailsCard` de la web.
-class _DetailsRow extends StatelessWidget {
-  const _DetailsRow({required this.business});
-  final StoreProfile business;
-
-  @override
-  Widget build(BuildContext context) {
-    final catName = categoryNameById(business.categoryId);
-    final chips = <Widget>[
-      if (catName != null)
-        _MetaChip(icon: Icons.category_outlined, label: catName),
-      if (business.city != null)
-        _MetaChip(icon: Icons.place_outlined, label: business.city!),
-      if (business.wholesale)
-        _MetaChip(icon: Icons.inventory_2_outlined, label: 'Mayorista'),
+  /// Categoría y ciudad en UNA línea bajo el nombre, como la web en móvil.
+  /// Antes eran dos chips sueltos junto al de "Mayorista"; el mayorista pasó a
+  /// ser una fila de la ficha de detalles ("Ventas: Al por mayor").
+  static String? _subtitleFor(StoreProfile b) {
+    final partes = [
+      if (categoryNameById(b.categoryId) != null)
+        categoryNameById(b.categoryId)!,
+      if (b.city != null) b.city!,
     ];
-    if (chips.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-      child: Wrap(spacing: 8, runSpacing: 8, children: chips),
-    );
-  }
-}
-
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        border: Border.all(color: cs.outlineVariant),
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 14, color: cs.primary),
-        const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontSize: 12)),
-      ]),
-    );
+    return partes.isEmpty ? null : partes.join(' · ');
   }
 }
 
@@ -354,48 +340,3 @@ class _ReviewCard extends StatelessWidget {
 
 /// Cabecera: logo (o ícono genérico), nombre y el sello "Negocio verificado"
 /// si el RNC está aprobado. Mismo tono verde que Ajustes para "confirmado".
-class _BusinessHeaderCard extends StatelessWidget {
-  const _BusinessHeaderCard({required this.business});
-  final StoreProfile business;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final tone = dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight;
-    final logoUrl = business.logoUrl;
-    return JayaloCard(
-      child: Row(children: [
-        CircleAvatar(
-          radius: 28,
-          backgroundColor: cs.surfaceContainerHighest,
-          backgroundImage:
-              logoUrl != null ? jayaloAvatarImage(logoUrl, 56, context) : null,
-          child: logoUrl == null
-              ? Icon(Icons.storefront_outlined, color: cs.onSurfaceVariant)
-              : null,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(business.name.isEmpty ? 'Tu negocio' : business.name,
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: jayaloHead(context))),
-              if (business.verified) ...[
-                const SizedBox(height: 6),
-                StatusChip(
-                    label: 'Negocio verificado',
-                    icon: Icons.verified,
-                    tone: tone),
-              ],
-            ],
-          ),
-        ),
-      ]),
-    );
-  }
-}

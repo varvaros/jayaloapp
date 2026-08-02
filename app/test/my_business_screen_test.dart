@@ -12,15 +12,32 @@ void main() {
         home: child,
       );
 
+
+  /// La portada editorial (2026-08-01) es MUCHO más alta que la cabecera de
+  /// tarjeta que sustituyó, así que en el viewport de 800x600 de los tests las
+  /// secciones de abajo ya no nacen construidas. Se baja como bajaría alguien.
+  Future<void> bajar(WidgetTester tester) async {
+    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.pumpAndSettle();
+  }
+
   const negocio = (
     id: 'biz-1',
     name: 'Ferretería Pérez',
     logoUrl: null,
+    coverUrl: null,
     verified: true,
     categoryId: 'ferreteria',
     city: 'Santiago',
     wholesale: true,
     description: 'Todo en herramientas',
+    seals: ['Negocio verificado'],
+    raw: {
+      'is_wholesale': true,
+      'experience_years': 12,
+      'service_area': 'ambos',
+      'warranty': '6 meses',
+    },
   );
 
   final unProducto = [
@@ -47,20 +64,37 @@ void main() {
         rating: rating,
       ));
 
-  testWidgets('muestra nombre, verificación y detalles', (tester) async {
+  // Rediseño 2026-08-01 (pedido PO: la tienda de la app no tenía el diseño
+  // coordinado con la web). La cabecera de tarjeta y los tres chips dejan
+  // paso a la portada editorial + la ficha de detalles completa.
+  testWidgets('la portada trae nombre, categoría, ciudad y sellos',
+      (tester) async {
     await tester.pumpWidget(view());
     await tester.pumpAndSettle();
     expect(find.text('Ferretería Pérez'), findsOneWidget);
-    expect(find.textContaining('verificado'), findsOneWidget);
-    expect(find.textContaining('Ferretería'), findsWidgets); // nombre + categoría
-    expect(find.textContaining('Santiago'), findsOneWidget); // zona
-    expect(find.text('Mayorista'), findsOneWidget); // chip mayorista
+    expect(find.text('Negocio verificado'), findsOneWidget);
+    // Categoría y ciudad ya no son dos chips sueltos: van en una línea.
+    expect(find.textContaining('Santiago'), findsOneWidget);
+  });
+
+  testWidgets('la ficha de detalles enseña lo que la web, no tres chips',
+      (tester) async {
+    await tester.pumpWidget(view());
+    await tester.pumpAndSettle();
+    expect(find.text('DETALLES DEL PROVEEDOR'), findsOneWidget);
+    expect(find.text('12 años'), findsOneWidget);
+    expect(find.text('En taller y a domicilio'), findsOneWidget);
+    expect(find.text('6 meses'), findsOneWidget);
+    // "Mayorista" pasa a ser una fila con etiqueta, no un chip suelto.
+    expect(find.text('Al por mayor'), findsOneWidget);
+    expect(find.text('Mayorista'), findsNothing);
   });
 
   testWidgets('lista productos y servicios', (tester) async {
     await tester
         .pumpWidget(view(productos: unProducto, servicios: unServicio));
     await tester.pumpAndSettle();
+    await bajar(tester);
     expect(find.text('PRODUCTOS'), findsOneWidget);
     expect(find.text('SERVICIOS'), findsOneWidget);
     expect(find.text('Taladro'), findsOneWidget);
@@ -82,6 +116,7 @@ void main() {
     await tester.pumpWidget(
         view(reviews: unaResena, rating: (avg: 4.8, count: 12)));
     await tester.pumpAndSettle();
+    await bajar(tester);
     expect(find.text('OPINIONES'), findsOneWidget);
     expect(find.textContaining('4.8'), findsOneWidget);
     expect(find.textContaining('12'), findsWidgets);
@@ -91,6 +126,7 @@ void main() {
   testWidgets('sin opiniones muestra aviso', (tester) async {
     await tester.pumpWidget(view());
     await tester.pumpAndSettle();
+    await bajar(tester);
     expect(find.textContaining('Aún no tienes opiniones'), findsOneWidget);
   });
 

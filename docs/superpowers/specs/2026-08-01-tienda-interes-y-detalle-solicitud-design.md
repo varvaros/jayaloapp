@@ -399,6 +399,48 @@ leer la columna aparte (los grants lo permiten).
 
 Es la tarea más grande de las seis: dos sesiones, o una larga.
 
+### Estado: HECHA (2026-08-01)
+
+Sin migración, como estaba previsto: las 15 columnas que hacían falta ya estaban
+en los grants de SELECT para `anon` y `authenticated` — comprobado contra la BD.
+
+Tres piezas nuevas:
+
+- `domain/business_details.dart` — puro y con **18 tests**. Decide qué filas
+  salen y con qué texto, espejo de `providerDetails.ts` + `BusinessDetailsCard.tsx`:
+  orden de la web, experiencia solo si es > 0, fundación solo en negocios
+  `formal`, singular/plural, códigos a etiqueta (y los desconocidos crudos, no
+  descartados), y el resumen de horario con agrupación de días consecutivos a
+  partir de tres. `currentYear` entra por parámetro para que "hace N años" se
+  pueda probar.
+- `features/shared/business_cover_hero.dart` — la portada. Sigue el tratamiento
+  MÓVIL de la web (contenido en flujo normal sobre el scrim, no `absolute`), que
+  es el que aplica en un teléfono. Sin portada, degradado de marca.
+- `features/shared/business_details_card.dart` — la ficha. Si no hay ninguna
+  fila no se dibuja el marco: un título con nada debajo parece un error de carga.
+
+**T5A (Mi negocio).** `myBusinessProfile()` pasa a traer las 20 columnas;
+`StoreProfile` gana `coverUrl`, `seals` y `raw`. `_BusinessHeaderCard`,
+`_DetailsRow` y `_MetaChip` se retiran: categoría y ciudad son ahora el
+subtítulo de la portada, y "Mayorista" es una fila de la ficha ("Ventas: Al por
+mayor"). Nuevo helper `verificationSealsFrom` en repos, con la advertencia de
+siempre: "Negocio verificado" sale del RNC, nunca del WhatsApp.
+
+**T5B (tienda pública).** `BusinessIdentity` gana `coverUrl` y `raw`. El logo y
+el nombre salen del bloque de confianza —los carga la portada, y repetirlos era
+verlos dos veces seguidas—. El cuerpo pasa a un `CustomScrollView`: portada,
+confianza, ficha y lista comparten scroll, porque como bloques fijos encima de
+la lista no habría quedado sitio para los productos en un teléfono. Los sellos
+salen de `_stats` y no de `_identity`: las marcas de verificación no están en
+los grants por columna para un tercero.
+
+App: analyze 0, **649** tests, APK debug construido.
+
+Nota de test: la portada es bastante más alta que la cabecera que sustituyó, así
+que en el viewport de 800x600 las secciones de abajo de Mi negocio ya no nacen
+construidas. Tres tests ganaron un scroll previo — es el viewport, no un
+cambio de comportamiento.
+
 ---
 
 ## Orden sugerido
