@@ -635,6 +635,20 @@ class _ProviderRequestDetailScreenState
         );
         if (!mounted) return;
         _toast('Oferta actualizada');
+        // Entrada en sitio (pedido PO 2026-08-03): no se sale de la solicitud.
+        // Se relee la fila para que la tarjeta reaparezca con el precio nuevo y
+        // se vuelve a modo lectura. `_busy` lo repone el `finally` de abajo,
+        // que también corre con este `return`.
+        if (_editingInPlace) {
+          await _reloadOffer();
+          if (!mounted) return;
+          setState(() {
+            _editOfferId = null;
+            _editingInPlace = false;
+          });
+          return;
+        }
+        // Entrada por ruta, desde "Mis ofertas": sale a la lista, como siempre.
         context.go('/provider/offers');
         return;
       }
