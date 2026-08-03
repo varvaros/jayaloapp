@@ -771,19 +771,18 @@ class _RequestCard extends StatelessWidget {
   /// de [SwipeToActions] (el swipe aplica el margen exterior).
   final EdgeInsetsGeometry? margin;
 
-  static const _live = {
-    RequestPhase.withOffers,
-    RequestPhase.accepted,
-    RequestPhase.unlocked,
-  };
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final tone = toneFor(context, phase);
-    final tinted = _live.contains(phase);
-    // Tarjeta teñida en las fases vivas; blanca cuando espera/completa.
+    // Teñida en todas las fases MENOS `waiting`: una solicitud recién puesta,
+    // aún sin ofertas, es la más viva de todas y va sobre blanco.
+    // `completed` también se tiñe (pedido PO 2026-08-03), con su gris: antes
+    // caía en el mismo blanco que `waiting` y una solicitud ya cerrada se leía
+    // como activa.
+    final tinted = phase != RequestPhase.waiting;
     final bg = tinted ? tone.bg : cs.surfaceContainerLowest;
     final fg = tinted ? tone.ink : cs.onSurface;
     final (_, label) = phaseChip(phase, offerCount);
@@ -847,7 +846,32 @@ class _RequestCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    _pill(label, tone, tinted, dark),
+                    // Completada: banda violeta CENTRADA (pedido PO
+                    // 2026-08-03). Sustituye a la píldora de estado, no la
+                    // acompaña: dos etiquetas diciendo lo mismo en la misma
+                    // tarjeta es ruido. El violeta pleno sobre el gris apagado
+                    // es lo que hace legible el cierre de un vistazo.
+                    if (phase == RequestPhase.completed)
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: cs.primary,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            'Completado',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      _pill(label, tone, tinted, dark),
                   ],
                 ),
               ),
