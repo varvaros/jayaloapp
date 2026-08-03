@@ -137,7 +137,10 @@ hoy nadie lee ese dato y el texto no debe prometer lo que no ocurre.
 Al pulsar enviar, si `unmetRequirements` devuelve algo, se espera el diálogo **dentro del propio
 manejador de enviar**:
 
-- **Editar** → se cierra, la vista sube hasta los dos interruptores, no se envía nada.
+- **Editar** → se cierra el diálogo, no se envía nada y el proveedor queda en el formulario, con
+  los interruptores visibles justo encima del bloque de fotos (se consideró hacer scroll
+  automático hasta ellos y se dejó fuera a propósito: la pantalla ya tiene 1654 líneas y ese scroll
+  no tiene costura de test).
 - **Enviar de todos modos** → continúa el envío que ya estaba en marcha.
 
 **Aquí el diseño se aparta de la web, a favor.** La web guarda un "ya lo acusé" en el estado del

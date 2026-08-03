@@ -282,8 +282,10 @@ const offerCols =
     'evaluation_price,availability_note,estimated_duration,product_brand,'
     'product_colors,product_warranty,delivery_time'
     // Capacidades declaradas al ofertar (foto del momento: su UPDATE está
-    // denegado). El formulario de edición las muestra apagadas y en solo
-    // lectura, así que hay que traerlas para pintarlas.
+    // denegado). Se traen aquí porque el listado (`offersForRequest`) es lo
+    // que la próxima tanda usa para que el cliente vea lo que el negocio
+    // declaró. El formulario de edición NO pasa por acá: usa [offerForEdit],
+    // que hace un `select()` completo.
     ',has_fiscal_receipt,is_state_supplier';
 
 Future<List<Map<String, dynamic>>> offersForRequest(String requestId) async =>
@@ -705,6 +707,7 @@ myBusinessForOffer() async {
 ///
 /// Es público solo para que ese test pueda mirar dentro; no lo llames desde
 /// una pantalla.
+@visibleForTesting
 Map<String, dynamic> offerFields({
   double? price,
   double? priceMin,

@@ -33,6 +33,10 @@ compartido, y el fallo no se ve por ningún otro lado.
       enumera ("comprobante fiscal y suplidor del Estado").
 - [ ] **Editar** cierra el aviso, no envía nada y deja ver los interruptores.
 - [ ] Marcar las dos capacidades y enviar: **no sale ningún aviso** y la oferta se envía.
+- [ ] Repetir sin marcar ninguna capacidad: cuando salga el aviso, pulsar **"Enviar de todos
+      modos"** (mensaje compuesto, fotos subidas si aplica). Confirmar que la oferta se envía.
+      Abrir "mejorar oferta" sobre esa misma oferta y confirmar que los dos interruptores se ven
+      **apagados**: lo declarado (nada) es lo que quedó guardado, aunque el cliente pedía ambas.
 
 ## 4. La evaluación no dispara el aviso
 
@@ -50,16 +54,18 @@ compartido, y el fallo no se ve por ningún otro lado.
 ## 6. Modo edición
 
 - [ ] Entrar a "mejorar oferta" de una oferta ya enviada.
-- [ ] Los dos interruptores se ven, **apagados y no tocables**, con la nota "Quedó fijado al enviar
-      tu oferta", y muestran lo que se declaró al enviarla.
+- [ ] Los dos interruptores se ven **en solo lectura (no tocables)**, con la nota "Quedó fijado al
+      enviar tu oferta", mostrando exactamente lo que se declaró al enviarla (si se declaró
+      "emito comprobante fiscal", el interruptor se ve ENCENDIDO; no es que se vean apagados).
 - [ ] Al guardar cambios **no sale el aviso de cotejo**.
 
 ## 7. Fallo de red al abrir
 
 - [ ] Poner el teléfono en modo avión justo antes de abrir el detalle de una solicitud, y volver a
       conectarlo.
-- [ ] Los interruptores quedan apagados, no encendidos. Falla del lado seguro: se avisa de más,
-      nunca se afirma algo que el proveedor no declaró.
+- [ ] Como falla la lectura del negocio, no aparece el formulario de oferta: se ve "Completa tu
+      negocio en jayalo.com para ofertar". Los interruptores no llegan a mostrarse — y por lo
+      tanto nunca se afirma algo que el proveedor no declaró. Falla del lado seguro.
 
 ## 8. Modo oscuro
 
