@@ -610,7 +610,7 @@ class _ProviderRequestDetailScreenState
       // SIEMPRE, no solo en edición.
       final imageUrls = [..._keptUrls, ...newUrls];
       if (_editing) {
-        await updateOffer(
+        final written = await updateOffer(
           offerId: _editOfferId!,
           price: p,
           priceMin: mn,
@@ -651,29 +651,14 @@ class _ProviderRequestDetailScreenState
           // escritura que sí tuvo éxito. Los valores de abajo son los que
           // acabamos de confirmar que se escribieron: no hay red ni lectura
           // que pueda fallar.
-          final patched = {
-            ..._existingOffer!,
-            'price': p,
-            'price_min': mn,
-            'price_max': mx,
-            'pricing_mode': mode,
-            'hourly_rate': hr,
-            'estimated_hours': hrs,
-            'message': message,
-            'image_urls': imageUrls,
-            'offers_shipping': isService ? false : _offersShipping,
-            'shipping_price': double.tryParse(_shipping.text),
-            'offers_installation': isService ? false : _offersInstallation,
-            'installation_price': double.tryParse(_installation.text),
-            'requires_evaluation': evalOn,
-            'evaluation_price': double.tryParse(_evaluation.text),
-            'availability_note': isService ? _availability.text.trim() : '',
-            'estimated_duration': isService ? _duration.text.trim() : '',
-            'product_brand': isService ? '' : _brand.text.trim(),
-            'product_colors': isService ? const [] : _colors,
-            'product_warranty': isService ? '' : _warranty.text.trim(),
-            'delivery_time': isService ? '' : _delivery.text.trim(),
-          };
+          //
+          // `written` es el mapa EXACTO que `updateOffer` acaba de mandar a la
+          // base, no una recomposición. Recomponerlo aquí a mano divergía en
+          // seis campos: `offerFields` anula el costo de envío/instalación/
+          // evaluación si su toggle está apagado o el importe no es > 0, y
+          // guarda los detalles de producto vacíos como `null`, no como `''`.
+          // Esa copia rancia se colaba en la siguiente "Ver mi oferta".
+          final patched = {..._existingOffer!, ...written};
           setState(() {
             _existingOffer = patched;
             _editOfferId = null;

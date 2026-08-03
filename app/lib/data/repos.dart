@@ -856,7 +856,13 @@ Future<void> makeOffer({
 
 /// Edita una oferta PENDIENTE propia (RLS: dueño). No toca
 /// request_id/business_id/status; misma forma de payload que [makeOffer].
-Future<void> updateOffer({
+/// Devuelve el mapa que REALMENTE quedó escrito, para quien necesite refrescar
+/// su copia de la oferta sin releerla del servidor (el detalle de solicitud, al
+/// editar EN SITIO, se queda en pantalla). Recomponerlo a mano divergía: aquí
+/// abajo [offerFields] anula el costo de envío/instalación/evaluación si su
+/// toggle está apagado, y los detalles de producto vacíos los guarda como
+/// `null`, no como `''`.
+Future<Map<String, dynamic>> updateOffer({
   required String offerId,
   double? price,
   double? priceMin,
@@ -907,6 +913,7 @@ Future<void> updateOffer({
   }
   await supa.from('provider_offers').update(fields).eq('id', offerId);
   AppCaches.invalidateRequestLists();
+  return fields;
 }
 
 /// Fila COMPLETA de una oferta propia (todas las columnas) para prefijar el
