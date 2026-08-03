@@ -3,6 +3,18 @@
 Fecha: 2026-08-03
 Estado: aprobado por el PO, listo para plan de implementación
 
+## Los dos repos, porque son dos y confunden
+
+Esta tanda toca **dos repositorios de git independientes**, cada uno con sus propios commits:
+
+| Frente | Raíz del repo | Dónde corren los comandos |
+|---|---|---|
+| App (Flutter) | `C:\Users\ac\Downloads\jayalo-app` | `flutter` desde `app/`; `docs/` cuelga de la raíz |
+| Web (React) | `C:\Users\ac\Downloads\jayalo-main\jayalo-main` | desde esa raíz — **ojo, va anidada** dentro de otra carpeta del mismo nombre |
+
+Este spec vive en el repo de la app, junto a los de las tandas A y B, para que la serie no se parta.
+Las rutas `src/...` que aparecen abajo son relativas a la raíz de la web.
+
 ## El problema
 
 El cliente marca condiciones al crear la solicitud. Desde la tanda A el proveedor las ve; desde la
@@ -20,8 +32,8 @@ No es un caso raro: **11 de 43 solicitudes piden comprobante fiscal** y 3 piden 
 Dentro:
 
 - La pantalla donde el cliente ve las ofertas de su solicitud, una por frente:
-  `app/lib/features/client/request_status_screen.dart` y
-  `jayalo-main/src/routes/requests/$requestId.tsx`.
+  `app/lib/features/client/request_status_screen.dart` (app) y
+  `src/routes/requests/$requestId.tsx` (web).
 - Una función de cotejo nueva en cada módulo de dominio, con el mismo nombre y la misma forma.
 - Un componente de presentación por frente, en su propio fichero, probado aislado.
 
@@ -47,7 +59,9 @@ Fuera, **a propósito**:
    en la tanda B precisamente para esto, y el comentario de `repos.dart` lo dice.
 
 Lo único de datos en toda la tanda: añadir `has_fiscal_receipt,is_state_supplier` al `select` de
-ofertas de la web, en `requests/$requestId.tsx` (~línea 388).
+ofertas de la web, en `src/routes/requests/$requestId.tsx` (~línea 388). Es el `select` de la carga
+inicial de ofertas; el otro `provider_offers` de ese fichero (~línea 822) es un `update` de rechazo y
+**no se toca**.
 
 ## Qué ve el cliente
 
@@ -63,8 +77,10 @@ Tus condiciones
   ·  Suplidor del Estado — no lo declaró
 ```
 
-Una fila por condición del cliente, en orden canónico (envío → instalación → fiscal → Estado), con
-las etiquetas `short` que ya existen y **no se reescriben**.
+Una fila por condición **cotejable** que el cliente marcó, en orden canónico. El orden canónico de la
+serie es envío → instalación → evaluación → fiscal → Estado; aquí salen esas mismas en ese mismo
+orden **menos la evaluación**, que nunca es cotejable. Las etiquetas son los `short` que ya existen y
+**no se reescriben**.
 
 ## Decisiones del PO
 
