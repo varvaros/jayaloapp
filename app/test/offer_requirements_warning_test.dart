@@ -105,4 +105,44 @@ void main() {
     expect(find.textContaining('quedará registrado'), findsOneWidget);
     expect(find.textContaining('el cliente verá'), findsNothing);
   });
+
+  testWidgets('caben los cuatro requisitos máximos en una pantalla pequeña',
+      (tester) async {
+    // Restaura el tamaño al final para no contaminar el resto de la suite
+    addTearDown(tester.view.reset);
+
+    // Pantalla Android pequeña: 360×640
+    const screenSize = Size(360, 640);
+    const devicePixelRatio = 1.0;
+    tester.view.physicalSize = screenSize;
+    tester.view.devicePixelRatio = devicePixelRatio;
+
+    await tester.pumpWidget(MaterialApp(
+      theme: jayaloTheme(Brightness.light),
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () async {
+              // Los cuatro requisitos verificables: envío, instalación, fiscal, Estado
+              await showOfferRequirementsWarning(context, const [
+                Requirement.shipping,
+                Requirement.installation,
+                Requirement.fiscal,
+                Requirement.state,
+              ]);
+            },
+            child: const Text('abrir'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('abrir'));
+    await tester.pumpAndSettle();
+
+    // El diálogo no desborda (pumpAndSettle habría fallado si hubiera desborde)
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('Editar'), findsOneWidget);
+    expect(find.text('Enviar de todos modos'), findsOneWidget);
+    expect(find.text('Requiere suplidor del Estado'), findsOneWidget);
+  });
 }

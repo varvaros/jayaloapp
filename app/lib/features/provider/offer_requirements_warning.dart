@@ -20,34 +20,37 @@ Future<bool> showOfferRequirementsWarning(
     context: context,
     builder: (ctx) => AlertDialog(
       title: const Text('El cliente pide algo que tu oferta no cubre'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Esta solicitud requiere ${unmetRequirementsMessage(unmet)} y no lo '
-            'marcaste en tu oferta. Si sí lo cumples, edítalo antes de enviar; '
-            'si no, quedará registrado en tu oferta que no lo cumples.',
-          ),
-          const SizedBox(height: 12),
-          for (final k in unmet)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    requirementLabel(k).chip,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  Text(
-                    requirementLabel(k).hint,
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                  ),
-                ],
-              ),
+      content: SingleChildScrollView(
+        // Cuatro requisitos con su explicación no caben en una pantalla pequeña
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Esta solicitud requiere ${unmetRequirementsMessage(unmet)} y no lo '
+              'marcaste en tu oferta. Si sí lo cumples, edítalo antes de enviar; '
+              'si no, quedará registrado en tu oferta que no lo cumples.',
             ),
-        ],
+            const SizedBox(height: 12),
+            for (final k in unmet)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      requirementLabel(k).chip,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      requirementLabel(k).hint,
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
       actions: [
         TextButton(
