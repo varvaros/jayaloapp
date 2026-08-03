@@ -193,6 +193,25 @@ detalle `/requests/$requestId`.
   independientes, para que `closed` permita **borrar** pero no **editar**. Las demás fases conservan
   su comportamiento exacto: `waiting`/`withOffers` ambas cosas, `accepted`/`unlocked`/`completed`
   ninguna.
+
+### El borrado necesita además una migración
+
+Borrar va por la RPC `cancel_customer_request`, que **rechaza con `unlocked_offer_exists` si alguna
+oferta de la solicitud tiene `unlocked_at` puesto**. Comprobado contra producción: **las 13
+solicitudes cerradas tienen su oferta desbloqueada** — es inevitable, porque el proveedor paga el
+desbloqueo justo para abrir el chat que después se cerró. Sin tocar la RPC, el botón "Eliminar"
+fallaría siempre, y el toast existente (*"Responde a sus ofertas — si no aceptas ninguna, queda
+desierta"*) no tiene sentido en un trato ya cerrado.
+
+Decisión del PO: **añadir una excepción al guard**. El guard existe para no dejar sin respuesta a
+quien pagó; cuando la conversación de esa oferta está cerrada y la oferta no se completó, el
+proveedor ya obtuvo el contacto y el chat no puede reabrirse, así que el motivo no aplica. La
+condición de la excepción es **la misma regla de la fase "Cerrada"**, escrita en SQL — deben
+mantenerse en sincronía.
+
+Es una migración sobre una RPC que toca dinero: se verifica en `BEGIN`/`ROLLBACK` contra producción
+antes de aplicarse, incluyendo el caso que debe seguir bloqueado (oferta desbloqueada con
+conversación **abierta**).
 - **Consumidores del enum a revisar**: `request_status_screen.dart`, `request_detail_sheet.dart`,
   `brand_kit.dart`. Cada `switch` sobre `RequestPhase` es exhaustivo, así que el compilador señala
   todos los sitios — no hay que buscarlos a mano.
@@ -230,6 +249,10 @@ antes de aplicar):
 - Las fases vivas (esperando / con ofertas / aceptada / en contacto) no cambian.
 - Sobre una "Cerrada", el swipe ofrece **Eliminar** y no **Editar**; sobre una completada no ofrece
   ninguna de las dos.
+- Eliminar una "Cerrada" **funciona de verdad** (no sale `unlocked_offer_exists`), y la solicitud
+  desaparece de la lista.
+- Eliminar una solicitud con oferta desbloqueada y chat **abierto** sigue bloqueada con su toast de
+  siempre — la excepción no abre la puerta de par en par.
 - La lista no tarda más en abrir, y una lista sin ofertas aceptadas no dispara la consulta extra.
 - El detalle en la web dice lo mismo que la app para la misma solicitud.
 
@@ -239,5 +262,7 @@ parte B en el cableado de la pantalla. **El smoke en device es el único gate re
 ## Alcance
 
 - **Parte A**: una migración en el repo web (`supabase/migrations/`), más los iconos en app y web.
-- **Parte B**: app (`jayalo-app`) y web (`jayalo-main`). El ticket original decía "solo la app"; se
-  amplía por decisión del PO para que las dos superficies digan lo mismo desde el primer día.
+- **Parte B**: app (`jayalo-app`) y web (`jayalo-main`), más una segunda migración para el guard de
+  borrado. El ticket original decía "solo la app" y "sin base de datos"; ambas cosas se amplían por
+  decisión del PO — la web, para que las dos superficies digan lo mismo desde el primer día; la
+  migración, porque sin ella el botón "Eliminar" sería decorativo.
