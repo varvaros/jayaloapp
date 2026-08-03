@@ -654,6 +654,32 @@ Future<String?> myBusinessId() async {
   return row?['id'] as String?;
 }
 
+/// El negocio con el que se oferta, **y** las capacidades que tiene declaradas.
+///
+/// Existe aparte de [myBusinessId] a propósito: esa la llaman también el estado
+/// de sesión, el chat y ajustes, que solo necesitan el id y no deben pagar
+/// columnas de más.
+///
+/// El proveedor declara estas capacidades en la WEB (en la app "Mi tienda" es
+/// solo lectura y editar va por magic link). Aquí solo se leen, para premarcar
+/// las casillas de la oferta.
+Future<({String id, bool hasFiscalReceipt, bool isStateSupplier})?>
+myBusinessForOffer() async {
+  final uid = supa.auth.currentUser!.id;
+  final row = await supa
+      .from('provider_businesses')
+      .select('id,has_fiscal_receipt,is_state_supplier')
+      .eq('user_id', uid)
+      .limit(1)
+      .maybeSingle();
+  if (row == null) return null;
+  return (
+    id: row['id'] as String,
+    hasFiscalReceipt: row['has_fiscal_receipt'] == true,
+    isStateSupplier: row['is_state_supplier'] == true,
+  );
+}
+
 /// Ofertar es GRATIS. Campos idénticos al insert de la web
 /// (RequestRespondSection.tsx L940-954, camino precio fijo/rango).
 /// Campos compartidos entre CREAR ([makeOffer]) y EDITAR ([updateOffer]) una
@@ -664,7 +690,18 @@ Future<String?> myBusinessId() async {
 /// Todo campo de texto que entre a este mapa queda cubierto AUTOMÁTICAMENTE por
 /// el barrido anti-elusión de [makeOffer]/[updateOffer] (`payloadHasContactInfo`,
 /// espejo del de la web): no hay lista de campos que mantener a mano.
-Map<String, dynamic> _offerFields({
+///
+/// ⚠️ **Este mapa lo comparten CREAR y EDITAR, y eso restringe qué puede
+/// llevar.** `provider_offers` tiene el `UPDATE` de `has_fiscal_receipt` e
+/// `is_state_supplier` DENEGADO a propósito (son una foto de lo que el negocio
+/// declaraba al ofertar). Si esas dos columnas entraran aquí, el `UPDATE` las
+/// incluiría, PostgREST tumbaría la fila ENTERA por falta de permiso y
+/// "mejorar oferta" dejaría de funcionar del todo. Van solo en el `insert` de
+/// [makeOffer]. Lo vigila un test en `repos_test.dart`.
+///
+/// Es público solo para que ese test pueda mirar dentro; no lo llames desde
+/// una pantalla.
+Map<String, dynamic> offerFields({
   double? price,
   double? priceMin,
   double? priceMax,
@@ -743,9 +780,13 @@ Future<void> makeOffer({
   List<String> productColors = const [],
   String productWarranty = '',
   String deliveryTime = '',
+  // Capacidades declaradas para ESTA oferta. Van aquí y NO en `offerFields`
+  // porque su UPDATE está denegado: ver la advertencia de ese mapa.
+  bool hasFiscalReceipt = false,
+  bool isStateSupplier = false,
 }) async {
   final uid = supa.auth.currentUser!.id;
-  final fields = _offerFields(
+  final fields = offerFields(
     price: price,
     priceMin: priceMin,
     priceMax: priceMax,
@@ -781,6 +822,8 @@ Future<void> makeOffer({
       'request_id': request['id'],
       'request_title': request['title'],
       'status': 'pending',
+      'has_fiscal_receipt': hasFiscalReceipt,
+      'is_state_supplier': isStateSupplier,
       ...fields,
     });
   } on PostgrestException catch (e) {
@@ -823,7 +866,7 @@ Future<void> updateOffer({
   String productWarranty = '',
   String deliveryTime = '',
 }) async {
-  final fields = _offerFields(
+  final fields = offerFields(
     price: price,
     priceMin: priceMin,
     priceMax: priceMax,

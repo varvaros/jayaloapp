@@ -185,4 +185,25 @@ void main() {
       expect(await requirementsForRequests(const []), isEmpty);
     });
   });
+
+  group('offerFields', () {
+    // El mapa lo COMPARTEN makeOffer y updateOffer. El UPDATE de estas dos
+    // columnas está denegado en la base a propósito (son una foto del momento
+    // de ofertar), así que si se colaran aquí, PostgREST tumbaría la fila
+    // entera y "mejorar oferta" dejaría de funcionar del todo — un fallo que
+    // no aparece hasta que alguien edita una oferta. Este test es la única
+    // barrera automática que existe contra eso.
+    test('NO lleva las capacidades del proveedor', () {
+      final fields = offerFields(price: 100.0, message: 'hola');
+      expect(fields.containsKey('has_fiscal_receipt'), isFalse);
+      expect(fields.containsKey('is_state_supplier'), isFalse);
+    });
+
+    test('sigue llevando lo que sí es editable', () {
+      final fields = offerFields(price: 100.0, message: 'hola');
+      expect(fields['price'], 100.0);
+      expect(fields['message'], 'hola');
+      expect(fields.containsKey('offers_shipping'), isTrue);
+    });
+  });
 }
