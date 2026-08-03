@@ -2506,7 +2506,11 @@ Future<({String? categoryId, String? rubro})> myBusinessCategoryRubro(
 const productDetailCols =
     'id,user_id,business_id,name,description,color,'
     'price,price_min,price_max,image_urls,category_id,rubro,condition,'
-    'offers_shipping,offers_installation,kind';
+    'offers_shipping,offers_installation,kind'
+    // Detalles que la tabla YA guardaba y el detalle no traía ni pintaba
+    // (pedido PO 2026-08-03: coherencia visual con las ofertas). Ojo:
+    // `provider_products` NO tiene `delivery_time` — eso es de las ofertas.
+    ',brand,warranty,requires_evaluation';
 
 Future<Map<String, dynamic>?> productDetail(String id) async => await supa
     .from('provider_products')

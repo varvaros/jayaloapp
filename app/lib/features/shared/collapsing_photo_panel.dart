@@ -22,6 +22,7 @@ class CollapsingPhotoPanel extends StatelessWidget {
     required this.images,
     required this.fallbackIcon,
     this.expandedHeight = 300,
+    this.activeIndex = 0,
     this.leading,
     this.onOpenViewer,
   });
@@ -34,6 +35,12 @@ class CollapsingPhotoPanel extends StatelessWidget {
   final IconData fallbackIcon;
 
   final double expandedHeight;
+
+  /// Índice de la foto que LLENA el panel. Por defecto la primera; el catálogo
+  /// lo cambia desde su tira de miniaturas. Con el valor por defecto el panel
+  /// se dibuja exactamente igual que antes de existir este parámetro, así que
+  /// los detalles de solicitud/estado no cambian.
+  final int activeIndex;
 
   /// Va como `leading` de la barra, así que sigue tocable con el panel
   /// plegado — si desapareciera al colapsar, el usuario se quedaría sin salida.
@@ -60,6 +67,11 @@ class CollapsingPhotoPanel extends StatelessWidget {
 
     Widget fallback(Color color) =>
         Center(child: Icon(fallbackIcon, size: 120, color: color));
+
+    final mainIdx = images.isEmpty ? 0 : activeIndex.clamp(0, images.length - 1);
+    // La miniatura asoma la OTRA foto, nunca la que ya llena el panel: con
+    // `activeIndex` en 0 sigue siendo la segunda, como siempre.
+    final peekIdx = mainIdx == 0 ? 1 : 0;
 
     return SliverAppBar(
       pinned: true,
@@ -92,9 +104,9 @@ class CollapsingPhotoPanel extends StatelessWidget {
                     : GestureDetector(
                         onTap: onOpenViewer == null
                             ? null
-                            : () => onOpenViewer!(0),
+                            : () => onOpenViewer!(mainIdx),
                         child: JayaloNetworkImage(
-                          images.first,
+                          images[mainIdx],
                           fit: BoxFit.cover,
                           errorBuilder: (_, _, _) => fallback(amberInk),
                         ),
@@ -108,14 +120,15 @@ class CollapsingPhotoPanel extends StatelessWidget {
                   top: 30,
                   right: 0,
                   child: GestureDetector(
-                    onTap:
-                        onOpenViewer == null ? null : () => onOpenViewer!(1),
+                    onTap: onOpenViewer == null
+                        ? null
+                        : () => onOpenViewer!(peekIdx),
                     child: ClipRRect(
                       borderRadius: const BorderRadius.horizontal(
                         left: Radius.circular(16),
                       ),
                       child: JayaloNetworkImage(
-                        images[1],
+                        images[peekIdx],
                         width: 76,
                         height: 76,
                         fit: BoxFit.cover,
