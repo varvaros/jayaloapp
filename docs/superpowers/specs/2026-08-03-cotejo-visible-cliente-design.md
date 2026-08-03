@@ -35,7 +35,7 @@ Dentro:
   `app/lib/features/client/request_status_screen.dart` (app) y
   `src/routes/requests/$requestId.tsx` (web).
 - Una función de cotejo nueva en cada módulo de dominio, con el mismo nombre y la misma forma.
-- Un componente de presentación por frente, en su propio fichero, probado aislado.
+- Un componente de presentación por frente, en su propio fichero, **sin ninguna decisión dentro**.
 
 Fuera, **a propósito**:
 
@@ -110,12 +110,18 @@ orden **menos la evaluación**, que nunca es cotejable. Las etiquetas son los `s
 ### La costura nueva, espejada en los dos frentes
 
 ```
-requirementCoverage(req, cap) → [(condición, la cubre)]  en orden canónico
+requirementCoverage(req, cap) → [(clave, la cubre, texto a pintar)]  en orden canónico
 ```
 
 Pura, sin Flutter ni React, probada aparte. Es la **única** lógica que C añade. `activeRequirements`
 ya sabe qué marcó el cliente y `covers` ya sabe qué declaró la oferta; esto los cruza y **conserva
 los dos resultados**, en vez de quedarse solo con los fallos como hace `unmetRequirements`.
+
+**Devuelve también el texto ya compuesto** —"Comprobante fiscal" o "Comprobante fiscal — no lo
+declaró"— y no solo las claves. Así el copy, que es lo único nuevo de la tanda y lo único que puede
+divergir entre frentes, queda en una función pura que se prueba a fondo en los dos lados, y los
+componentes no deciden nada. Hay precedente en el mismo módulo: `unmetRequirementsMessage` ya vive
+ahí y también compone texto de presentación.
 
 Vive junto a `unmetRequirements` en el mismo módulo, a propósito: separar las dos mitades invitaría a
 que cada una redactara sus etiquetas por su cuenta.
@@ -143,13 +149,25 @@ se verifica en device.
 - Ofrecer de más (la oferta declara algo que el cliente no pidió) no añade filas.
 - El orden lo fija la declaración del enum, no el de los campos.
 
-**El componente, aislado:**
+Incluidos los del texto, que viajan en la misma función: dice "no lo declaró" y **nunca** las
+palabras "no cumple" ni "no emite" — un test lo blinda en los dos frentes, igual que en la tanda B un
+test blinda que el copy del proveedor no prometa lo que no ocurre. Y la lista sale completa aunque
+estén todas cubiertas.
 
-- Pinta la lista completa aunque estén todas cubiertas.
-- Dice "no lo declaró" y **nunca** las palabras "no cumple" ni "no emite" — un test lo blinda, igual
-  que en la tanda B un test blinda que el copy del proveedor no prometa lo que no ocurre.
-- Sin condiciones cotejables activas, no pinta nada.
-- Modo oscuro (app).
+**Los componentes: asimétrico, y no por gusto.**
+
+En la app, `OfferRequirementCoverage` se prueba con widget tests: lista completa, texto correcto,
+nada cuando la lista viene vacía, y modo oscuro.
+
+En la web **no se puede**, y eso se comprobó antes de escribir el plan: `vitest.config.ts` corre con
+`environment: "node"`, no hay `jsdom` ni `@testing-library/react`, y **todos** los tests del repo
+viven en `src/lib/` como funciones puras — no existe un solo test de componente, ni siquiera para
+`RequestRequirementBadges.tsx` de la tanda web anterior. Se descartó montar esa infraestructura: son
+dos dependencias nuevas y una decisión que excede a esta tanda.
+
+Por eso el `.tsx` de la web es un `map` sin una sola decisión dentro, y todo lo que podría estar mal
+—qué filas salen, en qué orden, con qué texto— vive en la función pura y se prueba ahí. Lo que queda
+sin cubrir es que el componente esté enchufado y se vea bien: eso lo verifica el smoke.
 
 **Nota sobre un test existente:** `offer_requirements_warning_test.dart` afirma que el copy del aviso
 al proveedor no contiene "el cliente verá". **Se queda como está.** C hace que el cliente lo vea, pero
@@ -160,10 +178,12 @@ comprobar que sigue siendo verdad.
 
 1. **El copy es lo único nuevo, y es donde los dos frentes pueden divergir.** Las etiquetas que
    existen están redactadas para el proveedor ("Requiere comprobante fiscal") y no sirven para
-   decirle al cliente que su condición está cubierta. Mitigación: `requirementCoverage` devuelve
-   claves, y cada frente compone con los `short`, que ya son idénticos en los dos módulos.
-2. **El cableado de la pantalla de la app no lo cubre ningún test**, por la falta de costura. Se
-   verifica en device, con guion de smoke, como en la tanda B.
+   decirle al cliente que su condición está cubierta. Mitigación: el texto lo compone
+   `requirementCoverage`, que es pura y se prueba con los mismos casos a los dos lados, partiendo de
+   los `short`, que ya son idénticos en los dos módulos.
+2. **El cableado no lo cubre ningún test en ninguno de los dos frentes**: en la app por falta de
+   costura en `request_status_screen`, en la web por no haber tests de componente. Se verifica en
+   device y en navegador, con guion de smoke, como en la tanda B.
 3. **Los datos reales están casi todos en `false` por antigüedad.** Un smoke que solo mire ofertas
    viejas verá todas las filas en negativo y parecerá roto. El guion debe crear una oferta nueva
    declarando algo.
