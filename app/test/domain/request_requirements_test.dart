@@ -295,4 +295,111 @@ void main() {
       );
     });
   });
+
+  group('requirementCoverage', () {
+    const pideTodo = RequestRequirements(
+      withShipping: true,
+      withInstallation: true,
+      requiresEvaluation: true,
+      requiresFiscalReceipt: true,
+      requiresStateSupplier: true,
+    );
+
+    test('sin condiciones marcadas no devuelve filas', () {
+      expect(
+        requirementCoverage(RequestRequirements.none, OfferCapabilities.none),
+        isEmpty,
+      );
+    });
+
+    test('solo evaluación tampoco devuelve filas: no es cotejable', () {
+      expect(
+        requirementCoverage(
+          const RequestRequirements(requiresEvaluation: true),
+          OfferCapabilities.none,
+        ),
+        isEmpty,
+      );
+    });
+
+    test('conserva las cubiertas y las no cubiertas, no solo los fallos', () {
+      final filas = requirementCoverage(
+        const RequestRequirements(
+          withShipping: true,
+          requiresFiscalReceipt: true,
+        ),
+        const OfferCapabilities(offersShipping: true),
+      );
+      expect(filas.map((f) => f.key), [Requirement.shipping, Requirement.fiscal]);
+      expect(filas.map((f) => f.covered), [true, false]);
+    });
+
+    test('las cuatro marcadas y la oferta sin declarar nada: cuatro filas en falso', () {
+      final filas = requirementCoverage(pideTodo, OfferCapabilities.none);
+      expect(filas.map((f) => f.key), [
+        Requirement.shipping,
+        Requirement.installation,
+        Requirement.fiscal,
+        Requirement.state,
+      ]);
+      expect(filas.every((f) => !f.covered), isTrue);
+    });
+
+    test('ofrecer de más no añade filas', () {
+      final filas = requirementCoverage(
+        const RequestRequirements(requiresFiscalReceipt: true),
+        const OfferCapabilities(
+          offersShipping: true,
+          offersInstallation: true,
+          hasFiscalReceipt: true,
+          isStateSupplier: true,
+        ),
+      );
+      expect(filas.map((f) => f.key), [Requirement.fiscal]);
+      expect(filas.single.covered, isTrue);
+    });
+
+    test('el orden lo fija la declaración del enum, no el de los campos', () {
+      final filas = requirementCoverage(
+        const RequestRequirements(
+          requiresStateSupplier: true,
+          withShipping: true,
+          requiresFiscalReceipt: true,
+        ),
+        OfferCapabilities.none,
+      );
+      expect(filas.map((f) => f.key), [
+        Requirement.shipping,
+        Requirement.fiscal,
+        Requirement.state,
+      ]);
+    });
+
+    test('la etiqueta cubierta empieza en mayúscula y no lleva coletilla', () {
+      final filas = requirementCoverage(
+        const RequestRequirements(requiresFiscalReceipt: true),
+        const OfferCapabilities(hasFiscalReceipt: true),
+      );
+      expect(filas.single.label, 'Comprobante fiscal');
+    });
+
+    test('la etiqueta no cubierta dice "no lo declaró"', () {
+      final filas = requirementCoverage(
+        const RequestRequirements(requiresStateSupplier: true),
+        OfferCapabilities.none,
+      );
+      expect(filas.single.label, 'Suplidor del Estado — no lo declaró');
+    });
+
+    test('el copy NUNCA afirma un negativo sobre el proveedor', () {
+      // `false` significa hoy dos cosas: "lo vio y no lo marcó" y "ofertó antes
+      // de que la pregunta existiera" — 33 de 34 ofertas son del segundo caso.
+      // Decir "no cumple" o "no emite" sería mentir sobre un proveedor real.
+      final filas = requirementCoverage(pideTodo, OfferCapabilities.none);
+      for (final f in filas) {
+        expect(f.label, isNot(contains('no cumple')));
+        expect(f.label, isNot(contains('no emite')));
+      }
+    });
+  });
 }

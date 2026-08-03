@@ -178,3 +178,41 @@ String unmetRequirementsMessage(List<Requirement> keys) {
   if (partes.length == 1) return partes.first;
   return '${partes.sublist(0, partes.length - 1).join(', ')} y ${partes.last}';
 }
+
+/// Cada requisito cotejable que el cliente pidió, con si esta oferta lo cubre y
+/// con el texto ya listo para pintar, en orden canónico.
+///
+/// Es el hermano de [unmetRequirements] para el OTRO lector. Aquel se queda solo
+/// con los fallos porque el proveedor necesita saber qué corregir; este conserva
+/// las dos mitades porque el cliente necesita ver también lo que SÍ cubre.
+///
+/// Devuelve el texto compuesto, y no solo la clave, a propósito: el copy es lo
+/// único que la tanda C añade de verdad y lo único que puede divergir entre la
+/// app y la web. Aquí se prueba con los mismos casos a los dos lados y los
+/// componentes quedan sin decisiones. Mismo criterio que [unmetRequirementsMessage].
+///
+/// Nunca incluye la evaluación ni lo que la oferta ofrece de más.
+List<({Requirement key, bool covered, String label})> requirementCoverage(
+  RequestRequirements req,
+  OfferCapabilities cap,
+) => [
+  for (final r in activeRequirements(req, keys: verifiableRequirements))
+    (
+      key: r,
+      covered: cap.covers(r),
+      label: _coverageLabel(r, cap.covers(r)),
+    ),
+];
+
+/// "Comprobante fiscal" · "Comprobante fiscal — no lo declaró".
+///
+/// **"No lo declaró", nunca "no cumple" ni "no emite".** Las columnas son
+/// `NOT NULL DEFAULT false`, así que un `false` puede significar que el
+/// proveedor vio la casilla —y hasta el aviso de la tanda B— y no la marcó, o
+/// que ofertó antes de que la pregunta existiera. Afirmar el negativo sería
+/// mentir sobre proveedores reales.
+String _coverageLabel(Requirement r, bool covered) {
+  final s = requirementLabel(r).short;
+  final capitalizado = '${s[0].toUpperCase()}${s.substring(1)}';
+  return covered ? capitalizado : '$capitalizado — no lo declaró';
+}
