@@ -5,8 +5,10 @@ import '../../data/repos.dart';
 import '../../domain/money.dart';
 import '../../domain/phase.dart';
 import '../../domain/finalist_slots.dart';
+import '../../domain/request_requirements.dart';
 import 'my_requests_screen.dart' show phaseChip;
 import 'offer_actions.dart';
+import 'offer_requirement_coverage.dart';
 import 'request_detail_sheet.dart';
 import '../shared/brand_kit.dart';
 import '../shared/collapsing_photo_panel.dart';
@@ -440,6 +442,8 @@ class _OffersSheetState extends State<_OffersSheet> {
   @override
   Widget build(BuildContext context) {
     final list = widget.offers;
+    // Los requisitos son de la SOLICITUD: se calculan una vez, no por oferta.
+    final reqs = requirementsFromRow(widget.request);
     return SizedBox(
       height: MediaQuery.of(context).size.height * .7,
       child: Column(
@@ -493,6 +497,15 @@ class _OffersSheetState extends State<_OffersSheet> {
                         unread: _unread.contains(o['id']),
                         statusChip: offerStatusChip(
                             context, o, isClosedToOffers(widget.acceptedCount)),
+                        coverage: requirementCoverage(
+                          reqs,
+                          OfferCapabilities(
+                            offersShipping: o['offers_shipping'] == true,
+                            offersInstallation: o['offers_installation'] == true,
+                            hasFiscalReceipt: o['has_fiscal_receipt'] == true,
+                            isStateSupplier: o['is_state_supplier'] == true,
+                          ),
+                        ),
                         onTap: () => _open(o),
                       );
                     },
@@ -691,6 +704,7 @@ class _OfferCard extends StatelessWidget {
     required this.cheapest,
     required this.statusChip,
     required this.onTap,
+    required this.coverage,
     this.unverified = false,
     this.unread = false,
     this.providerInfo,
@@ -700,6 +714,11 @@ class _OfferCard extends StatelessWidget {
   final bool cheapest;
   final Widget statusChip;
   final VoidCallback onTap;
+
+  /// Lo que el cliente exigió en la solicitud y si esta oferta lo cubre, ya
+  /// cotejado por `requirementCoverage`. Vacío = no exigió nada cotejable, y
+  /// entonces el bloque no se pinta.
+  final List<({Requirement key, bool covered, String label})> coverage;
 
   /// La oferta aún no se ha abierto: borde grueso oscuro que lo indica (pedido
   /// PO 2026-07-23). Se quita al tocarla.
@@ -781,6 +800,7 @@ class _OfferCard extends StatelessWidget {
                     ),
                   ),
                 ],
+                OfferRequirementCoverage(coverage: coverage),
               ],
             ),
           ),
