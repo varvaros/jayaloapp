@@ -37,5 +37,31 @@ Gotcha: un APK debug no instala encima del release; desinstala primero.
 - [ ] Desde "Ver mi oferta" → "Eliminar oferta" → confirmar: va a la lista de ofertas.
 - [ ] La oferta ya no está en la lista.
 
-## Resultado
-(anotar aquí lo que pasó de verdad, incluidos los fallos)
+## Resultado — 2026-08-03, device 23090RA98G (Android 16), build release firmado
+
+**Pasa.** Ejecutado en device por el PO, que dio el conjunto por bueno.
+
+La preparación costó más que el smoke, y conviene dejarlo escrito para la próxima:
+
+- La cuenta solo tenía una oferta `accepted`, estado con el que este guion es casi entero
+  inalcanzable: ese brazo de la tarjeta no lleva "Ver mi oferta". Se fabricó una `pending` ofertando
+  en una solicitud abierta. **Empezar por ahí la próxima vez.**
+- El device tenía un release firmado. En vez de desinstalar —que cuesta la sesión y un OTP— se
+  compiló un release con la misma llave (`flutter build apk --release`, sin `--obfuscate` para no
+  cegar las trazas si algo revienta) y se instaló con `adb install -r`. La sesión sobrevivió.
+
+Confirmado directamente:
+
+- §1: "Ver mi oferta" abre el formulario en la misma pantalla con los datos cargados; guardar
+  devuelve la tarjeta sin salir de la solicitud; la foto aparece **una sola vez** al reabrir.
+- §1, por captura: el espaciado quedó bien —hueco tras "Guardar cambios", "Cancelar", hueco,
+  "Eliminar oferta"— y las dos capacidades salen apagadas y bloqueadas con "Quedó fijado al enviar
+  tu oferta".
+- §3: desde "Mis ofertas" sigue guardando y saliendo a la lista, y ahí NO aparece "Cancelar".
+
+**No se recorrieron paso a paso §2, §4 ni §5.** El PO dio el conjunto por bueno. Si más adelante
+aparece una regresión en esta pantalla, empezar por esas tres.
+
+Falso positivo descartado por el camino: el badge "Ya ofertaste" no salía en la bandeja justo tras
+ofertar, pero aparece al refrescar. No es de este cambio — el diff de `repos.dart` son solo
+comentarios y no toca la bandeja ni su consulta; el badge se alimenta de una lectura cacheada.
