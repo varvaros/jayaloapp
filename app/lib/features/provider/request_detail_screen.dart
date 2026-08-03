@@ -27,6 +27,7 @@ import '../shared/onboarding_guide.dart';
 import '../shared/section_heading.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import 'offer_requirements_warning.dart';
 import 'unlock_flow.dart';
 
 const _maxOfferPhotos = 5;
@@ -101,6 +102,10 @@ class _ProviderRequestDetailScreenState
   final _installation = TextEditingController();
   bool _requiresEvaluation = false;
   final _evaluation = TextEditingController();
+  // Capacidades transversales (producto Y servicio): se premarcan con lo que el
+  // negocio tenga declarado y el proveedor las ajusta para esta oferta.
+  bool _hasFiscalReceipt = false;
+  bool _isStateSupplier = false;
   // Producto: detalles (marca/estado/color/garantía/tiempo de entrega) — con
   // selectores tipo web. _warranty/_delivery guardan la etiqueta elegida.
   final _brand = TextEditingController();
@@ -166,8 +171,13 @@ class _ProviderRequestDetailScreenState
     if (_editing) {
       // Modo edición: no hace falta el chequeo "¿ya ofertó?"; traemos la fila
       // COMPLETA de la oferta y prefijamos el formulario.
-      myBusinessId()
-          .then((b) => mounted ? setState(() => _businessId = b) : null);
+      // Al editar, el premarcado desde el negocio NO aplica: las dos
+      // capacidades son las que quedaron guardadas en la oferta (las fija
+      // `_prefillFromOffer`) y su UPDATE está denegado. Aquí se lee el negocio
+      // solo por el id — premarcarlas también correría carrera con la carga de
+      // la oferta y podría pisar lo guardado.
+      myBusinessForOffer()
+          .then((b) => mounted ? setState(() => _businessId = b?.id) : null);
       offerForEdit(widget.editOfferId!).then((o) {
         if (!mounted) return;
         setState(() {
@@ -180,15 +190,23 @@ class _ProviderRequestDetailScreenState
       });
       return;
     }
-    myBusinessId().then((b) {
+    myBusinessForOffer().then((b) {
       if (!mounted) return;
-      setState(() => _businessId = b);
+      setState(() {
+        _businessId = b?.id;
+        // Premarcado, NO imposición: el proveedor puede desmarcarlas para
+        // esta oferta. Si la lectura falla, `b` es null y quedan apagadas —
+        // el default seguro: se avisa de más, nunca se afirma de menos en
+        // nombre del proveedor.
+        _hasFiscalReceipt = b?.hasFiscalReceipt ?? false;
+        _isStateSupplier = b?.isStateSupplier ?? false;
+      });
       if (b == null) {
         setState(() => _offerChecked = true);
         return;
       }
       // ¿Este negocio ya ofertó a esta solicitud? (1 oferta por solicitud).
-      myOfferForRequest(widget.requestId, b).then((o) {
+      myOfferForRequest(widget.requestId, b.id).then((o) {
         if (mounted) {
           setState(() {
             _existingOffer = o;
@@ -225,6 +243,10 @@ class _ProviderRequestDetailScreenState
     _installation.text = txt(o['installation_price']);
     _requiresEvaluation = o['requires_evaluation'] == true;
     _evaluation.text = txt(o['evaluation_price']);
+    // Las dos capacidades salen de la oferta, no del negocio: son la foto de lo
+    // que se declaró al enviarla y su UPDATE está denegado en la base.
+    _hasFiscalReceipt = o['has_fiscal_receipt'] == true;
+    _isStateSupplier = o['is_state_supplier'] == true;
     _brand.text = (o['product_brand'] as String?) ?? '';
     _warranty.text = (o['product_warranty'] as String?) ?? '';
     _delivery.text = (o['delivery_time'] as String?) ?? '';
@@ -497,6 +519,26 @@ class _ProviderRequestDetailScreenState
       // validación de precio aquí.
     }
 
+    // Cotejo contra lo que el cliente marcó. Solo al CREAR: en edición las dos
+    // capacidades están congeladas (su UPDATE está denegado), así que no habría
+    // nada que corregir y el aviso solo estorbaría.
+    if (!_editing) {
+      final unmet = unmetRequirements(
+        requirementsFromRow(req),
+        OfferCapabilities(
+          offersShipping: _offersShipping,
+          offersInstallation: _offersInstallation,
+          hasFiscalReceipt: _hasFiscalReceipt,
+          isStateSupplier: _isStateSupplier,
+        ),
+      );
+      if (unmet.isNotEmpty) {
+        final seguir = await showOfferRequirementsWarning(context, unmet);
+        if (!mounted) return;
+        if (!seguir) return;
+      }
+    }
+
     // El mensaje ya no es texto libre: se arma desde los datos (decisión PO).
     final evalOn = isService ? mode == 'needs_evaluation' : _requiresEvaluation;
     final message = composeOfferMessage(
@@ -520,7 +562,7 @@ class _ProviderRequestDetailScreenState
     // trigger `enforce_no_contact_info` (JY422) rechace la fila DESPUÉS de
     // subirlas le haría perder trabajo real al proveedor. Se revisan
     // exactamente los valores condicionados que después viajan a
-    // makeOffer/updateOffer (ver `_offerFields` en data/repos.dart): el
+    // makeOffer/updateOffer (ver `offerFields` en data/repos.dart): el
     // mensaje ya compuesto y, según producto/servicio, disponibilidad/
     // duración o marca/garantía/entrega/colores — las mismas columnas que
     // vigila el trigger para `provider_offers`. MANTENIMIENTO: si agregas un
@@ -606,6 +648,10 @@ class _ProviderRequestDetailScreenState
         productColors: isService ? const [] : _colors,
         productWarranty: isService ? '' : _warranty.text.trim(),
         deliveryTime: isService ? '' : _delivery.text.trim(),
+        // Solo al crear: en `updateOffer` NO van: su UPDATE está denegado y
+        // PostgREST rechazaría la fila entera.
+        hasFiscalReceipt: _hasFiscalReceipt,
+        isStateSupplier: _isStateSupplier,
       );
       if (!mounted) return;
       // ¿Guardar lo ofertado como producto de la tienda? (pedido PO): antes de
@@ -1179,12 +1225,16 @@ class _ProviderRequestDetailScreenState
     required String subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
-    required TextEditingController cost,
-    required String costLabel,
+    // Sin costo: las capacidades transversales no tienen precio, así que el
+    // controlador y su etiqueta son opcionales y el bloque del costo no se
+    // pinta. `enabled: false` deja el interruptor en solo lectura (edición).
+    TextEditingController? cost,
+    String? costLabel,
+    bool enabled = true,
   }) {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final free = (double.tryParse(cost.text) ?? 0) <= 0;
+    final free = cost != null && (double.tryParse(cost.text) ?? 0) <= 0;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Column(children: [
@@ -1201,13 +1251,16 @@ class _ProviderRequestDetailScreenState
               ],
             ),
           ),
-          Switch(value: value, onChanged: _busy ? null : onChanged),
+          Switch(
+            value: value,
+            onChanged: (_busy || !enabled) ? null : onChanged,
+          ),
         ]),
-        if (value)
+        if (value && cost != null)
           Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 8),
             child: Row(children: [
-              Expanded(child: _numField(cost, costLabel)),
+              Expanded(child: _numField(cost, costLabel ?? '')),
               const SizedBox(width: 12),
               if (free)
                 Text('Gratis',
@@ -1524,6 +1577,31 @@ class _ProviderRequestDetailScreenState
             const SizedBox(height: 18),
             ..._productDetails(context),
           ],
+          // Transversales: aplican a producto Y servicio, así que van FUERA del
+          // bloque de producto. Meterlas dentro las haría invisibles en
+          // servicios, que es la trampa que en la web mordió dos veces con los
+          // chips del detalle.
+          const SizedBox(height: 14),
+          _sectionLabel('Lo que puedes cumplir'),
+          const SizedBox(height: 8),
+          _toggleRow(
+            title: 'Emito comprobante fiscal',
+            subtitle: _editing
+                ? 'Quedó fijado al enviar tu oferta.'
+                : 'Puedes emitir comprobante fiscal (NCF).',
+            value: _hasFiscalReceipt,
+            onChanged: (v) => setState(() => _hasFiscalReceipt = v),
+            enabled: !_editing,
+          ),
+          _toggleRow(
+            title: 'Soy suplidor del Estado',
+            subtitle: _editing
+                ? 'Quedó fijado al enviar tu oferta.'
+                : 'Estás registrado como suplidor del Estado.',
+            value: _isStateSupplier,
+            onChanged: (v) => setState(() => _isStateSupplier = v),
+            enabled: !_editing,
+          ),
           const SizedBox(height: 16),
           Text(
               _isService

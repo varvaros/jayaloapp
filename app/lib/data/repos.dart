@@ -280,7 +280,11 @@ const offerCols =
     // mensaje compuesto).
     'offers_installation,installation_price,requires_evaluation,'
     'evaluation_price,availability_note,estimated_duration,product_brand,'
-    'product_colors,product_warranty,delivery_time';
+    'product_colors,product_warranty,delivery_time'
+    // Capacidades declaradas al ofertar (foto del momento: su UPDATE está
+    // denegado). El formulario de edición las muestra apagadas y en solo
+    // lectura, así que hay que traerlas para pintarlas.
+    ',has_fiscal_receipt,is_state_supplier';
 
 Future<List<Map<String, dynamic>>> offersForRequest(String requestId) async =>
     List<Map<String, dynamic>>.from(
