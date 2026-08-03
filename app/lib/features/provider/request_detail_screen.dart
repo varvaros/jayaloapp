@@ -635,16 +635,62 @@ class _ProviderRequestDetailScreenState
         );
         if (!mounted) return;
         _toast('Oferta actualizada');
-        // Entrada en sitio (pedido PO 2026-08-03): no se sale de la solicitud.
-        // Se relee la fila para que la tarjeta reaparezca con el precio nuevo y
-        // se vuelve a modo lectura. `_busy` lo repone el `finally` de abajo,
-        // que también corre con este `return`.
+        // Entrada en sitio (pedido PO 2026-08-03): no se sale de la solicitud;
+        // se vuelve a modo lectura con la tarjeta reflejando lo recién
+        // guardado. `_busy` lo repone el `finally` de abajo.
         if (_editingInPlace) {
-          await _reloadOffer();
-          if (!mounted) return;
+          // Parcha `_existingOffer` EN LOCAL con los mismos valores que se
+          // acaban de pasar a `updateOffer`, en vez de depender de releerlos
+          // del servidor con `_reloadOffer` (que traga cualquier error,
+          // `:911-918`, y aquí sería el ÚNICO mecanismo mostrando el precio
+          // nuevo). Si esa lectura fallara justo después de un guardado
+          // correcto: el toast de éxito ya salido quedaría contradicho por un
+          // precio VIEJO en la tarjeta, y la siguiente "Ver mi oferta"
+          // recargaría esos valores rancios — "Guardar cambios" los
+          // reescribiría encima de los nuevos, revirtiendo en silencio una
+          // escritura que sí tuvo éxito. Los valores de abajo son los que
+          // acabamos de confirmar que se escribieron: no hay red ni lectura
+          // que pueda fallar.
+          final patched = {
+            ..._existingOffer!,
+            'price': p,
+            'price_min': mn,
+            'price_max': mx,
+            'pricing_mode': mode,
+            'hourly_rate': hr,
+            'estimated_hours': hrs,
+            'message': message,
+            'image_urls': imageUrls,
+            'offers_shipping': isService ? false : _offersShipping,
+            'shipping_price': double.tryParse(_shipping.text),
+            'offers_installation': isService ? false : _offersInstallation,
+            'installation_price': double.tryParse(_installation.text),
+            'requires_evaluation': evalOn,
+            'evaluation_price': double.tryParse(_evaluation.text),
+            'availability_note': isService ? _availability.text.trim() : '',
+            'estimated_duration': isService ? _duration.text.trim() : '',
+            'product_brand': isService ? '' : _brand.text.trim(),
+            'product_colors': isService ? const [] : _colors,
+            'product_warranty': isService ? '' : _warranty.text.trim(),
+            'delivery_time': isService ? '' : _delivery.text.trim(),
+          };
           setState(() {
+            _existingOffer = patched;
             _editOfferId = null;
             _editingInPlace = false;
+            // Las fotos recién elegidas ya subieron a Storage y quedaron
+            // dentro de `imageUrls` (arriba) -> la oferta guardada. Sin
+            // limpiar esto, la próxima "Ver mi oferta" las mantendría en
+            // `_photos` A LA VEZ que `_prefillFromOffer` las vuelve a traer
+            // como `_keptUrls` (ya están en `image_urls`): la foto se vería
+            // duplicada y un guardado posterior la re-subiría de nuevo. NO se
+            // limpia `_condition` aquí: a diferencia de las fotos no se
+            // duplica (es un string que se sobrescribe, no una lista que
+            // acumula) y borrarlo perdería información que sigue vigente —
+            // coincide con lo que el mensaje que se acaba de guardar dice.
+            // `_prefillFromOffer` tampoco lo toca al reabrir, así que dejarlo
+            // como está es lo consistente.
+            _photos.clear();
           });
           return;
         }
@@ -964,6 +1010,10 @@ class _ProviderRequestDetailScreenState
                 ? '${fmtRD(o['hourly_rate'] as num)}/hora'
                 : 'A evaluar';
 
+    // Pura y evaluada dos veces en el brazo comodín de abajo (copy y acción
+    // del CTA tienen que ir emparejados); una sola lectura deja obvio que van
+    // juntos.
+    final canEdit = canEditOfferInPlace(o);
     final (StatusTone tone, IconData icon, String title, String body,
         String? cta, VoidCallback? onCta) = switch (st) {
       'rejected' => (
@@ -1007,8 +1057,8 @@ class _ProviderRequestDetailScreenState
           // solicitud. Este brazo es el COMODÍN del switch: si cae aquí una
           // fila que la compuerta de abajo no dejaría editar, se conserva el
           // CTA viejo en vez de ofrecer un botón que no hace nada.
-          canEditOfferInPlace(o) ? 'Ver mi oferta' : 'Ver mis ofertas',
-          canEditOfferInPlace(o)
+          canEdit ? 'Ver mi oferta' : 'Ver mis ofertas',
+          canEdit
               ? () => _editInPlace(o)
               : () => context.go('/provider/offers'),
         ),
@@ -1620,6 +1670,10 @@ class _ProviderRequestDetailScreenState
         // La tarjeta de estado sustituye al formulario SIEMPRE que hay oferta,
         // salvo edición de una PENDIENTE. Una aceptada nunca se edita (pedido
         // PO): su tarjeta trae el botón Desbloquear.
+        // MANTENIMIENTO: `domain/offer_edit.dart` (`canEditOfferInPlace`)
+        // reproduce esta condición para decidir si "Ver mi oferta" hace algo;
+        // si tocas esta compuerta, actualiza esa regla también o el botón
+        // vuelve a quedar muerto.
         else if (_existingOffer != null &&
             (!_editing || _existingOffer!['status'] != 'pending'))
           _alreadyOfferedCard(context)
@@ -1767,12 +1821,14 @@ class _ProviderRequestDetailScreenState
             // Salida sin guardar. Solo en la entrada EN SITIO: quien llega
             // desde "Mis ofertas" ya tiene su camino de vuelta. No se toca la
             // flecha flotante ni el PopScope de BackGuard.
-            if (_editingInPlace)
+            const SizedBox(height: 8),
+            if (_editingInPlace) ...[
               TextButton(
                 onPressed: _busy ? null : _cancelInPlaceEdit,
                 child: const Text('Cancelar'),
               ),
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
+            ],
             TextButton.icon(
               onPressed: _busy ? null : _deleteOffer,
               icon: Icon(Icons.delete_outline,

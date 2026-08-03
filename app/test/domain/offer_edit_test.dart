@@ -67,5 +67,21 @@ void main() {
         isFalse,
       );
     });
+
+    test('sin la clave unlocked_at (ausente del todo): sí, para una pendiente',
+        () {
+      // El acceso a un Map en Dart devuelve null para una clave ausente,
+      // igual que para una presente con valor null — mismo resultado que el
+      // primer caso de este grupo. Se fija aquí para que quede como contrato,
+      // no como casualidad del tipo de Map.
+      expect(canEditOfferInPlace({'status': 'pending'}), isTrue);
+    });
+
+    test('unlocked_at como string vacío: no (no es null)', () {
+      expect(
+        canEditOfferInPlace({'status': 'pending', 'unlocked_at': ''}),
+        isFalse,
+      );
+    });
   });
 }

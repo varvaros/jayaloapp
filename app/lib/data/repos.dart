@@ -284,8 +284,14 @@ const offerCols =
     // Capacidades declaradas al ofertar (foto del momento: su UPDATE está
     // denegado). Se traen aquí porque el listado (`offersForRequest`) es lo
     // que la próxima tanda usa para que el cliente vea lo que el negocio
-    // declaró. El formulario de edición NO pasa por acá: usa [offerForEdit],
-    // que hace un `select()` completo.
+    // declaró. El formulario de edición POR RUTA (`?edit=`, "Mis ofertas") usa
+    // [offerForEdit], que hace un `select()` completo — pero desde "Ver mi
+    // oferta" (pedido PO 2026-08-03) el prefill EN SITIO sí pasa por acá, vía
+    // [myOfferForRequest]: `_prefillFromOffer` en `request_detail_screen.dart`
+    // lee sus 21 claves y todas están cubiertas por esta constante.
+    // MANTENIMIENTO: si recortas esta lista, revisa `_prefillFromOffer` — un
+    // campo que falte aquí llegaría vacío al formulario en sitio y el
+    // siguiente guardado lo escribiría en blanco encima de la columna real.
     ',has_fiscal_receipt,is_state_supplier';
 
 Future<List<Map<String, dynamic>>> offersForRequest(String requestId) async =>
@@ -904,7 +910,10 @@ Future<void> updateOffer({
 }
 
 /// Fila COMPLETA de una oferta propia (todas las columnas) para prefijar el
-/// formulario de edición — `offerCols` no trae los detalles de producto.
+/// formulario de edición POR RUTA (`?edit=`, desde "Mis ofertas"). No es la
+/// única fuente para el prefill: la edición EN SITIO ("Ver mi oferta", pedido
+/// PO 2026-08-03) prefija desde [myOfferForRequest] (`offerCols`), que sí trae
+/// los detalles de producto — ver el comentario de `offerCols` arriba.
 Future<Map<String, dynamic>?> offerForEdit(String offerId) async {
   final rows = List<Map<String, dynamic>>.from(
     await supa.from('provider_offers').select().eq('id', offerId).limit(1),
