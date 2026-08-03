@@ -728,6 +728,16 @@ String? _firstImage(Map<String, dynamic> r) {
   return first.isEmpty ? null : first.first;
 }
 
+/// Saturación 0 con los coeficientes de luminancia Rec. 709: pasa a gris sin
+/// alterar el brillo percibido, que es lo que hace que una foto apagada siga
+/// siendo legible en vez de convertirse en una mancha.
+const _grayscaleMatrix = <double>[
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0, 0, 0, 1, 0, //
+];
+
 /// Tarjeta de solicitud del home (mockup Tanda 1): tarjeta redondeada teñida
 /// por fase, con FOTO (miniatura), tema, tiempo y un CHIP de estado — el de
 /// "N ofertas" en lila/morado. Fases vivas (con ofertas/aceptada/desbloqueado)
@@ -1013,9 +1023,18 @@ class _RequestCard extends StatelessWidget {
         color: holderIcon,
       ),
     );
+    // Completada: la miniatura en GRIS (pedido PO 2026-08-03). Teñir solo el
+    // fondo no bastaba: la foto a todo color es lo primero que mira el ojo y
+    // seguía leyéndose como una solicitud viva.
+    Widget muted(Widget child) => phase == RequestPhase.completed
+        ? ColorFiltered(
+            colorFilter: const ColorFilter.matrix(_grayscaleMatrix),
+            child: child,
+          )
+        : child;
     final url = imageUrl;
-    if (url == null) return placeholder();
-    return ClipRRect(
+    if (url == null) return muted(placeholder());
+    return muted(ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: JayaloNetworkImage(
         url,
@@ -1025,7 +1044,7 @@ class _RequestCard extends StatelessWidget {
         errorBuilder: (_, _, _) => placeholder(),
         loadingBuilder: (_, child, p) => p == null ? child : placeholder(),
       ),
-    );
+    ));
   }
 
   /// Chip de estado: sobre tarjeta teñida va en píldora blanca translúcida con

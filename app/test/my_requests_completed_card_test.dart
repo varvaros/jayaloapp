@@ -81,6 +81,42 @@ void main() {
     expect(find.text('Completada'), findsNothing);
   });
 
+  testWidgets('completada: la miniatura va desaturada', (tester) async {
+    // Una foto a todo color hacía que la tarjeta siguiera leyéndose como viva
+    // por gris que fuera el fondo: la miniatura es lo primero que mira el ojo.
+    await tester.pumpWidget(host(MyRequestsScreen(
+      myFetch: () => rowsWith(RequestPhase.completed),
+      othersFetch: () async => [],
+      actions: const [],
+    )));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(JayaloCard),
+        matching: find.byType(ColorFiltered),
+      ),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('esperando: la miniatura NO se desatura', (tester) async {
+    await tester.pumpWidget(host(MyRequestsScreen(
+      myFetch: () => rowsWith(RequestPhase.waiting),
+      othersFetch: () async => [],
+      actions: const [],
+    )));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(JayaloCard),
+        matching: find.byType(ColorFiltered),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets('esperando: sigue sobre tarjeta blanca y SIN banda',
       (tester) async {
     // La regresión que importa: `waiting` es la fase más viva de todas (acaba
