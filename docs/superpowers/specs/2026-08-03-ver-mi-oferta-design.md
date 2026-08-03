@@ -62,7 +62,6 @@ El brazo `_` (comodín) del switch de `_alreadyOfferedCard` (`:942-950`) cambia 
 
 ```dart
 void _editInPlace(Map<String, dynamic> o) {
-  if (o['status'] != 'pending') return;
   setState(() {
     _editOfferId = o['id'] as String;
     _editingInPlace = true;
@@ -71,10 +70,27 @@ void _editInPlace(Map<String, dynamic> o) {
 }
 ```
 
-La guarda de `status` importa porque ese brazo es el comodín del switch: los casos conocidos
-(`rejected`, `accepted`, desbloqueada/completada) los atrapan los brazos de arriba, pero si algún día
-llega un status inesperado, sin la guarda la compuerta de `:1559` seguiría pintando la tarjeta y el
-botón quedaría muerto sin avisar. Con ella, el estado no se ensucia.
+Ese brazo es el **comodín** del switch: los casos conocidos (`rejected`, `accepted`,
+desbloqueada/completada) los atrapan los brazos de arriba, pero un status inesperado cae aquí. Y hay
+una asimetría real en el código: la tarjeta lee `o['status'] as String? ?? 'pending'` (`:898`),
+mientras que la compuerta que decide tarjeta-vs-formulario compara **en crudo**,
+`_existingOffer!['status'] != 'pending'` (`:1560`). Con `status` nulo la tarjeta dice "Ya enviaste tu
+oferta" pero la compuerta se niega a mostrar el formulario: el botón quedaría muerto.
+
+Por eso la condición vive en una regla pura, sin defaults, que reproduce la compuerta:
+
+```dart
+/// app/lib/domain/offer_edit.dart
+bool canEditOfferInPlace(Map<String, dynamic> offer) =>
+    offer['unlocked_at'] == null && offer['status'] == 'pending';
+```
+
+Y el brazo **conserva el CTA viejo** cuando no se puede editar, en vez de ofrecer un botón inerte:
+
+```dart
+canEditOfferInPlace(o) ? 'Ver mi oferta' : 'Ver mis ofertas',
+canEditOfferInPlace(o) ? () => _editInPlace(o) : () => context.go('/provider/offers'),
+```
 
 Los otros brazos del switch no se tocan.
 
