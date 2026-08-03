@@ -151,4 +151,148 @@ void main() {
       }
     });
   });
+
+  group('unmetRequirements', () {
+    const pideTodo = RequestRequirements(
+      withShipping: true,
+      withInstallation: true,
+      requiresEvaluation: true,
+      requiresFiscalReceipt: true,
+      requiresStateSupplier: true,
+    );
+
+    test('una oferta que no cubre nada incumple los cuatro cotejables', () {
+      expect(unmetRequirements(pideTodo, OfferCapabilities.none), [
+        Requirement.shipping,
+        Requirement.installation,
+        Requirement.fiscal,
+        Requirement.state,
+      ]);
+    });
+
+    test('la evaluación NUNCA se reporta, aunque el cliente la pida y la oferta no la marque', () {
+      // En la solicitud significa "quiero que vengan a ver antes de cotizar";
+      // en la oferta, "necesito ir a ver para dar precio". Que el proveedor no
+      // la marque significa precio en firme sin visita: favorece al cliente.
+      expect(
+        unmetRequirements(
+          const RequestRequirements(requiresEvaluation: true),
+          OfferCapabilities.none,
+        ),
+        isEmpty,
+      );
+    });
+
+    test('una oferta que lo cubre todo no incumple nada', () {
+      expect(
+        unmetRequirements(
+          pideTodo,
+          const OfferCapabilities(
+            offersShipping: true,
+            offersInstallation: true,
+            hasFiscalReceipt: true,
+            isStateSupplier: true,
+          ),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('ofrecer de más no cuenta como incumplimiento', () {
+      expect(
+        unmetRequirements(
+          const RequestRequirements(requiresFiscalReceipt: true),
+          const OfferCapabilities(
+            offersShipping: true,
+            offersInstallation: true,
+            hasFiscalReceipt: true,
+            isStateSupplier: true,
+          ),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('solo reporta lo que el cliente pidió y la oferta no cubre', () {
+      expect(
+        unmetRequirements(
+          const RequestRequirements(
+            withShipping: true,
+            requiresStateSupplier: true,
+          ),
+          const OfferCapabilities(offersShipping: true),
+        ),
+        [Requirement.state],
+      );
+    });
+
+    test('el resultado sale en orden canónico', () {
+      expect(
+        unmetRequirements(
+          const RequestRequirements(
+            requiresStateSupplier: true,
+            withShipping: true,
+            requiresFiscalReceipt: true,
+          ),
+          OfferCapabilities.none,
+        ),
+        [Requirement.shipping, Requirement.fiscal, Requirement.state],
+        reason: 'el orden lo fija la declaración del enum, no el de los campos',
+      );
+    });
+
+    test('sin requisitos activos no hay nada que incumplir', () {
+      expect(
+        unmetRequirements(RequestRequirements.none, OfferCapabilities.none),
+        isEmpty,
+      );
+    });
+  });
+
+  group('verifiableRequirements', () {
+    test('son cuatro, en orden canónico, y la evaluación no está', () {
+      expect(verifiableRequirements, [
+        Requirement.shipping,
+        Requirement.installation,
+        Requirement.fiscal,
+        Requirement.state,
+      ]);
+      expect(verifiableRequirements, isNot(contains(Requirement.evaluation)));
+    });
+  });
+
+  group('unmetRequirementsMessage', () {
+    test('lista vacía da cadena vacía', () {
+      expect(unmetRequirementsMessage(const []), '');
+    });
+
+    test('uno solo va suelto', () {
+      expect(unmetRequirementsMessage(const [Requirement.shipping]), 'envío');
+    });
+
+    test('dos se unen con "y"', () {
+      expect(
+        unmetRequirementsMessage(const [Requirement.shipping, Requirement.fiscal]),
+        'envío y comprobante fiscal',
+      );
+    });
+
+    test('tres llevan coma y la última con "y"', () {
+      expect(
+        unmetRequirementsMessage(const [
+          Requirement.shipping,
+          Requirement.fiscal,
+          Requirement.state,
+        ]),
+        'envío, comprobante fiscal y suplidor del Estado',
+      );
+    });
+
+    test('usa los textos cortos, no los de chip', () {
+      expect(
+        unmetRequirementsMessage(const [Requirement.state]),
+        isNot(contains('Requiere')),
+      );
+    });
+  });
 }
