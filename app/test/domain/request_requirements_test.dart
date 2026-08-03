@@ -401,5 +401,24 @@ void main() {
         expect(f.label, isNot(contains('no emite')));
       }
     });
+
+    test('dice exactamente lo mismo que la web', () {
+      // El copy es lo único que puede divergir entre los dos frentes, y hasta
+      // ahora solo lo vigilaba el test espejo de la web — que por construcción
+      // solo detecta deriva de la WEB. `instalación` no lo fijaba nadie de este
+      // lado. Si cambias uno, cambia el otro:
+      // jayalo-main/src/lib/requestRequirements.test.ts → "dice exactamente lo
+      // mismo que la app".
+      final filas = requirementCoverage(
+        pideTodo,
+        const OfferCapabilities(offersShipping: true),
+      );
+      expect(filas.map((f) => f.label), [
+        'Envío',
+        'Instalación — no lo declaró',
+        'Comprobante fiscal — no lo declaró',
+        'Suplidor del Estado — no lo declaró',
+      ]);
+    });
   });
 }
