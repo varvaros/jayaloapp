@@ -932,6 +932,21 @@ class _ProviderRequestDetailScreenState
     });
   }
 
+  /// Sale del modo edición en sitio SIN guardar y devuelve la tarjeta.
+  ///
+  /// Limpia lo único que [_prefillFromOffer] no reasigna al volver a entrar:
+  /// las fotos recién elegidas y `_condition` (que la oferta no guarda en
+  /// columna propia). Sin esto, cancelar y reabrir arrastraría fotos y un
+  /// "Nuevo/Usado" que el proveedor creía descartados.
+  void _cancelInPlaceEdit() {
+    setState(() {
+      _editOfferId = null;
+      _editingInPlace = false;
+      _photos.clear();
+      _condition = '';
+    });
+  }
+
   /// Tarjeta de la oferta ya enviada, consciente del ESTADO (pedido PO
   /// 2026-07-21): pendiente = aviso "ya ofertaste"; aceptada = "¡Te
   /// aceptaron!" con el botón DESBLOQUEAR (nunca el formulario de edición);
@@ -1749,6 +1764,14 @@ class _ProviderRequestDetailScreenState
                     _editing ? 'Guardar cambios' : 'Enviar oferta (gratis)')),
           ),
           if (_editing) ...[
+            // Salida sin guardar. Solo en la entrada EN SITIO: quien llega
+            // desde "Mis ofertas" ya tiene su camino de vuelta. No se toca la
+            // flecha flotante ni el PopScope de BackGuard.
+            if (_editingInPlace)
+              TextButton(
+                onPressed: _busy ? null : _cancelInPlaceEdit,
+                child: const Text('Cancelar'),
+              ),
             const SizedBox(height: 8),
             TextButton.icon(
               onPressed: _busy ? null : _deleteOffer,
