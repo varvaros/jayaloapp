@@ -13,6 +13,7 @@ import '../../core/safe_image_picker.dart';
 import '../../domain/contact_info.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
+import '../../domain/offer_edit.dart';
 import '../../domain/offer_message.dart';
 import '../../domain/pricing.dart';
 import '../../domain/wholesale.dart';
@@ -129,7 +130,18 @@ class _ProviderRequestDetailScreenState
   /// solo el número, no se pueden ver. 0 = no se muestra.
   int _offerCount = 0;
 
-  bool get _editing => widget.editOfferId != null;
+  /// Id de la oferta en edición. Nace de `widget.editOfferId` (ruta `?edit=`,
+  /// desde "Mis ofertas") y TAMBIÉN puede activarse en sitio, desde la tarjeta
+  /// "Ya enviaste tu oferta" (pedido PO 2026-08-03). Por eso es estado y no un
+  /// getter del widget.
+  String? _editOfferId;
+
+  /// True solo cuando la edición se activó desde ESTA pantalla. Distingue las
+  /// dos entradas: la de ruta sale a la lista de ofertas al guardar; la de
+  /// aquí vuelve a la tarjeta, sin salir de la solicitud.
+  bool _editingInPlace = false;
+
+  bool get _editing => _editOfferId != null;
 
   /// Modos de precio del formulario de SERVICIO (paridad web: fijo / rango /
   /// por hora / a evaluar en sitio). El índice es [_svcMode].
@@ -147,6 +159,8 @@ class _ProviderRequestDetailScreenState
   @override
   void initState() {
     super.initState();
+    // Antes que nada: `_editing` se consulta más abajo, en esta misma función.
+    _editOfferId = widget.editOfferId;
     requestById(widget.requestId).then((r) {
       if (!mounted) return;
       setState(() => _req = r);
@@ -178,7 +192,7 @@ class _ProviderRequestDetailScreenState
       // la oferta y podría pisar lo guardado.
       myBusinessForOffer()
           .then((b) => mounted ? setState(() => _businessId = b?.id) : null);
-      offerForEdit(widget.editOfferId!).then((o) {
+      offerForEdit(_editOfferId!).then((o) {
         if (!mounted) return;
         setState(() {
           _existingOffer = o;
@@ -597,7 +611,7 @@ class _ProviderRequestDetailScreenState
       final imageUrls = [..._keptUrls, ...newUrls];
       if (_editing) {
         await updateOffer(
-          offerId: widget.editOfferId!,
+          offerId: _editOfferId!,
           price: p,
           priceMin: mn,
           priceMax: mx,
@@ -831,7 +845,7 @@ class _ProviderRequestDetailScreenState
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
-      await deleteOffer(widget.editOfferId!);
+      await deleteOffer(_editOfferId!);
       if (!mounted) return;
       _toast('Oferta eliminada');
       context.go('/provider/offers');
@@ -887,6 +901,21 @@ class _ProviderRequestDetailScreenState
       final o = await offerForEdit(id);
       if (mounted && o != null) setState(() => _existingOffer = o);
     } catch (_) {}
+  }
+
+  /// Entra en modo edición SOBRE ESTA MISMA PANTALLA (pedido PO 2026-08-03).
+  /// No navega: la ruta de destino (`/provider/request/<id>?edit=<offerId>`)
+  /// es la que ya se está mostrando, y apilarla dejaría dos copias.
+  ///
+  /// No hace falta ninguna consulta: [_existingOffer] viene de
+  /// `myOfferForRequest`, que selecciona `offerCols` (`repos.dart:272-289`), y
+  /// esas columnas cubren todo lo que lee [_prefillFromOffer].
+  void _editInPlace(Map<String, dynamic> o) {
+    setState(() {
+      _editOfferId = o['id'] as String;
+      _editingInPlace = true;
+      _prefillFromOffer(o);
+    });
   }
 
   /// Tarjeta de la oferta ya enviada, consciente del ESTADO (pedido PO
@@ -945,8 +974,14 @@ class _ProviderRequestDetailScreenState
           'Ya enviaste tu oferta',
           'Solo puedes ofertar una vez por solicitud. Tu oferta: $label. '
               'Si el cliente la acepta, te avisaremos para desbloquear el contacto.',
-          'Ver mis ofertas',
-          () => context.go('/provider/offers'),
+          // Pedido PO 2026-08-03: en singular y a ESA oferta, sin salir de la
+          // solicitud. Este brazo es el COMODÍN del switch: si cae aquí una
+          // fila que la compuerta de abajo no dejaría editar, se conserva el
+          // CTA viejo en vez de ofrecer un botón que no hace nada.
+          canEditOfferInPlace(o) ? 'Ver mi oferta' : 'Ver mis ofertas',
+          canEditOfferInPlace(o)
+              ? () => _editInPlace(o)
+              : () => context.go('/provider/offers'),
         ),
     };
 
