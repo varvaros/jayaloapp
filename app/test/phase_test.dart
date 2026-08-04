@@ -68,4 +68,40 @@ void main() {
             requestStatus: 'open', offers: [o('pending'), o('rejected')]),
         RequestPhase.withOffers);
   });
+
+  test('cerrada exige que TODAS las aceptadas tengan la conversación cerrada', () {
+    // El modelo permite hasta 3 finalistas con oferta aceptada a la vez, cada
+    // uno con su propia conversación.
+
+    // Una sola aceptada cerrada: sigue funcionando como antes.
+    expect(
+        phaseForRequest(
+            requestStatus: 'open', offers: [o('accepted', closed: true)]),
+        RequestPhase.closed);
+
+    // Dos finalistas y las dos conversaciones murieron: el trato sí está
+    // muerto.
+    expect(
+        phaseForRequest(requestStatus: 'open', offers: [
+          o('accepted', closed: true),
+          o('accepted', closed: true),
+        ]),
+        RequestPhase.closed);
+
+    // Dos finalistas, uno con el chat muerto y el otro vivo: el cliente
+    // sigue negociando con el segundo, así que la solicitud NO está cerrada
+    // (aquí cae en "accepted" porque ninguna de las dos tiene unlocked_at).
+    expect(
+        phaseForRequest(requestStatus: 'open', offers: [
+          o('accepted', closed: true),
+          o('accepted'),
+        ]),
+        isNot(RequestPhase.closed));
+    expect(
+        phaseForRequest(requestStatus: 'open', offers: [
+          o('accepted', closed: true),
+          o('accepted'),
+        ]),
+        RequestPhase.accepted);
+  });
 }
