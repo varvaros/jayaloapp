@@ -237,8 +237,8 @@ class _ProviderRequestDetailScreenState
 
   /// Vuelca una oferta existente en los controles del formulario (modo edición).
   /// Los campos se guardan como columnas propias (no solo dentro del mensaje),
-  /// así que la reconstrucción es directa. Único no restaurable: "Nuevo/Usado"
-  /// (`_condition`), que la web guarda solo dentro del mensaje.
+  /// asi que la reconstruccion es directa. "Nuevo/Usado" no tiene columna
+  /// propia y se recupera del mensaje con `conditionFromOfferMessage`.
   void _prefillFromOffer(Map<String, dynamic> o) {
     final mode = o['pricing_mode'] as String? ?? 'fixed';
     _svcMode = _svcModes.indexOf(mode).clamp(0, _svcModes.length - 1);
@@ -263,6 +263,7 @@ class _ProviderRequestDetailScreenState
     _isStateSupplier = o['is_state_supplier'] == true;
     _brand.text = (o['product_brand'] as String?) ?? '';
     _warranty.text = (o['product_warranty'] as String?) ?? '';
+    _condition = conditionFromOfferMessage((o['message'] as String?) ?? '');
     _delivery.text = (o['delivery_time'] as String?) ?? '';
     _colors
       ..clear()
@@ -531,6 +532,19 @@ class _ProviderRequestDetailScreenState
         if (hrs == null || hrs <= 0) return _toast('Pon las horas estimadas.');
       // 'needs_evaluation' (solo servicio): el precio se define en sitio, sin
       // validación de precio aquí.
+    }
+
+    // Solo producto: en servicio estos dos campos ni se envian (ver los
+    // `isService ? '' : ...` de composeOfferMessage mas abajo).
+    if (!isService) {
+      if (_condition.isEmpty) {
+        return _toast('Elige si el producto es nuevo o usado.');
+      }
+      if (_warranty.text.trim().isEmpty) {
+        // 'Sin garantia' es uno de los presets: exigir el campo no obliga a
+        // nadie a prometer garantia, solo a decirlo.
+        return _toast('Elige la garantía.');
+      }
     }
 
     // Cotejo contra lo que el cliente marcó. Solo al CREAR: en edición las dos
@@ -1287,11 +1301,11 @@ class _ProviderRequestDetailScreenState
   /// Detalles del producto con selectores (paridad web): estado (nuevo/usado),
   /// color (círculos), garantía (chips) y tiempo de entrega (calendario).
   List<Widget> _productDetails(BuildContext context) => [
-        _sectionLabel('Detalles del producto (opcional)'),
+        _sectionLabel('Detalles del producto'),
         const SizedBox(height: 8),
         _txtField(_brand, 'Marca'),
         const SizedBox(height: 14),
-        _sectionLabel('Estado'),
+        _sectionLabel('Estado *'),
         const SizedBox(height: 8),
         _chipSelect(_conditionOptions, _condition,
             (v) => setState(() => _condition = v)),
@@ -1300,7 +1314,7 @@ class _ProviderRequestDetailScreenState
         const SizedBox(height: 8),
         _colorSwatches(),
         const SizedBox(height: 14),
-        _sectionLabel('Garantía'),
+        _sectionLabel('Garantía *'),
         const SizedBox(height: 8),
         _chipSelect(_warrantyPresets, _warranty.text,
             (v) => setState(() => _warranty.text = v)),
