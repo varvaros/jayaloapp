@@ -109,6 +109,13 @@ Con la misma solicitud, abrir en la web:
 
 ## Lo que NO se puede probar hoy
 
+- **El autofill del OTP.** El SMS lleva el hash de firma de RELEASE (`3LtdoLuN7tU`); este smoke corre
+  sobre un build DEBUG, cuya firma da otro hash (`lErR2xpOwcD`). Android solo entrega el SMS a la app
+  cuya firma coincide, así que **el código no se autollena y hay que teclearlo**. No es un fallo: se
+  confirmó funcionando end-to-end el 2026-07-27 con el build de release. Verificarlo cuando se
+  compile el APK para testers. NO cambiar el secreto `SMS_RETRIEVER_HASH` al hash de debug: lo
+  arreglaría en un teléfono y lo rompería para todos los testers.
+
 - **El cron de inactividad de verdad** (72 h). Se verificó en `BEGIN`/`ROLLBACK` contra producción
   durante la implementación, pero no en vivo.
 - **El caso de 3 finalistas con motivos mezclados** (una conversación autocerrada y otra no
@@ -121,3 +128,15 @@ Con la misma solicitud, abrir en la web:
   320 px desborda 38 px. Decisión tomada: dejar que trunque. Confirmar que se lee bien.
 - **El detalle puede quedar con el dato viejo** si la conversación se cierra con la pantalla
   abierta (`conversations` no está en la publicación de realtime). Se corrige al salir y volver.
+
+---
+
+## Extra — el arreglo de "Corregir algo" (2026-08-04, sin revisar)
+
+- [ ] En el formulario final, pulsar **"Corregir algo"** y luego **"Volver al formulario"**: el
+      formulario reaparece intacto (antes no habia forma de volver).
+- [ ] **Con el modo avion puesto**, pulsar "Corregir algo", escribir algo y enviar. Debe salir el
+      toast de error y **volver a verse el campo de corregir**, con el formulario intacto detras.
+      ANTES de este arreglo la pantalla se quedaba vacia y habia que rehacer la solicitud entera.
+- [ ] Desmarcar "Nuevo" a mano, corregir cualquier otra cosa, y comprobar que **sigue desmarcado**
+      cuando vuelve el formulario.
