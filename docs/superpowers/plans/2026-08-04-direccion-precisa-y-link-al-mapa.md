@@ -217,47 +217,25 @@ endpoint mantiene una sola implementación y un solo User-Agent.
 
 **Files:**
 - Create: `src/routes/api/app/reverse-geocode.ts`
-- Test: `src/routes/api/app/reverse-geocode.test.ts`
 
 **Interfaces:**
 - Consumes: `placeFromNominatim` de la tarea 1.
 - Produces: `POST {lat: number, lng: number}` → `200 GeocodedPlace` (el objeto entero de la
   tarea 1). Lo consume la tarea 7.
 
-- [ ] **Step 1: Escribir el test que falla**
+**Sin test unitario, a propósito.** Es la convención del repo para las rutas `api/`: la lógica
+testeable se extrae a un módulo puro y la ruta queda como cascarón de transporte
+(`business-editor-link.ts` deja su lógica en `businessEditorLink.server.ts`). Aquí la parte pura
+**es** `placeFromNominatim`, ya cubierta por la tarea 1. Un test sobre esta ruta solo podría
+reafirmar la tarea 1 en verde desde el minuto cero — no ejercitaría ni el Origin, ni el Bearer,
+ni Nominatim. Sus gates reales son `tsc` y el smoke de la tarea 12.
 
-Crear `src/routes/api/app/reverse-geocode.test.ts`:
+- [ ] **Step 1: Leer la ruta de referencia**
 
-```ts
-import { describe, it, expect } from "vitest";
-import { placeFromNominatim } from "@/lib/reverseGeocode";
+Leer `src/routes/api/app/business-editor-link.ts` ENTERA antes de escribir nada, y copiar de ahí
+la forma del Origin fail-closed, el rate limit y la extracción del Bearer. No inventar variantes.
 
-// El handler HTTP se prueba en el smoke; aquí se fija el CONTRATO de la
-// respuesta, que es lo que la app parsea y lo que se rompería en silencio.
-describe("contrato de /api/app/reverse-geocode", () => {
-  it("la respuesta trae las 8 claves que la app espera", () => {
-    const place = placeFromNominatim({ country: "República Dominicana", city: "Santiago" });
-    expect(Object.keys(place).sort()).toEqual([
-      "addressLine",
-      "city",
-      "cityInCatalog",
-      "country",
-      "sector",
-      "sectorInCatalog",
-      "street",
-      "streetNumber",
-    ]);
-  });
-});
-```
-
-- [ ] **Step 2: Correr el test y verificar que falla**
-
-Run: `npx vitest run src/routes/api/app/reverse-geocode.test.ts`
-Expected: FAIL — el fichero de test existe pero la ruta no; si el import resuelve, el test pasa
-ya (es un contrato sobre la tarea 1). En ese caso vale como red de regresión: seguir al paso 3.
-
-- [ ] **Step 3: Implementar el endpoint**
+- [ ] **Step 2: Implementar el endpoint**
 
 Crear `src/routes/api/app/reverse-geocode.ts`, calcado de
 `src/routes/api/app/business-editor-link.ts` (Origin fail-closed + rate limit + Bearer):
@@ -348,15 +326,19 @@ export const Route = createFileRoute("/api/app/reverse-geocode")({
 ⚠️ Verificar la firma real de `checkRateLimit` en `src/lib/rateLimit.server.ts` y ajustar los
 nombres de los parámetros si difieren — no inventarlos.
 
-- [ ] **Step 4: Verificar**
+- [ ] **Step 3: Verificar**
 
-Run: `npx tsc --noEmit && npx vitest run src/routes/api/app/reverse-geocode.test.ts`
-Expected: 0 errores y test en verde.
+Run: `npx tsc --noEmit && npm run lint && npx vitest run`
+Expected: 0 errores de tipos, 0 de lint, la suite entera sigue en verde (≥457).
 
-- [ ] **Step 5: Commit**
+⚠️ `npm run build` además, porque el plugin de TanStack regenera `routeTree.gen.ts` al añadir una
+ruta y ese fichero lleva `@ts-nocheck`: `tsc` NO detecta una ruta mal registrada (gotcha #7 del
+CLAUDE.md). Sin el build, un error de registro solo aparecería en producción.
+
+- [ ] **Step 4: Commit**
 
 ```bash
-git add src/routes/api/app/reverse-geocode.ts src/routes/api/app/reverse-geocode.test.ts
+git add src/routes/api/app/reverse-geocode.ts src/routeTree.gen.ts
 git commit -m "feat(web): endpoint de geocodificacion inversa para la app"
 ```
 
