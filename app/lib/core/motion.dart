@@ -11,29 +11,47 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// Fricción que hace que un fling de [velocity] px/s tarde [target] en
-/// detenerse del todo.
+/// Coeficiente de arrastre que hace que un fling de [velocity] px/s tarde
+/// [target] en detenerse del todo.
 ///
 /// Flutter NO tiene la prop `decelerationRate` de React Native (allí es un
-/// float de 0 a 1 donde acercarse a 1 frena más lento; valores ≥1 no son
-/// válidos porque implicarían que nunca se detiene). El equivalente aquí es
-/// la fricción de `ClampingScrollSimulation`, pero como número suelto no
-/// dice nada — así que se despeja al revés: se pide la DURACIÓN del frenado
-/// y de ahí sale la fricción.
+/// float de 0 a 1 donde acercarse a 1 frena más lento). El equivalente aquí es
+/// el arrastre de `FrictionSimulation`, pero como número suelto no dice nada —
+/// así que se despeja al revés: se pide la DURACIÓN del frenado y de ahí sale
+/// el arrastre.
 ///
-/// Se invierte la fórmula de `ClampingScrollSimulation._flingDuration`:
-///   t = dr·inf · (v / (friction·coef/inf))^(1/(dr-1))
-/// despejando:
-///   friction = inf/coef · v / (t/(dr·inf))^(dr-1)
-double frictionForBrake(Duration target, {double velocity = 3000}) {
-  const inflexion = 0.35;
-  // 0.84·g expresado en píxeles lógicos/s² (mismo valor que usa Flutter).
-  const coef = 9.80665 * 39.37 * 160.0 * 0.84;
-  final decelRate = math.log(0.78) / math.log(0.9);
+/// ## Por qué decaimiento EXPONENCIAL y no la spline de Android
+///
+/// Hasta el 2026-08-03 esto devolvía la fricción de `ClampingScrollSimulation`
+/// (la curva nativa de Android). Su problema, medido: la duración va como
+/// `T ∝ v^0.736`, así que entre el fling más suave y el más brusco del uso real
+/// había **6.3× de diferencia** — un swipe moderado frenaba en 0.7-1.3 s y se
+/// leía como un frenazo, mientras el brusco planeaba 4.5 s. Y la fricción es un
+/// MULTIPLICADOR sobre todas las velocidades a la vez, así que subir
+/// [JayaloMotion.scrollBrake] no podía arreglarlo: el reparto entre suave y
+/// brusco es una constante de ese modelo.
+///
+/// El decaimiento exponencial (`v(t) = v₀·drag^t`, el modelo de iOS) hace la
+/// duración LOGARÍTMICA en la velocidad, que es justo lo que aplana el reparto:
+/// el mismo uso real pasa de 6.3× a 1.7×. Ese es el motivo por el que iOS se
+/// siente consistente entre un roce y un envión.
+///
+/// Se despeja de `FrictionSimulation.isDone`, que para cuando
+/// `|v₀·drag^t| < toleranceVelocity`:
+///   t = ln(v/tol) / (−ln drag)   →   drag = exp(−ln(v/tol) / t)
+///
+/// [toleranceVelocity] NO es un número fijo: `ScrollPhysics.toleranceFor` lo
+/// calcula como `1/(0.05·devicePixelRatio)`, así que depende del device (6.36
+/// px/s en el teléfono del PO, dpr 3.14). Por eso se recibe como parámetro y se
+/// resuelve en el momento del fling — así los segundos de [target] se cumplen
+/// en cualquier pantalla, en vez de solo en aquella donde se calibró.
+double dragForBrake(
+  Duration target, {
+  required double velocity,
+  required double toleranceVelocity,
+}) {
   final t = target.inMicroseconds / Duration.microsecondsPerSecond;
-  final referenceVelocity =
-      velocity / math.pow(t / (decelRate * inflexion), decelRate - 1);
-  return referenceVelocity * inflexion / coef;
+  return math.exp(-math.log(velocity / toleranceVelocity) / t);
 }
 
 abstract final class JayaloMotion {
@@ -63,16 +81,45 @@ abstract final class JayaloMotion {
   /// sube o baja los segundos y ya. Referencia: el default de Android
   /// equivale a ~1.0 s aquí. PO 2026-07-19 (5ª pasada, pidiendo el
   /// equivalente de un `decelerationRate` cercano a 1): 2 s → 4 s.
+  ///
+  /// Se mantiene en 4 s al cambiar a decaimiento exponencial (2026-08-03): lo
+  /// que se arregló no fue la duración del fling típico, sino que TODOS los
+  /// demás se parecieran a él. Ver [dragForBrake].
   static const scrollBrake = Duration(milliseconds: 4000);
 
-  /// El fling con el que se calibra [scrollBrake] (px/s). Un envión normal
-  /// del pulgar ronda esta cifra; flings más suaves frenan antes y más
-  /// bruscos después, proporcionalmente.
-  static const flingReference = 3000.0;
+  /// El fling con el que se calibra [scrollBrake] (px/s): la velocidad a la que
+  /// los segundos de la palanca se cumplen exactamente.
+  ///
+  /// MEDIDO, no supuesto (2026-08-03). Una sonda en
+  /// `JayaloScrollPhysics.createBallisticSimulation` registró 615 flings reales
+  /// del PO usando la app en su teléfono. La mediana salió **1372 px/s**; aquí
+  /// se redondea a 1400.
+  ///
+  /// El valor anterior era 3000, que nadie había medido y que resultó estar en
+  /// el **p90-p95** del uso real: los 4 s aprobados solo se materializaban en el
+  /// gesto que se hace una vez de cada diez, y el resto del tiempo la app
+  /// frenaba en menos de la mitad. Eso, por sí solo, explicaba la queja del PO
+  /// de que el scroll "solo se siente suave con un swipe muy brusco".
+  ///
+  /// El histograma salió BIMODAL — dos gestos distintos, con un valle claro
+  /// entre ellos:
+  ///   - leer   → 400-1000 px/s
+  ///   - buscar → 1900-3650 px/s
+  /// Con el modelo exponencial el ancla es poco sensible (mover esta cifra
+  /// entre 630 y 1400 cambia las duraciones un ~11-17%), así que se toma la
+  /// mediana global en vez de arbitrar entre los dos regímenes.
+  static const flingReference = 1400.0;
 
-  /// Fricción derivada de [scrollBrake] — no se escribe a mano.
-  static final double scrollFriction =
-      frictionForBrake(scrollBrake, velocity: flingReference);
+  /// Arrastre derivado de [scrollBrake] — no se escribe a mano.
+  ///
+  /// Es función y no constante porque la tolerancia de parada depende del
+  /// `devicePixelRatio` de la pantalla (ver [dragForBrake]); se resuelve en el
+  /// momento del fling con la del `ScrollMetrics` real.
+  static double scrollDragFor(double toleranceVelocity) => dragForBrake(
+        scrollBrake,
+        velocity: flingReference,
+        toleranceVelocity: toleranceVelocity,
+      );
 
   /// Subida del modal: arranque suave y frenada MUY marcada al llegar al
   /// tope (la variante enfatizada de Material de easeInOutCubic).

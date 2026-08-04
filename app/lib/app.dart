@@ -2,6 +2,10 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+// `FrictionSimulation` (el fling exponencial) NO viene re-exportada por
+// material.dart, a diferencia de `ClampingScrollSimulation`, que vive en
+// widgets. Import explícito.
+import 'package:flutter/physics.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -46,18 +50,44 @@ class _JayaloPageTransitionsBuilder extends PageTransitionsBuilder {
 }
 
 /// Física de scroll con frenado largo (PO 2026-07-19, 4ª pasada: "el scroll
-/// de la pantalla ponle 2 segundos de frenado").
+/// de la pantalla ponle 2 segundos de frenado"; 5ª pasada: 4 s).
 ///
-/// Solo cambia la FRICCIÓN del fling; el arrastre con el dedo, el rebote y el
-/// clamp de los bordes siguen siendo los de Material/Android. Se reusa la
-/// simulación de Flutter (`ClampingScrollSimulation`) en vez de escribir una
-/// propia: la única diferencia con el default es el parámetro `friction`
-/// ([JayaloMotion.scrollFriction], que documenta la aritmética de la
-/// duración). Cuando la posición está FUERA de rango, `super` devuelve un
+/// **Solo cambia la fase de FLING** — lo que pasa después de soltar el dedo. El
+/// arrastre con el dedo, el rebote, el clamp de los bordes y el indicador de
+/// overscroll siguen siendo exactamente los de Material/Android: esta clase no
+/// redefine `applyPhysicsToUserOffset`, `applyBoundaryConditions`, `spring` ni
+/// nada del gesto. Lo único que hace es sustituir la simulación balística.
+///
+/// Cuando la posición está FUERA de rango, `super` devuelve un
 /// `ScrollSpringSimulation` (el muelle que devuelve el contenido al borde) —
-/// ese caso se deja intacto: no es un fling, es una corrección de límite.
+/// ese caso se deja intacto: no es un fling, es una corrección de límite. Y
+/// cuando `super` devuelve `null` (velocidad por debajo de la tolerancia, o ya
+/// pegado al tope) tampoco se inventa nada.
+///
+/// Desde el 2026-08-03 el fling usa **decaimiento exponencial**
+/// (`FrictionSimulation`, el modelo de iOS) en vez de la spline de Android
+/// (`ClampingScrollSimulation`). El motivo, medido sobre 615 flings reales:
+/// con la spline la duración iba como `v^0.736` y había 6.3× de diferencia
+/// entre el swipe suave y el brusco, así que solo el brusco se sentía premium.
+/// El exponencial baja ese reparto a 1.7×. La aritmética y el porqué están en
+/// [dragForBrake]; la palanca sigue siendo [JayaloMotion.scrollBrake].
 class JayaloScrollPhysics extends ClampingScrollPhysics {
   const JayaloScrollPhysics({super.parent});
+
+  /// SONDA DE CALIBRACIÓN — TEMPORAL (2026-08-03).
+  ///
+  /// Registra la velocidad de cada fling REAL para saber dónde caen de verdad
+  /// los swipes suave / moderado / fuerte en la mano del PO. De aquí salió el
+  /// valor medido de [JayaloMotion.flingReference], que antes era una
+  /// suposición (3000 px/s) que resultó estar en el p90-p95 del uso real.
+  ///
+  /// Apagada salvo que se compile con `--dart-define=SCROLL_PROBE=true`, así
+  /// que no puede llegar a un release por descuido. Solo LEE: no cambia la
+  /// simulación, ni el arrastre con el dedo, ni los bordes.
+  ///
+  /// Se conserva para poder recalibrar en otro device o con otra mano sin
+  /// volver a escribirla.
+  static const _probe = bool.fromEnvironment('SCROLL_PROBE');
 
   @override
   JayaloScrollPhysics applyTo(ScrollPhysics? ancestor) =>
@@ -67,12 +97,20 @@ class JayaloScrollPhysics extends ClampingScrollPhysics {
   Simulation? createBallisticSimulation(
       ScrollMetrics position, double velocity) {
     final sim = super.createBallisticSimulation(position, velocity);
+    // Todo lo que NO sea un fling en rango se devuelve tal cual: el muelle del
+    // borde y el `null` de "aquí no hay fling" son decisiones de `super`.
     if (sim is! ClampingScrollSimulation) return sim;
-    return ClampingScrollSimulation(
-      position: sim.position,
-      velocity: sim.velocity,
-      friction: JayaloMotion.scrollFriction,
-      tolerance: toleranceFor(position),
+    if (_probe) {
+      // Una línea por fling, greppable. `sim.velocity` y no el `velocity` del
+      // argumento: es el que la simulación va a usar de verdad.
+      debugPrint('SCROLLPROBE ${sim.velocity.abs().toStringAsFixed(1)}');
+    }
+    final tolerance = toleranceFor(position);
+    return FrictionSimulation(
+      JayaloMotion.scrollDragFor(tolerance.velocity),
+      sim.position,
+      sim.velocity,
+      tolerance: tolerance,
     );
   }
 }
