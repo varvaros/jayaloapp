@@ -48,7 +48,6 @@ dependencies:
   firebase_core: ^4.12.1
   firebase_messaging: ^16.4.3
   geolocator: ^14.0.0
-  geocoding: ^4.0.0
   image_picker: ^1.2.1
   # Recorte de la foto tras tomarla/elegirla (pedido PO: al solicitar aparece
   # un crop). Requiere la UCropActivity en el AndroidManifest.

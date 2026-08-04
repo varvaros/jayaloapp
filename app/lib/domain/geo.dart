@@ -1,10 +1,10 @@
 /// Dominio de direcciones. Puro y testeable: aqui no entra Flutter ni la red.
 ///
-/// Sustituye a `formatPlacemarkAddress`, que unia lo que devolvia el
-/// geocodificador NATIVO de Android. En RD ese geocoder devuelve la via grande
-/// mas cercana y el municipio, asi que la direccion salia tan vaga que no
-/// servia ("Autopista Las Americas, Santo Domingo Este" para alguien de Parque
-/// del Este). Ahora los campos vienen estructurados del endpoint de la web.
+/// Reemplaza la union manual de campos que hacia el geocodificador NATIVO de
+/// Android. En RD ese geocoder devuelve la via grande mas cercana y el
+/// municipio, asi que la direccion salia tan vaga que no servia ("Autopista
+/// Las Americas, Santo Domingo Este" para alguien de Parque del Este). Ahora
+/// los campos vienen estructurados del endpoint de la web.
 class GeocodedPlace {
   const GeocodedPlace({
     this.country = '',
@@ -81,27 +81,4 @@ String mapsLinkFor(double lat, double lng) =>
   final url = lines[i].trim();
   lines.removeAt(i);
   return (text: lines.join('\n').trimRight(), mapUrl: url);
-}
-
-/// Une los componentes de una dirección (de un Placemark) en una línea legible,
-/// omitiendo vacíos y duplicados. Puro y testeable.
-///
-/// DEPRECATED: Usa composeAddressLine con campos estructurados en su lugar.
-/// Esta funcion la retira la tarea 9 del plan de direcciones.
-@Deprecated('Usa composeAddressLine en su lugar; esta funcion la retira la tarea 9')
-String formatPlacemarkAddress({
-  String? street,
-  String? subLocality,
-  String? locality,
-  String? administrativeArea,
-}) {
-  final seen = <String>{};
-  final parts = <String>[];
-  for (final raw in [street, subLocality, locality, administrativeArea]) {
-    final v = raw?.trim() ?? '';
-    if (v.isEmpty || seen.contains(v.toLowerCase())) continue;
-    seen.add(v.toLowerCase());
-    parts.add(v);
-  }
-  return parts.join(', ');
 }

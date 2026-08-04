@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/brand.dart';
 import '../../core/config.dart';
+import '../../core/geocode_client.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
@@ -66,6 +66,8 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   // flujo de consumidor ya las guardaba.
   double? _lat;
   double? _lng;
+  String _street = '';
+  String _streetNumber = '';
 
   // Paso 3 — WhatsApp (chequeo de "ocupado" inmediato, con rebote)
   String _prefix = '809';
@@ -272,9 +274,12 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       }
       // `timeLimit`: sin él, si el GPS no fija el Future no resuelve NUNCA y
       // `_locating` se queda en true — el botón gira para siempre.
+      // `high` y no `medium`: en este device `medium` declara 100 m de precision
+      // y `high` 4,6 m. Con 100 m el geocodificador puede enganchar la avenida
+      // de al lado en vez de la calle real.
       final pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.medium,
+              accuracy: LocationAccuracy.high,
               timeLimit: Duration(seconds: 15)));
       // La coordenada se guarda ANTES del geocoder: si el reverse geocoding
       // falla o no devuelve nada, igual conservamos la ubicación del negocio.
@@ -283,20 +288,25 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         _lat = pos.latitude;
         _lng = pos.longitude;
       });
-      final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
-      if (!mounted || marks.isEmpty) return;
-      final m = marks.first;
+      // Reverse geocoding contra la web (bug PO 2026-08-04): el nativo de
+      // Android en RD devuelve la vía grande más cercana, no la calle real.
+      final token = supa.auth.currentSession?.accessToken;
+      if (token == null) return;
+      final place = await GeocodeClient()
+          .lookup(lat: pos.latitude, lng: pos.longitude, accessToken: token);
+      if (!mounted) return;
       setState(() {
-        final city = m.locality ?? '';
-        final sector = m.subLocality ?? '';
-        if (city.isNotEmpty && !_cities.contains(city)) _cities.add(city);
-        if (sector.isNotEmpty && !_sectors.contains(sector)) {
-          _sectors.add(sector);
+        if (place.city.isNotEmpty && !_cities.contains(place.city)) {
+          _cities.add(place.city);
         }
-        final street = m.thoroughfare ?? '';
-        if (street.isNotEmpty && _address.text.trim().isEmpty) {
-          _address.text = street;
+        if (place.sector.isNotEmpty && !_sectors.contains(place.sector)) {
+          _sectors.add(place.sector);
         }
+        if (place.street.isNotEmpty && _address.text.trim().isEmpty) {
+          _address.text = place.street;
+        }
+        _street = place.street;
+        _streetNumber = place.streetNumber;
       });
     } catch (_) {
       _snack('No pudimos captar tu ubicación — escribe tu ciudad y sector.');
@@ -389,6 +399,8 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           // de rango y deja las columnas en NULL, como hasta ahora.
           'lat': _lat?.toString() ?? '',
           'lng': _lng?.toString() ?? '',
+          'street': _street,
+          'street_number': _streetNumber,
         },
         termsVersion: AppConfig.termsVersion,
       );

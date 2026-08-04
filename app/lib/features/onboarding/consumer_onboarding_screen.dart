@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/brand.dart';
 import '../../core/config.dart';
+import '../../core/geocode_client.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
-import '../../domain/geo.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
 import '../shared/brand_kit.dart';
@@ -33,6 +32,10 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
   final _local = TextEditingController();
   final _address = TextEditingController();
   double? _lat, _lng;
+  String _city = '';
+  String _sector = '';
+  String _street = '';
+  String _streetNumber = '';
   bool _locating = false;
   bool _terms = false;
   bool _busy = false;
@@ -98,32 +101,35 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
       // se queda en true — el botón "Usar mi ubicación" gira para siempre en la
       // PRIMERA experiencia de la app. Al expirar lanza y cae al catch de abajo,
       // que ya ofrece escribir la dirección a mano.
+      // `high` y no `medium`: en este device `medium` declara 100 m de precision
+      // y `high` 4,6 m. Con 100 m el geocodificador puede enganchar la avenida
+      // de al lado en vez de la calle real.
       final pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.medium, timeLimit: Duration(seconds: 15)));
+              accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 15)));
       if (!mounted) return;
       setState(() {
         _lat = pos.latitude;
         _lng = pos.longitude;
       });
-      // Reverse geocoding nativo (gratis). Solo rellena si el usuario no escribió.
+      // Reverse geocoding contra la web (bug PO 2026-08-04): el nativo de
+      // Android en RD devuelve la vía grande más cercana, no la calle real.
+      // Solo rellena si el usuario no escribió.
       if (_address.text.trim().isEmpty) {
-        try {
-          final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
-          if (marks.isNotEmpty && mounted) {
-            final m = marks.first;
-            final addr = formatPlacemarkAddress(
-              street: m.street,
-              subLocality: m.subLocality,
-              locality: m.locality,
-              administrativeArea: m.administrativeArea,
-            );
-            if (addr.isNotEmpty && _address.text.trim().isEmpty) {
-              setState(() => _address.text = addr);
-            }
+        final token = supa.auth.currentSession?.accessToken;
+        if (token != null) {
+          final place = await GeocodeClient()
+              .lookup(lat: pos.latitude, lng: pos.longitude, accessToken: token);
+          if (mounted && place.addressLine.isNotEmpty &&
+              _address.text.trim().isEmpty) {
+            setState(() {
+              _address.text = place.addressLine;
+              _city = place.city;
+              _sector = place.sector;
+              _street = place.street;
+              _streetNumber = place.streetNumber;
+            });
           }
-        } catch (_) {
-          // Best-effort: si el geocoder falla, se queda solo con lat/lng.
         }
       }
     } catch (_) {
@@ -158,6 +164,10 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
         lat: _lat,
         lng: _lng,
         termsVersion: AppConfig.termsVersion,
+        city: _city,
+        sector: _sector,
+        street: _street,
+        streetNumber: _streetNumber,
       );
       await roleStore.refresh(); // → redirect a /client
     } catch (e) {
