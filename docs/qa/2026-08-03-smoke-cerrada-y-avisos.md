@@ -131,7 +131,7 @@ Con la misma solicitud, abrir en la web:
 
 ---
 
-## Extra — el arreglo de "Corregir algo" (2026-08-04, sin revisar)
+## Extra — el arreglo de "Corregir algo" (2026-08-04, revisado)
 
 - [ ] En el formulario final, pulsar **"Corregir algo"** y luego **"Volver al formulario"**: el
       formulario reaparece intacto (antes no habia forma de volver).
@@ -140,3 +140,11 @@ Con la misma solicitud, abrir en la web:
       ANTES de este arreglo la pantalla se quedaba vacia y habia que rehacer la solicitud entera.
 - [ ] Desmarcar "Nuevo" a mano, corregir cualquier otra cosa, y comprobar que **sigue desmarcado**
       cuando vuelve el formulario.
+- [ ] **El paso que caza la regresion de `95e801a`** (la revision de `f265bbf` la encontro): corregir
+      con algo **vago a proposito** — "cambia la cantidad", sin decir a cuanto — para que la IA
+      conteste con una PREGUNTA en vez de un `ready` nuevo. Tiene que verse **la pregunta de la IA**.
+      Con el bug se repintaba el formulario ANTERIOR sin cambios y la pregunta no aparecia nunca: la
+      correccion se tragaba en silencio. Si la IA cierra directo con un `ready`, insistir con otra
+      correccion mas vaga hasta provocar la pregunta; el paso no vale si no se llego a ver una.
+- [ ] En esa misma pregunta, contestarla y comprobar que **el formulario final vuelve con el cambio
+      aplicado** (y que el titulo/bullets reflejan la correccion, no el texto viejo).
