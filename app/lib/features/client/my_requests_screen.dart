@@ -88,8 +88,12 @@ String? blockedDeleteReasonForPhase(RequestPhase p) => switch (p) {
 /// Ordena las filas de la lista de solicitudes: las NO VISTAS primero y, dentro
 /// de cada grupo, la más reciente arriba (pedido PO 2026-07-23). Función pura
 /// (público para poder probar el orden sin Supabase).
+///
+/// El 4° elemento de la fila (`ClosedReason?`, Task 11 ronda 2) no participa
+/// del orden — solo viaja hasta `_RequestCard` para que la píldora diga POR
+/// QUÉ se cerró, no solo que se cerró.
 void sortRequestRows(
-  List<(Map<String, dynamic>, RequestPhase, int)> rows,
+  List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)> rows,
   Set<String> unseenReqIds,
 ) {
   rows.sort((a, b) {
@@ -141,7 +145,8 @@ class MyRequestsScreen extends StatefulWidget {
   final bool embedded;
 
   /// Inyectables para tests (por defecto los fetch reales).
-  final Future<List<(Map<String, dynamic>, RequestPhase, int)>> Function()?
+  final Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
+  Function()?
   myFetch;
   final Future<List<Map<String, dynamic>>> Function()? othersFetch;
 
@@ -157,8 +162,8 @@ class MyRequestsScreen extends StatefulWidget {
 }
 
 class _MyRequestsScreenState extends State<MyRequestsScreen> {
-  late Future<List<(Map<String, dynamic>, RequestPhase, int)>> _load =
-      _startLoad();
+  late Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
+  _load = _startLoad();
   int _seenTick = requestsChanged.value;
 
   /// True mientras NO hay una carga de "mis solicitudes" en vuelo (la última
@@ -187,15 +192,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   Future<List<Map<String, dynamic>>> _fetchOthers() =>
       (widget.othersFetch ?? allOpenRequests)();
 
-  Future<List<(Map<String, dynamic>, RequestPhase, int)>> _fetchMine() =>
-      (widget.myFetch ?? _fetch)();
+  Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
+  _fetchMine() => (widget.myFetch ?? _fetch)();
 
   /// Arranca (o rearranca) la carga de "mis solicitudes" sincronizando
   /// [_myLoadSettled]: vuelve a false mientras la nueva carga está en vuelo y
   /// se pone en true al resolver. Se usa en TODAS las rutas de carga (inicial,
   /// listener `_reload`, staleness y pull-to-refresh) para que el gate de la
   /// guía de "otros" valga en cada recarga, no sólo en la primera.
-  Future<List<(Map<String, dynamic>, RequestPhase, int)>> _startLoad() {
+  Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
+  _startLoad() {
     _myLoadSettled = false;
     final f = _fetchMine();
     f.whenComplete(() {
@@ -350,7 +356,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     }
   }
 
-  Future<List<(Map<String, dynamic>, RequestPhase, int)>> _fetch() async {
+  Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
+  _fetch() async {
     final reqs = await myRequests();
     if (reqs.isEmpty) {
       _unseenReqIds = {};
@@ -384,6 +391,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
             offerLite(o, closedReason: closedReasons[o['id'] as String]),
           );
     }
+    // Ronda de arreglo 1 (Task 11): el 4° elemento es la razón de cierre de
+    // ESTA solicitud (`closedReasonFor`, null si sigue viva o si las
+    // aceptadas se mezclan) — sin esto, `_RequestCard` no tiene cómo saber
+    // POR QUÉ se cerró y cae siempre al genérico "Cerrada", que es
+    // justo el bug que el PO reportó sobre su lista.
     final rows = [
       for (final r in reqs)
         (
@@ -393,6 +405,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
             offers: byReq[r['id']] ?? const [],
           ),
           byReq[r['id']]?.length ?? 0,
+          closedReasonFor(byReq[r['id']] ?? const []),
         ),
     ];
     // Orden (pedido PO 2026-07-23): las NO VISTAS primero; dentro de cada grupo,
@@ -636,7 +649,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                   ),
                                   itemCount: items.length,
                                   itemBuilder: (_, i) {
-                                    final (r, phase, offerCount) = items[i];
+                                    final (r, phase, offerCount, closedReason) =
+                                        items[i];
                                     final id = r['id'] as String;
                                     // push (no go): apila el detalle SOBRE la lista para
                                     // que su atrás pueda volver. Con go() la pila se
@@ -681,6 +695,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                       ),
                                       phase: phase,
                                       offerCount: offerCount,
+                                      closedReason: closedReason,
                                       imageUrl: _firstImage(r),
                                       kind: r['kind'] as String?,
                                       wholesale: r['is_wholesale'] == true,
@@ -812,6 +827,7 @@ class _RequestCard extends StatelessWidget {
     required this.imageUrl,
     required this.kind,
     required this.onTap,
+    this.closedReason,
     this.wholesale = false,
     this.unseen = false,
     this.requirements = RequestRequirements.none,
@@ -825,6 +841,12 @@ class _RequestCard extends StatelessWidget {
   final String? imageUrl;
   final String? kind;
   final VoidCallback onTap;
+
+  /// Solo aplica cuando `phase` es `closed`; ver `phaseChip`. Ronda de
+  /// arreglo 1 de la Task 11: el PO reportó el "Cerrada" ambiguo sobre ESTA
+  /// tarjeta (su lista de solicitudes), no sobre el detalle — sin esto la
+  /// píldora nunca mostraba el motivo aunque `_fetch` ya lo trajera.
+  final ClosedReason? closedReason;
 
   /// Solicitud "al por mayor": sticker en la esquina de la miniatura.
   final bool wholesale;
@@ -856,7 +878,7 @@ class _RequestCard extends StatelessWidget {
     final tinted = phase != RequestPhase.waiting;
     final bg = tinted ? tone.bg : cs.surfaceContainerLowest;
     final fg = tinted ? tone.ink : cs.onSurface;
-    final (_, label) = phaseChip(phase, offerCount);
+    final (_, label) = phaseChip(phase, offerCount, closedReason: closedReason);
     return JayaloCard(
       onTap: onTap,
       tint: bg,

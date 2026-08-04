@@ -79,7 +79,9 @@ void main() {
 
   testWidgets('la tarjeta de MI solicitud pinta sus propios requisitos',
       (tester) async {
-    final mia = <(Map<String, dynamic>, RequestPhase, int)>[
+    // 4° elemento (`ClosedReason?`, Task 11 ronda 2) en `null`: esta fila no
+    // es la fase `closed`.
+    final mia = <(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>[
       (
         {
           'id': 'm1',
@@ -94,6 +96,7 @@ void main() {
         },
         RequestPhase.waiting,
         0,
+        null,
       ),
     ];
 

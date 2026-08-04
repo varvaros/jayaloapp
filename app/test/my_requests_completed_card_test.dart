@@ -25,8 +25,11 @@ void main() {
       MaterialApp(theme: jayaloTheme(Brightness.light), home: child);
 
   /// `myFetch` sustituye a `_fetch` entero, así que las filas se inyectan ya
-  /// con su fase: no hace falta Supabase.
-  Future<List<(Map<String, dynamic>, RequestPhase, int)>> rowsWith(
+  /// con su fase: no hace falta Supabase. Ninguno de estos casos es la fase
+  /// `closed`, así que el 4° elemento (`ClosedReason?`, Task 11 ronda 2) va
+  /// siempre en `null`.
+  Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
+  rowsWith(
     RequestPhase phase,
   ) async =>
       [
@@ -42,6 +45,7 @@ void main() {
           },
           phase,
           2,
+          null,
         ),
       ];
 

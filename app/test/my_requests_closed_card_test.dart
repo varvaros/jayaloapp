@@ -13,8 +13,37 @@ import 'package:jayalo_app/features/shared/onboarding_store.dart';
 /// violeta — el violeta es para el trato que terminó bien.
 ///
 /// La Task 7 le añade a este fichero el grupo de widget tests de la fase
-/// `closed`, con sus imports. El grupo de abajo ("cableado del swipe") es de
-/// la ronda de arreglo 1: cubre las SEIS fases, no solo `closed`.
+/// `closed`, con sus imports. El grupo "cableado del swipe" es de la ronda de
+/// arreglo 1: cubre las SEIS fases, no solo `closed`. El grupo "la tarjeta de
+/// la LISTA dice POR QUÉ se cerró" es de la Task 11 ronda de arreglo 1: el PO
+/// vio el "Cerrada" ambiguo en ESTA tarjeta (su lista de solicitudes), no en
+/// el detalle, y los tests de función pura de `phaseChip` no cubrían que el
+/// dato de verdad llegara pintado ahí.
+///
+/// Fila con fase `closed` para inyectar por `myFetch`, con `reason` como 4°
+/// elemento de la tupla (`ClosedReason?`). Vive a nivel de archivo porque la
+/// comparten el grupo `tarjeta` (motivo genérico, sin pasar `reason`) y el
+/// grupo nuevo de abajo (los tres motivos).
+Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>> rows({
+  ClosedReason? reason,
+}) async =>
+    [
+      (
+        {
+          'id': 'r1',
+          'title': 'Mesa de caoba',
+          'kind': 'producto',
+          'is_wholesale': false,
+          'image_url': null,
+          'status': 'open',
+          'created_at': DateTime.now().toIso8601String(),
+        },
+        RequestPhase.closed,
+        2,
+        reason,
+      ),
+    ];
+
 void main() {
   test('el chip dice "Cerrada", sin conteo de ofertas', () {
     final (icon, label) = phaseChip(RequestPhase.closed, 3);
@@ -75,8 +104,11 @@ void main() {
           MaterialApp(theme: jayaloTheme(Brightness.light), home: child);
 
       /// `myFetch` sustituye a `_fetch` entero: una fila ya con su fase, sin
-      /// Supabase.
-      Future<List<(Map<String, dynamic>, RequestPhase, int)>> rowsWith(
+      /// Supabase. Este grupo prueba que el assert no revienta en NINGUNA
+      /// fase, no el texto de la píldora, así que el motivo de cierre
+      /// (4° elemento) va en `null`.
+      Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
+      rowsWith(
         RequestPhase phase,
       ) async =>
           [
@@ -92,6 +124,7 @@ void main() {
               },
               phase,
               2,
+              null,
             ),
           ];
 
@@ -130,26 +163,10 @@ void main() {
     Widget host(Widget child) =>
         MaterialApp(theme: jayaloTheme(Brightness.light), home: child);
 
-    Future<List<(Map<String, dynamic>, RequestPhase, int)>> rows() async => [
-          (
-            {
-              'id': 'r1',
-              'title': 'Mesa de caoba',
-              'kind': 'producto',
-              'is_wholesale': false,
-              'image_url': null,
-              'status': 'open',
-              'created_at': DateTime.now().toIso8601String(),
-            },
-            RequestPhase.closed,
-            2,
-          ),
-        ];
-
     testWidgets('cerrada: gris de fase terminada y SIN banda violeta',
         (tester) async {
       await tester.pumpWidget(host(MyRequestsScreen(
-        myFetch: rows,
+        myFetch: () => rows(),
         othersFetch: () async => [],
         actions: const [],
       )));
@@ -166,6 +183,54 @@ void main() {
       // La banda violeta es SOLO de la completada: el violeta significa que el
       // trato terminó bien, y este no terminó — se apagó.
       expect(find.text('Completado'), findsNothing);
+    });
+  });
+
+  group('la tarjeta de la LISTA dice POR QUÉ se cerró', () {
+    // El hallazgo de la ronda de arreglo 1: los tests de función pura de
+    // `phaseChip` (arriba) ya probaban que la función SABE producir los tres
+    // textos, pero nadie afirmaba que `_RequestCard` —la tarjeta real de "Mis
+    // solicitudes", donde el PO leyó el "Cerrada" ambiguo— de verdad la
+    // llamara con el motivo. Estos tests montan la LISTA completa vía
+    // `myFetch` y leen el texto PINTADO, no el valor de retorno de una
+    // función.
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      onboardingStore.reset();
+      await onboardingStore.markDone('client.my_requests.v1');
+      await onboardingStore.markDone('client.others_requests.v1');
+    });
+
+    Widget host(Widget child) =>
+        MaterialApp(theme: jayaloTheme(Brightness.light), home: child);
+
+    Future<void> pump(WidgetTester tester, ClosedReason? reason) async {
+      await tester.pumpWidget(host(MyRequestsScreen(
+        myFetch: () => rows(reason: reason),
+        othersFetch: () async => [],
+        actions: const [],
+      )));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+        'inactividad: la píldora de la lista dice "Cerrada por inactividad"',
+        (tester) async {
+      await pump(tester, ClosedReason.inactivity);
+      expect(find.text('Cerrada por inactividad'), findsOneWidget);
+    });
+
+    testWidgets('no concretada: la píldora de la lista dice "No concretada"',
+        (tester) async {
+      await pump(tester, ClosedReason.notAgreed);
+      expect(find.text('No concretada'), findsOneWidget);
+    });
+
+    testWidgets(
+        'sin motivo (mezclado o desconocido): la píldora cae al genérico '
+        '"Cerrada"', (tester) async {
+      await pump(tester, null);
+      expect(find.text('Cerrada'), findsOneWidget);
     });
   });
 }
