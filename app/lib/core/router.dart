@@ -26,6 +26,7 @@ import '../features/provider/product_interest_detail_screen.dart';
 import '../features/provider/request_detail_screen.dart';
 import '../features/provider/stats_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/settings/address_screen.dart';
 import '../features/settings/quick_replies_editor_screen.dart';
 import '../features/shared/profile_avatar_button.dart';
 import '../features/shell/back_guard.dart';
@@ -218,6 +219,9 @@ GoRouter buildRouter() => GoRouter(
                 path: '/settings/quick-replies',
                 builder: (_, _) =>
                     const BackGuard(child: QuickRepliesEditorScreen())),
+            GoRoute(
+                path: '/settings/address',
+                builder: (_, _) => const BackGuard(child: AddressScreen())),
             GoRoute(
                 path: '/admin/quick-register',
                 // El ítem del menú ya está gateado por `isAdmin()`
