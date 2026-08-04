@@ -45,6 +45,11 @@ IconData iconFor(String kind) => switch (kind) {
       'message_new' => Icons.chat_bubble_outline,
       // Aviso de que un chat está por cerrarse por inactividad (cron 48h).
       'conversation_inactivity_warning' => Icons.hourglass_bottom,
+      // El trato se dio por completado, y el chat se cerró solo por
+      // inactividad. Kinds propios desde el 2026-08-03: antes ambos llegaban
+      // como `message_new` con el título "Nuevo mensaje".
+      'conversation_completed' => Icons.check_circle_outline,
+      'conversation_closed_inactivity' => Icons.hourglass_disabled,
       _ => _fallbackIcon(familyFor(kind)),
     };
 
