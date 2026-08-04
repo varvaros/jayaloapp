@@ -302,6 +302,33 @@ otro sitio:
 
 Ambos cambios son solo de producto, como en la app.
 
+### La web todavía tiene caja de texto libre
+
+Hallazgo al escribir el plan, que afecta a cómo viaja la condición: la app
+compone el `message` de la oferta **entero** desde datos estructurados, pero
+la web lo toma de una caja de comentario libre —
+`const finalMessage = comment.trim()` (`:964`) y su gemela en `:1074`. El
+resto de detalles del producto (marca, color, garantía) sí van en columnas
+propias; la condición es el único sin columna en las dos superficies.
+
+Tres consecuencias:
+
+1. En la web la condición se **antepone** al comentario con el formato exacto
+   de la app (`Estado: Nuevo · resto`), o `conditionFromOfferMessage` no la
+   reconocerá al editar esa oferta desde la app.
+2. Al editar en la web hay que **separar** las dos mitades antes de devolver
+   el texto a la caja, o cada edición acumula otra copia de `Estado: …`.
+3. El parser de la app tiene que ser conservador, porque el texto libre de un
+   proveedor de la web acaba en la misma columna. Lo es: exige el prefijo
+   exacto sobre una parte completa y solo acepta `Nuevo` o `Usado`.
+
+Aparte de esto, la caja libre es una divergencia con la decisión PO del
+2026-07-20, que la quitó de la app para no invitar al proveedor a dejar su
+teléfono y saltarse el desbloqueo pagado. En la web sigue ahí. El trigger
+`enforce_no_contact_info` (JY422) la vigila a nivel de base de datos, así que
+el agujero no está abierto — pero la paridad no está, y **eso no se decide en
+esta tanda**: queda anotado para el PO.
+
 ## Punto 6 — Verde y gris en el cotejo
 
 ### App
