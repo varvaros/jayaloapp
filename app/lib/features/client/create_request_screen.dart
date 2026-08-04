@@ -443,23 +443,33 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   Future<void> _handleTurn(AiTurn turn) async {
     switch (turn) {
+      // Todo turno que NO es `ready` tumba el formulario final: `_ready` es el
+      // dato, pero también el gate de lo que se pinta (ver `_guidedView`), y
+      // si sobrevive a una pregunta nueva la pantalla repinta el formulario
+      // VIEJO y la pregunta queda invisible — la corrección del usuario se
+      // traga en silencio. Paridad con la web, donde el gate es
+      // `current.type === "ready"` y un turno nuevo lo tumba solo.
       case AiQuestion q:
         setState(() {
+          _ready = null;
           _current = q;
           _pop++;
         });
       case AiKindSwitch k:
         setState(() {
+          _ready = null;
           _current = k;
           _pop++;
         });
       case AiImageRequest ir:
         setState(() {
+          _ready = null;
           _current = ir;
           _pop++;
         });
       case AiRouting r:
         setState(() {
+          _ready = null;
           _categories = r.categories;
           _rubros = r.rubros;
           _current = r;
