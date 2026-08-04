@@ -4,10 +4,64 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/geocode_client.dart';
 import '../../data/repos.dart';
+import '../../domain/geo.dart' show GeocodedPlace;
 import '../../domain/locations.dart';
 import '../shared/brand_kit.dart';
 import '../shared/jayalo_loader.dart';
 import '../shared/violet_header.dart';
+
+/// Resultado de aplicar un [GeocodedPlace] sobre los valores actuales de los
+/// campos que "Detectar mi ubicación" puede pisar. Funcion pura (sin Flutter
+/// ni Supabase) para que la ronda de arreglo 1 (hallazgo 1) sea testeable sin
+/// GPS ni widget test: un simple test de unidad basta.
+class AppliedGeocode {
+  const AppliedGeocode({
+    required this.address,
+    required this.country,
+    required this.street,
+    required this.streetNumber,
+    required this.city,
+    required this.sector,
+  });
+  final String address;
+  final String country;
+  final String street;
+  final String streetNumber;
+  final String city;
+  final String sector;
+}
+
+/// Aplica [place] sobre los valores actuales de direccion/pais/calle/numero/
+/// ciudad/sector, campo por campo. CADA campo se reemplaza SOLO si el
+/// geocodificador devolvio algo no vacio: un resultado PARCIAL (encuentra la
+/// via pero no determina el sector, por ejemplo) NO debe borrar lo que el
+/// usuario ya tenia correcto — justo la pantalla cuyo proposito es corregir
+/// la direccion no puede ser la que te la rompe. Paridad con `profile.tsx`
+/// (web), que hace `if (place.city) setCity(...)` campo por campo.
+///
+/// La referencia NUNCA se toca aqui — ese campo ni siquiera es parametro de
+/// esta funcion; ver el comentario en `_detectLocation`.
+AppliedGeocode applyGeocodedPlace({
+  required GeocodedPlace place,
+  required String currentAddress,
+  required String currentCountry,
+  required String currentStreet,
+  required String currentStreetNumber,
+  required String currentCity,
+  required String currentSector,
+}) {
+  return AppliedGeocode(
+    address:
+        place.addressLine.isNotEmpty ? place.addressLine : currentAddress,
+    country: place.country.isNotEmpty ? place.country : currentCountry,
+    street: place.street.isNotEmpty ? place.street : currentStreet,
+    streetNumber: place.streetNumber.isNotEmpty
+        ? place.streetNumber
+        : currentStreetNumber,
+    city: place.city.isNotEmpty ? place.city : currentCity,
+    sector: place.sector.isNotEmpty ? place.sector : currentSector,
+  );
+}
 
 /// Pantalla para corregir la direccion despues del alta (bug PO 2026-08-04):
 /// hasta ahora la direccion solo se podia fijar UNA vez, en el onboarding. Si
@@ -138,18 +192,28 @@ class _AddressScreenState extends State<AddressScreen> {
       final place = await GeocodeClient()
           .lookup(lat: pos.latitude, lng: pos.longitude, accessToken: token);
       if (!mounted) return;
+      // Pisa direccion, pais, calle, numero, ciudad y sector — CADA UNO solo
+      // si el geocodificador trajo algo (ver `applyGeocodedPlace`) — pero
+      // NUNCA la referencia (nota humana que ningun geocodificador reproduce;
+      // regla ya decidida en la web, profile.tsx:163-169).
+      final applied = applyGeocodedPlace(
+        place: place,
+        currentAddress: _address.text,
+        currentCountry: _country,
+        currentStreet: _street,
+        currentStreetNumber: _streetNumber,
+        currentCity: _cityFieldCtrl?.text ?? _cityInitial,
+        currentSector: _sectorFieldCtrl?.text ?? _sectorInitial,
+      );
       setState(() {
         _lat = pos.latitude;
         _lng = pos.longitude;
-        // Pisa direccion, ciudad, sector, calle y numero — pero NUNCA la
-        // referencia (nota humana que ningun geocodificador reproduce; regla
-        // ya decidida en la web, profile.tsx:163-169).
-        if (place.addressLine.isNotEmpty) _address.text = place.addressLine;
-        if (place.country.isNotEmpty) _country = place.country;
-        _street = place.street;
-        _streetNumber = place.streetNumber;
-        _cityFieldCtrl?.text = place.city;
-        _sectorFieldCtrl?.text = place.sector;
+        _address.text = applied.address;
+        _country = applied.country;
+        _street = applied.street;
+        _streetNumber = applied.streetNumber;
+        _cityFieldCtrl?.text = applied.city;
+        _sectorFieldCtrl?.text = applied.sector;
       });
     } catch (_) {
       _snack('No pudimos captar tu ubicación — puedes escribir tu dirección igual.');
