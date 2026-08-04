@@ -91,6 +91,17 @@ void sortRequestRows(
   });
 }
 
+/// Ids de las ofertas que PUEDEN tener conversación: solo las aceptadas o
+/// completadas (verificado contra producción 2026-08-03: cero conversaciones
+/// para pending/rejected/cancelled). Pura y pública para poder probar el
+/// filtro sin Supabase — es el requisito de rendimiento del brief hecho test:
+/// si alguien mete otro estado en el filtro, salta.
+List<String> dealOfferIds(List<Map<String, dynamic>> offers) => [
+      for (final o in offers)
+        if (o['status'] == 'accepted' || o['status'] == 'completed')
+          o['id'] as String,
+    ];
+
 class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({
     super.key,
@@ -342,16 +353,20 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           .select('id,request_id,status,unlocked_at')
           .inFilter('request_id', ids),
     );
-    // Solo las ofertas aceptadas/completadas tienen conversación (verificado
-    // contra producción 2026-08-03: cero conversaciones para pending/rejected/
-    // cancelled). Si no hay ninguna, no se consulta nada: esta pantalla ya pasó
-    // por auditoría de rendimiento y una ida y vuelta de más se nota.
-    final dealIds = [
-      for (final o in offers)
-        if (o['status'] == 'accepted' || o['status'] == 'completed')
-          o['id'] as String,
-    ];
-    final closedOfferIds = await closedConversationOfferIds(dealIds);
+    // Las dos consultas de abajo son independientes entre sí (una parte de
+    // `dealIds`, la otra de `offers`) y ninguna depende de la otra: en
+    // paralelo en vez de en serie, para no sumar latencias en una pantalla ya
+    // auditada por rendimiento. OJO: devuelven ambas `Set<String>` pero NO
+    // significan lo mismo — no las cruces al desestructurar.
+    final dealIds = dealOfferIds(offers);
+    final results = await Future.wait([
+      closedConversationOfferIds(dealIds), // ids de OFERTA con chat cerrado
+      _fetchUnseenRequests(offers), // ids de SOLICITUD con ofertas sin ver
+    ]);
+    final closedOfferIds = results[0];
+    // "No vistas": solicitudes con al menos una oferta cuya notificación
+    // `offer_new` sigue sin leer, mapeadas vía las ofertas ya traídas.
+    _unseenReqIds = results[1];
     final byReq = <String, List<OfferLite>>{};
     for (final o in offers) {
       byReq.putIfAbsent(o['request_id'] as String, () => []).add(
@@ -359,9 +374,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                 conversationClosed: closedOfferIds.contains(o['id'] as String)),
           );
     }
-    // "No vistas": solicitudes con al menos una oferta cuya notificación
-    // `offer_new` sigue sin leer, mapeadas vía las ofertas ya traídas.
-    _unseenReqIds = await _fetchUnseenRequests(offers);
     final rows = [
       for (final r in reqs)
         (
