@@ -322,7 +322,11 @@ BEGIN
   INSERT INTO public.notifications (user_id, kind, title, body, link, entity_type, entity_id)
   SELECT uid, 'conversation_closed_inactivity',
          'Tu chat se cerró por inactividad',
-         'Nadie escribió en ' || trim(to_char(v_hours, 'FM999999990.99'))
+         -- `rtrim` y no `trim`: con FM Postgres suprime los ceros decimales
+         -- pero DEJA el separador, así que `to_char(72,'FM…0.99')` da "72." y
+         -- el aviso decía "Nadie escribió en 72. horas". Verificado contra
+         -- producción: 72→"72", 168→"168", 72.5→"72.5", 0.5→"0.5".
+         'Nadie escribió en ' || rtrim(to_char(v_hours, 'FM999999990.99'), '.')
            || ' horas. Puedes calificar la transacción.',
          '/messages?c=' || c.id::text, 'conversation', c.id::text
   FROM public.conversations c
@@ -1101,8 +1105,11 @@ const _phaseCopy = {
   RequestPhase.completed: 'Califica al proveedor para ayudar a la comunidad.',
   // Estos mapas se leen con `!`: una clave que falte es un crash en runtime,
   // no un error de compilación. Al añadir una fase hay que tocar LOS DOS.
-  RequestPhase.closed:
-      'El chat se cerró sin completarse. Puedes calificar al proveedor.',
+  // Sin "puedes calificar": el panel de reseña está gateado en `completed`, y
+  // `completedReviewBusinessIds` filtra ofertas `status == 'completed'`, que en
+  // esta fase por definición no hay. La calificación existe, pero vive en el
+  // CHAT — prometerla aquí manda al usuario a buscar algo que no está.
+  RequestPhase.closed: 'El chat se cerró sin completarse.',
 };
 
 const _phaseTitle = {
@@ -1173,7 +1180,15 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Files:**
 - Modify: `jayalo-app/app/lib/data/repos.dart:431-436`
 - Modify: `jayalo-app/app/lib/features/client/my_requests_screen.dart:314-358`
+- Modify: `jayalo-app/app/lib/features/client/request_status_screen.dart:~185` — **el otro
+  `offers.map(offerLite)`**
 - Test: `jayalo-app/app/test/my_requests_closed_card_test.dart` (extender)
+
+⚠️ **Hay DOS sitios que construyen `OfferLite`, no uno.** El de `my_requests_screen._fetch`
+alimenta la lista; el de `request_status_screen.dart` alimenta el `RequestDetailSheet`. Si solo se
+arregla el primero, **todo el Step 8 de la Task 6 queda como código muerto**: los dos mapas `const`,
+el título "Cerrada" y el guard de cupos del detalle no se alcanzarían nunca, y el smoke del detalle
+no podría probar nada. Lo destapó la revisión de la Task 6.
 
 **Interfaces:**
 - Consumes: `OfferLite.conversationClosed` (Task 5), `phaseChip` y `toneFor` (Task 6).
