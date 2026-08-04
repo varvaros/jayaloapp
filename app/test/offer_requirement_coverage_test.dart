@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
+import 'package:jayalo_app/core/brand.dart';
 import 'package:jayalo_app/domain/request_requirements.dart';
 import 'package:jayalo_app/features/client/offer_requirement_coverage.dart';
 
@@ -95,5 +96,35 @@ void main() {
       brillo: Brightness.dark,
     );
     expect(find.text('Comprobante fiscal — no lo declaró'), findsOneWidget);
+  });
+
+  Color colorDeIcono(WidgetTester tester, IconData icono) =>
+      tester.widget<Icon>(find.byIcon(icono)).color!;
+
+  testWidgets('lo cumplido va en verde y lo no cumplido en gris (claro)',
+      (tester) async {
+    await montar(
+      tester,
+      const RequestRequirements(
+        withShipping: true,
+        requiresStateSupplier: true,
+      ),
+      const OfferCapabilities(offersShipping: true),
+    );
+    expect(colorDeIcono(tester, Icons.check_circle_outline),
+        JayaloColors.success);
+    expect(colorDeIcono(tester, Icons.remove_circle_outline),
+        isNot(JayaloColors.success));
+  });
+
+  testWidgets('en oscuro el verde es el del tema oscuro', (tester) async {
+    await montar(
+      tester,
+      const RequestRequirements(withShipping: true),
+      const OfferCapabilities(offersShipping: true),
+      brillo: Brightness.dark,
+    );
+    expect(colorDeIcono(tester, Icons.check_circle_outline),
+        JayaloColors.dSuccess);
   });
 }
