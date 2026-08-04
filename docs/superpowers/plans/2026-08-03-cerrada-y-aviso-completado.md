@@ -1578,7 +1578,211 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
+### Task 11: El chip dice POR QUÉ se cerró (app)
+
+> Añadida el 2026-08-03, después de ejecutar T1-T8. Motivo, en palabras del PO: *"Ese 'Cerrada'
+> hasta a nosotros nos confundió."* Tiene razón — y "Cerrada por inactividad" a secas tampoco vale,
+> porque hay DOS caminos y solo uno es inactividad.
+
+**Files:**
+- Modify: `jayalo-app/app/lib/domain/phase.dart`
+- Modify: `jayalo-app/app/lib/data/repos.dart` (`offerLite`, `closedConversationOfferIds`)
+- Modify: `jayalo-app/app/lib/features/client/my_requests_screen.dart` (`phaseChip`, `_fetch`)
+- Modify: `jayalo-app/app/lib/features/client/request_status_screen.dart`
+- Modify: `jayalo-app/app/lib/features/client/request_detail_sheet.dart`
+- Test: `jayalo-app/app/test/phase_test.dart`, `test/my_requests_closed_card_test.dart`
+
+**Interfaces:**
+- Consumes: `RequestPhase.closed` y la regla de "todas las aceptadas cerradas" (T5).
+- Produces:
+  - `enum ClosedReason { inactivity, notAgreed }`
+  - `OfferLite.closedReason` (`ClosedReason?`; null = conversación no cerrada) — **sustituye** al
+    bool `conversationClosed`, que pasa a ser `closedReason != null`.
+  - `closedReasonFor(List<OfferLite> offers) -> ClosedReason?`
+  - `phaseChip(RequestPhase, int offerCount, {ClosedReason? closedReason}) -> (IconData, String)`
+
+**Los dos caminos, y por qué se distinguen limpiamente:**
+
+| cómo murió | `conversations.status` | etiqueta |
+|---|---|---|
+| cron de inactividad (72 h) | `cerrado` | **Cerrada por inactividad** |
+| "Marcar como no concretado" | `perdido` | **No concretada** |
+
+`set_conversation_closed_at` pone `closed_at` en los dos casos, así que la regla de la fase no
+cambia — solo hace falta traerse además el `status`.
+
+**Ojo con `cerrado`:** también es el estado de una conversación COMPLETADA. No hay ambigüedad porque
+la fase `completed` se evalúa antes y gana siempre (contrato de T5), así que si llegamos aquí con
+`cerrado` es que no se completó.
+
+**El caso mezclado:** con hasta 3 finalistas puede haber una conversación autocerrada y otra marcada
+como no concretada en la misma solicitud. `closedReasonFor` devuelve la razón **solo si todas las
+aceptadas coinciden**; si se mezclan, devuelve `null` y el chip cae al genérico `Cerrada`.
+
+**Por qué la razón NO va en el enum:** `RequestPhase` gobierna tono y permisos, y esos son idénticos
+en los dos casos — lo único que cambia es el texto. Meter `closedInactivity`/`closedNotAgreed` en el
+enum triplicaría los casos de cada `switch` sin que ninguno se comportara distinto.
+
+- [ ] **Step 1: Escribir los tests que fallan**
+
+En `test/phase_test.dart`, con el helper actualizado para aceptar la razón:
+
+```dart
+  test('la razón del cierre sale cuando todas las aceptadas coinciden', () {
+    expect(
+        closedReasonFor([o('accepted', closed: ClosedReason.inactivity)]),
+        ClosedReason.inactivity);
+    expect(
+        closedReasonFor([
+          o('accepted', closed: ClosedReason.notAgreed),
+          o('accepted', closed: ClosedReason.notAgreed),
+        ]),
+        ClosedReason.notAgreed);
+  });
+
+  test('razones mezcladas → sin razón (el chip cae al genérico)', () {
+    // Modelo de hasta 3 finalistas: un chat pudo morir por inactividad y otro
+    // marcarse como no concretado. Ahí no hay una razón única que contar.
+    expect(
+        closedReasonFor([
+          o('accepted', closed: ClosedReason.inactivity),
+          o('accepted', closed: ClosedReason.notAgreed),
+        ]),
+        isNull);
+  });
+
+  test('sin cierre no hay razón', () {
+    expect(closedReasonFor([o('accepted')]), isNull);
+    expect(closedReasonFor([]), isNull);
+  });
+```
+
+Y en `test/my_requests_closed_card_test.dart`:
+
+```dart
+  test('el chip dice POR QUÉ se cerró', () {
+    expect(phaseChip(RequestPhase.closed, 3,
+            closedReason: ClosedReason.inactivity).$2,
+        'Cerrada por inactividad');
+    expect(phaseChip(RequestPhase.closed, 3,
+            closedReason: ClosedReason.notAgreed).$2,
+        'No concretada');
+    // Razones mezcladas o desconocidas: genérico, nunca una razón inventada.
+    expect(phaseChip(RequestPhase.closed, 3).$2, 'Cerrada');
+  });
+```
+
+- [ ] **Step 2: Correr y ver que fallan**
+
+```bash
+cd "C:/Users/ac/Downloads/jayalo-app/app" && flutter test test/phase_test.dart test/my_requests_closed_card_test.dart
+```
+
+Esperado: FALLA al compilar — `ClosedReason` no existe.
+
+- [ ] **Step 3: El dominio**
+
+En `lib/domain/phase.dart`:
+
+```dart
+/// Por qué murió el trato. Son los dos únicos caminos por los que una
+/// conversación llega a cerrada sin haberse completado; se distinguen por
+/// `conversations.status` (`cerrado` = el cron, `perdido` = alguien lo decidió).
+enum ClosedReason { inactivity, notAgreed }
+```
+
+`OfferLite.conversationClosed` (bool) pasa a `final ClosedReason? closedReason;`, y donde el código
+preguntaba por el bool ahora pregunta `o.closedReason != null`. Mantener el default (`null`) para no
+cambiar el comportamiento de los llamadores que no traen el dato.
+
+```dart
+/// La razón del cierre, SOLO si todas las ofertas aceptadas coinciden. Con
+/// razones mezcladas devuelve null y el chip cae al genérico: contar una de las
+/// dos sería elegir una mentira a medias.
+ClosedReason? closedReasonFor(List<OfferLite> offers) {
+  final cerradas = offers
+      .where((o) => o.status == 'accepted' || o.status == 'completed')
+      .map((o) => o.closedReason)
+      .toList();
+  if (cerradas.isEmpty || cerradas.any((r) => r == null)) return null;
+  final primera = cerradas.first;
+  return cerradas.every((r) => r == primera) ? primera : null;
+}
+```
+
+- [ ] **Step 4: Traer el `status` de la conversación**
+
+`closedConversationOfferIds` deja de devolver `Set<String>` y pasa a
+`Future<Map<String, ClosedReason>>`: el `select` añade `status` y mapea
+`'perdido' → notAgreed`, cualquier otro → `inactivity`. Mantiene el corte por lista vacía y el
+`catch` best-effort. Renómbrala a `closedConversationReasons` para que el nombre no mienta.
+
+Los DOS sitios que construyen `OfferLite` (`my_requests_screen._fetch` y
+`request_status_screen`) pasan `closedReason: mapa[o['id']]`.
+
+- [ ] **Step 5: El chip**
+
+```dart
+  RequestPhase.closed => (
+    Icons.lock_outline,
+    switch (closedReason) {
+      ClosedReason.inactivity => 'Cerrada por inactividad',
+      ClosedReason.notAgreed => 'No concretada',
+      // Razones mezcladas entre finalistas: genérico antes que inventar.
+      null => 'Cerrada',
+    },
+  ),
+```
+
+`phaseChip` gana el parámetro con nombre `{ClosedReason? closedReason}`, opcional, para no romper a
+los llamadores que no lo tienen.
+
+- [ ] **Step 6: El detalle**
+
+`_phaseTitle[phase]!` y `_phaseCopy[phase]!` no pueden variar por razón. Sustituir esos dos accesos
+por funciones que reciban `(RequestPhase, ClosedReason?)`. **Esto además elimina el operador `!` que
+casi provoca un crash en la Task 6** — un mapa incompleto dejaba de ser error de compilación; una
+función con `switch` exhaustivo sí lo es.
+
+Copys del detalle para `closed`:
+- inactividad → título `Cerrada por inactividad`, cuerpo `Nadie escribió y el chat se cerró solo.`
+- no concretada → título `No concretada`, cuerpo `El trato se marcó como no concretado.`
+- mezclado → título `Cerrada`, cuerpo `El chat se cerró sin completarse.`
+
+- [ ] **Step 7: Verificar**
+
+```bash
+cd "C:/Users/ac/Downloads/jayalo-app/app" && flutter analyze && flutter test
+```
+
+Esperado: analyze limpio y toda la suite en verde.
+
+⚠️ **Comprobar a ojo el ancho del chip.** `Cerrada por inactividad` son 23 caracteres, más del doble
+que `Completada`. En una tarjeta estrecha puede partirse en dos líneas o truncarse. Si no cabe,
+decidirlo con el PO antes de inventar una abreviatura.
+
+- [ ] **Step 8: Commit**
+
+```bash
+cd "C:/Users/ac/Downloads/jayalo-app"
+git add app/lib app/test
+git commit -m "feat(app): el chip dice POR QUE se cerro, no solo que se cerro
+
+Pedido del PO: \"ese Cerrada hasta a nosotros nos confundio\". Pero \"por
+inactividad\" a secas seria falso cuando alguien marco el trato como no
+concretado, asi que se distinguen los dos caminos por conversations.status y
+se reusa la palabra que el chat y la pestana de Mensajes ya usan.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+```
+
+---
+
 ### Task 9: La web dice lo mismo
+
+> **Actualizada el 2026-08-03**: incluye también la razón del cierre que introduce la Task 11. La
+> web tiene que decir lo mismo que la app, y hacerlo en dos pasadas significaría tocar
+> `$requestId.tsx` dos veces. **Ejecutar la Task 11 ANTES que esta.**
 
 **Files:**
 - Modify: `jayalo-main/jayalo-main/src/routes/requests/$requestId.tsx:1143-1164` y la carga de
