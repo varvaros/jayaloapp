@@ -60,9 +60,49 @@ permite), completar el onboarding del cliente y pulsar **"Usar mi ubicación"**.
       sector aparezca escrito ahí, aunque no coincida con ninguna opción del autocompletar, **es
       el éxito**, no un fallo ni un typo.
 - [ ] El campo de ciudad queda en "Santo Domingo Este".
-- [ ] Si el GPS no fija o el endpoint no responde: cae al mensaje de "no pudimos captar tu
-      ubicación" y el formulario sigue permitiendo escribir la dirección a mano (no se traba, no
-      crashea).
+- [ ] Si el GPS no fija (sin permiso, sin señal): sale el mensaje de error "No pudimos captar tu
+      ubicación" y el formulario sigue permitiendo escribir la dirección a mano.
+- [ ] Si el GPS SÍ fija pero el endpoint de geocodificación no responde (caído, timeout, sin red):
+      **no sale ningún mensaje de error.** ⚠️ Corregido tras la revisión final de rama — el
+      guion original prometía aquí el mismo aviso de "no pudimos captar tu ubicación", y es
+      **falso**: `GeocodeClient.lookup` (`lib/core/geocode_client.dart`) está diseñado para
+      **NUNCA lanzar** — rellenar la dirección es una ayuda, no un requisito. Si falla, devuelve
+      un resultado vacío EN SILENCIO y los campos de dirección/ciudad/sector simplemente se
+      quedan como estaban (vacíos, si es la primera vez), sin aviso, sin trabarse, sin crashear.
+      **Esto es el comportamiento diseñado, no un bug** — y es justo el estado en que correrá
+      este smoke si `feat/direccion-precisa` (repo web) todavía no está desplegada (ver Paso 0).
+
+---
+
+## Paso 1B — Detectar ubicación en el alta de PROVEEDOR
+
+**Sección agregada tras la revisión final de rama** — faltaba por completo. Las Tareas 6 y 9 del
+plan tocaron a fondo el onboarding de proveedor (`lib/features/onboarding/provider_onboarding_screen.dart`):
+mismo geocodificador nuevo que el Paso 1, `LocationAccuracy.high` (antes `medium`, que en este
+device declara ~100 m de precisión — suficiente para enganchar la avenida de al lado en vez de la
+calle real), y se quitaron `street`/`street_number` del payload que arma la RPC de cierre.
+
+Con una cuenta nueva (o reutilizando el registro), completar el onboarding de **proveedor** hasta
+el paso "Qué vendes y dónde" y pulsar **"Usar mi ubicación"**.
+
+- [ ] El campo de dirección se autorrellena con una vía real, mismo criterio que el Paso 1 —no un
+      resultado vago tipo "Autopista Las Américas".
+- [ ] Ciudad y sector detectados se agregan como chips seleccionados (no como texto en un campo
+      simple — el onboarding de proveedor permite varias ciudades/sectores).
+- [ ] Si el GPS no fija: mensaje "No pudimos captar tu ubicación — escribe tu ciudad y sector." y
+      el formulario sigue permitiendo completar todo a mano.
+- [ ] Si el GPS fija pero el endpoint de geocodificación no responde: **mismo silencio diseñado
+      que en el Paso 1** — ningún aviso, los chips de ciudad/sector y el campo de dirección
+      simplemente no se autorrellenan; `lat`/`lng` sí quedan guardados (se fijan ANTES de llamar
+      al geocodificador).
+- [ ] Terminar el alta (RPC `complete_provider_onboarding`) y confirmar en la BD
+      (`provider_businesses`) que el negocio quedó con `address`/`city`/`sector`/`lat`/`lng`
+      correctos.
+- [ ] ⚠️ **Confirmar que la RPC NO recibió `street`/`street_number` y no falló por eso** —
+      `provider_businesses` no tiene esas columnas; el payload de cierre las omite a propósito
+      (comentario en el código: "la RPC `complete_provider_onboarding` no lee esas claves"). Si
+      algún día se agrega esa lógica de vuelta sin agregar las columnas, la RPC fallaría o las
+      ignoraría en silencio — vigilar que no se reintroduzca sin la migración correspondiente.
 
 ---
 
@@ -75,17 +115,28 @@ Entrar como el cliente del paso 1. Ajustes → **"Mi dirección"** (`/settings/a
 - [ ] Cambiar manualmente el campo **Referencia** (ej. "casa azul al lado del colmado") sin tocar
       "Detectar mi ubicación", y pulsar **Guardar**. Salir de la pantalla y volver a entrar: la
       referencia editada persiste.
-- [ ] Pulsar **"Detectar mi ubicación"** de nuevo, en un sitio donde el geocodificador vaya a
-      devolver un resultado PARCIAL (por ejemplo, con precisión reducida o mala señal). Comprobar
-      que los campos que el geocoder deja vacíos **no borran** lo que ya estaba bien — solo se
-      pisan los campos donde sí llegó dato nuevo (arreglo de la Tarea 10, hallazgo del review).
 - [ ] La **Referencia** nunca se toca al detectar ubicación, ni con un geocode completo ni con uno
       parcial — es una nota humana que ningún geocodificador reproduce.
 - [ ] Guardar tras detectar ubicación y volver a entrar: los cambios (dirección, ciudad, sector)
       persisten.
-- [ ] Con **modo avión activado**, pulsar "Detectar mi ubicación": debe fallar con el mensaje de
-      error ("no pudimos captar tu ubicación...") y dejar el formulario intacto, permitiendo
-      escribir la dirección a mano y guardarla igual.
+- [ ] Con **modo avión activado**, pulsar "Detectar mi ubicación": el resultado depende de dónde
+      falle, y **no siempre hay un mensaje de error** — ⚠️ corregido tras la revisión final de
+      rama, el guion original prometía aquí un mensaje garantizado, y es falso por el mismo
+      motivo que en el Paso 1:
+      - Si el GPS mismo no fija (sin señal, sin permiso, o el device apaga la localización junto
+        con la red): sale "No pudimos captar tu ubicación..." y el formulario queda intacto.
+      - Si el GPS SÍ fija (puede pasar — el GPS satelital no depende de la red) pero el endpoint
+        de geocodificación no puede responder por falta de red: **no sale ningún aviso** —
+        `GeocodeClient.lookup` traga el error en silencio (mismo diseño del Paso 1); `lat`/`lng`
+        quedan guardados pero dirección/ciudad/sector no cambian.
+      - En ningún caso debe trabarse ni crashear; siempre se puede escribir la dirección a mano y
+        guardarla igual.
+
+> **Nota, no casilla accionable** (corregido tras la revisión final de rama): el guion original
+> pedía provocar aquí un geocode PARCIAL "con precisión reducida o mala señal" — no es
+> reproducible a voluntad por el tester. Ese comportamiento ("un resultado parcial no borra lo
+> que ya estaba bien") ya lo fija el test unitario `applyGeocodedPlace` en
+> `test/address_screen_test.dart`, campo por campo. No hace falta forzarlo en el smoke.
 
 ---
 
@@ -140,6 +191,71 @@ Maps pegada a mano (por ejemplo copiada de otra app).
 - [ ] Ese mensaje se pinta como texto plano tal cual, **sin** el botón "Abrir en el mapa" — la
       burbuja solo separa el enlace cuando `kind == 'address'` (mensajes de texto normal no pasan
       por `splitMapLink`).
+
+---
+
+## Paso 6 — Frente WEB (repo `jayalo-main`, rama `feat/direccion-precisa`)
+
+**Sección agregada tras la revisión final de rama** — faltaba por completo. Este plan fusiona
+DOS repos, y la cirugía más delicada de la revisión final está en la web, no en la app: los
+`Select` cerrados de `/profile` y de la sección "Zona" en `/profileprovider` pasaron a
+`input + datalist`, y el chat de la web ahora tiene que pintar el enlace al mapa que manda la
+app (I-3) en vez de una URL cruda. Nada de esto lo cubre ningún paso de arriba, que es 100% app.
+Probar en el preview de la rama (o `jayalo.com` si ya está desplegada) con las mismas dos cuentas
+del Paso 0.1.
+
+### Selects → input + datalist
+
+- [ ] `/profile` (cliente) — campos Ciudad/Sector: escribir una ciudad que NO esté en el catálogo
+      `LOCATIONS` (ej. "Boca Chica Village", inventada). El datalist no debe ofrecer nada raro y
+      el valor escrito debe conservarse al perder el foco.
+- [ ] `/profileprovider`, sección "Zona" — mismo patrón pero con el centinela `__all__` de por
+      medio: elegir "Todas las ciudades" / "Todos los sectores" y confirmar que el Input muestra
+      la etiqueta legible ("Todas las ciudades"), nunca el valor interno `__all__`. Cambiar a una
+      ciudad específica y confirmar que el sector se resetea.
+
+### I-1 — Sector ya no se bloquea con una ciudad fuera de catálogo (`/profile`)
+
+- [ ] Escribir a mano una ciudad que no exista en `LOCATIONS`. El campo **Sector** debe quedar
+      HABILITADO (antes se deshabilitaba y vaciaba — justo el caso para el que existe el campo de
+      texto libre) y debe permitir escribir un sector a mano.
+- [ ] Cargar un perfil con sector ya guardado y editar la ciudad letra por letra: el sector NO
+      debe borrarse en cada tecla — solo al salir del campo (blur), y solo si la ciudad cambió de
+      verdad Y el sector viejo ya no es válido para la nueva.
+- [ ] El toast de "Detectar" ("No identificamos el sector, puedes escribirlo") debe corresponder
+      con la realidad: en ese estado el campo debe estar escribible, no deshabilitado.
+
+### I-2 — La dirección escrita a mano en la app sobrevive a un guardado en la web
+
+- [ ] Con la cuenta cliente del Paso 0.1: en la **APP**, ir a "Mi dirección"
+      (`/settings/address`) y escribir una dirección a mano (texto libre) **sin** usar "Detectar
+      mi ubicación". Guardar.
+- [ ] Entrar a `/profile` en la **WEB** con esa misma cuenta. **Sin tocar** los campos
+      Calle/Número, cambiar cualquier otra cosa (ej. el switch de notificaciones por correo) y
+      pulsar "Guardar cambios".
+- [ ] Volver a la app → "Mi dirección": el texto escrito a mano debe seguir **intacto** — no debe
+      haberse recompuesto a partir de calle/sector/ciudad/país (antes SIEMPRE se recomponía, y
+      volvía vaga la dirección que el usuario había corregido a mano).
+- [ ] Repetir, pero esta vez sí tocando Calle o Número en la web antes de guardar: ahora **sí**
+      debe recomponerse `address` desde las partes — comportamiento esperado, no un bug.
+
+### I-3 — El chat de la web pinta el enlace al mapa como botón, no como URL cruda
+
+- [ ] Con la conversación del Paso 0.1: desde la app, enviar "Mi ubicación" o "Dirección del
+      local" (Pasos 3/4 de arriba).
+- [ ] Abrir esa misma conversación en `/messages` en la **web**: el mensaje debe mostrar el texto
+      de la dirección arriba y un enlace real **"Abrir en el mapa"** abajo — no la URL cruda de
+      ~60 caracteres. El texto del enlace debe decir exactamente "Abrir en el mapa" (mismo copy
+      que la app). Clic → abre Google Maps en pestaña nueva.
+- [ ] Mandar, desde la web, un mensaje de texto normal que contenga una URL de Google Maps pegada
+      a mano: debe verse como texto plano, **sin** convertirse en botón — el helper
+      (`src/lib/addressMessage.ts`) solo actúa sobre `kind === 'address'`.
+
+### Registro de cliente (paridad — confirmar que no se rompió)
+
+- [ ] `/auth/signup/consumer` (o el flujo equivalente de la web): completar un registro nuevo y
+      confirmar que no hay errores de consola ni de guardado. Este flujo no lo tocó este plan,
+      pero comparte `src/mocks/locations.ts` con los campos de ciudad/sector que sí se tocaron.
 
 ---
 
