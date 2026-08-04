@@ -632,9 +632,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                         blockedDeleteReasonForPhase(phase);
                                     // El row queda "bloqueado" (franja gris que
                                     // explica) solo si NINGUNA acción aplica.
+                                    // Se muestra el motivo de EDICIÓN: es la
+                                    // cadena que ya veían accepted/unlocked, y
+                                    // debía quedar exacta.
                                     final blocked =
                                         blockedDelete != null && blockedEdit != null
-                                            ? blockedDelete
+                                            ? blockedEdit
                                             : null;
                                     final card = _RequestCard(
                                       title: r['title'] as String,

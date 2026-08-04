@@ -24,8 +24,11 @@ const _phaseCopy = {
   RequestPhase.completed: 'Califica al proveedor para ayudar a la comunidad.',
   // Estos mapas se leen con `!`: una clave que falte es un crash en runtime,
   // no un error de compilación. Al añadir una fase hay que tocar LOS DOS.
-  RequestPhase.closed:
-      'El chat se cerró sin completarse. Puedes calificar al proveedor.',
+  // Sin promesa de calificar aqui: para `closed` no se renderiza ningun
+  // panel de resena (gateado en `completed`, y `completedReviewBusinessIds`
+  // filtra por ofertas `status == 'completed'`, que aqui por definicion no
+  // hay). La calificacion vive en el CHAT, no en esta pantalla.
+  RequestPhase.closed: 'El chat se cerró sin completarse.',
 };
 
 /// Títulos del héroe de fase (variante D1 elegida por el PO).
