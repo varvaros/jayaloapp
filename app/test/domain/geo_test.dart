@@ -37,6 +37,18 @@ void main() {
     expect(r.mapUrl, isNull);
   });
 
+  test('splitMapLink con DOS lineas de enlace usa la ULTIMA', () {
+    // El compositor siempre pone el enlace real al final; si el texto libre
+    // del usuario cuela otra linea con ese prefijo, debe quedarse como texto.
+    const body = 'https://www.google.com/maps/foo\n'
+        'Calle Primera 12\n'
+        'https://www.google.com/maps/search/?api=1&query=18.48,-69.85';
+    final r = splitMapLink(body);
+    expect(r.text, 'https://www.google.com/maps/foo\nCalle Primera 12');
+    expect(r.mapUrl,
+        'https://www.google.com/maps/search/?api=1&query=18.48,-69.85');
+  });
+
   test('GeocodedPlace.fromJson tolera claves ausentes', () {
     final p = GeocodedPlace.fromJson({'city': 'Santiago'});
     expect(p.city, 'Santiago');

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../shared/network_image.dart';
 import '../../../domain/chat.dart';
 import '../../../domain/chat_time.dart';
+import '../../../domain/geo.dart';
 
 /// Paleta del chat sobre el panel lila (doctrina mockups: el chat se reconoce
 /// por su fondo lila pleno, con burbujas chicas sin sombra e ink oscuro). En
@@ -183,6 +185,9 @@ Widget buildBubble(
     );
   } else {
     // text / address
+    // Solo 'address' separa el enlace del mapa; el resto de los kinds sigue
+    // pintando el cuerpo tal cual, sin tocar esa rama comun.
+    final addressSplit = m.kind == 'address' ? splitMapLink(m.body) : null;
     inner = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       constraints: BoxConstraints(
@@ -218,7 +223,33 @@ Widget buildBubble(
               ],
             ),
           // +1pt (pedido PO 2026-07-22: mensajes del chat más grandes).
-          Text(m.body, style: TextStyle(fontSize: 14.5, color: bubbleInk)),
+          Text(
+            addressSplit?.text ?? m.body,
+            style: TextStyle(fontSize: 14.5, color: bubbleInk),
+          ),
+          if (addressSplit?.mapUrl != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: InkWell(
+                onTap: () => _openMapLink(context, addressSplit!.mapUrl!),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.map_outlined, size: 15, color: bubbleInk),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Abrir en el mapa',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: bubbleInk,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Text(timeStr, style: TextStyle(fontSize: 10, color: stampColor)),
         ],
       ),
@@ -246,5 +277,23 @@ Widget buildBubble(
           ? [inner]
           : [avatar, const SizedBox(width: 6), Flexible(child: inner)],
     ),
+  );
+}
+
+/// Abre el enlace del mapa en la app externa (o el navegador si no hay
+/// ninguna instalada). `launchUrl` puede lanzar si nada sabe manejar el
+/// enlace; lo capturamos para no dejar una excepcion sin atrapar en un
+/// `onTap`, y avisamos con el mismo mecanismo (SnackBar) que usa el resto
+/// del chat para sus errores.
+Future<void> _openMapLink(BuildContext context, String url) async {
+  var ok = false;
+  try {
+    ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  } catch (_) {
+    ok = false;
+  }
+  if (ok || !context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('No se pudo abrir el mapa')),
   );
 }

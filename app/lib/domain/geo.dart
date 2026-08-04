@@ -75,7 +75,11 @@ String mapsLinkFor(double lat, double lng) =>
 /// cruda de 60 caracteres.
 ({String text, String? mapUrl}) splitMapLink(String body) {
   final lines = body.split('\n');
-  final i = lines.indexWhere(
+  // lastIndexWhere, no indexWhere: el compositor SIEMPRE pone el enlace real
+  // en la ULTIMA linea, asi que buscar desde el final es correcto por
+  // construccion y de paso inmuniza contra que un campo de texto libre del
+  // usuario meta otra linea que empiece igual (revision de la tarea 8).
+  final i = lines.lastIndexWhere(
       (l) => l.trim().startsWith('https://www.google.com/maps/'));
   if (i == -1) return (text: body, mapUrl: null);
   final url = lines[i].trim();
