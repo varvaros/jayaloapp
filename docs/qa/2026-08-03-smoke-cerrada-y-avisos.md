@@ -1,7 +1,10 @@
 # Smoke — "Cerrada" y los avisos del servidor
 
 Fecha: 2026-08-03
-Estado: **pendiente de ejecutar**.
+Estado: **parcial**. La seccion *Extra* ("Corregir algo") esta ✅ **ejecutada el 2026-08-04**.
+Las partes **A y B siguen pendientes y estan BLOQUEADAS**: las dos necesitan una segunda cuenta
+(el proveedor) y la base se reseteo a 0 usuarios, asi que no hay ni oferta ni conversacion que
+cerrar. El registro de esa cuenta lo tiene que hacer una persona.
 
 Es el único gate real de esta tanda: ni la parte A (que vive en SQL) ni el cableado de la parte B
 los cubre ningún test de punta a punta. Las suites están verdes (app 776, web 457) pero eso no
@@ -131,20 +134,42 @@ Con la misma solicitud, abrir en la web:
 
 ---
 
-## Extra — el arreglo de "Corregir algo" (2026-08-04, revisado)
+## Extra — el arreglo de "Corregir algo" — ✅ EJECUTADO 2026-08-04
 
-- [ ] En el formulario final, pulsar **"Corregir algo"** y luego **"Volver al formulario"**: el
+Ejecutado en device (Xiaomi 23090RA98G) sobre el APK debug de `ced5c04`, conduciendo por `adb`.
+Solicitud de prueba: "5 sillas plasticas blancas para una fiesta" (producto).
+
+- [x] En el formulario final, pulsar **"Corregir algo"** y luego **"Volver al formulario"**: el
       formulario reaparece intacto (antes no habia forma de volver).
-- [ ] **Con el modo avion puesto**, pulsar "Corregir algo", escribir algo y enviar. Debe salir el
+      **PASA** — vuelve con "Hoy o mañana" aun seleccionado y los checkboxes igual.
+- [x] **Con el modo avion puesto**, pulsar "Corregir algo", escribir algo y enviar. Debe salir el
       toast de error y **volver a verse el campo de corregir**, con el formulario intacto detras.
       ANTES de este arreglo la pantalla se quedaba vacia y habia que rehacer la solicitud entera.
-- [ ] Desmarcar "Nuevo" a mano, corregir cualquier otra cosa, y comprobar que **sigue desmarcado**
+      **PASA** — toast "Algo fallo. Intenta de nuevo.", la pantalla sigue en "¿Que quieres
+      corregir?" con la tarjeta "Tu solicitud" intacta, y al volver el formulario esta entero.
+- [x] Desmarcar "Nuevo" a mano, corregir cualquier otra cosa, y comprobar que **sigue desmarcado**
       cuando vuelve el formulario.
-- [ ] **El paso que caza la regresion de `95e801a`** (la revision de `f265bbf` la encontro): corregir
+      **PASA con matiz.** Se marco "Usado" a mano (en esta solicitud la IA no premarcaba nada) y
+      sobrevivio a la correccion. Pero ⚠️ **el guard `_conditionTouched` NO quedo ejercitado**: la
+      IA no mando `condition` en ningun `ready`, asi que no hubo premarcado que pisar. Lo que se
+      probo es que el estado sobrevive al viaje de ida y vuelta, no que gane contra la IA. Para
+      ejercitarlo de verdad hace falta una solicitud donde el usuario diga el estado por su cuenta.
+- [x] **El paso que caza la regresion de `95e801a`** (la revision de `f265bbf` la encontro): corregir
       con algo **vago a proposito** — "cambia la cantidad", sin decir a cuanto — para que la IA
       conteste con una PREGUNTA en vez de un `ready` nuevo. Tiene que verse **la pregunta de la IA**.
       Con el bug se repintaba el formulario ANTERIOR sin cambios y la pregunta no aparecia nunca: la
       correccion se tragaba en silencio. Si la IA cierra directo con un `ready`, insistir con otra
       correccion mas vaga hasta provocar la pregunta; el paso no vale si no se llego a ver una.
-- [ ] En esa misma pregunta, contestarla y comprobar que **el formulario final vuelve con el cambio
+      **PASA, y el bug era real y facil de alcanzar**: al PRIMER intento la IA contesto
+      "Pregunta 3 — ¿Cuantas sillas plasticas tipo monoblock necesitas ahora?" con opciones, y la
+      pregunta se vio. Sin `95e801a` ahi se habria repintado el formulario viejo.
+- [x] En esa misma pregunta, contestarla y comprobar que **el formulario final vuelve con el cambio
       aplicado** (y que el titulo/bullets reflejan la correccion, no el texto viejo).
+      **PASA** — "20 sillas plasticas tipo monoblock (rimax) blancas" / "Cantidad: 20 unidades".
+
+### Dato medido de paso: la latencia del "Pensando…"
+
+Cuatro turnos de `sendTurn` sobre 5G, medidos desde el toque hasta que la pantalla deja de cambiar
+(incluye render y animacion de la mascota): **9,2 / 9,5 / 9,5 / 11,2 s**. Descontando el muestreo
+del sondeo, la espera real ronda los **5-8 s**, que coincide con lo que dice el comentario de
+`_send`. Es de sobra para que un mensaje rotativo se vea; la idea del PO tiene margen.
