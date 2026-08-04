@@ -66,8 +66,6 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   // flujo de consumidor ya las guardaba.
   double? _lat;
   double? _lng;
-  String _street = '';
-  String _streetNumber = '';
 
   // Paso 3 — WhatsApp (chequeo de "ocupado" inmediato, con rebote)
   String _prefix = '809';
@@ -305,8 +303,6 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         if (place.street.isNotEmpty && _address.text.trim().isEmpty) {
           _address.text = place.street;
         }
-        _street = place.street;
-        _streetNumber = place.streetNumber;
       });
     } catch (_) {
       _snack('No pudimos captar tu ubicación — escribe tu ciudad y sector.');
@@ -399,8 +395,10 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           // de rango y deja las columnas en NULL, como hasta ahora.
           'lat': _lat?.toString() ?? '',
           'lng': _lng?.toString() ?? '',
-          'street': _street,
-          'street_number': _streetNumber,
+          // NO se manda street/street_number: la RPC complete_provider_onboarding
+          // no lee esas claves y provider_businesses no tiene esas columnas — aqui
+          // la direccion es address + city + sector; calle y numero solo existen
+          // en profiles (camino de consumidor).
         },
         termsVersion: AppConfig.termsVersion,
       );
