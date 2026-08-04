@@ -342,9 +342,22 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           .select('id,request_id,status,unlocked_at')
           .inFilter('request_id', ids),
     );
+    // Solo las ofertas aceptadas/completadas tienen conversación (verificado
+    // contra producción 2026-08-03: cero conversaciones para pending/rejected/
+    // cancelled). Si no hay ninguna, no se consulta nada: esta pantalla ya pasó
+    // por auditoría de rendimiento y una ida y vuelta de más se nota.
+    final dealIds = [
+      for (final o in offers)
+        if (o['status'] == 'accepted' || o['status'] == 'completed')
+          o['id'] as String,
+    ];
+    final closedOfferIds = await closedConversationOfferIds(dealIds);
     final byReq = <String, List<OfferLite>>{};
     for (final o in offers) {
-      byReq.putIfAbsent(o['request_id'] as String, () => []).add(offerLite(o));
+      byReq.putIfAbsent(o['request_id'] as String, () => []).add(
+            offerLite(o,
+                conversationClosed: closedOfferIds.contains(o['id'] as String)),
+          );
     }
     // "No vistas": solicitudes con al menos una oferta cuya notificación
     // `offer_new` sigue sin leer, mapeadas vía las ofertas ya traídas.

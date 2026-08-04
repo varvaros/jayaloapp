@@ -80,6 +80,33 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
   /// el borde de cada oferta en la hoja. Se marca leída al abrir cada oferta.
   Set<String> _unreadOfferIds = {};
 
+  /// Ids de oferta cuya CONVERSACIÓN ya está cerrada (ver
+  /// `closedConversationOfferIds`): alimenta `OfferLite.conversationClosed`
+  /// para que este detalle pueda mostrar la fase "Cerrada", igual que la
+  /// lista. `offersStream` es realtime, así que las ofertas pueden cambiar
+  /// bajo los pies; `_closedOfferIdsChecked` evita volver a consultar una
+  /// oferta ya resuelta en cada emisión del stream.
+  Set<String> _closedOfferIds = {};
+  final Set<String> _closedOfferIdsChecked = {};
+
+  /// Best-effort, como `_loadUnreadOffers`: si falla, el detalle se pinta sin
+  /// la fase "Cerrada" en vez de romperse. Solo consulta ofertas
+  /// aceptadas/completadas (las únicas con conversación) que todavía no se
+  /// han revisado.
+  Future<void> _refreshClosedOfferIds(List<Map<String, dynamic>> offers) async {
+    final dealIds = [
+      for (final o in offers)
+        if ((o['status'] == 'accepted' || o['status'] == 'completed') &&
+            !_closedOfferIdsChecked.contains(o['id'] as String))
+          o['id'] as String,
+    ];
+    if (dealIds.isEmpty) return;
+    _closedOfferIdsChecked.addAll(dealIds);
+    final closed = await closedConversationOfferIds(dealIds);
+    if (!mounted || closed.isEmpty) return;
+    setState(() => _closedOfferIds = {..._closedOfferIds, ...closed});
+  }
+
   @override
   void initState() {
     super.initState();
@@ -180,9 +207,17 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
         stream: offersStream(widget.requestId),
         builder: (context, snap) {
           final offers = snap.data ?? const <Map<String, dynamic>>[];
+          // Fire-and-forget: no bloquea el build. Guardado por
+          // `_closedOfferIdsChecked`, así que no repite consulta por cada
+          // emisión del stream una vez resuelta una oferta.
+          _refreshClosedOfferIds(offers);
           final phase = phaseForRequest(
             requestStatus: req['status'] as String,
-            offers: offers.map(offerLite).toList(),
+            offers: offers
+                .map((o) => offerLite(o,
+                    conversationClosed:
+                        _closedOfferIds.contains(o['id'] as String)))
+                .toList(),
           );
           // Cuántas de las ofertas mostradas siguen sin abrir (número del CTA).
           final unreadCount =

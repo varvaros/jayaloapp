@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jayalo_app/app.dart';
+import 'package:jayalo_app/core/brand.dart';
 import 'package:jayalo_app/domain/phase.dart';
 import 'package:jayalo_app/features/client/my_requests_screen.dart';
+import 'package:jayalo_app/features/shared/brand_kit.dart';
 import 'package:jayalo_app/features/shared/onboarding_store.dart';
 
 /// Pedido PO 2026-08-03: una solicitud cuya conversación se cerró sin
@@ -102,4 +104,54 @@ void main() {
       }
     },
   );
+
+  group('tarjeta', () {
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      onboardingStore.reset();
+      await onboardingStore.markDone('client.my_requests.v1');
+      await onboardingStore.markDone('client.others_requests.v1');
+    });
+
+    Widget host(Widget child) =>
+        MaterialApp(theme: jayaloTheme(Brightness.light), home: child);
+
+    Future<List<(Map<String, dynamic>, RequestPhase, int)>> rows() async => [
+          (
+            {
+              'id': 'r1',
+              'title': 'Mesa de caoba',
+              'kind': 'producto',
+              'is_wholesale': false,
+              'image_url': null,
+              'status': 'open',
+              'created_at': DateTime.now().toIso8601String(),
+            },
+            RequestPhase.closed,
+            2,
+          ),
+        ];
+
+    testWidgets('cerrada: gris de fase terminada y SIN banda violeta',
+        (tester) async {
+      await tester.pumpWidget(host(MyRequestsScreen(
+        myFetch: rows,
+        othersFetch: () async => [],
+        actions: const [],
+      )));
+      await tester.pumpAndSettle();
+
+      final card = tester.widget<JayaloCard>(find
+          .ancestor(
+            of: find.text('Mesa de caoba'),
+            matching: find.byType(JayaloCard),
+          )
+          .first);
+      expect(card.tint, JayaloStatus.completedLight.bg);
+      expect(find.text('Cerrada'), findsOneWidget);
+      // La banda violeta es SOLO de la completada: el violeta significa que el
+      // trato terminó bien, y este no terminó — se apagó.
+      expect(find.text('Completado'), findsNothing);
+    });
+  });
 }
