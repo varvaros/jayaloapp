@@ -68,4 +68,57 @@ void main() {
       expect(m, '');
     });
   });
+
+  group('conditionFromOfferMessage', () {
+    test('ida y vuelta con Nuevo', () {
+      final m = composeOfferMessage(isService: false, condition: 'Nuevo');
+      expect(conditionFromOfferMessage(m), 'Nuevo');
+    });
+
+    test('ida y vuelta con Usado', () {
+      final m = composeOfferMessage(isService: false, condition: 'Usado');
+      expect(conditionFromOfferMessage(m), 'Usado');
+    });
+
+    test('lo encuentra aunque no sea la primera parte', () {
+      final m = composeOfferMessage(
+        isService: false,
+        condition: 'Usado',
+        brand: 'Rimax',
+        warranty: '7 dias',
+        offersShipping: true,
+      );
+      expect(conditionFromOfferMessage(m), 'Usado');
+    });
+
+    test('mensaje sin condicion devuelve vacio', () {
+      final m = composeOfferMessage(isService: false, brand: 'Rimax');
+      expect(conditionFromOfferMessage(m), '');
+    });
+
+    test('mensaje de servicio devuelve vacio', () {
+      final m = composeOfferMessage(
+          isService: true, availabilityNote: 'Lunes a viernes');
+      expect(conditionFromOfferMessage(m), '');
+    });
+
+    test('mensaje vacio devuelve vacio', () {
+      expect(conditionFromOfferMessage(''), '');
+    });
+
+    test('un valor que no es Nuevo ni Usado no se acepta', () {
+      expect(conditionFromOfferMessage('Estado: Reacondicionado'), '');
+    });
+
+    test('el texto libre de la web no dispara falsos positivos', () {
+      // La web todavia tiene caja de comentario y su texto acaba en la misma
+      // columna `message`. Mencionar el estado en prosa no debe colar.
+      expect(
+        conditionFromOfferMessage(
+            'Silla Rimax en buen estado: Nuevo modelo 2026'),
+        '',
+      );
+      expect(conditionFromOfferMessage('El estado: nuevo, sin uso'), '');
+    });
+  });
 }
