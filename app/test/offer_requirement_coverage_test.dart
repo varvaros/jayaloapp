@@ -114,17 +114,22 @@ void main() {
     expect(colorDeIcono(tester, Icons.check_circle_outline),
         JayaloColors.success);
     expect(colorDeIcono(tester, Icons.remove_circle_outline),
-        isNot(JayaloColors.success));
+        JayaloColors.mutedFg);
   });
 
   testWidgets('en oscuro el verde es el del tema oscuro', (tester) async {
     await montar(
       tester,
-      const RequestRequirements(withShipping: true),
+      const RequestRequirements(
+        withShipping: true,
+        requiresStateSupplier: true,
+      ),
       const OfferCapabilities(offersShipping: true),
       brillo: Brightness.dark,
     );
     expect(colorDeIcono(tester, Icons.check_circle_outline),
         JayaloColors.dSuccess);
+    expect(colorDeIcono(tester, Icons.remove_circle_outline),
+        JayaloColors.dMutedFg);
   });
 }
