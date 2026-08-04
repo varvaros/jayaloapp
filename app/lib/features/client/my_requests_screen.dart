@@ -45,15 +45,32 @@ String timeAgo(DateTime d) {
     'En contacto · $offerCount oferta${offerCount == 1 ? '' : 's'}',
   ),
   RequestPhase.completed => (Icons.done_all, 'Completada'),
+  // Sin el conteo de ofertas que llevan las fases vivas: el trato ya se
+  // decidió, cuántas llegaron dejó de ser accionable.
+  RequestPhase.closed => (Icons.lock_outline, 'Cerrada'),
 };
 
-/// Motivo por el que una solicitud NO se puede editar/eliminar, o null si sí.
-/// El swipe pasa esto a [SwipeToActions] para que el gesto ceda y explique en
-/// vez de quedar inerte (antes la tarjeta ni siquiera llevaba detector).
-String? blockedReasonForPhase(RequestPhase p) => switch (p) {
+/// Motivo por el que una solicitud NO se puede EDITAR, o null si sí.
+///
+/// Editar y borrar dejaron de ir juntos el 2026-08-03: sobre una "Cerrada" el
+/// cliente puede limpiar la lista, pero editar no aplica — hubo trato.
+String? blockedEditReasonForPhase(RequestPhase p) => switch (p) {
   RequestPhase.waiting || RequestPhase.withOffers => null,
   RequestPhase.accepted => 'Ya aceptaste una oferta: no puede editarse',
   RequestPhase.unlocked => 'Ya están en contacto: no puede editarse',
+  RequestPhase.completed => 'Solicitud completada',
+  RequestPhase.closed => 'El trato se cerró: no puede editarse',
+};
+
+/// Motivo por el que una solicitud NO se puede ELIMINAR, o null si sí.
+///
+/// La RPC `cancel_customer_request` solo acepta solicitudes `open`, y desde el
+/// 2026-08-03 también las de trato cerrado aunque el proveedor haya pagado el
+/// desbloqueo (el lead ya se consumió y el chat no puede reabrirse).
+String? blockedDeleteReasonForPhase(RequestPhase p) => switch (p) {
+  RequestPhase.waiting || RequestPhase.withOffers || RequestPhase.closed => null,
+  RequestPhase.accepted => 'Ya aceptaste una oferta: no puede eliminarse',
+  RequestPhase.unlocked => 'Ya están en contacto: no puede eliminarse',
   RequestPhase.completed => 'Solicitud completada',
 };
 
@@ -527,7 +544,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                           // lista (no dentro del itemBuilder, que corre por
                           // cada fila en cada scroll: sería O(n²)).
                           final firstOpen = items.indexWhere(
-                            (r) => blockedReasonForPhase(r.$2) == null,
+                            (r) => blockedDeleteReasonForPhase(r.$2) == null,
                           );
                           if (items.isEmpty) {
                             return ListView(
@@ -609,8 +626,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                     // inerte: cede con goma y dice por qué (la
                                     // RPC de borrar solo permite `open`, y
                                     // editar una aceptada no aplica).
+                                    final blockedEdit =
+                                        blockedEditReasonForPhase(phase);
+                                    final blockedDelete =
+                                        blockedDeleteReasonForPhase(phase);
+                                    // El row queda "bloqueado" (franja gris que
+                                    // explica) solo si NINGUNA acción aplica.
                                     final blocked =
-                                        blockedReasonForPhase(phase);
+                                        blockedDelete != null && blockedEdit != null
+                                            ? blockedDelete
+                                            : null;
                                     final card = _RequestCard(
                                       title: r['title'] as String,
                                       createdAt: DateTime.parse(
@@ -634,31 +659,29 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                       peekKey: (blocked == null && i == firstOpen)
                                           ? 'requests.swipe.v1'
                                           : null,
-                                      actions: blocked != null
-                                          ? const []
-                                          : [
-                                              SwipeAction(
-                                                icon: Icons.delete_outline,
-                                                label: 'Eliminar',
-                                                color: Theme.of(
-                                                  context,
-                                                ).colorScheme.error,
-                                                onTap: () => _deleteRequest(
-                                                    id, offerCount),
-                                              ),
-                                              SwipeAction(
-                                                icon: Icons.edit_outlined,
-                                                label: 'Editar',
-                                                color: const Color(0xFF378ADD),
-                                                // Editar llega en una sesión
-                                                // próxima (decisión PO).
-                                                onTap: () async =>
-                                                    showJayaloToast(
-                                                  context,
-                                                  'Editar solicitud: próximamente.',
-                                                ),
-                                              ),
-                                            ],
+                                      actions: [
+                                        if (blockedDelete == null)
+                                          SwipeAction(
+                                            icon: Icons.delete_outline,
+                                            label: 'Eliminar',
+                                            color:
+                                                Theme.of(context).colorScheme.error,
+                                            onTap: () =>
+                                                _deleteRequest(id, offerCount),
+                                          ),
+                                        if (blockedEdit == null)
+                                          SwipeAction(
+                                            icon: Icons.edit_outlined,
+                                            label: 'Editar',
+                                            color: const Color(0xFF378ADD),
+                                            // Editar llega en una sesión
+                                            // próxima (decisión PO).
+                                            onTap: () async => showJayaloToast(
+                                              context,
+                                              'Editar solicitud: próximamente.',
+                                            ),
+                                          ),
+                                      ],
                                       child: card,
                                     ).cascadeIn(i);
                                   },
@@ -1025,8 +1048,10 @@ class _RequestCard extends StatelessWidget {
     );
     // Completada: la miniatura en GRIS (pedido PO 2026-08-03). Teñir solo el
     // fondo no bastaba: la foto a todo color es lo primero que mira el ojo y
-    // seguía leyéndose como una solicitud viva.
-    Widget muted(Widget child) => phase == RequestPhase.completed
+    // seguía leyéndose como una solicitud viva. Cerrada también está
+    // terminada y corre el mismo riesgo de leerse como viva a todo color.
+    Widget muted(Widget child) => phase == RequestPhase.completed ||
+            phase == RequestPhase.closed
         ? ColorFiltered(
             colorFilter: const ColorFilter.matrix(_grayscaleMatrix),
             child: child,

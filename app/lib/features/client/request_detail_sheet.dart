@@ -22,6 +22,10 @@ const _phaseCopy = {
   RequestPhase.accepted: 'El proveedor te contactará pronto.',
   RequestPhase.unlocked: 'Ya puedes hablar con el proveedor.',
   RequestPhase.completed: 'Califica al proveedor para ayudar a la comunidad.',
+  // Estos mapas se leen con `!`: una clave que falte es un crash en runtime,
+  // no un error de compilación. Al añadir una fase hay que tocar LOS DOS.
+  RequestPhase.closed:
+      'El chat se cerró sin completarse. Puedes calificar al proveedor.',
 };
 
 /// Títulos del héroe de fase (variante D1 elegida por el PO).
@@ -34,6 +38,7 @@ const _phaseTitle = {
   // simplemente que ya están en contacto.
   RequestPhase.unlocked: 'En contacto',
   RequestPhase.completed: 'Completada',
+  RequestPhase.closed: 'Cerrada',
 };
 
 /// Hoja blanca del detalle: título + chip de fase, "Desde", avatares anónimos
@@ -185,7 +190,9 @@ class RequestDetailSheet extends StatelessWidget {
           ),
           // Cupos restantes (modelo de hasta 3 finalistas): el cliente
           // puede aceptar más de una oferta.
-          if (offers.isNotEmpty && phase != RequestPhase.completed) ...[
+          if (offers.isNotEmpty &&
+              phase != RequestPhase.completed &&
+              phase != RequestPhase.closed) ...[
             const SizedBox(height: 6),
             Text(
               clientSlotsMessage(

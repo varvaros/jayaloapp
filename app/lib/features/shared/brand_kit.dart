@@ -90,6 +90,11 @@ StatusTone toneFor(BuildContext context, RequestPhase phase) {
       dark ? JayaloStatus.unlockedDark : JayaloStatus.unlockedLight,
     RequestPhase.completed =>
       dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
+    // "Cerrada" comparte el gris de la completada a propósito (pedido PO
+    // 2026-08-03): las dos están terminadas. Lo que las distingue es la banda
+    // violeta, que solo lleva la completada.
+    RequestPhase.closed =>
+      dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
   };
 }
 
