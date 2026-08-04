@@ -1107,9 +1107,31 @@ class _ProviderRequestDetailScreenState
 
   /// Campos de precio, ramificados por kind: producto = fijo/rango; servicio =
   /// 4 modos (fijo/rango/por hora/a evaluar), paridad con la web.
+  ///
+  /// Todo el bloque va dentro de un marco violeta (pedido PO 2026-08-04). El
+  /// selector de modo entra en el marco a proposito: elegir "Rango" o "Por
+  /// hora" es parte de decir el precio, no un ajuste aparte.
   List<Widget> _pricingFields(BuildContext context) {
-    if (!_isService) {
-      return [
+    final cs = Theme.of(context).colorScheme;
+    return [
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: cs.primary.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.primary, width: 1.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: _isService
+              ? _servicePricing(context)
+              : _productPricing(context),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _productPricing(BuildContext context) => [
         PillSegmented(
           options: const ['Precio fijo', 'Rango'],
           index: _fixed ? 0 : 1,
@@ -1125,17 +1147,16 @@ class _ProviderRequestDetailScreenState
             Expanded(child: _numField(_max, 'Hasta (RD\$)')),
           ]),
       ];
-    }
-    return [
-      PillSegmented(
-        options: const ['Fijo', 'Rango', 'Por hora', 'A evaluar'],
-        index: _svcMode,
-        onChanged: (i) => setState(() => _svcMode = i),
-      ),
-      const SizedBox(height: 12),
-      ..._svcModeFields(context),
-    ];
-  }
+
+  List<Widget> _servicePricing(BuildContext context) => [
+        PillSegmented(
+          options: const ['Fijo', 'Rango', 'Por hora', 'A evaluar'],
+          index: _svcMode,
+          onChanged: (i) => setState(() => _svcMode = i),
+        ),
+        const SizedBox(height: 12),
+        ..._svcModeFields(context),
+      ];
 
   List<Widget> _svcModeFields(BuildContext context) {
     switch (_svcModes[_svcMode]) {
