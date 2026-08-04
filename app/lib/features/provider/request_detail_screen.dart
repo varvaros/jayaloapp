@@ -16,7 +16,6 @@ import '../../domain/money.dart';
 import '../../domain/offer_edit.dart';
 import '../../domain/offer_message.dart';
 import '../../domain/pricing.dart';
-import '../../domain/wholesale.dart';
 import '../../domain/finalist_slots.dart';
 import '../../domain/request_requirements.dart';
 import '../shared/request_requirement_badges.dart';
@@ -26,6 +25,7 @@ import '../shared/customer_rep_card.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
 import '../shared/section_heading.dart';
+import '../shared/wholesale_card.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import 'offer_requirements_warning.dart';
@@ -1231,10 +1231,13 @@ class _ProviderRequestDetailScreenState
       style: TextStyle(
           fontSize: 13, fontWeight: FontWeight.w600, color: jayaloHead(context)));
 
-  /// ¿La sección "Información" tiene algo que enseñar? Es exactamente lo que
-  /// se dibuja debajo del encabezado: datos de mayoreo, bullets y presupuesto.
+  /// ¿La seccion "Informacion" tiene algo que ensenar? Es exactamente lo que
+  /// se dibuja debajo del encabezado: bullets y presupuesto.
+  ///
+  /// `is_wholesale` NO cuenta desde 2026-08-04: los datos de mayoreo se
+  /// mudaron a `WholesaleCard`, arriba con el titulo. Volver a sumarlo aqui
+  /// deja "INFORMACION" flotando sobre un divisor sin nada debajo.
   static bool _hasInfo(Map<String, dynamic> req, List<String> bullets) =>
-      req['is_wholesale'] == true ||
       bullets.isNotEmpty ||
       requestBudgetLabel(req['budget_min'] as num?, req['budget_max'] as num?) !=
           null;
@@ -1524,7 +1527,6 @@ class _ProviderRequestDetailScreenState
       );
     }
     final cs = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final bullets = List<String>.from(req['bullets'] as List? ?? const []);
     final images =
         ((req['image_urls'] as List?)?.cast<String>() ?? const <String>[])
@@ -1572,13 +1574,13 @@ class _ProviderRequestDetailScreenState
                           color: jayaloHead(context))),
                   if (req['is_wholesale'] == true)
                     Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: StatusChip(
-                          label: 'Al por mayor',
-                          icon: Icons.storefront_outlined,
-                          tone: dark
-                              ? JayaloStatus.respondedDark
-                              : JayaloStatus.respondedLight),
+                      padding: const EdgeInsets.only(top: 10),
+                      child: WholesaleCard(
+                        quantity: (req['wholesale_quantity'] as num?)?.toInt(),
+                        split: req['wholesale_split'] as String?,
+                        packaging: req['wholesale_packaging'] as String?,
+                        note: req['wholesale_note'] as String?,
+                      ),
                     ),
                   // Lo que el cliente EXIGE. Va con el título y el chip de
                   // mayoreo, no bajo "Información": es identidad de la
@@ -1614,28 +1616,6 @@ class _ProviderRequestDetailScreenState
                   // no se dibuja si no tiene filas.
                   if (_hasInfo(req, bullets))
                     sectionHeading(context, 'Información'),
-                  if (req['is_wholesale'] == true) ...[
-                    const SizedBox(height: 8),
-                    if (req['wholesale_quantity'] != null)
-                      Text('Cantidad: ${req['wholesale_quantity']}',
-                          style: TextStyle(
-                              fontSize: 13, color: cs.onSurfaceVariant)),
-                    if (req['wholesale_split'] != null)
-                      Text(
-                          'División: ${wholesaleSplitLabel(req['wholesale_split'] as String?)}',
-                          style: TextStyle(
-                              fontSize: 13, color: cs.onSurfaceVariant)),
-                    if (req['wholesale_packaging'] != null)
-                      Text(
-                          'Empaque: ${wholesalePackagingLabel(req['wholesale_packaging'] as String?)}',
-                          style: TextStyle(
-                              fontSize: 13, color: cs.onSurfaceVariant)),
-                    if ((req['wholesale_note'] as String?)?.isNotEmpty ==
-                        true)
-                      Text('Detalle: ${req['wholesale_note']}',
-                          style: TextStyle(
-                              fontSize: 13, color: cs.onSurfaceVariant)),
-                  ],
                   if (bullets.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Text('Detalles',
