@@ -7,9 +7,11 @@ import '../core/ttl_cache.dart';
 import '../domain/chat.dart' show QuickItem;
 import '../domain/contact_info.dart'
     show contactInfoCode, contactInfoMessage, payloadHasContactInfo;
+import '../domain/geo.dart' show mapsLinkFor;
 import '../domain/phase.dart';
 import '../domain/profile_address.dart';
 import '../domain/request_requirements.dart';
+import 'location_body.dart';
 
 final supa = Supabase.instance.client;
 
@@ -1311,6 +1313,12 @@ Future<void> completeConsumerProfile({
   double? lat,
   double? lng,
   required String termsVersion,
+  // Opcionales con default '': no rompen a los llamadores actuales. Una
+  // tarea posterior los cablea desde el onboarding con datos estructurados.
+  String city = '',
+  String sector = '',
+  String street = '',
+  String streetNumber = '',
 }) async {
   final u = supa.auth.currentUser!;
   await supa.from('profiles').upsert({
@@ -1321,6 +1329,10 @@ Future<void> completeConsumerProfile({
     'phone': whatsapp,
     'whatsapp': whatsapp,
     'address': address,
+    'city': city.isEmpty ? null : city,
+    'sector': sector.isEmpty ? null : sector,
+    'street': street.isEmpty ? null : street,
+    'street_number': streetNumber.isEmpty ? null : streetNumber,
     'lat': lat,
     'lng': lng,
     'location_captured_at': (lat != null && lng != null)
@@ -1932,7 +1944,7 @@ Future<String?> myBusinessAddressBody() async {
   final uid = supa.auth.currentUser!.id;
   final biz = await supa
       .from('provider_businesses')
-      .select('id,name,city,sector')
+      .select('id,name,city,sector,lat,lng')
       .eq('user_id', uid)
       .limit(1)
       .maybeSingle();
@@ -1946,10 +1958,15 @@ Future<String?> myBusinessAddressBody() async {
     biz['sector'],
     biz['city'],
   ].whereType<String>().where((s) => s.isNotEmpty).join(', ');
+  final lat = (biz['lat'] as num?)?.toDouble();
+  final lng = (biz['lng'] as num?)?.toDouble();
+  // El nombre del negocio va PRIMERO, asi que se compone a mano en vez de
+  // reutilizar buildLocationBody (que empieza por la direccion).
   return [
     biz['name'],
     address,
     cityLine,
+    if (lat != null && lng != null) mapsLinkFor(lat, lng),
   ].whereType<String>().where((s) => s.isNotEmpty).join('\n');
 }
 
@@ -1981,7 +1998,7 @@ Future<String?> myLocationBody() async {
   final uid = supa.auth.currentUser!.id;
   final p = await supa
       .from('profiles')
-      .select('address,address_reference,sector,city')
+      .select('address,address_reference,sector,city,lat,lng')
       .eq('user_id', uid)
       .maybeSingle();
   if (p == null) return null;
@@ -1989,15 +2006,43 @@ Future<String?> myLocationBody() async {
     p['sector'],
     p['city'],
   ].whereType<String>().where((s) => s.isNotEmpty).join(', ');
-  final parts = <String>[
-    if (p['address'] is String && (p['address'] as String).isNotEmpty)
-      p['address'] as String,
-    if (cityLine.isNotEmpty) cityLine,
-    if (p['address_reference'] is String &&
-        (p['address_reference'] as String).isNotEmpty)
-      'Referencia: ${p['address_reference']}',
-  ];
-  return parts.isEmpty ? null : parts.join('\n');
+  return buildLocationBody(
+    address: p['address'] is String ? p['address'] as String : '',
+    cityLine: cityLine,
+    reference: p['address_reference'] is String
+        ? p['address_reference'] as String
+        : '',
+    lat: (p['lat'] as num?)?.toDouble(),
+    lng: (p['lng'] as num?)?.toDouble(),
+  );
+}
+
+/// Actualiza SOLO la direccion del perfil. Existe porque hasta 2026-08-04 la
+/// direccion solo se podia poner en el onboarding: si salia mal el dia del alta,
+/// no habia ninguna forma de corregirla dentro de la app.
+Future<void> updateMyAddress({
+  required String address,
+  required String city,
+  required String sector,
+  required String street,
+  required String streetNumber,
+  required String reference,
+  double? lat,
+  double? lng,
+}) async {
+  final uid = supa.auth.currentUser!.id;
+  await supa.from('profiles').update({
+    'address': address,
+    'city': city.isEmpty ? null : city,
+    'sector': sector.isEmpty ? null : sector,
+    'street': street.isEmpty ? null : street,
+    'street_number': streetNumber.isEmpty ? null : streetNumber,
+    'address_reference': reference.isEmpty ? null : reference,
+    'lat': ?lat,
+    'lng': ?lng,
+    if (lat != null && lng != null)
+      'location_captured_at': DateTime.now().toIso8601String(),
+  }).eq('user_id', uid);
 }
 
 /// Defaults idénticos a DEFAULT_CHAT_WELCOME de la web + override de app_settings.
