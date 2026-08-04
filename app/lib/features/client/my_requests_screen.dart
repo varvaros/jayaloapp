@@ -26,29 +26,40 @@ String timeAgo(DateTime d) {
 
 /// Ícono y copy corto por fase. Con ofertas muestra el conteo real — es el
 /// dato que hace abrir la app.
-(IconData, String) phaseChip(RequestPhase p, int offerCount) => switch (p) {
-  RequestPhase.waiting => (Icons.schedule, 'Esperando ofertas'),
-  RequestPhase.withOffers => (
-    Icons.local_offer_outlined,
-    '$offerCount oferta${offerCount == 1 ? '' : 's'}',
-  ),
-  // Modelo de hasta 3 finalistas: aunque ya aceptaste, el cliente sigue viendo
-  // cuántas ofertas recibió (antes se ocultaba al pasar a 'accepted').
-  RequestPhase.accepted => (
-    Icons.handshake,
-    'Aceptada · $offerCount oferta${offerCount == 1 ? '' : 's'}',
-  ),
-  // "En contacto", no "Desbloqueado" (pedido PO 2026-07-23): el cliente nunca
-  // desbloquea — el ícono de chat refuerza que ya están conversando.
-  RequestPhase.unlocked => (
-    Icons.forum_outlined,
-    'En contacto · $offerCount oferta${offerCount == 1 ? '' : 's'}',
-  ),
-  RequestPhase.completed => (Icons.done_all, 'Completada'),
-  // Sin el conteo de ofertas que llevan las fases vivas: el trato ya se
-  // decidió, cuántas llegaron dejó de ser accionable.
-  RequestPhase.closed => (Icons.lock_outline, 'Cerrada'),
-};
+(IconData, String) phaseChip(RequestPhase p, int offerCount,
+        {ClosedReason? closedReason}) =>
+    switch (p) {
+      RequestPhase.waiting => (Icons.schedule, 'Esperando ofertas'),
+      RequestPhase.withOffers => (
+        Icons.local_offer_outlined,
+        '$offerCount oferta${offerCount == 1 ? '' : 's'}',
+      ),
+      // Modelo de hasta 3 finalistas: aunque ya aceptaste, el cliente sigue
+      // viendo cuántas ofertas recibió (antes se ocultaba al pasar a
+      // 'accepted').
+      RequestPhase.accepted => (
+        Icons.handshake,
+        'Aceptada · $offerCount oferta${offerCount == 1 ? '' : 's'}',
+      ),
+      // "En contacto", no "Desbloqueado" (pedido PO 2026-07-23): el cliente
+      // nunca desbloquea — el ícono de chat refuerza que ya están conversando.
+      RequestPhase.unlocked => (
+        Icons.forum_outlined,
+        'En contacto · $offerCount oferta${offerCount == 1 ? '' : 's'}',
+      ),
+      RequestPhase.completed => (Icons.done_all, 'Completada'),
+      // Sin el conteo de ofertas que llevan las fases vivas: el trato ya se
+      // decidió, cuántas llegaron dejó de ser accionable.
+      RequestPhase.closed => (
+        Icons.lock_outline,
+        switch (closedReason) {
+          ClosedReason.inactivity => 'Cerrada por inactividad',
+          ClosedReason.notAgreed => 'No concretada',
+          // Razones mezcladas entre finalistas: genérico antes que inventar.
+          null => 'Cerrada',
+        },
+      ),
+    };
 
 /// Motivo por el que una solicitud NO se puede EDITAR, o null si sí.
 ///
@@ -356,22 +367,21 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     // Las dos consultas de abajo son independientes entre sí (una parte de
     // `dealIds`, la otra de `offers`) y ninguna depende de la otra: en
     // paralelo en vez de en serie, para no sumar latencias en una pantalla ya
-    // auditada por rendimiento. OJO: devuelven ambas `Set<String>` pero NO
-    // significan lo mismo — no las cruces al desestructurar.
+    // auditada por rendimiento. Van por un record en vez de `Future.wait`
+    // con lista: sus tipos ya NO coinciden (`Map<String, ClosedReason>` vs
+    // `Set<String>`), y `Future.wait` de una lista exige un tipo común.
     final dealIds = dealOfferIds(offers);
-    final results = await Future.wait([
-      closedConversationOfferIds(dealIds), // ids de OFERTA con chat cerrado
+    final (closedReasons, unseenReqIds) = await (
+      closedConversationReasons(dealIds), // razón de cierre por ID de OFERTA
       _fetchUnseenRequests(offers), // ids de SOLICITUD con ofertas sin ver
-    ]);
-    final closedOfferIds = results[0];
+    ).wait;
     // "No vistas": solicitudes con al menos una oferta cuya notificación
     // `offer_new` sigue sin leer, mapeadas vía las ofertas ya traídas.
-    _unseenReqIds = results[1];
+    _unseenReqIds = unseenReqIds;
     final byReq = <String, List<OfferLite>>{};
     for (final o in offers) {
       byReq.putIfAbsent(o['request_id'] as String, () => []).add(
-            offerLite(o,
-                conversationClosed: closedOfferIds.contains(o['id'] as String)),
+            offerLite(o, closedReason: closedReasons[o['id'] as String]),
           );
     }
     final rows = [

@@ -24,6 +24,20 @@ void main() {
     expect(icon, isNot(Icons.done_all));
   });
 
+  test('el chip dice POR QUÉ se cerró', () {
+    expect(
+        phaseChip(RequestPhase.closed, 3,
+                closedReason: ClosedReason.inactivity)
+            .$2,
+        'Cerrada por inactividad');
+    expect(
+        phaseChip(RequestPhase.closed, 3, closedReason: ClosedReason.notAgreed)
+            .$2,
+        'No concretada');
+    // Razones mezcladas o desconocidas: genérico, nunca una razón inventada.
+    expect(phaseChip(RequestPhase.closed, 3).$2, 'Cerrada');
+  });
+
   test('permisos: cerrada se puede borrar pero no editar', () {
     expect(blockedDeleteReasonForPhase(RequestPhase.closed), isNull);
     expect(blockedEditReasonForPhase(RequestPhase.closed), isNotNull);

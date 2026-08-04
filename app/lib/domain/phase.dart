@@ -1,20 +1,38 @@
 enum RequestPhase { waiting, withOffers, accepted, unlocked, completed, closed }
 
+/// Por qué murió el trato. Son los dos únicos caminos por los que una
+/// conversación llega a cerrada sin haberse completado; se distinguen por
+/// `conversations.status` (`cerrado` = el cron, `perdido` = alguien lo decidió).
+enum ClosedReason { inactivity, notAgreed }
+
 class OfferLite {
   const OfferLite({
     required this.status,
     this.unlockedAt,
-    this.conversationClosed = false,
+    this.closedReason,
   });
   final String status; // pending | accepted | completed | rejected
   final DateTime? unlockedAt;
 
-  /// La conversación de esta oferta tiene `closed_at` puesto. Solo existen
-  /// conversaciones para ofertas aceptadas o completadas (verificado contra
-  /// producción 2026-08-03), así que este dato solo llega con sentido ahí.
-  /// Default `false`: los llamadores que no consultan conversaciones no
-  /// cambian de comportamiento.
-  final bool conversationClosed;
+  /// La razón por la que la conversación de esta oferta tiene `closed_at`
+  /// puesto, o `null` si sigue viva. Solo existen conversaciones para ofertas
+  /// aceptadas o completadas (verificado contra producción 2026-08-03), así
+  /// que este dato solo llega con sentido ahí. Default `null`: los
+  /// llamadores que no consultan conversaciones no cambian de comportamiento.
+  final ClosedReason? closedReason;
+}
+
+/// La razón del cierre, SOLO si todas las ofertas aceptadas coinciden. Con
+/// razones mezcladas devuelve null y el chip cae al genérico: contar una de las
+/// dos sería elegir una mentira a medias.
+ClosedReason? closedReasonFor(List<OfferLite> offers) {
+  final cerradas = offers
+      .where((o) => o.status == 'accepted' || o.status == 'completed')
+      .map((o) => o.closedReason)
+      .toList();
+  if (cerradas.isEmpty || cerradas.any((r) => r == null)) return null;
+  final primera = cerradas.first;
+  return cerradas.every((r) => r == primera) ? primera : null;
 }
 
 /// Réplica de la derivación de la web (src/routes/requests/$requestId.tsx
@@ -49,7 +67,7 @@ RequestPhase phaseForRequest({
   // primera oferta aceptada de una lista sin orden garantizado, se ofrecería
   // "Eliminar" para una solicitud que la RPC luego rechazaría.
   if (acceptedOffers.isNotEmpty &&
-      acceptedOffers.every((o) => o.conversationClosed)) {
+      acceptedOffers.every((o) => o.closedReason != null)) {
     return RequestPhase.closed;
   }
 

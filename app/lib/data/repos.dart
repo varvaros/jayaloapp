@@ -428,36 +428,43 @@ Future<Map<String, bool>> businessesVerified(List<String> businessIds) async {
   };
 }
 
-OfferLite offerLite(Map<String, dynamic> o, {bool conversationClosed = false}) =>
+OfferLite offerLite(Map<String, dynamic> o, {ClosedReason? closedReason}) =>
     OfferLite(
       status: o['status'] as String,
       unlockedAt: o['unlocked_at'] == null
           ? null
           : DateTime.parse(o['unlocked_at'] as String),
-      conversationClosed: conversationClosed,
+      closedReason: closedReason,
     );
 
-/// Ids de oferta cuya CONVERSACIÓN ya está cerrada (a mano, "no concretado" o
-/// el cron de inactividad). Es el dato con el que la lista distingue un trato
-/// muerto de uno vivo.
+/// Razón de cierre por id de oferta, para las ofertas cuya CONVERSACIÓN ya
+/// está cerrada (a mano, "no concretado" o el cron de inactividad). Es el
+/// dato con el que la lista distingue un trato muerto de uno vivo, y CÓMO
+/// murió: `conversations.status = 'perdido'` es "no concretada" (alguien lo
+/// decidió); cualquier otro valor con `closed_at` puesto es el cron de
+/// inactividad.
 ///
 /// Best-effort, como `_fetchUnseenRequests`: si la consulta falla, la lista se
 /// pinta sin la fase "Cerrada" en vez de romperse.
-Future<Set<String>> closedConversationOfferIds(List<String> offerIds) async {
+Future<Map<String, ClosedReason>> closedConversationReasons(
+    List<String> offerIds) async {
   if (offerIds.isEmpty) return {};
   try {
     final rows = List<Map<String, dynamic>>.from(
       await supa
           .from('conversations')
-          .select('source_id')
+          .select('source_id,status')
           .eq('kind', 'offer')
           .inFilter('source_id', offerIds)
           .not('closed_at', 'is', null),
     );
-    return rows
-        .map((r) => r['source_id'] as String?)
-        .whereType<String>()
-        .toSet();
+    return {
+      for (final r in rows)
+        if (r['source_id'] != null)
+          r['source_id'] as String: r['status'] == 'perdido'
+              ? ClosedReason.notAgreed
+              : ClosedReason.inactivity,
+    };
   } catch (_) {
     return {};
   }

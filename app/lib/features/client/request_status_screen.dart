@@ -80,13 +80,14 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
   /// el borde de cada oferta en la hoja. Se marca leída al abrir cada oferta.
   Set<String> _unreadOfferIds = {};
 
-  /// Ids de oferta cuya CONVERSACIÓN ya está cerrada (ver
-  /// `closedConversationOfferIds`): alimenta `OfferLite.conversationClosed`
-  /// para que este detalle pueda mostrar la fase "Cerrada", igual que la
-  /// lista. `offersStream` es realtime, así que las ofertas pueden cambiar
-  /// bajo los pies; `_closedOfferIdsChecked` evita volver a consultar una
-  /// oferta ya resuelta en cada emisión del stream.
-  Set<String> _closedOfferIds = {};
+  /// Razón de cierre por id de oferta, para las ofertas cuya CONVERSACIÓN ya
+  /// está cerrada (ver `closedConversationReasons`): alimenta
+  /// `OfferLite.closedReason` para que este detalle pueda mostrar la fase
+  /// "Cerrada" (y POR QUÉ), igual que la lista. `offersStream` es realtime,
+  /// así que las ofertas pueden cambiar bajo los pies;
+  /// `_closedOfferIdsChecked` evita volver a consultar una oferta ya resuelta
+  /// en cada emisión del stream.
+  Map<String, ClosedReason> _closedOfferReasons = {};
   final Set<String> _closedOfferIdsChecked = {};
 
   /// Best-effort, como `_loadUnreadOffers`: si falla, el detalle se pinta sin
@@ -102,9 +103,9 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
     ];
     if (dealIds.isEmpty) return;
     _closedOfferIdsChecked.addAll(dealIds);
-    final closed = await closedConversationOfferIds(dealIds);
+    final closed = await closedConversationReasons(dealIds);
     if (!mounted || closed.isEmpty) return;
-    setState(() => _closedOfferIds = {..._closedOfferIds, ...closed});
+    setState(() => _closedOfferReasons = {..._closedOfferReasons, ...closed});
   }
 
   @override
@@ -211,14 +212,18 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
           // `_closedOfferIdsChecked`, así que no repite consulta por cada
           // emisión del stream una vez resuelta una oferta.
           _refreshClosedOfferIds(offers);
+          final offerLites = offers
+              .map((o) => offerLite(o,
+                  closedReason: _closedOfferReasons[o['id'] as String]))
+              .toList();
           final phase = phaseForRequest(
             requestStatus: req['status'] as String,
-            offers: offers
-                .map((o) => offerLite(o,
-                    conversationClosed:
-                        _closedOfferIds.contains(o['id'] as String)))
-                .toList(),
+            offers: offerLites,
           );
+          // Solo tiene sentido cuando `phase` es `closed`, pero calcularla
+          // siempre es barato (lista corta, ya en memoria) y no complica el
+          // llamador con un `if`.
+          final closedReason = closedReasonFor(offerLites);
           // Cuántas de las ofertas mostradas siguen sin abrir (número del CTA).
           final unreadCount =
               offers.where((o) => _unreadOfferIds.contains(o['id'])).length;
@@ -231,6 +236,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
           return RequestDetailBody(
             request: req,
             phase: phase,
+            closedReason: closedReason,
             offers: offers,
             images: images,
             unreadCount: unreadCount,
@@ -357,6 +363,7 @@ class RequestDetailBody extends StatelessWidget {
     required this.images,
     required this.unreadCount,
     required this.onSeeOffers,
+    this.closedReason,
     this.leading,
     this.onOpenViewer,
   });
@@ -364,6 +371,12 @@ class RequestDetailBody extends StatelessWidget {
   final Map<String, dynamic> request;
   final RequestPhase phase;
   final List<Map<String, dynamic>> offers;
+
+  /// Solo aplica cuando `phase` es `closed`; `null` en cualquier otra fase o
+  /// cuando las conversaciones aceptadas no coinciden en la razón (ver
+  /// `closedReasonFor`). Opcional para no romper a quien construya este
+  /// widget sin ese dato — el chip cae al genérico "Cerrada".
+  final ClosedReason? closedReason;
 
   /// URLs de foto ya filtradas (sin vacías). Vacía = panel con el ícono de fase.
   final List<String> images;
@@ -406,6 +419,7 @@ class RequestDetailBody extends StatelessWidget {
                   request: request,
                   phase: phase,
                   offers: offers,
+                  closedReason: closedReason,
                 ),
               ),
             ],

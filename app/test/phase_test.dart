@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/domain/phase.dart';
 
-OfferLite o(String s, {DateTime? u, bool closed = false}) =>
-    OfferLite(status: s, unlockedAt: u, conversationClosed: closed);
+OfferLite o(String s, {DateTime? u, ClosedReason? closed}) =>
+    OfferLite(status: s, unlockedAt: u, closedReason: closed);
 
 void main() {
   test('derivación de fases (misma semántica que la web)', () {
@@ -34,12 +34,12 @@ void main() {
     // inactividad) y la solicitud seguía pintándose como trato vivo.
     expect(
         phaseForRequest(
-            requestStatus: 'open', offers: [o('accepted', closed: true)]),
+            requestStatus: 'open', offers: [o('accepted', closed: ClosedReason.inactivity)]),
         RequestPhase.closed);
     // También con el desbloqueo hecho: "En contacto" ya no es verdad.
     expect(
         phaseForRequest(requestStatus: 'open', offers: [
-          o('accepted', u: DateTime(2026), closed: true)
+          o('accepted', u: DateTime(2026), closed: ClosedReason.inactivity)
         ]),
         RequestPhase.closed);
   });
@@ -49,11 +49,11 @@ void main() {
     // vez: el orden de evaluación es lo único que las distingue.
     expect(
         phaseForRequest(
-            requestStatus: 'open', offers: [o('completed', closed: true)]),
+            requestStatus: 'open', offers: [o('completed', closed: ClosedReason.inactivity)]),
         RequestPhase.completed);
     expect(
         phaseForRequest(
-            requestStatus: 'completed', offers: [o('accepted', closed: true)]),
+            requestStatus: 'completed', offers: [o('accepted', closed: ClosedReason.inactivity)]),
         RequestPhase.completed);
   });
 
@@ -76,15 +76,15 @@ void main() {
     // Una sola aceptada cerrada: sigue funcionando como antes.
     expect(
         phaseForRequest(
-            requestStatus: 'open', offers: [o('accepted', closed: true)]),
+            requestStatus: 'open', offers: [o('accepted', closed: ClosedReason.inactivity)]),
         RequestPhase.closed);
 
     // Dos finalistas y las dos conversaciones murieron: el trato sí está
     // muerto.
     expect(
         phaseForRequest(requestStatus: 'open', offers: [
-          o('accepted', closed: true),
-          o('accepted', closed: true),
+          o('accepted', closed: ClosedReason.inactivity),
+          o('accepted', closed: ClosedReason.inactivity),
         ]),
         RequestPhase.closed);
 
@@ -93,15 +93,43 @@ void main() {
     // (aquí cae en "accepted" porque ninguna de las dos tiene unlocked_at).
     expect(
         phaseForRequest(requestStatus: 'open', offers: [
-          o('accepted', closed: true),
+          o('accepted', closed: ClosedReason.inactivity),
           o('accepted'),
         ]),
         isNot(RequestPhase.closed));
     expect(
         phaseForRequest(requestStatus: 'open', offers: [
-          o('accepted', closed: true),
+          o('accepted', closed: ClosedReason.inactivity),
           o('accepted'),
         ]),
         RequestPhase.accepted);
+  });
+
+  test('la razón del cierre sale cuando todas las aceptadas coinciden', () {
+    expect(
+        closedReasonFor([o('accepted', closed: ClosedReason.inactivity)]),
+        ClosedReason.inactivity);
+    expect(
+        closedReasonFor([
+          o('accepted', closed: ClosedReason.notAgreed),
+          o('accepted', closed: ClosedReason.notAgreed),
+        ]),
+        ClosedReason.notAgreed);
+  });
+
+  test('razones mezcladas → sin razón (el chip cae al genérico)', () {
+    // Modelo de hasta 3 finalistas: un chat pudo morir por inactividad y otro
+    // marcarse como no concretado. Ahí no hay una razón única que contar.
+    expect(
+        closedReasonFor([
+          o('accepted', closed: ClosedReason.inactivity),
+          o('accepted', closed: ClosedReason.notAgreed),
+        ]),
+        isNull);
+  });
+
+  test('sin cierre no hay razón', () {
+    expect(closedReasonFor([o('accepted')]), isNull);
+    expect(closedReasonFor([]), isNull);
   });
 }

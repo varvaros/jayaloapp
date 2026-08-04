@@ -14,35 +14,53 @@ import '../shared/section_heading.dart';
 import '../shell/floating_nav_bar.dart';
 import 'request_status_screen.dart';
 
-const _phaseCopy = {
-  RequestPhase.waiting:
-      'Tu solicitud está publicada. Los proveedores la están viendo.',
-  RequestPhase.withOffers:
-      'Revisa las ofertas: puedes aceptar hasta 3.',
-  RequestPhase.accepted: 'El proveedor te contactará pronto.',
-  RequestPhase.unlocked: 'Ya puedes hablar con el proveedor.',
-  RequestPhase.completed: 'Califica al proveedor para ayudar a la comunidad.',
-  // Estos mapas se leen con `!`: una clave que falte es un crash en runtime,
-  // no un error de compilación. Al añadir una fase hay que tocar LOS DOS.
-  // Sin promesa de calificar aqui: para `closed` no se renderiza ningun
-  // panel de resena (gateado en `completed`, y `completedReviewBusinessIds`
-  // filtra por ofertas `status == 'completed'`, que aqui por definicion no
-  // hay). La calificacion vive en el CHAT, no en esta pantalla.
-  RequestPhase.closed: 'El chat se cerró sin completarse.',
-};
+/// Copy del héroe de fase, cuerpo. `closedReason` SOLO importa cuando `phase`
+/// es `closed` (en cualquier otra fase se ignora): `null` ahí significa razón
+/// desconocida o mezclada entre finalistas, no "sin cerrar" — y el genérico es
+/// lo correcto porque contar una de las dos razones sería mentir a medias.
+///
+/// Convertido de mapa `const` a función con `switch` EXHAUSTIVO (antes se leía
+/// con `!`): una fase sin copy dejaba de ser un error de compilación y pasaba
+/// a ser un crash en runtime (casi ocurre en la Task 6). Al añadir una fase,
+/// el compilador ahora obliga a tocar esta función Y `_phaseTitleFor`.
+String _phaseCopyFor(RequestPhase phase, ClosedReason? closedReason) =>
+    switch (phase) {
+      RequestPhase.waiting =>
+        'Tu solicitud está publicada. Los proveedores la están viendo.',
+      RequestPhase.withOffers => 'Revisa las ofertas: puedes aceptar hasta 3.',
+      RequestPhase.accepted => 'El proveedor te contactará pronto.',
+      RequestPhase.unlocked => 'Ya puedes hablar con el proveedor.',
+      // Sin promesa de calificar aqui: para `closed` no se renderiza ningun
+      // panel de resena (gateado en `completed`, y `completedReviewBusinessIds`
+      // filtra por ofertas `status == 'completed'`, que aqui por definicion no
+      // hay). La calificacion vive en el CHAT, no en esta pantalla.
+      RequestPhase.completed =>
+        'Califica al proveedor para ayudar a la comunidad.',
+      RequestPhase.closed => switch (closedReason) {
+          ClosedReason.inactivity => 'Nadie escribió y el chat se cerró solo.',
+          ClosedReason.notAgreed => 'El trato se marcó como no concretado.',
+          null => 'El chat se cerró sin completarse.',
+        },
+    };
 
-/// Títulos del héroe de fase (variante D1 elegida por el PO).
-const _phaseTitle = {
-  RequestPhase.waiting: 'Esperando ofertas',
-  RequestPhase.withOffers: 'Con ofertas',
-  RequestPhase.accepted: 'Oferta aceptada',
-  // "En contacto", no "desbloqueado" (pedido PO 2026-07-23): el CLIENTE nunca
-  // desbloquea nada — quien paga es el proveedor; para el cliente la fase es
-  // simplemente que ya están en contacto.
-  RequestPhase.unlocked: 'En contacto',
-  RequestPhase.completed: 'Completada',
-  RequestPhase.closed: 'Cerrada',
-};
+/// Títulos del héroe de fase (variante D1 elegida por el PO). Mismo motivo de
+/// función-en-vez-de-mapa que `_phaseCopyFor`.
+String _phaseTitleFor(RequestPhase phase, ClosedReason? closedReason) =>
+    switch (phase) {
+      RequestPhase.waiting => 'Esperando ofertas',
+      RequestPhase.withOffers => 'Con ofertas',
+      RequestPhase.accepted => 'Oferta aceptada',
+      // "En contacto", no "desbloqueado" (pedido PO 2026-07-23): el CLIENTE
+      // nunca desbloquea nada — quien paga es el proveedor; para el cliente
+      // la fase es simplemente que ya están en contacto.
+      RequestPhase.unlocked => 'En contacto',
+      RequestPhase.completed => 'Completada',
+      RequestPhase.closed => switch (closedReason) {
+          ClosedReason.inactivity => 'Cerrada por inactividad',
+          ClosedReason.notAgreed => 'No concretada',
+          null => 'Cerrada',
+        },
+    };
 
 /// Hoja blanca del detalle: título + chip de fase, "Desde", avatares anónimos
 /// de proveedores, la sección ESTADO (publicación, copy de fase, cupos) y la
@@ -70,11 +88,15 @@ class RequestDetailSheet extends StatelessWidget {
     required this.request,
     required this.phase,
     required this.offers,
+    this.closedReason,
   });
 
   final Map<String, dynamic> request;
   final RequestPhase phase;
   final List<Map<String, dynamic>> offers;
+
+  /// Solo aplica cuando `phase` es `closed`; ver `RequestDetailBody.closedReason`.
+  final ClosedReason? closedReason;
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +149,10 @@ class RequestDetailSheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              StatusChip(label: _phaseTitle[phase]!, tone: tone),
+              StatusChip(
+                label: _phaseTitleFor(phase, closedReason),
+                tone: tone,
+              ),
             ],
           ),
           // Pill "Al por mayor" dentro de la solicitud (pedido PO
@@ -184,7 +209,7 @@ class RequestDetailSheet extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            _phaseCopy[phase]!,
+            _phaseCopyFor(phase, closedReason),
             style: TextStyle(
               fontSize: 12.5,
               height: 1.5,
