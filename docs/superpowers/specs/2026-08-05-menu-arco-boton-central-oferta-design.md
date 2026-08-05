@@ -186,10 +186,11 @@ cuerpo. `FloatingNavBar` recibe `centerMenuItems` y lo pasa hacia abajo.
 La barra **sigue sin saber qué hacen los ítems**, igual que hoy no sabe qué significan los badges.
 Esa es la línea que el archivo ya defiende en su cabecera y no se cruza.
 
-⚠️ `PillNotchPainter` asume que el botón central está centrado en el ancho de la barra
-(`floating_nav_bar.dart:232-238`, con el aviso ya escrito de que un desfase sería silencioso). El
-arco **hereda esa misma suposición**: se centra sobre el mismo eje. Si algún día el layout deja de
-ser simétrico, los dos se rompen juntos, no por separado.
+El arco se ancla con `CompositedTransformTarget`/`Follower` sobre el círculo real, **no** sobre el
+centro calculado del ancho de la barra. Es a propósito: `PillNotchPainter` sí asume la simetría
+(`floating_nav_bar.dart:232-238`, con el aviso ya escrito de que un desfase sería silencioso), y
+copiar esa suposición habría duplicado el fallo. Con el `LayerLink`, si algún día el layout deja de
+ser simétrico se descoloca la muesca —que ya está avisada— pero no el arco.
 
 ### 4. `features/provider/request_detail_screen.dart` — registrar y soltar
 
