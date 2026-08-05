@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/center_action.dart';
 import '../../core/motion.dart';
+import 'center_arc_menu.dart';
 import 'nav_destinations.dart';
 
 const _pillHeight = 64.0;
@@ -167,6 +168,7 @@ class FloatingNavBar extends StatelessWidget {
                     active: currentIndex == kCenterIndex,
                     iconOverride: centerIconOverride,
                     labelOverride: centerLabelOverride,
+                    menuItems: centerMenuItems,
                     onTap: () => onSelected(kCenterIndex),
                   ),
                 ),
@@ -397,13 +399,14 @@ class _SideItem extends StatelessWidget {
 /// `Column`, que habría empujado el círculo hacia arriba al aparecer el
 /// texto, desalineándolo de la muesca fija tallada en la píldora — ese fue
 /// C1).
-class _CenterButton extends StatelessWidget {
+class _CenterButton extends StatefulWidget {
   const _CenterButton({
     required this.destination,
     required this.active,
     required this.onTap,
     this.iconOverride,
     this.labelOverride,
+    this.menuItems,
   });
 
   final NavDestination destination;
@@ -413,6 +416,103 @@ class _CenterButton extends StatelessWidget {
   /// Ver [FloatingNavBar.centerIconOverride]. `null` = los del destino.
   final IconData? iconOverride;
   final String? labelOverride;
+
+  /// No-nulo = tocar el botón DESPLIEGA en vez de avisar por [onTap].
+  final List<CenterMenuItem>? menuItems;
+
+  @override
+  State<_CenterButton> createState() => _CenterButtonState();
+}
+
+class _CenterButtonState extends State<_CenterButton>
+    with SingleTickerProviderStateMixin {
+  final OverlayPortalController _portal = OverlayPortalController();
+  final LayerLink _link = LayerLink();
+  late final AnimationController _anim;
+  late final Animation<double> _curved;
+
+  bool get _open => _portal.isShowing;
+
+  @override
+  void initState() {
+    super.initState();
+    // Construir aquí, no en la declaración del campo: con `late final ...
+    // = AnimationController(...)` el inicializador es PEREZOSO — si la
+    // pantalla nunca abre el menú, `_anim`/`_curved` no se tocan hasta que
+    // `dispose()` lee `_anim` por primera vez, y para entonces el elemento ya
+    // está desactivado: `createTicker` revienta con "Looking up a
+    // deactivated widget's ancestor is unsafe" (reventaba prácticamente CADA
+    // test que renderiza `FloatingNavBar`, abra o no el arco). Construir
+    // ansiosamente aquí garantiza que ya existan cuando `dispose()` los pida.
+    _anim = AnimationController(
+      vsync: this,
+      duration: JayaloMotion.base,
+      reverseDuration: JayaloMotion.base,
+    );
+    _curved = CurvedAnimation(
+      parent: _anim,
+      curve: JayaloMotion.enter,
+      reverseCurve: JayaloMotion.exit,
+    );
+  }
+
+  @override
+  void didUpdateWidget(_CenterButton old) {
+    super.didUpdateWidget(old);
+    // La pantalla soltó el botón (envió la oferta, salió) con el arco abierto:
+    // cerrarlo sin animación, porque lo que lo justificaba ya no existe.
+    if (widget.menuItems == null && _open) {
+      _anim.value = 0;
+      _portal.hide();
+    }
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    final items = widget.menuItems;
+    if (items == null || items.isEmpty) {
+      widget.onTap();
+      return;
+    }
+    if (_open) {
+      _close();
+    } else {
+      JayaloHaptics.tabChange();
+      _portal.show();
+      if (JayaloMotion.reduced(context)) {
+        _anim.value = 1;
+      } else {
+        _anim.forward(from: 0);
+      }
+      setState(() {});
+    }
+  }
+
+  void _close() {
+    if (!_open) return;
+    if (JayaloMotion.reduced(context)) {
+      _anim.value = 0;
+      _portal.hide();
+      setState(() {});
+      return;
+    }
+    _anim.reverse().whenComplete(() {
+      if (!mounted) return;
+      _portal.hide();
+      setState(() {});
+    });
+    setState(() {});
+  }
+
+  void _pick(CenterMenuItem item) {
+    _close();
+    item.onTap();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -424,51 +524,112 @@ class _CenterButton extends StatelessWidget {
     // legible sobre la píldora lila igual que las etiquetas laterales — un
     // violeta primario pequeño sobre lila no llegaría al 4.5:1 de texto.
     final circleColor = cs.primary;
-    final label = labelOverride ?? destination.label;
+    final label = widget.labelOverride ?? widget.destination.label;
     return Semantics(
       label: label,
       button: true,
-      selected: active,
+      selected: widget.active,
       excludeSemantics: true,
-      onTap: onTap,
-      // Stack en vez de Column: el círculo (`Material`, único hijo NO
-      // posicionado) es el que fija el tamaño del widget. La etiqueta va en
-      // un `Positioned` — no cuenta para el tamaño ni empuja al círculo — así
-      // que su centro queda idéntico esté activo o no (regresión C1: ver
-      // test "el círculo central no se sale de la muesca al activarse").
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.topCenter,
-        children: [
-          Material(
-            color: circleColor,
-            shape: const CircleBorder(),
-            elevation: 6,
-            shadowColor: cs.shadow.withValues(alpha: .35),
-            child: InkWell(
-              onTap: onTap,
-              customBorder: const CircleBorder(),
-              child: SizedBox(
-                width: _centerSize,
-                height: _centerSize,
-                child: Icon(iconOverride ?? destination.icon,
-                    color: cs.onPrimary, size: 28),
+      onTap: widget.onTap,
+      child: OverlayPortal(
+        controller: _portal,
+        overlayChildBuilder: (context) => BackButtonListener(
+          // El arco NO es una ruta: sin esto el atrás del sistema saldría de
+          // la pantalla dejándolo abierto. Los hijos de `OverlayPortal` siguen
+          // en el árbol lógico, así que este listener los alcanza. NO se toca
+          // `BackGuard` ni se añade un `PopScope`: con predictive back ahí hay
+          // un gotcha conocido (ver `back_guard.dart`).
+          onBackButtonPressed: () async {
+            if (!_open) return false;
+            _close();
+            return true;
+          },
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _close,
+                  child: Semantics(
+                    label: 'Cerrar menú',
+                    button: true,
+                    child: FadeTransition(
+                      opacity: _curved,
+                      child: ColoredBox(
+                        color:
+                            Theme.of(context).colorScheme.scrim.withValues(alpha: .32),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
+              CompositedTransformFollower(
+                link: _link,
+                targetAnchor: Alignment.center,
+                followerAnchor: Alignment.center,
+                child: CenterArcMenu(
+                  animation: _curved,
+                  items: widget.menuItems ?? const [],
+                  centerRadius: _centerSize / 2,
+                  onPick: _pick,
+                ),
+              ),
+            ],
           ),
-          if (active)
-            Positioned(
-              top: _centerSize + 2,
-              child: Text(
-                label,
-                maxLines: 1,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onPrimaryContainer),
+        ),
+        // Stack en vez de Column: el círculo (`Material`, único hijo NO
+        // posicionado) es el que fija el tamaño del widget. La etiqueta va en
+        // un `Positioned` — no cuenta para el tamaño ni empuja al círculo —
+        // así que su centro queda idéntico esté activo o no (regresión C1: ver
+        // test "el círculo central no se sale de la muesca al activarse").
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.topCenter,
+          children: [
+            CompositedTransformTarget(
+              link: _link,
+              child: Material(
+                color: circleColor,
+                shape: const CircleBorder(),
+                elevation: 6,
+                shadowColor: cs.shadow.withValues(alpha: .35),
+                child: InkWell(
+                  onTap: _toggle,
+                  customBorder: const CircleBorder(),
+                  child: SizedBox(
+                    width: _centerSize,
+                    height: _centerSize,
+                    child: AnimatedRotation(
+                      turns: _open ? .125 : 0,
+                      duration: JayaloMotion.reduced(context)
+                          ? Duration.zero
+                          : JayaloMotion.base,
+                      curve: JayaloMotion.enter,
+                      child: Icon(
+                          _open
+                              ? Icons.close
+                              : (widget.iconOverride ?? widget.destination.icon),
+                          color: cs.onPrimary,
+                          size: 28),
+                    ),
+                  ),
+                ),
               ),
             ),
-        ],
+            if (widget.active)
+              Positioned(
+                top: _centerSize + 2,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onPrimaryContainer),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

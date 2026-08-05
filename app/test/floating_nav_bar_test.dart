@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/core/brand.dart';
+import 'package:jayalo_app/core/center_action.dart';
 import 'package:jayalo_app/core/session_state.dart';
+import 'package:jayalo_app/features/shell/center_arc_menu.dart';
 import 'package:jayalo_app/features/shell/floating_nav_bar.dart';
 import 'package:jayalo_app/features/shell/nav_destinations.dart';
 
@@ -469,6 +472,164 @@ void main() {
           reason: 'inactivo: $inactiveOffset px, activo: $activeOffset px — '
               'deben coincidir para que el círculo quede siempre dentro de '
               'la muesca (tallada en un notchCenterY fijo)');
+    });
+  });
+
+  group('menú en arco', () {
+    List<CenterMenuItem> items(void Function(String) log) => [
+          CenterMenuItem(
+              icon: Icons.photo_camera_outlined,
+              label: 'Cámara',
+              onTap: () => log('Cámara')),
+          CenterMenuItem(
+              icon: Icons.storefront_outlined,
+              label: 'Mi tienda',
+              onTap: () => log('Mi tienda')),
+        ];
+
+    // `MaterialApp.router` (con go_router), no `MaterialApp` pelado: el arco
+    // cuelga un `BackButtonListener` en cuanto se ABRE (no solo cuando se
+    // pulsa atrás), y `BackButtonListener` exige un `Router` ANCESTRO desde
+    // `didChangeDependencies` — `Router.of(context)` revienta con "Router
+    // operation requested with a context that does not include a Router" si
+    // no lo encuentra. Sin esto, todo test de este grupo que abra el menú
+    // (no solo el del botón atrás) fallaba, aunque nunca tocara el atrás. Es
+    // fiel a la app real: el shell siempre vive bajo `MaterialApp.router` +
+    // go_router.
+    Widget host(List<CenterMenuItem>? menu, {VoidCallback? onCenter}) {
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => Scaffold(
+              bottomNavigationBar: FloatingNavBar(
+                destinations: destinationsFor(RoleState.provider),
+                currentIndex: kCenterIndex,
+                centerMenuItems: menu,
+                centerIconOverride: Icons.library_add_outlined,
+                centerLabelOverride: 'Cargar',
+                onSelected: (i) { if (i == kCenterIndex) onCenter?.call(); },
+              ),
+            ),
+          ),
+        ],
+      );
+      return MaterialApp.router(
+        theme: jayaloTheme(Brightness.light),
+        routerConfig: router,
+      );
+    }
+
+    testWidgets('sin menú, el centro sigue avisando por onSelected', (tester) async {
+      var toques = 0;
+      await tester.pumpWidget(host(null, onCenter: () => toques++));
+      await tester.tap(find.byIcon(Icons.library_add_outlined));
+      await tester.pumpAndSettle();
+      expect(toques, 1);
+      expect(find.byType(CenterArcMenu), findsNothing);
+    });
+
+    testWidgets('con menú, tocarlo ABRE el arco y NO avisa por onSelected',
+        (tester) async {
+      var toques = 0;
+      final log = <String>[];
+      await tester.pumpWidget(host(items(log.add), onCenter: () => toques++));
+
+      expect(find.byType(CenterArcMenu), findsNothing);
+      await tester.tap(find.byIcon(Icons.library_add_outlined));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CenterArcMenu), findsOneWidget);
+      expect(find.text('Mi tienda'), findsOneWidget);
+      expect(toques, 0, reason: 'la barra se queda el toque: no debe navegar');
+    });
+
+    testWidgets('abierto, el ícono del centro es una ✕', (tester) async {
+      await tester.pumpWidget(host(items((_) {})));
+      await tester.tap(find.byIcon(Icons.library_add_outlined));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.close), findsOneWidget);
+      expect(find.byIcon(Icons.library_add_outlined), findsNothing);
+    });
+
+    testWidgets('elegir un satélite dispara su onTap y cierra el arco',
+        (tester) async {
+      final log = <String>[];
+      await tester.pumpWidget(host(items(log.add)));
+      await tester.tap(find.byIcon(Icons.library_add_outlined));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.storefront_outlined));
+      await tester.pumpAndSettle();
+
+      expect(log, ['Mi tienda']);
+      expect(find.byType(CenterArcMenu), findsNothing);
+    });
+
+    testWidgets('el velo cierra sin elegir nada', (tester) async {
+      final log = <String>[];
+      await tester.pumpWidget(host(items(log.add)));
+      await tester.tap(find.byIcon(Icons.library_add_outlined));
+      await tester.pumpAndSettle();
+
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CenterArcMenu), findsNothing);
+      expect(log, isEmpty);
+    });
+
+    testWidgets('el ATRÁS del sistema cierra el arco en vez de salir de la '
+        'pantalla', (tester) async {
+      // ⚠️ Este test NO puede usar el `host()` de arriba. `BackButtonListener`
+      // se cuelga del `backButtonDispatcher` de un `Router` ANCESTRO
+      // (`Router.maybeOf`); con un `MaterialApp` pelado no hay Router, el
+      // listener no se registra y el test daría un falso NEGATIVO silencioso.
+      // En la app real siempre hay uno: `MaterialApp.router` + go_router.
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => Scaffold(
+              bottomNavigationBar: FloatingNavBar(
+                destinations: destinationsFor(RoleState.provider),
+                currentIndex: kCenterIndex,
+                centerMenuItems: items((_) {}),
+                centerIconOverride: Icons.library_add_outlined,
+                centerLabelOverride: 'Cargar',
+                onSelected: (_) {},
+              ),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(
+          theme: jayaloTheme(Brightness.light), routerConfig: router));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.library_add_outlined));
+      await tester.pumpAndSettle();
+      expect(find.byType(CenterArcMenu), findsOneWidget);
+
+      final atendido = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(atendido, isTrue, reason: 'el arco debe consumir el atrás');
+      expect(find.byType(CenterArcMenu), findsNothing);
+    });
+
+    testWidgets('si el menú desaparece con el arco abierto, se cierra solo',
+        (tester) async {
+      await tester.pumpWidget(host(items((_) {})));
+      await tester.tap(find.byIcon(Icons.library_add_outlined));
+      await tester.pumpAndSettle();
+      expect(find.byType(CenterArcMenu), findsOneWidget);
+
+      // La pantalla soltó el botón (envió la oferta) mientras estaba abierto.
+      await tester.pumpWidget(host(null));
+      await tester.pumpAndSettle();
+      expect(find.byType(CenterArcMenu), findsNothing);
     });
   });
 }
