@@ -13,17 +13,22 @@ import '../../core/safe_image_picker.dart';
 import '../../domain/contact_info.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
+import '../../domain/offer_edit.dart';
 import '../../domain/offer_message.dart';
 import '../../domain/pricing.dart';
 import '../../domain/wholesale.dart';
 import '../../domain/finalist_slots.dart';
+import '../../domain/request_requirements.dart';
+import '../shared/request_requirement_badges.dart';
 import '../shared/celebration.dart';
 import '../shared/collapsing_photo_panel.dart';
 import '../shared/customer_rep_card.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
+import '../shared/section_heading.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import 'offer_requirements_warning.dart';
 import 'unlock_flow.dart';
 
 const _maxOfferPhotos = 5;
@@ -98,6 +103,10 @@ class _ProviderRequestDetailScreenState
   final _installation = TextEditingController();
   bool _requiresEvaluation = false;
   final _evaluation = TextEditingController();
+  // Capacidades transversales (producto Y servicio): se premarcan con lo que el
+  // negocio tenga declarado y el proveedor las ajusta para esta oferta.
+  bool _hasFiscalReceipt = false;
+  bool _isStateSupplier = false;
   // Producto: detalles (marca/estado/color/garantía/tiempo de entrega) — con
   // selectores tipo web. _warranty/_delivery guardan la etiqueta elegida.
   final _brand = TextEditingController();
@@ -121,7 +130,18 @@ class _ProviderRequestDetailScreenState
   /// solo el número, no se pueden ver. 0 = no se muestra.
   int _offerCount = 0;
 
-  bool get _editing => widget.editOfferId != null;
+  /// Id de la oferta en edición. Nace de `widget.editOfferId` (ruta `?edit=`,
+  /// desde "Mis ofertas") y TAMBIÉN puede activarse en sitio, desde la tarjeta
+  /// "Ya enviaste tu oferta" (pedido PO 2026-08-03). Por eso es estado y no un
+  /// getter del widget.
+  String? _editOfferId;
+
+  /// True solo cuando la edición se activó desde ESTA pantalla. Distingue las
+  /// dos entradas: la de ruta sale a la lista de ofertas al guardar; la de
+  /// aquí vuelve a la tarjeta, sin salir de la solicitud.
+  bool _editingInPlace = false;
+
+  bool get _editing => _editOfferId != null;
 
   /// Modos de precio del formulario de SERVICIO (paridad web: fijo / rango /
   /// por hora / a evaluar en sitio). El índice es [_svcMode].
@@ -139,6 +159,8 @@ class _ProviderRequestDetailScreenState
   @override
   void initState() {
     super.initState();
+    // Antes que nada: `_editing` se consulta más abajo, en esta misma función.
+    _editOfferId = widget.editOfferId;
     requestById(widget.requestId).then((r) {
       if (!mounted) return;
       setState(() => _req = r);
@@ -163,9 +185,14 @@ class _ProviderRequestDetailScreenState
     if (_editing) {
       // Modo edición: no hace falta el chequeo "¿ya ofertó?"; traemos la fila
       // COMPLETA de la oferta y prefijamos el formulario.
-      myBusinessId()
-          .then((b) => mounted ? setState(() => _businessId = b) : null);
-      offerForEdit(widget.editOfferId!).then((o) {
+      // Al editar, el premarcado desde el negocio NO aplica: las dos
+      // capacidades son las que quedaron guardadas en la oferta (las fija
+      // `_prefillFromOffer`) y su UPDATE está denegado. Aquí se lee el negocio
+      // solo por el id — premarcarlas también correría carrera con la carga de
+      // la oferta y podría pisar lo guardado.
+      myBusinessForOffer()
+          .then((b) => mounted ? setState(() => _businessId = b?.id) : null);
+      offerForEdit(_editOfferId!).then((o) {
         if (!mounted) return;
         setState(() {
           _existingOffer = o;
@@ -177,15 +204,23 @@ class _ProviderRequestDetailScreenState
       });
       return;
     }
-    myBusinessId().then((b) {
+    myBusinessForOffer().then((b) {
       if (!mounted) return;
-      setState(() => _businessId = b);
+      setState(() {
+        _businessId = b?.id;
+        // Premarcado, NO imposición: el proveedor puede desmarcarlas para
+        // esta oferta. Si la lectura falla, `b` es null y quedan apagadas —
+        // el default seguro: se avisa de más, nunca se afirma de menos en
+        // nombre del proveedor.
+        _hasFiscalReceipt = b?.hasFiscalReceipt ?? false;
+        _isStateSupplier = b?.isStateSupplier ?? false;
+      });
       if (b == null) {
         setState(() => _offerChecked = true);
         return;
       }
       // ¿Este negocio ya ofertó a esta solicitud? (1 oferta por solicitud).
-      myOfferForRequest(widget.requestId, b).then((o) {
+      myOfferForRequest(widget.requestId, b.id).then((o) {
         if (mounted) {
           setState(() {
             _existingOffer = o;
@@ -222,6 +257,10 @@ class _ProviderRequestDetailScreenState
     _installation.text = txt(o['installation_price']);
     _requiresEvaluation = o['requires_evaluation'] == true;
     _evaluation.text = txt(o['evaluation_price']);
+    // Las dos capacidades salen de la oferta, no del negocio: son la foto de lo
+    // que se declaró al enviarla y su UPDATE está denegado en la base.
+    _hasFiscalReceipt = o['has_fiscal_receipt'] == true;
+    _isStateSupplier = o['is_state_supplier'] == true;
     _brand.text = (o['product_brand'] as String?) ?? '';
     _warranty.text = (o['product_warranty'] as String?) ?? '';
     _delivery.text = (o['delivery_time'] as String?) ?? '';
@@ -494,6 +533,26 @@ class _ProviderRequestDetailScreenState
       // validación de precio aquí.
     }
 
+    // Cotejo contra lo que el cliente marcó. Solo al CREAR: en edición las dos
+    // capacidades están congeladas (su UPDATE está denegado), así que no habría
+    // nada que corregir y el aviso solo estorbaría.
+    if (!_editing) {
+      final unmet = unmetRequirements(
+        requirementsFromRow(req),
+        OfferCapabilities(
+          offersShipping: _offersShipping,
+          offersInstallation: _offersInstallation,
+          hasFiscalReceipt: _hasFiscalReceipt,
+          isStateSupplier: _isStateSupplier,
+        ),
+      );
+      if (unmet.isNotEmpty) {
+        final seguir = await showOfferRequirementsWarning(context, unmet);
+        if (!mounted) return;
+        if (!seguir) return;
+      }
+    }
+
     // El mensaje ya no es texto libre: se arma desde los datos (decisión PO).
     final evalOn = isService ? mode == 'needs_evaluation' : _requiresEvaluation;
     final message = composeOfferMessage(
@@ -517,7 +576,7 @@ class _ProviderRequestDetailScreenState
     // trigger `enforce_no_contact_info` (JY422) rechace la fila DESPUÉS de
     // subirlas le haría perder trabajo real al proveedor. Se revisan
     // exactamente los valores condicionados que después viajan a
-    // makeOffer/updateOffer (ver `_offerFields` en data/repos.dart): el
+    // makeOffer/updateOffer (ver `offerFields` en data/repos.dart): el
     // mensaje ya compuesto y, según producto/servicio, disponibilidad/
     // duración o marca/garantía/entrega/colores — las mismas columnas que
     // vigila el trigger para `provider_offers`. MANTENIMIENTO: si agregas un
@@ -551,8 +610,8 @@ class _ProviderRequestDetailScreenState
       // SIEMPRE, no solo en edición.
       final imageUrls = [..._keptUrls, ...newUrls];
       if (_editing) {
-        await updateOffer(
-          offerId: widget.editOfferId!,
+        final written = await updateOffer(
+          offerId: _editOfferId!,
           price: p,
           priceMin: mn,
           priceMax: mx,
@@ -576,6 +635,51 @@ class _ProviderRequestDetailScreenState
         );
         if (!mounted) return;
         _toast('Oferta actualizada');
+        // Entrada en sitio (pedido PO 2026-08-03): no se sale de la solicitud;
+        // se vuelve a modo lectura con la tarjeta reflejando lo recién
+        // guardado. `_busy` lo repone el `finally` de abajo.
+        if (_editingInPlace) {
+          // Parcha `_existingOffer` EN LOCAL con los mismos valores que se
+          // acaban de pasar a `updateOffer`, en vez de depender de releerlos
+          // del servidor con `_reloadOffer` (que traga cualquier error,
+          // `:911-918`, y aquí sería el ÚNICO mecanismo mostrando el precio
+          // nuevo). Si esa lectura fallara justo después de un guardado
+          // correcto: el toast de éxito ya salido quedaría contradicho por un
+          // precio VIEJO en la tarjeta, y la siguiente "Ver mi oferta"
+          // recargaría esos valores rancios — "Guardar cambios" los
+          // reescribiría encima de los nuevos, revirtiendo en silencio una
+          // escritura que sí tuvo éxito. Los valores de abajo son los que
+          // acabamos de confirmar que se escribieron: no hay red ni lectura
+          // que pueda fallar.
+          //
+          // `written` es el mapa EXACTO que `updateOffer` acaba de mandar a la
+          // base, no una recomposición. Recomponerlo aquí a mano divergía en
+          // seis campos: `offerFields` anula el costo de envío/instalación/
+          // evaluación si su toggle está apagado o el importe no es > 0, y
+          // guarda los detalles de producto vacíos como `null`, no como `''`.
+          // Esa copia rancia se colaba en la siguiente "Ver mi oferta".
+          final patched = {..._existingOffer!, ...written};
+          setState(() {
+            _existingOffer = patched;
+            _editOfferId = null;
+            _editingInPlace = false;
+            // Las fotos recién elegidas ya subieron a Storage y quedaron
+            // dentro de `imageUrls` (arriba) -> la oferta guardada. Sin
+            // limpiar esto, la próxima "Ver mi oferta" las mantendría en
+            // `_photos` A LA VEZ que `_prefillFromOffer` las vuelve a traer
+            // como `_keptUrls` (ya están en `image_urls`): la foto se vería
+            // duplicada y un guardado posterior la re-subiría de nuevo. NO se
+            // limpia `_condition` aquí: a diferencia de las fotos no se
+            // duplica (es un string que se sobrescribe, no una lista que
+            // acumula) y borrarlo perdería información que sigue vigente —
+            // coincide con lo que el mensaje que se acaba de guardar dice.
+            // `_prefillFromOffer` tampoco lo toca al reabrir, así que dejarlo
+            // como está es lo consistente.
+            _photos.clear();
+          });
+          return;
+        }
+        // Entrada por ruta, desde "Mis ofertas": sale a la lista, como siempre.
         context.go('/provider/offers');
         return;
       }
@@ -603,6 +707,10 @@ class _ProviderRequestDetailScreenState
         productColors: isService ? const [] : _colors,
         productWarranty: isService ? '' : _warranty.text.trim(),
         deliveryTime: isService ? '' : _delivery.text.trim(),
+        // Solo al crear: en `updateOffer` NO van: su UPDATE está denegado y
+        // PostgREST rechazaría la fila entera.
+        hasFiscalReceipt: _hasFiscalReceipt,
+        isStateSupplier: _isStateSupplier,
       );
       if (!mounted) return;
       // ¿Guardar lo ofertado como producto de la tienda? (pedido PO): antes de
@@ -782,7 +890,7 @@ class _ProviderRequestDetailScreenState
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
-      await deleteOffer(widget.editOfferId!);
+      await deleteOffer(_editOfferId!);
       if (!mounted) return;
       _toast('Oferta eliminada');
       context.go('/provider/offers');
@@ -840,6 +948,36 @@ class _ProviderRequestDetailScreenState
     } catch (_) {}
   }
 
+  /// Entra en modo edición SOBRE ESTA MISMA PANTALLA (pedido PO 2026-08-03).
+  /// No navega: la ruta de destino (`/provider/request/<id>?edit=<offerId>`)
+  /// es la que ya se está mostrando, y apilarla dejaría dos copias.
+  ///
+  /// No hace falta ninguna consulta: [_existingOffer] viene de
+  /// `myOfferForRequest`, que selecciona `offerCols` (`repos.dart:272-289`), y
+  /// esas columnas cubren todo lo que lee [_prefillFromOffer].
+  void _editInPlace(Map<String, dynamic> o) {
+    setState(() {
+      _editOfferId = o['id'] as String;
+      _editingInPlace = true;
+      _prefillFromOffer(o);
+    });
+  }
+
+  /// Sale del modo edición en sitio SIN guardar y devuelve la tarjeta.
+  ///
+  /// Limpia lo único que [_prefillFromOffer] no reasigna al volver a entrar:
+  /// las fotos recién elegidas y `_condition` (que la oferta no guarda en
+  /// columna propia). Sin esto, cancelar y reabrir arrastraría fotos y un
+  /// "Nuevo/Usado" que el proveedor creía descartados.
+  void _cancelInPlaceEdit() {
+    setState(() {
+      _editOfferId = null;
+      _editingInPlace = false;
+      _photos.clear();
+      _condition = '';
+    });
+  }
+
   /// Tarjeta de la oferta ya enviada, consciente del ESTADO (pedido PO
   /// 2026-07-21): pendiente = aviso "ya ofertaste"; aceptada = "¡Te
   /// aceptaron!" con el botón DESBLOQUEAR (nunca el formulario de edición);
@@ -857,6 +995,10 @@ class _ProviderRequestDetailScreenState
                 ? '${fmtRD(o['hourly_rate'] as num)}/hora'
                 : 'A evaluar';
 
+    // Pura y evaluada dos veces en el brazo comodín de abajo (copy y acción
+    // del CTA tienen que ir emparejados); una sola lectura deja obvio que van
+    // juntos.
+    final canEdit = canEditOfferInPlace(o);
     final (StatusTone tone, IconData icon, String title, String body,
         String? cta, VoidCallback? onCta) = switch (st) {
       'rejected' => (
@@ -896,8 +1038,14 @@ class _ProviderRequestDetailScreenState
           'Ya enviaste tu oferta',
           'Solo puedes ofertar una vez por solicitud. Tu oferta: $label. '
               'Si el cliente la acepta, te avisaremos para desbloquear el contacto.',
-          'Ver mis ofertas',
-          () => context.go('/provider/offers'),
+          // Pedido PO 2026-08-03: en singular y a ESA oferta, sin salir de la
+          // solicitud. Este brazo es el COMODÍN del switch: si cae aquí una
+          // fila que la compuerta de abajo no dejaría editar, se conserva el
+          // CTA viejo en vez de ofrecer un botón que no hace nada.
+          canEdit ? 'Ver mi oferta' : 'Ver mis ofertas',
+          canEdit
+              ? () => _editInPlace(o)
+              : () => context.go('/provider/offers'),
         ),
     };
 
@@ -1056,21 +1204,6 @@ class _ProviderRequestDetailScreenState
       requestBudgetLabel(req['budget_min'] as num?, req['budget_max'] as num?) !=
           null;
 
-  /// Encabezado de las tres secciones del detalle (pedido PO 2026-08-01):
-  /// datos del cliente → información → desbloqueo o enviar oferta. Se separa
-  /// de [_sectionLabel] (que rotula campos DENTRO del formulario) porque este
-  /// estructura la pantalla: va en versalita discreta, como 'Detalles'.
-  Widget _sectionHeading(BuildContext context, String t) => Padding(
-        padding: const EdgeInsets.only(top: 20, bottom: 2),
-        child: Text(t.toUpperCase(),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: .8,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            )),
-      );
-
   /// Chips de selección única (garantía, disponibilidad, estado). Tocar el
   /// activo lo deselecciona.
   Widget _chipSelect(
@@ -1191,12 +1324,16 @@ class _ProviderRequestDetailScreenState
     required String subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
-    required TextEditingController cost,
-    required String costLabel,
+    // Sin costo: las capacidades transversales no tienen precio, así que el
+    // controlador y su etiqueta son opcionales y el bloque del costo no se
+    // pinta. `enabled: false` deja el interruptor en solo lectura (edición).
+    TextEditingController? cost,
+    String? costLabel,
+    bool enabled = true,
   }) {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final free = (double.tryParse(cost.text) ?? 0) <= 0;
+    final free = cost != null && (double.tryParse(cost.text) ?? 0) <= 0;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Column(children: [
@@ -1213,13 +1350,16 @@ class _ProviderRequestDetailScreenState
               ],
             ),
           ),
-          Switch(value: value, onChanged: _busy ? null : onChanged),
+          Switch(
+            value: value,
+            onChanged: (_busy || !enabled) ? null : onChanged,
+          ),
         ]),
-        if (value)
+        if (value && cost != null)
           Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 8),
             child: Row(children: [
-              Expanded(child: _numField(cost, costLabel)),
+              Expanded(child: _numField(cost, costLabel ?? '')),
               const SizedBox(width: 12),
               if (free)
                 Text('Gratis',
@@ -1405,6 +1545,15 @@ class _ProviderRequestDetailScreenState
                               ? JayaloStatus.respondedDark
                               : JayaloStatus.respondedLight),
                     ),
+                  // Lo que el cliente EXIGE. Va con el título y el chip de
+                  // mayoreo, no bajo "Información": es identidad de la
+                  // solicitud, y es lo que decide si a este proveedor le
+                  // conviene ofertar (orden pedido por el PO 2026-08-01).
+                  RequestRequirementBadges(
+                    req: requirementsFromRow(req),
+                    variant: RequirementBadgeVariant.chips,
+                    padding: const EdgeInsets.only(top: 8),
+                  ),
                   // FOMO de cupos (modelo de hasta 3 finalistas): escalera de
                   // color + recencia + ofertas recibidas.
                   _slotLadder(context),
@@ -1416,7 +1565,7 @@ class _ProviderRequestDetailScreenState
                   // conviene ofertar. El título y los chips de estado se
                   // quedan arriba (decisión PO): son la identidad de la
                   // solicitud, no "información".
-                  _sectionHeading(context, 'Datos del cliente'),
+                  sectionHeading(context, 'Datos del cliente'),
                   CustomerRepCard(
                     customerId: req['user_id'] as String?,
                     reputation: _custRep,
@@ -1429,7 +1578,7 @@ class _ProviderRequestDetailScreenState
                   // 2026-08-01). Mismo criterio que `BusinessDetailsCard`, que
                   // no se dibuja si no tiene filas.
                   if (_hasInfo(req, bullets))
-                    _sectionHeading(context, 'Información'),
+                    sectionHeading(context, 'Información'),
                   if (req['is_wholesale'] == true) ...[
                     const SizedBox(height: 8),
                     if (req['wholesale_quantity'] != null)
@@ -1506,6 +1655,10 @@ class _ProviderRequestDetailScreenState
         // La tarjeta de estado sustituye al formulario SIEMPRE que hay oferta,
         // salvo edición de una PENDIENTE. Una aceptada nunca se edita (pedido
         // PO): su tarjeta trae el botón Desbloquear.
+        // MANTENIMIENTO: `domain/offer_edit.dart` (`canEditOfferInPlace`)
+        // reproduce esta condición para decidir si "Ver mi oferta" hace algo;
+        // si tocas esta compuerta, actualiza esa regla también o el botón
+        // vuelve a quedar muerto.
         else if (_existingOffer != null &&
             (!_editing || _existingOffer!['status'] != 'pending'))
           _alreadyOfferedCard(context)
@@ -1527,6 +1680,31 @@ class _ProviderRequestDetailScreenState
             const SizedBox(height: 18),
             ..._productDetails(context),
           ],
+          // Transversales: aplican a producto Y servicio, así que van FUERA del
+          // bloque de producto. Meterlas dentro las haría invisibles en
+          // servicios, que es la trampa que en la web mordió dos veces con los
+          // chips del detalle.
+          const SizedBox(height: 14),
+          _sectionLabel('Lo que puedes cumplir'),
+          const SizedBox(height: 8),
+          _toggleRow(
+            title: 'Emito comprobante fiscal',
+            subtitle: _editing
+                ? 'Quedó fijado al enviar tu oferta.'
+                : 'Puedes emitir comprobante fiscal (NCF).',
+            value: _hasFiscalReceipt,
+            onChanged: (v) => setState(() => _hasFiscalReceipt = v),
+            enabled: !_editing,
+          ),
+          _toggleRow(
+            title: 'Soy suplidor del Estado',
+            subtitle: _editing
+                ? 'Quedó fijado al enviar tu oferta.'
+                : 'Estás registrado como suplidor del Estado.',
+            value: _isStateSupplier,
+            onChanged: (v) => setState(() => _isStateSupplier = v),
+            enabled: !_editing,
+          ),
           const SizedBox(height: 16),
           Text(
               _isService
@@ -1625,7 +1803,17 @@ class _ProviderRequestDetailScreenState
                     _editing ? 'Guardar cambios' : 'Enviar oferta (gratis)')),
           ),
           if (_editing) ...[
+            // Salida sin guardar. Solo en la entrada EN SITIO: quien llega
+            // desde "Mis ofertas" ya tiene su camino de vuelta. No se toca la
+            // flecha flotante ni el PopScope de BackGuard.
             const SizedBox(height: 8),
+            if (_editingInPlace) ...[
+              TextButton(
+                onPressed: _busy ? null : _cancelInPlaceEdit,
+                child: const Text('Cancelar'),
+              ),
+              const SizedBox(height: 8),
+            ],
             TextButton.icon(
               onPressed: _busy ? null : _deleteOffer,
               icon: Icon(Icons.delete_outline,

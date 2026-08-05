@@ -5,8 +5,12 @@ import 'package:jayalo_app/features/client/my_requests_screen.dart'
 
 /// Orden de la lista de solicitudes (pedido PO 2026-07-23): las NO VISTAS
 /// primero y, dentro de cada grupo, la más reciente arriba.
-(Map<String, dynamic>, RequestPhase, int) row(String id, String createdAt) =>
-    ({'id': id, 'created_at': createdAt}, RequestPhase.withOffers, 1);
+///
+/// `ClosedReason?` (4° elemento, Task 11 ronda 2) no participa del orden:
+/// siempre `null` aquí, ninguno de estos casos es sobre la fase `closed`.
+(Map<String, dynamic>, RequestPhase, int, ClosedReason?) row(
+        String id, String createdAt) =>
+    ({'id': id, 'created_at': createdAt}, RequestPhase.withOffers, 1, null);
 
 void main() {
   test('no vistas primero; dentro de cada grupo, la más reciente arriba', () {

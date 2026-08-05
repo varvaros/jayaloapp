@@ -50,6 +50,26 @@ void main() {
       );
     });
 
+    test('dentro de un producto del catálogo: ATRÁS va al catálogo', () {
+      // Pedido PO 2026-08-03: el atrás sacaba a "Solicitudes" desde el detalle
+      // de un producto, cuando el usuario venía del catálogo. Mismo criterio
+      // que las conversaciones: se vuelve a la LISTA de donde saliste.
+      expect(
+        backActionFor(location: '/catalog/p1', homePath: '/client', atTop: true),
+        BackAction.goCatalog,
+      );
+      expect(
+        backActionFor(
+            location: '/catalog/p1', homePath: '/provider', atTop: false),
+        BackAction.goCatalog,
+      );
+      // La LISTA (/catalog, sin id) es una pestaña raíz: sigue la regla general.
+      expect(
+        backActionFor(location: '/catalog', homePath: '/client', atTop: true),
+        BackAction.goHome,
+      );
+    });
+
     test('en el home con scroll: ATRÁS sube al tope', () {
       expect(
         backActionFor(location: '/client', homePath: '/client', atTop: false),

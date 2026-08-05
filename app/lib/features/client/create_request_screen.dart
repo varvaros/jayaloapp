@@ -146,6 +146,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   // ── Formulario final (paridad requests/new.tsx) ────────────────────────
   bool _wantsNew = false;
   bool _wantsUsed = false;
+  // Se pone en true en cuanto el usuario toca "Nuevo" o "Usado" a mano. El
+  // premarcado de la IA (ver `_handleTurn`, caso `AiReady`) es solo una ayuda
+  // inicial y no debe pisar una decision explicita del usuario en una
+  // correccion posterior.
+  bool _conditionTouched = false;
   bool _withShipping = false;
   bool _withInstallation = false;
   bool _requiresEvaluation = false;
@@ -244,7 +249,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     JayaloHaptics.sent();
     setState(() {
       _busy = true;
-      _correcting = false;
       _showOther = false;
       _messages.add(AiMessage('user', text));
       if (record) {
@@ -272,6 +276,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       // ("setState() called after dispose()"): el turno se perdía y el error
       // ensuciaba el tracking. El `finally` ya lo hacía bien; estas ramas no.
       if (!mounted) return;
+      // La correccion se da por consumida SOLO cuando el turno llego. Si la
+      // IA falla, `_correcting` sigue en true y el usuario vuelve a ver el
+      // campo de corregir con su formulario intacto detras, en vez de
+      // quedarse en una pantalla sin nada que tocar.
+      setState(() => _correcting = false);
       await _handleTurn(turn);
     } on AiHttpException catch (e) {
       if (!mounted) return;
@@ -434,23 +443,33 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   Future<void> _handleTurn(AiTurn turn) async {
     switch (turn) {
+      // Todo turno que NO es `ready` tumba el formulario final: `_ready` es el
+      // dato, pero también el gate de lo que se pinta (ver `_guidedView`), y
+      // si sobrevive a una pregunta nueva la pantalla repinta el formulario
+      // VIEJO y la pregunta queda invisible — la corrección del usuario se
+      // traga en silencio. Paridad con la web, donde el gate es
+      // `current.type === "ready"` y un turno nuevo lo tumba solo.
       case AiQuestion q:
         setState(() {
+          _ready = null;
           _current = q;
           _pop++;
         });
       case AiKindSwitch k:
         setState(() {
+          _ready = null;
           _current = k;
           _pop++;
         });
       case AiImageRequest ir:
         setState(() {
+          _ready = null;
           _current = ir;
           _pop++;
         });
       case AiRouting r:
         setState(() {
+          _ready = null;
           _categories = r.categories;
           _rubros = r.rubros;
           _current = r;
@@ -463,7 +482,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           _pop++;
           // Premarcado del form si la IA captó el estado en la conversación —
           // paridad exacta con `applyReadyCondition`/`conditionToFlags` web.
-          if (_kind == 'producto' && rd.condition != null) {
+          if (_kind == 'producto' && rd.condition != null && !_conditionTouched) {
             _wantsNew = rd.condition == 'nuevo' || rd.condition == 'ambos';
             _wantsUsed = rd.condition == 'usado' || rd.condition == 'ambos';
           }
@@ -703,7 +722,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           // corregir, "Otra respuesta…", o una pregunta sin opciones. El campo
           // del ARRANQUE ya no vive aquí abajo: subió al cuerpo del empty state
           // con borde violeta (pedido PO 2026-07-21).
-          if (_ready == null &&
+          if ((_ready == null || _correcting) &&
               !_submitted &&
               started &&
               (_correcting ||
@@ -1005,7 +1024,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        if (_ready != null)
+        if (_ready != null && !_correcting)
           _finalForm(cs)
         else ...[
           if (_busy)
@@ -1043,6 +1062,19 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     if (_correcting) {
       question = '¿Qué quieres corregir?';
       counter = 'Escríbelo abajo y lo ajustamos.';
+      // Salida: si el usuario toco "Corregir algo" sin querer (o se
+      // arrepiente), esto lo regresa al formulario final sin perder nada —
+      // guarda defensiva `_ready != null` porque sin un `ready` previo no
+      // hay formulario al que volver.
+      if (_ready != null) {
+        actions = [
+          _optionButton(
+            'Volver al formulario',
+            () => setState(() => _correcting = false),
+            icon: Icons.arrow_back,
+          ),
+        ];
+      }
     } else {
       switch (_current) {
         case AiQuestion q:
@@ -1558,13 +1590,19 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             'Nuevo',
             'Producto sin uso previo.',
             _wantsNew,
-            (v) => setState(() => _wantsNew = v),
+            (v) => setState(() {
+              _wantsNew = v;
+              _conditionTouched = true;
+            }),
           ),
           _checkTile(
             'Usado',
             'Acepto producto de segunda mano.',
             _wantsUsed,
-            (v) => setState(() => _wantsUsed = v),
+            (v) => setState(() {
+              _wantsUsed = v;
+              _conditionTouched = true;
+            }),
           ),
           _checkTile(
             'Con envío',
@@ -1735,7 +1773,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               onPressed: _busy
                   ? null
                   : () => setState(() {
-                      _ready = null;
                       _correcting = true;
                     }),
               child: const Text('Corregir algo'),

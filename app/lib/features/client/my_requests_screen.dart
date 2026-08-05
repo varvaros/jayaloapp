@@ -6,6 +6,8 @@ import '../../core/brand.dart';
 import '../../core/create_request_nav.dart';
 import '../../data/repos.dart';
 import '../../domain/phase.dart';
+import '../../domain/request_requirements.dart';
+import '../shared/request_requirement_badges.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shell/home_scroll.dart';
 import '../shared/brand_kit.dart';
@@ -24,42 +26,74 @@ String timeAgo(DateTime d) {
 
 /// Ícono y copy corto por fase. Con ofertas muestra el conteo real — es el
 /// dato que hace abrir la app.
-(IconData, String) phaseChip(RequestPhase p, int offerCount) => switch (p) {
-  RequestPhase.waiting => (Icons.schedule, 'Esperando ofertas'),
-  RequestPhase.withOffers => (
-    Icons.local_offer_outlined,
-    '$offerCount oferta${offerCount == 1 ? '' : 's'}',
-  ),
-  // Modelo de hasta 3 finalistas: aunque ya aceptaste, el cliente sigue viendo
-  // cuántas ofertas recibió (antes se ocultaba al pasar a 'accepted').
-  RequestPhase.accepted => (
-    Icons.handshake,
-    'Aceptada · $offerCount oferta${offerCount == 1 ? '' : 's'}',
-  ),
-  // "En contacto", no "Desbloqueado" (pedido PO 2026-07-23): el cliente nunca
-  // desbloquea — el ícono de chat refuerza que ya están conversando.
-  RequestPhase.unlocked => (
-    Icons.forum_outlined,
-    'En contacto · $offerCount oferta${offerCount == 1 ? '' : 's'}',
-  ),
-  RequestPhase.completed => (Icons.done_all, 'Completada'),
-};
+(IconData, String) phaseChip(RequestPhase p, int offerCount,
+        {ClosedReason? closedReason}) =>
+    switch (p) {
+      RequestPhase.waiting => (Icons.schedule, 'Esperando ofertas'),
+      RequestPhase.withOffers => (
+        Icons.local_offer_outlined,
+        '$offerCount oferta${offerCount == 1 ? '' : 's'}',
+      ),
+      // Modelo de hasta 3 finalistas: aunque ya aceptaste, el cliente sigue
+      // viendo cuántas ofertas recibió (antes se ocultaba al pasar a
+      // 'accepted').
+      RequestPhase.accepted => (
+        Icons.handshake,
+        'Aceptada · $offerCount oferta${offerCount == 1 ? '' : 's'}',
+      ),
+      // "En contacto", no "Desbloqueado" (pedido PO 2026-07-23): el cliente
+      // nunca desbloquea — el ícono de chat refuerza que ya están conversando.
+      RequestPhase.unlocked => (
+        Icons.forum_outlined,
+        'En contacto · $offerCount oferta${offerCount == 1 ? '' : 's'}',
+      ),
+      RequestPhase.completed => (Icons.done_all, 'Completada'),
+      // Sin el conteo de ofertas que llevan las fases vivas: el trato ya se
+      // decidió, cuántas llegaron dejó de ser accionable.
+      RequestPhase.closed => (
+        Icons.lock_outline,
+        switch (closedReason) {
+          ClosedReason.inactivity => 'Cerrada por inactividad',
+          ClosedReason.notAgreed => 'No concretada',
+          // Razones mezcladas entre finalistas: genérico antes que inventar.
+          null => 'Cerrada',
+        },
+      ),
+    };
 
-/// Motivo por el que una solicitud NO se puede editar/eliminar, o null si sí.
-/// El swipe pasa esto a [SwipeToActions] para que el gesto ceda y explique en
-/// vez de quedar inerte (antes la tarjeta ni siquiera llevaba detector).
-String? blockedReasonForPhase(RequestPhase p) => switch (p) {
+/// Motivo por el que una solicitud NO se puede EDITAR, o null si sí.
+///
+/// Editar y borrar dejaron de ir juntos el 2026-08-03: sobre una "Cerrada" el
+/// cliente puede limpiar la lista, pero editar no aplica — hubo trato.
+String? blockedEditReasonForPhase(RequestPhase p) => switch (p) {
   RequestPhase.waiting || RequestPhase.withOffers => null,
   RequestPhase.accepted => 'Ya aceptaste una oferta: no puede editarse',
   RequestPhase.unlocked => 'Ya están en contacto: no puede editarse',
+  RequestPhase.completed => 'Solicitud completada',
+  RequestPhase.closed => 'El trato se cerró: no puede editarse',
+};
+
+/// Motivo por el que una solicitud NO se puede ELIMINAR, o null si sí.
+///
+/// La RPC `cancel_customer_request` solo acepta solicitudes `open`, y desde el
+/// 2026-08-03 también las de trato cerrado aunque el proveedor haya pagado el
+/// desbloqueo (el lead ya se consumió y el chat no puede reabrirse).
+String? blockedDeleteReasonForPhase(RequestPhase p) => switch (p) {
+  RequestPhase.waiting || RequestPhase.withOffers || RequestPhase.closed => null,
+  RequestPhase.accepted => 'Ya aceptaste una oferta: no puede eliminarse',
+  RequestPhase.unlocked => 'Ya están en contacto: no puede eliminarse',
   RequestPhase.completed => 'Solicitud completada',
 };
 
 /// Ordena las filas de la lista de solicitudes: las NO VISTAS primero y, dentro
 /// de cada grupo, la más reciente arriba (pedido PO 2026-07-23). Función pura
 /// (público para poder probar el orden sin Supabase).
+///
+/// El 4° elemento de la fila (`ClosedReason?`, Task 11 ronda 2) no participa
+/// del orden — solo viaja hasta `_RequestCard` para que la píldora diga POR
+/// QUÉ se cerró, no solo que se cerró.
 void sortRequestRows(
-  List<(Map<String, dynamic>, RequestPhase, int)> rows,
+  List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)> rows,
   Set<String> unseenReqIds,
 ) {
   rows.sort((a, b) {
@@ -71,6 +105,17 @@ void sortRequestRows(
     return cb.compareTo(ca);
   });
 }
+
+/// Ids de las ofertas que PUEDEN tener conversación: solo las aceptadas o
+/// completadas (verificado contra producción 2026-08-03: cero conversaciones
+/// para pending/rejected/cancelled). Pura y pública para poder probar el
+/// filtro sin Supabase — es el requisito de rendimiento del brief hecho test:
+/// si alguien mete otro estado en el filtro, salta.
+List<String> dealOfferIds(List<Map<String, dynamic>> offers) => [
+      for (final o in offers)
+        if (o['status'] == 'accepted' || o['status'] == 'completed')
+          o['id'] as String,
+    ];
 
 class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({
@@ -100,7 +145,8 @@ class MyRequestsScreen extends StatefulWidget {
   final bool embedded;
 
   /// Inyectables para tests (por defecto los fetch reales).
-  final Future<List<(Map<String, dynamic>, RequestPhase, int)>> Function()?
+  final Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
+  Function()?
   myFetch;
   final Future<List<Map<String, dynamic>>> Function()? othersFetch;
 
@@ -116,8 +162,8 @@ class MyRequestsScreen extends StatefulWidget {
 }
 
 class _MyRequestsScreenState extends State<MyRequestsScreen> {
-  late Future<List<(Map<String, dynamic>, RequestPhase, int)>> _load =
-      _startLoad();
+  late Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
+  _load = _startLoad();
   int _seenTick = requestsChanged.value;
 
   /// True mientras NO hay una carga de "mis solicitudes" en vuelo (la última
@@ -146,15 +192,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   Future<List<Map<String, dynamic>>> _fetchOthers() =>
       (widget.othersFetch ?? allOpenRequests)();
 
-  Future<List<(Map<String, dynamic>, RequestPhase, int)>> _fetchMine() =>
-      (widget.myFetch ?? _fetch)();
+  Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
+  _fetchMine() => (widget.myFetch ?? _fetch)();
 
   /// Arranca (o rearranca) la carga de "mis solicitudes" sincronizando
   /// [_myLoadSettled]: vuelve a false mientras la nueva carga está en vuelo y
   /// se pone en true al resolver. Se usa en TODAS las rutas de carga (inicial,
   /// listener `_reload`, staleness y pull-to-refresh) para que el gate de la
   /// guía de "otros" valga en cada recarga, no sólo en la primera.
-  Future<List<(Map<String, dynamic>, RequestPhase, int)>> _startLoad() {
+  Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
+  _startLoad() {
     _myLoadSettled = false;
     final f = _fetchMine();
     f.whenComplete(() {
@@ -309,7 +356,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     }
   }
 
-  Future<List<(Map<String, dynamic>, RequestPhase, int)>> _fetch() async {
+  Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
+  _fetch() async {
     final reqs = await myRequests();
     if (reqs.isEmpty) {
       _unseenReqIds = {};
@@ -323,13 +371,31 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           .select('id,request_id,status,unlocked_at')
           .inFilter('request_id', ids),
     );
-    final byReq = <String, List<OfferLite>>{};
-    for (final o in offers) {
-      byReq.putIfAbsent(o['request_id'] as String, () => []).add(offerLite(o));
-    }
+    // Las dos consultas de abajo son independientes entre sí (una parte de
+    // `dealIds`, la otra de `offers`) y ninguna depende de la otra: en
+    // paralelo en vez de en serie, para no sumar latencias en una pantalla ya
+    // auditada por rendimiento. Van por un record en vez de `Future.wait`
+    // con lista: sus tipos ya NO coinciden (`Map<String, ClosedReason>` vs
+    // `Set<String>`), y `Future.wait` de una lista exige un tipo común.
+    final dealIds = dealOfferIds(offers);
+    final (closedReasons, unseenReqIds) = await (
+      closedConversationReasons(dealIds), // razón de cierre por ID de OFERTA
+      _fetchUnseenRequests(offers), // ids de SOLICITUD con ofertas sin ver
+    ).wait;
     // "No vistas": solicitudes con al menos una oferta cuya notificación
     // `offer_new` sigue sin leer, mapeadas vía las ofertas ya traídas.
-    _unseenReqIds = await _fetchUnseenRequests(offers);
+    _unseenReqIds = unseenReqIds;
+    final byReq = <String, List<OfferLite>>{};
+    for (final o in offers) {
+      byReq.putIfAbsent(o['request_id'] as String, () => []).add(
+            offerLite(o, closedReason: closedReasons[o['id'] as String]),
+          );
+    }
+    // Ronda de arreglo 1 (Task 11): el 4° elemento es la razón de cierre de
+    // ESTA solicitud (`closedReasonFor`, null si sigue viva o si las
+    // aceptadas se mezclan) — sin esto, `_RequestCard` no tiene cómo saber
+    // POR QUÉ se cerró y cae siempre al genérico "Cerrada", que es
+    // justo el bug que el PO reportó sobre su lista.
     final rows = [
       for (final r in reqs)
         (
@@ -339,6 +405,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
             offers: byReq[r['id']] ?? const [],
           ),
           byReq[r['id']]?.length ?? 0,
+          closedReasonFor(byReq[r['id']] ?? const []),
         ),
     ];
     // Orden (pedido PO 2026-07-23): las NO VISTAS primero; dentro de cada grupo,
@@ -495,6 +562,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                               imageUrl: _firstImage(r),
                               kind: r['kind'] as String?,
                               wholesale: r['is_wholesale'] == true,
+                              requirements: requirementsFromRow(r),
                               onTap: () => context.push(
                                 '/client/other-request/${r['id']}',
                               ),
@@ -524,7 +592,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                           // lista (no dentro del itemBuilder, que corre por
                           // cada fila en cada scroll: sería O(n²)).
                           final firstOpen = items.indexWhere(
-                            (r) => blockedReasonForPhase(r.$2) == null,
+                            (r) => blockedDeleteReasonForPhase(r.$2) == null,
                           );
                           if (items.isEmpty) {
                             return ListView(
@@ -581,7 +649,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                   ),
                                   itemCount: items.length,
                                   itemBuilder: (_, i) {
-                                    final (r, phase, offerCount) = items[i];
+                                    final (r, phase, offerCount, closedReason) =
+                                        items[i];
                                     final id = r['id'] as String;
                                     // push (no go): apila el detalle SOBRE la lista para
                                     // que su atrás pueda volver. Con go() la pila se
@@ -606,8 +675,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                     // inerte: cede con goma y dice por qué (la
                                     // RPC de borrar solo permite `open`, y
                                     // editar una aceptada no aplica).
+                                    final blockedEdit =
+                                        blockedEditReasonForPhase(phase);
+                                    final blockedDelete =
+                                        blockedDeleteReasonForPhase(phase);
+                                    // El row queda "bloqueado" (franja gris que
+                                    // explica) solo si NINGUNA acción aplica.
+                                    // Se muestra el motivo de EDICIÓN: es la
+                                    // cadena que ya veían accepted/unlocked, y
+                                    // debía quedar exacta.
                                     final blocked =
-                                        blockedReasonForPhase(phase);
+                                        blockedDelete != null && blockedEdit != null
+                                            ? blockedEdit
+                                            : null;
                                     final card = _RequestCard(
                                       title: r['title'] as String,
                                       createdAt: DateTime.parse(
@@ -615,10 +695,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                       ),
                                       phase: phase,
                                       offerCount: offerCount,
+                                      closedReason: closedReason,
                                       imageUrl: _firstImage(r),
                                       kind: r['kind'] as String?,
                                       wholesale: r['is_wholesale'] == true,
                                       unseen: unseen,
+                                      requirements: requirementsFromRow(r),
                                       onTap: open,
                                       // Sin margen propio: lo aplica el swipe.
                                       margin: EdgeInsets.zero,
@@ -630,31 +712,29 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                       peekKey: (blocked == null && i == firstOpen)
                                           ? 'requests.swipe.v1'
                                           : null,
-                                      actions: blocked != null
-                                          ? const []
-                                          : [
-                                              SwipeAction(
-                                                icon: Icons.delete_outline,
-                                                label: 'Eliminar',
-                                                color: Theme.of(
-                                                  context,
-                                                ).colorScheme.error,
-                                                onTap: () => _deleteRequest(
-                                                    id, offerCount),
-                                              ),
-                                              SwipeAction(
-                                                icon: Icons.edit_outlined,
-                                                label: 'Editar',
-                                                color: const Color(0xFF378ADD),
-                                                // Editar llega en una sesión
-                                                // próxima (decisión PO).
-                                                onTap: () async =>
-                                                    showJayaloToast(
-                                                  context,
-                                                  'Editar solicitud: próximamente.',
-                                                ),
-                                              ),
-                                            ],
+                                      actions: [
+                                        if (blockedDelete == null)
+                                          SwipeAction(
+                                            icon: Icons.delete_outline,
+                                            label: 'Eliminar',
+                                            color:
+                                                Theme.of(context).colorScheme.error,
+                                            onTap: () =>
+                                                _deleteRequest(id, offerCount),
+                                          ),
+                                        if (blockedEdit == null)
+                                          SwipeAction(
+                                            icon: Icons.edit_outlined,
+                                            label: 'Editar',
+                                            color: const Color(0xFF378ADD),
+                                            // Editar llega en una sesión
+                                            // próxima (decisión PO).
+                                            onTap: () async => showJayaloToast(
+                                              context,
+                                              'Editar solicitud: próximamente.',
+                                            ),
+                                          ),
+                                      ],
                                       child: card,
                                     ).cascadeIn(i);
                                   },
@@ -724,6 +804,16 @@ String? _firstImage(Map<String, dynamic> r) {
   return first.isEmpty ? null : first.first;
 }
 
+/// Saturación 0 con los coeficientes de luminancia Rec. 709: pasa a gris sin
+/// alterar el brillo percibido, que es lo que hace que una foto apagada siga
+/// siendo legible en vez de convertirse en una mancha.
+const _grayscaleMatrix = <double>[
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0, 0, 0, 1, 0, //
+];
+
 /// Tarjeta de solicitud del home (mockup Tanda 1): tarjeta redondeada teñida
 /// por fase, con FOTO (miniatura), tema, tiempo y un CHIP de estado — el de
 /// "N ofertas" en lila/morado. Fases vivas (con ofertas/aceptada/desbloqueado)
@@ -737,8 +827,10 @@ class _RequestCard extends StatelessWidget {
     required this.imageUrl,
     required this.kind,
     required this.onTap,
+    this.closedReason,
     this.wholesale = false,
     this.unseen = false,
+    this.requirements = RequestRequirements.none,
     this.margin,
   });
 
@@ -750,6 +842,12 @@ class _RequestCard extends StatelessWidget {
   final String? kind;
   final VoidCallback onTap;
 
+  /// Solo aplica cuando `phase` es `closed`; ver `phaseChip`. Ronda de
+  /// arreglo 1 de la Task 11: el PO reportó el "Cerrada" ambiguo sobre ESTA
+  /// tarjeta (su lista de solicitudes), no sobre el detalle — sin esto la
+  /// píldora nunca mostraba el motivo aunque `_fetch` ya lo trajera.
+  final ClosedReason? closedReason;
+
   /// Solicitud "al por mayor": sticker en la esquina de la miniatura.
   final bool wholesale;
 
@@ -758,26 +856,29 @@ class _RequestCard extends StatelessWidget {
   /// ofertas sin abrir dentro del detalle, no acá.
   final bool unseen;
 
+  /// Lo que el cliente exigió en esta solicitud: símbolos mudos junto a la
+  /// hora. El texto completo vive en el detalle.
+  final RequestRequirements requirements;
+
   /// Null = margen estándar de lista; se pasa cero cuando el card vive dentro
   /// de [SwipeToActions] (el swipe aplica el margen exterior).
   final EdgeInsetsGeometry? margin;
 
-  static const _live = {
-    RequestPhase.withOffers,
-    RequestPhase.accepted,
-    RequestPhase.unlocked,
-  };
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final tone = toneFor(context, phase);
-    final tinted = _live.contains(phase);
-    // Tarjeta teñida en las fases vivas; blanca cuando espera/completa.
+    // Teñida en todas las fases MENOS `waiting`: una solicitud recién puesta,
+    // aún sin ofertas, es la más viva de todas y va sobre blanco.
+    // `completed` también se tiñe (pedido PO 2026-08-03), con su gris: antes
+    // caía en el mismo blanco que `waiting` y una solicitud ya cerrada se leía
+    // como activa.
+    final tinted = phase != RequestPhase.waiting;
     final bg = tinted ? tone.bg : cs.surfaceContainerLowest;
     final fg = tinted ? tone.ink : cs.onSurface;
-    final (_, label) = phaseChip(phase, offerCount);
+    final (_, label) = phaseChip(phase, offerCount, closedReason: closedReason);
     return JayaloCard(
       onTap: onTap,
       tint: bg,
@@ -815,15 +916,55 @@ class _RequestCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      timeAgo(createdAt),
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: fg.withValues(alpha: .7),
-                      ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          timeAgo(createdAt),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: fg.withValues(alpha: .7),
+                          ),
+                        ),
+                        // Guardado con `hasAnyRequirement`: un
+                        // `SizedBox.shrink()` dentro de este `Wrap` igual
+                        // consume su `spacing`.
+                        if (hasAnyRequirement(requirements))
+                          RequestRequirementBadges(
+                            req: requirements,
+                            variant: RequirementBadgeVariant.symbols,
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 8),
-                    _pill(label, tone, tinted, dark),
+                    // Completada: banda violeta CENTRADA (pedido PO
+                    // 2026-08-03). Sustituye a la píldora de estado, no la
+                    // acompaña: dos etiquetas diciendo lo mismo en la misma
+                    // tarjeta es ruido. El violeta pleno sobre el gris apagado
+                    // es lo que hace legible el cierre de un vistazo.
+                    if (phase == RequestPhase.completed)
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: cs.primary,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            'Completado',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      _pill(label, tone, tinted, dark),
                   ],
                 ),
               ),
@@ -965,9 +1106,20 @@ class _RequestCard extends StatelessWidget {
         color: holderIcon,
       ),
     );
+    // Completada: la miniatura en GRIS (pedido PO 2026-08-03). Teñir solo el
+    // fondo no bastaba: la foto a todo color es lo primero que mira el ojo y
+    // seguía leyéndose como una solicitud viva. Cerrada también está
+    // terminada y corre el mismo riesgo de leerse como viva a todo color.
+    Widget muted(Widget child) => phase == RequestPhase.completed ||
+            phase == RequestPhase.closed
+        ? ColorFiltered(
+            colorFilter: const ColorFilter.matrix(_grayscaleMatrix),
+            child: child,
+          )
+        : child;
     final url = imageUrl;
-    if (url == null) return placeholder();
-    return ClipRRect(
+    if (url == null) return muted(placeholder());
+    return muted(ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: JayaloNetworkImage(
         url,
@@ -977,7 +1129,7 @@ class _RequestCard extends StatelessWidget {
         errorBuilder: (_, _, _) => placeholder(),
         loadingBuilder: (_, child, p) => p == null ? child : placeholder(),
       ),
-    );
+    ));
   }
 
   /// Chip de estado: sobre tarjeta teñida va en píldora blanca translúcida con
@@ -1028,6 +1180,7 @@ class _OtherRequestCard extends StatelessWidget {
     required this.kind,
     required this.wholesale,
     required this.onTap,
+    this.requirements = RequestRequirements.none,
   });
 
   final String title;
@@ -1036,6 +1189,9 @@ class _OtherRequestCard extends StatelessWidget {
   final String? kind;
   final bool wholesale;
   final VoidCallback onTap;
+
+  /// Igual que en [_RequestCard]: símbolos mudos junto a la hora.
+  final RequestRequirements requirements;
 
   @override
   Widget build(BuildContext context) {
@@ -1099,9 +1255,24 @@ class _OtherRequestCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 3),
-                Text(
-                  timeAgo(createdAt),
-                  style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      timeAgo(createdAt),
+                      style:
+                          TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                    ),
+                    // Guardado con `hasAnyRequirement`: un `SizedBox.shrink()`
+                    // dentro de este `Wrap` igual consume su `spacing`.
+                    if (hasAnyRequirement(requirements))
+                      RequestRequirementBadges(
+                        req: requirements,
+                        variant: RequirementBadgeVariant.symbols,
+                      ),
+                  ],
                 ),
               ],
             ),

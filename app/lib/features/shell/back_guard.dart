@@ -27,6 +27,10 @@ class BackGuard extends StatelessWidget {
         // Desde una conversación se vuelve a la LISTA de conversaciones
         // (pedido PO 2026-07-21), no al home.
         context.go('/messages');
+      case BackAction.goCatalog:
+        // Desde el detalle de un producto se vuelve al CATÁLOGO (pedido PO
+        // 2026-08-03): sacaba a "Solicitudes", que no es de donde venías.
+        context.go('/catalog');
       case BackAction.scrollTop:
         c.animateTo(0,
             duration: const Duration(milliseconds: 350),

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/domain/inbox_load.dart';
+import 'package:jayalo_app/domain/request_requirements.dart';
 
 Map<String, dynamic> req(String id, {String? createdAt, String? source}) => {
   'id': id,
@@ -26,6 +27,7 @@ void main() {
           },
           fetchStatuses: (_) async => {},
           fetchCounts: (_) async => {},
+          fetchRequirements: (_) async => {},
         );
 
         await Future<void>.delayed(Duration.zero);
@@ -55,6 +57,7 @@ void main() {
           countStarted = true;
           return countGate.future;
         },
+        fetchRequirements: (_) async => {},
       );
 
       await Future<void>.delayed(Duration.zero);
@@ -70,6 +73,38 @@ void main() {
       expect(data.statuses, {'a': 'pending'});
       expect(data.counts, {'a': 3});
     });
+
+    test(
+      'oleada B: los requisitos se piden A LA VEZ que los estados',
+      () async {
+        final statusGate = Completer<Map<String, String>>();
+        final reqGate = Completer<Map<String, RequestRequirements>>();
+        var reqStarted = false;
+
+        final future = loadInboxData(
+          fetchItems: () async => [req('a')],
+          fetchOfferedOpen: null,
+          fetchStatuses: (_) => statusGate.future,
+          fetchCounts: (_) async => {},
+          fetchRequirements: (_) {
+            reqStarted = true;
+            return reqGate.future;
+          },
+        );
+
+        await Future<void>.delayed(Duration.zero);
+        expect(
+          reqStarted,
+          isTrue,
+          reason: 'no debe esperar a los estados para pedir los requisitos',
+        );
+
+        statusGate.complete({'a': 'pending'});
+        reqGate.complete({'a': const RequestRequirements(withShipping: true)});
+        final data = await future;
+        expect(data.requirements['a']!.withShipping, isTrue);
+      },
+    );
   });
 
   group('loadInboxData — semántica', () {
@@ -79,6 +114,7 @@ void main() {
         fetchOfferedOpen: () async => [req('b')],
         fetchStatuses: (_) async => {},
         fetchCounts: (_) async => {},
+        fetchRequirements: (_) async => {},
       );
       expect(
         data.badgeCount,
@@ -101,6 +137,7 @@ void main() {
           ],
           fetchStatuses: (_) async => {},
           fetchCounts: (_) async => {},
+          fetchRequirements: (_) async => {},
         );
         expect(data.items.map((r) => r['id']).toList(), ['z', 'dup', 'a']);
       },
@@ -112,6 +149,7 @@ void main() {
         fetchOfferedOpen: null,
         fetchStatuses: (_) async => {},
         fetchCounts: (_) async => {},
+        fetchRequirements: (_) async => {},
       );
       expect(data.items.map((r) => r['id']).toList(), ['a']);
     });
@@ -126,6 +164,7 @@ void main() {
           return {};
         },
         fetchCounts: (_) async => {},
+        fetchRequirements: (_) async => {},
       );
       expect(vistos, ['a']);
     });
@@ -140,6 +179,7 @@ void main() {
           fetchOfferedOpen: () async => throw StateError('red caída'),
           fetchStatuses: (_) async => {},
           fetchCounts: (_) async => {},
+          fetchRequirements: (_) async => {},
         );
         expect(data.items.map((r) => r['id']).toList(), ['a']);
       },
@@ -153,6 +193,7 @@ void main() {
           fetchOfferedOpen: null,
           fetchStatuses: (_) async => throw StateError('boom'),
           fetchCounts: (_) async => throw StateError('boom'),
+          fetchRequirements: (_) async => {},
         );
         expect(data.items.map((r) => r['id']).toList(), ['a']);
         expect(data.statuses, isEmpty);
@@ -169,10 +210,46 @@ void main() {
             fetchOfferedOpen: () async => [req('b')],
             fetchStatuses: (_) async => {},
             fetchCounts: (_) async => {},
+            fetchRequirements: (_) async => {},
           ),
           throwsStateError,
         );
       },
     );
+
+    test(
+      'si fallan los requisitos, quedan vacíos y la bandeja sobrevive',
+      () async {
+        final data = await loadInboxData(
+          fetchItems: () async => [req('a')],
+          fetchOfferedOpen: null,
+          fetchStatuses: (_) async => {},
+          fetchCounts: (_) async => {},
+          fetchRequirements: (_) async => throw StateError('boom'),
+        );
+        expect(data.items.map((r) => r['id']).toList(), ['a']);
+        expect(data.requirements, isEmpty);
+      },
+    );
+
+    test('los requisitos NO se piden para las filas de la tienda', () async {
+      List<String>? vistos;
+      await loadInboxData(
+        fetchItems: () async => [req('a'), req('s', source: 'store')],
+        fetchOfferedOpen: null,
+        fetchStatuses: (_) async => {},
+        fetchCounts: (_) async => {},
+        fetchRequirements: (ids) async {
+          vistos = ids;
+          return {};
+        },
+      );
+      expect(
+        vistos,
+        ['a'],
+        reason:
+            'un interés de producto no es una solicitud: no tiene requisitos',
+      );
+    });
   });
 }

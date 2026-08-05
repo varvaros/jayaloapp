@@ -7,8 +7,11 @@ import '../core/ttl_cache.dart';
 import '../domain/chat.dart' show QuickItem;
 import '../domain/contact_info.dart'
     show contactInfoCode, contactInfoMessage, payloadHasContactInfo;
+import '../domain/geo.dart' show mapsLinkFor;
 import '../domain/phase.dart';
 import '../domain/profile_address.dart';
+import '../domain/request_requirements.dart';
+import 'location_body.dart';
 
 final supa = Supabase.instance.client;
 
@@ -218,13 +221,47 @@ Future<List<Map<String, dynamic>>> myRequests() => AppCaches.myRequests.readFres
       onChanged: () => requestsChanged.value++,
     );
 
+/// Las cinco columnas de requisitos de `customer_requests`, juntas en una sola
+/// constante para que no se separen nunca: las leen cuatro pantallas y la
+/// bandeja, y añadir una sexta a un solo `select()` es exactamente el fallo que
+/// dejó estos flags invisibles durante meses.
+///
+/// Sin espacios: se concatena dentro de un `select()` de PostgREST.
+const requestRequirementCols =
+    'with_shipping,with_installation,requires_evaluation,'
+    'requires_fiscal_receipt,requires_state_supplier';
+
+/// Los requisitos de un lote de solicitudes, por id.
+///
+/// Existe por la bandeja del proveedor: `get_provider_inbox_unified` tiene una
+/// forma fija de trece columnas que no incluye ninguno de estos flags, y esa RPC
+/// la comparte la web — extenderla obligaría a un DROP/CREATE con re-grants y
+/// pondría en riesgo el inbox de los dos frentes a la vez. Sale más barato
+/// pedirlos aparte: la llamada corre en la oleada B de `loadInboxData`, en
+/// paralelo con los estados y los conteos, así que no cuesta latencia.
+Future<Map<String, RequestRequirements>> requirementsForRequests(
+  List<String> ids,
+) async {
+  if (ids.isEmpty) return {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('customer_requests')
+        .select('id,$requestRequirementCols')
+        .inFilter('id', ids),
+  );
+  return {
+    for (final r in rows) r['id'] as String: requirementsFromRow(r),
+  };
+}
+
 Future<List<Map<String, dynamic>>> _fetchMyRequests() async {
   final uid = supa.auth.currentUser!.id;
   return List<Map<String, dynamic>>.from(
     await supa
         .from('customer_requests')
         .select(
-          'id,title,kind,status,is_wholesale,created_at,image_url,image_urls',
+          'id,title,kind,status,is_wholesale,created_at,image_url,image_urls,'
+          '$requestRequirementCols',
         )
         .eq('user_id', uid)
         // Las canceladas (soft-delete de "Eliminar") desaparecen del listado; la
@@ -245,7 +282,19 @@ const offerCols =
     // mensaje compuesto).
     'offers_installation,installation_price,requires_evaluation,'
     'evaluation_price,availability_note,estimated_duration,product_brand,'
-    'product_colors,product_warranty,delivery_time';
+    'product_colors,product_warranty,delivery_time'
+    // Capacidades declaradas al ofertar (foto del momento: su UPDATE está
+    // denegado). Se traen aquí porque el listado (`offersForRequest`) es lo
+    // que la próxima tanda usa para que el cliente vea lo que el negocio
+    // declaró. El formulario de edición POR RUTA (`?edit=`, "Mis ofertas") usa
+    // [offerForEdit], que hace un `select()` completo — pero desde "Ver mi
+    // oferta" (pedido PO 2026-08-03) el prefill EN SITIO sí pasa por acá, vía
+    // [myOfferForRequest]: `_prefillFromOffer` en `request_detail_screen.dart`
+    // lee sus 21 claves y todas están cubiertas por esta constante.
+    // MANTENIMIENTO: si recortas esta lista, revisa `_prefillFromOffer` — un
+    // campo que falte aquí llegaría vacío al formulario en sitio y el
+    // siguiente guardado lo escribiría en blanco encima de la columna real.
+    ',has_fiscal_receipt,is_state_supplier';
 
 Future<List<Map<String, dynamic>>> offersForRequest(String requestId) async =>
     List<Map<String, dynamic>>.from(
@@ -324,7 +373,10 @@ Future<Map<String, int>> offerCountsForRequests(List<String> requestIds) async {
 /// Solicitudes ABIERTAS (de otros) a las que este proveedor ya ofertó — para
 /// que una oferta hecha en OTRO rubro también aparezca en "Para ti" (pedido
 /// PO: "si alguien ofertó en otro rubro, esa oferta pasa a Para ti").
-/// Mismas columnas que [allOpenRequests] para que la tarjeta pinte igual.
+/// A propósito NO trae las cinco columnas de requisitos que sí tiene
+/// [allOpenRequests]: estas filas solo se mezclan en la bandeja del proveedor
+/// (`loadInboxData`), donde la oleada B las completa vía `fetchRequirements`
+/// igual que al resto de la lista.
 Future<List<Map<String, dynamic>>> myOfferedOpenRequests({String? kind}) async {
   final uid = supa.auth.currentUser!.id;
   final offers = List<Map<String, dynamic>>.from(
@@ -378,12 +430,47 @@ Future<Map<String, bool>> businessesVerified(List<String> businessIds) async {
   };
 }
 
-OfferLite offerLite(Map<String, dynamic> o) => OfferLite(
-  status: o['status'] as String,
-  unlockedAt: o['unlocked_at'] == null
-      ? null
-      : DateTime.parse(o['unlocked_at'] as String),
-);
+OfferLite offerLite(Map<String, dynamic> o, {ClosedReason? closedReason}) =>
+    OfferLite(
+      status: o['status'] as String,
+      unlockedAt: o['unlocked_at'] == null
+          ? null
+          : DateTime.parse(o['unlocked_at'] as String),
+      closedReason: closedReason,
+    );
+
+/// Razón de cierre por id de oferta, para las ofertas cuya CONVERSACIÓN ya
+/// está cerrada (a mano, "no concretado" o el cron de inactividad). Es el
+/// dato con el que la lista distingue un trato muerto de uno vivo, y CÓMO
+/// murió: `conversations.status = 'perdido'` es "no concretada" (alguien lo
+/// decidió); cualquier otro valor con `closed_at` puesto es el cron de
+/// inactividad.
+///
+/// Best-effort, como `_fetchUnseenRequests`: si la consulta falla, la lista se
+/// pinta sin la fase "Cerrada" en vez de romperse.
+Future<Map<String, ClosedReason>> closedConversationReasons(
+    List<String> offerIds) async {
+  if (offerIds.isEmpty) return {};
+  try {
+    final rows = List<Map<String, dynamic>>.from(
+      await supa
+          .from('conversations')
+          .select('source_id,status')
+          .eq('kind', 'offer')
+          .inFilter('source_id', offerIds)
+          .not('closed_at', 'is', null),
+    );
+    return {
+      for (final r in rows)
+        if (r['source_id'] != null)
+          r['source_id'] as String: r['status'] == 'perdido'
+              ? ClosedReason.notAgreed
+              : ClosedReason.inactivity,
+    };
+  } catch (_) {
+    return {};
+  }
+}
 
 /// Nombres visibles de rubros por id (para el paso "rubros sugeridos" del
 /// formulario final de crear solicitud).
@@ -599,7 +686,8 @@ Future<Map<String, dynamic>?> requestById(String id) async => await supa
       // image_url/image_urls: el detalle del proveedor pinta la foto del
       // cliente en el panel ámbar (igual que el detalle del cliente). Sin
       // estas columnas el panel SIEMPRE caía al ícono — "llegan sin imágenes".
-      'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at,image_url,image_urls,budget_min,budget_max,wholesale_quantity,wholesale_split,wholesale_packaging,wholesale_note,offers_count,accepted_offers_count',
+      'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at,image_url,image_urls,budget_min,budget_max,wholesale_quantity,wholesale_split,wholesale_packaging,wholesale_note,offers_count,accepted_offers_count'
+      ',$requestRequirementCols',
     )
     .eq('id', id)
     .maybeSingle();
@@ -615,6 +703,32 @@ Future<String?> myBusinessId() async {
   return row?['id'] as String?;
 }
 
+/// El negocio con el que se oferta, **y** las capacidades que tiene declaradas.
+///
+/// Existe aparte de [myBusinessId] a propósito: esa la llaman también el estado
+/// de sesión, el chat y ajustes, que solo necesitan el id y no deben pagar
+/// columnas de más.
+///
+/// El proveedor declara estas capacidades en la WEB (en la app "Mi tienda" es
+/// solo lectura y editar va por magic link). Aquí solo se leen, para premarcar
+/// las casillas de la oferta.
+Future<({String id, bool hasFiscalReceipt, bool isStateSupplier})?>
+myBusinessForOffer() async {
+  final uid = supa.auth.currentUser!.id;
+  final row = await supa
+      .from('provider_businesses')
+      .select('id,has_fiscal_receipt,is_state_supplier')
+      .eq('user_id', uid)
+      .limit(1)
+      .maybeSingle();
+  if (row == null) return null;
+  return (
+    id: row['id'] as String,
+    hasFiscalReceipt: row['has_fiscal_receipt'] == true,
+    isStateSupplier: row['is_state_supplier'] == true,
+  );
+}
+
 /// Ofertar es GRATIS. Campos idénticos al insert de la web
 /// (RequestRespondSection.tsx L940-954, camino precio fijo/rango).
 /// Campos compartidos entre CREAR ([makeOffer]) y EDITAR ([updateOffer]) una
@@ -625,7 +739,19 @@ Future<String?> myBusinessId() async {
 /// Todo campo de texto que entre a este mapa queda cubierto AUTOMÁTICAMENTE por
 /// el barrido anti-elusión de [makeOffer]/[updateOffer] (`payloadHasContactInfo`,
 /// espejo del de la web): no hay lista de campos que mantener a mano.
-Map<String, dynamic> _offerFields({
+///
+/// ⚠️ **Este mapa lo comparten CREAR y EDITAR, y eso restringe qué puede
+/// llevar.** `provider_offers` tiene el `UPDATE` de `has_fiscal_receipt` e
+/// `is_state_supplier` DENEGADO a propósito (son una foto de lo que el negocio
+/// declaraba al ofertar). Si esas dos columnas entraran aquí, el `UPDATE` las
+/// incluiría, PostgREST tumbaría la fila ENTERA por falta de permiso y
+/// "mejorar oferta" dejaría de funcionar del todo. Van solo en el `insert` de
+/// [makeOffer]. Lo vigila un test en `repos_test.dart`.
+///
+/// Es público solo para que ese test pueda mirar dentro; no lo llames desde
+/// una pantalla.
+@visibleForTesting
+Map<String, dynamic> offerFields({
   double? price,
   double? priceMin,
   double? priceMax,
@@ -704,9 +830,13 @@ Future<void> makeOffer({
   List<String> productColors = const [],
   String productWarranty = '',
   String deliveryTime = '',
+  // Capacidades declaradas para ESTA oferta. Van aquí y NO en `offerFields`
+  // porque su UPDATE está denegado: ver la advertencia de ese mapa.
+  bool hasFiscalReceipt = false,
+  bool isStateSupplier = false,
 }) async {
   final uid = supa.auth.currentUser!.id;
-  final fields = _offerFields(
+  final fields = offerFields(
     price: price,
     priceMin: priceMin,
     priceMax: priceMax,
@@ -742,6 +872,8 @@ Future<void> makeOffer({
       'request_id': request['id'],
       'request_title': request['title'],
       'status': 'pending',
+      'has_fiscal_receipt': hasFiscalReceipt,
+      'is_state_supplier': isStateSupplier,
       ...fields,
     });
   } on PostgrestException catch (e) {
@@ -761,7 +893,13 @@ Future<void> makeOffer({
 
 /// Edita una oferta PENDIENTE propia (RLS: dueño). No toca
 /// request_id/business_id/status; misma forma de payload que [makeOffer].
-Future<void> updateOffer({
+/// Devuelve el mapa que REALMENTE quedó escrito, para quien necesite refrescar
+/// su copia de la oferta sin releerla del servidor (el detalle de solicitud, al
+/// editar EN SITIO, se queda en pantalla). Recomponerlo a mano divergía: aquí
+/// abajo [offerFields] anula el costo de envío/instalación/evaluación si su
+/// toggle está apagado, y los detalles de producto vacíos los guarda como
+/// `null`, no como `''`.
+Future<Map<String, dynamic>> updateOffer({
   required String offerId,
   double? price,
   double? priceMin,
@@ -784,7 +922,7 @@ Future<void> updateOffer({
   String productWarranty = '',
   String deliveryTime = '',
 }) async {
-  final fields = _offerFields(
+  final fields = offerFields(
     price: price,
     priceMin: priceMin,
     priceMax: priceMax,
@@ -812,10 +950,14 @@ Future<void> updateOffer({
   }
   await supa.from('provider_offers').update(fields).eq('id', offerId);
   AppCaches.invalidateRequestLists();
+  return fields;
 }
 
 /// Fila COMPLETA de una oferta propia (todas las columnas) para prefijar el
-/// formulario de edición — `offerCols` no trae los detalles de producto.
+/// formulario de edición POR RUTA (`?edit=`, desde "Mis ofertas"). No es la
+/// única fuente para el prefill: la edición EN SITIO ("Ver mi oferta", pedido
+/// PO 2026-08-03) prefija desde [myOfferForRequest] (`offerCols`), que sí trae
+/// los detalles de producto — ver el comentario de `offerCols` arriba.
 Future<Map<String, dynamic>?> offerForEdit(String offerId) async {
   final rows = List<Map<String, dynamic>>.from(
     await supa.from('provider_offers').select().eq('id', offerId).limit(1),
@@ -1171,6 +1313,12 @@ Future<void> completeConsumerProfile({
   double? lat,
   double? lng,
   required String termsVersion,
+  // Opcionales con default '': no rompen a los llamadores actuales. Una
+  // tarea posterior los cablea desde el onboarding con datos estructurados.
+  String city = '',
+  String sector = '',
+  String street = '',
+  String streetNumber = '',
 }) async {
   final u = supa.auth.currentUser!;
   await supa.from('profiles').upsert({
@@ -1181,6 +1329,10 @@ Future<void> completeConsumerProfile({
     'phone': whatsapp,
     'whatsapp': whatsapp,
     'address': address,
+    'city': city.isEmpty ? null : city,
+    'sector': sector.isEmpty ? null : sector,
+    'street': street.isEmpty ? null : street,
+    'street_number': streetNumber.isEmpty ? null : streetNumber,
     'lat': lat,
     'lng': lng,
     'location_captured_at': (lat != null && lng != null)
@@ -1792,7 +1944,7 @@ Future<String?> myBusinessAddressBody() async {
   final uid = supa.auth.currentUser!.id;
   final biz = await supa
       .from('provider_businesses')
-      .select('id,name,city,sector')
+      .select('id,name,city,sector,lat,lng')
       .eq('user_id', uid)
       .limit(1)
       .maybeSingle();
@@ -1806,10 +1958,15 @@ Future<String?> myBusinessAddressBody() async {
     biz['sector'],
     biz['city'],
   ].whereType<String>().where((s) => s.isNotEmpty).join(', ');
+  final lat = (biz['lat'] as num?)?.toDouble();
+  final lng = (biz['lng'] as num?)?.toDouble();
+  // El nombre del negocio va PRIMERO, asi que se compone a mano en vez de
+  // reutilizar buildLocationBody (que empieza por la direccion).
   return [
     biz['name'],
     address,
     cityLine,
+    if (lat != null && lng != null) mapsLinkFor(lat, lng),
   ].whereType<String>().where((s) => s.isNotEmpty).join('\n');
 }
 
@@ -1841,7 +1998,7 @@ Future<String?> myLocationBody() async {
   final uid = supa.auth.currentUser!.id;
   final p = await supa
       .from('profiles')
-      .select('address,address_reference,sector,city')
+      .select('address,address_reference,sector,city,lat,lng')
       .eq('user_id', uid)
       .maybeSingle();
   if (p == null) return null;
@@ -1849,15 +2006,43 @@ Future<String?> myLocationBody() async {
     p['sector'],
     p['city'],
   ].whereType<String>().where((s) => s.isNotEmpty).join(', ');
-  final parts = <String>[
-    if (p['address'] is String && (p['address'] as String).isNotEmpty)
-      p['address'] as String,
-    if (cityLine.isNotEmpty) cityLine,
-    if (p['address_reference'] is String &&
-        (p['address_reference'] as String).isNotEmpty)
-      'Referencia: ${p['address_reference']}',
-  ];
-  return parts.isEmpty ? null : parts.join('\n');
+  return buildLocationBody(
+    address: p['address'] is String ? p['address'] as String : '',
+    cityLine: cityLine,
+    reference: p['address_reference'] is String
+        ? p['address_reference'] as String
+        : '',
+    lat: (p['lat'] as num?)?.toDouble(),
+    lng: (p['lng'] as num?)?.toDouble(),
+  );
+}
+
+/// Actualiza SOLO la direccion del perfil. Existe porque hasta 2026-08-04 la
+/// direccion solo se podia poner en el onboarding: si salia mal el dia del alta,
+/// no habia ninguna forma de corregirla dentro de la app.
+Future<void> updateMyAddress({
+  required String address,
+  required String city,
+  required String sector,
+  required String street,
+  required String streetNumber,
+  required String reference,
+  double? lat,
+  double? lng,
+}) async {
+  final uid = supa.auth.currentUser!.id;
+  await supa.from('profiles').update({
+    'address': address,
+    'city': city.isEmpty ? null : city,
+    'sector': sector.isEmpty ? null : sector,
+    'street': street.isEmpty ? null : street,
+    'street_number': streetNumber.isEmpty ? null : streetNumber,
+    'address_reference': reference.isEmpty ? null : reference,
+    'lat': ?lat,
+    'lng': ?lng,
+    if (lat != null && lng != null)
+      'location_captured_at': DateTime.now().toIso8601String(),
+  }).eq('user_id', uid);
 }
 
 /// Defaults idénticos a DEFAULT_CHAT_WELCOME de la web + override de app_settings.
@@ -2098,7 +2283,8 @@ Future<List<Map<String, dynamic>>> allOpenRequests({String? kind}) async {
   var q = supa
       .from('customer_requests')
       .select(
-        'id,title,description,kind,urgency,zone,is_wholesale,created_at,image_url',
+        'id,title,description,kind,urgency,zone,is_wholesale,created_at,'
+        'image_url,$requestRequirementCols',
       )
       .eq('status', 'open')
       .neq('user_id', uid);
@@ -2400,7 +2586,11 @@ Future<({String? categoryId, String? rubro})> myBusinessCategoryRubro(
 const productDetailCols =
     'id,user_id,business_id,name,description,color,'
     'price,price_min,price_max,image_urls,category_id,rubro,condition,'
-    'offers_shipping,offers_installation,kind';
+    'offers_shipping,offers_installation,kind'
+    // Detalles que la tabla YA guardaba y el detalle no traía ni pintaba
+    // (pedido PO 2026-08-03: coherencia visual con las ofertas). Ojo:
+    // `provider_products` NO tiene `delivery_time` — eso es de las ofertas.
+    ',brand,warranty,requires_evaluation';
 
 Future<Map<String, dynamic>?> productDetail(String id) async => await supa
     .from('provider_products')

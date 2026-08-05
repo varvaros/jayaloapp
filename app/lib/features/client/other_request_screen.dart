@@ -3,7 +3,9 @@ import '../shared/network_image.dart';
 import '../../core/brand.dart';
 import '../../core/create_request_nav.dart';
 import '../../data/repos.dart';
+import '../../domain/request_requirements.dart';
 import '../shared/brand_kit.dart';
+import '../shared/request_requirement_badges.dart';
 
 /// Detalle READ-ONLY de una solicitud de OTRO usuario (pestaña "De otros" de
 /// Tus solicitudes). No muestra estado/ofertas (eso es de las propias) ni
@@ -102,6 +104,11 @@ class _OtherRequestScreenState extends State<OtherRequestScreen> {
                   ),
                 ),
               ],
+              RequestRequirementBadges(
+                req: requirementsFromRow(r),
+                variant: RequirementBadgeVariant.chips,
+                padding: const EdgeInsets.only(top: 10),
+              ),
               if (imgs.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 ClipRRect(

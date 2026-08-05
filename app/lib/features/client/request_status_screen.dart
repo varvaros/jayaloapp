@@ -1,39 +1,20 @@
 import 'package:flutter/material.dart';
-import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
-import '../../domain/chat_time.dart';
 import '../../domain/money.dart';
 import '../../domain/phase.dart';
 import '../../domain/finalist_slots.dart';
+import '../../domain/request_requirements.dart';
 import 'my_requests_screen.dart' show phaseChip;
 import 'offer_actions.dart';
-import '../shell/floating_nav_bar.dart';
+import 'offer_requirement_coverage.dart';
+import 'request_detail_sheet.dart';
 import '../shared/brand_kit.dart';
-import '../shared/onboarding_guide.dart';
-import '../shared/onboarding_copy.dart';
+import '../shared/collapsing_photo_panel.dart';
+import '../shared/network_image.dart' show jayaloAvatarImage;
 import '../shared/verified_badges.dart';
 import '../../core/motion.dart';
-import '../chat/widgets/rating_form.dart';
-
-/// Tono ámbar del panel del detalle (la doctrina lo pide cálido, NO lila —
-/// así el detalle no se confunde con el chat). Claro sale del mockup
-/// (`#F0C48C`); oscuro cae a un ámbar apagado.
-({Color panel, Color ink, Color sheet}) _amber(BuildContext context) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  return dark
-      ? (
-          panel: const Color(0xFF3A2C12),
-          ink: const Color(0xFFF0C48C),
-          sheet: Theme.of(context).colorScheme.surfaceContainerLowest,
-        )
-      : (
-          panel: const Color(0xFFF0C48C),
-          ink: const Color(0xFF6B4514),
-          sheet: Theme.of(context).colorScheme.surfaceContainerLowest,
-        );
-}
 
 /// Precio "efectivo" con el que se comparan las ofertas: precio base + costo
 /// de envío cuando el proveedor lo cobra (pedido PO: sumar el envío al precio
@@ -83,28 +64,6 @@ List<String> completedReviewBusinessIds(List<Map<String, dynamic>> offers) {
   return ids;
 }
 
-const _phaseCopy = {
-  RequestPhase.waiting:
-      'Tu solicitud está publicada. Los proveedores la están viendo.',
-  RequestPhase.withOffers:
-      'Revisa las ofertas: puedes aceptar hasta 3.',
-  RequestPhase.accepted: 'El proveedor te contactará pronto.',
-  RequestPhase.unlocked: 'Ya puedes hablar con el proveedor.',
-  RequestPhase.completed: 'Califica al proveedor para ayudar a la comunidad.',
-};
-
-/// Títulos del héroe de fase (variante D1 elegida por el PO).
-const _phaseTitle = {
-  RequestPhase.waiting: 'Esperando ofertas',
-  RequestPhase.withOffers: 'Con ofertas',
-  RequestPhase.accepted: 'Oferta aceptada',
-  // "En contacto", no "desbloqueado" (pedido PO 2026-07-23): el CLIENTE nunca
-  // desbloquea nada — quien paga es el proveedor; para el cliente la fase es
-  // simplemente que ya están en contacto.
-  RequestPhase.unlocked: 'En contacto',
-  RequestPhase.completed: 'Completada',
-};
-
 class RequestStatusScreen extends StatefulWidget {
   const RequestStatusScreen({super.key, required this.requestId});
   final String requestId;
@@ -121,13 +80,41 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
   /// el borde de cada oferta en la hoja. Se marca leída al abrir cada oferta.
   Set<String> _unreadOfferIds = {};
 
+  /// Razón de cierre por id de oferta, para las ofertas cuya CONVERSACIÓN ya
+  /// está cerrada (ver `closedConversationReasons`): alimenta
+  /// `OfferLite.closedReason` para que este detalle pueda mostrar la fase
+  /// "Cerrada" (y POR QUÉ), igual que la lista. `offersStream` es realtime,
+  /// así que las ofertas pueden cambiar bajo los pies;
+  /// `_closedOfferIdsChecked` evita volver a consultar una oferta ya resuelta
+  /// en cada emisión del stream.
+  Map<String, ClosedReason> _closedOfferReasons = {};
+  final Set<String> _closedOfferIdsChecked = {};
+
+  /// Best-effort, como `_loadUnreadOffers`: si falla, el detalle se pinta sin
+  /// la fase "Cerrada" en vez de romperse. Solo consulta ofertas
+  /// aceptadas/completadas (las únicas con conversación) que todavía no se
+  /// han revisado.
+  Future<void> _refreshClosedOfferIds(List<Map<String, dynamic>> offers) async {
+    final dealIds = [
+      for (final o in offers)
+        if ((o['status'] == 'accepted' || o['status'] == 'completed') &&
+            !_closedOfferIdsChecked.contains(o['id'] as String))
+          o['id'] as String,
+    ];
+    if (dealIds.isEmpty) return;
+    _closedOfferIdsChecked.addAll(dealIds);
+    final closed = await closedConversationReasons(dealIds);
+    if (!mounted || closed.isEmpty) return;
+    setState(() => _closedOfferReasons = {..._closedOfferReasons, ...closed});
+  }
+
   @override
   void initState() {
     super.initState();
     supa
         .from('customer_requests')
         .select(
-            'id,title,status,kind,bullets,user_id,created_at,image_urls,budget_min,budget_max,is_wholesale')
+            'id,title,status,kind,bullets,user_id,created_at,image_urls,budget_min,budget_max,is_wholesale,$requestRequirementCols')
         .eq('id', widget.requestId)
         .single()
         .then((r) => mounted ? setState(() => _request = r) : null);
@@ -221,26 +208,46 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
         stream: offersStream(widget.requestId),
         builder: (context, snap) {
           final offers = snap.data ?? const <Map<String, dynamic>>[];
+          // Fire-and-forget: no bloquea el build. Guardado por
+          // `_closedOfferIdsChecked`, así que no repite consulta por cada
+          // emisión del stream una vez resuelta una oferta.
+          _refreshClosedOfferIds(offers);
+          final offerLites = offers
+              .map((o) => offerLite(o,
+                  closedReason: _closedOfferReasons[o['id'] as String]))
+              .toList();
           final phase = phaseForRequest(
             requestStatus: req['status'] as String,
-            offers: offers.map(offerLite).toList(),
+            offers: offerLites,
           );
+          // Solo tiene sentido cuando `phase` es `closed`, pero calcularla
+          // siempre es barato (lista corta, ya en memoria) y no complica el
+          // llamador con un `if`.
+          final closedReason = closedReasonFor(offerLites);
           // Cuántas de las ofertas mostradas siguen sin abrir (número del CTA).
           final unreadCount =
               offers.where((o) => _unreadOfferIds.contains(o['id'])).length;
-          return Column(
-            children: [
-              _AmberPanel(request: req, phase: phase, onBack: _goBack),
-              Expanded(
-                child: _DetailSheet(
-                  request: req,
-                  phase: phase,
-                  offers: offers,
-                  unreadCount: unreadCount,
-                  onSeeOffers: () => _showOffers(context, req, offers),
-                ),
-              ),
-            ],
+          final images =
+              ((req['image_urls'] as List?)?.cast<String>() ?? const <String>[])
+                  .where((u) => u.isNotEmpty)
+                  .toList();
+          // El layout vive en `RequestDetailBody` (público y testeable); acá
+          // solo se arman los datos y los callbacks.
+          return RequestDetailBody(
+            request: req,
+            phase: phase,
+            closedReason: closedReason,
+            offers: offers,
+            images: images,
+            unreadCount: unreadCount,
+            leading: _CornerFab(
+              icon: Icons.arrow_back_ios_new,
+              tooltip: 'Atrás',
+              onTap: _goBack,
+            ),
+            onOpenViewer: (i) =>
+                showPhotoViewer(context, images, initialIndex: i),
+            onSeeOffers: () => _showOffers(context, req, offers),
           );
         },
       ),
@@ -333,6 +340,103 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
   }
 }
 
+/// Cuerpo del detalle de la solicitud del cliente: panel de foto plegable +
+/// hoja SIN scroll propio dentro del mismo `CustomScrollView`, y el CTA
+/// anclado abajo, FUERA de ese scroll.
+///
+/// Público, sin estado y sin tocar Supabase **a propósito**. Este layout vivía
+/// inline en el `build` de `RequestStatusScreen`, que sí necesita Supabase y
+/// por eso ningún test de widget lo podía montar: los tests de regresión del
+/// plegado montaban una RÉPLICA a mano de esta composición. Con esa réplica,
+/// devolver `hasScrollBody` a su default AQUÍ —en el fichero que la gente
+/// edita— dejaba la suite entera en verde y reintroducía el bug exacto que
+/// costó un `BLOCKED`. Ahora los tests montan ESTE widget, no una copia.
+///
+/// La pantalla sigue armando los datos y los callbacks (`_goBack`,
+/// `showPhotoViewer`, `_showOffers`); acá solo vive el layout.
+class RequestDetailBody extends StatelessWidget {
+  const RequestDetailBody({
+    super.key,
+    required this.request,
+    required this.phase,
+    required this.offers,
+    required this.images,
+    required this.unreadCount,
+    required this.onSeeOffers,
+    this.closedReason,
+    this.leading,
+    this.onOpenViewer,
+  });
+
+  final Map<String, dynamic> request;
+  final RequestPhase phase;
+  final List<Map<String, dynamic>> offers;
+
+  /// Solo aplica cuando `phase` es `closed`; `null` en cualquier otra fase o
+  /// cuando las conversaciones aceptadas no coinciden en la razón (ver
+  /// `closedReasonFor`). Opcional para no romper a quien construya este
+  /// widget sin ese dato — el chip cae al genérico "Cerrada".
+  final ClosedReason? closedReason;
+
+  /// URLs de foto ya filtradas (sin vacías). Vacía = panel con el ícono de fase.
+  final List<String> images;
+
+  /// Ofertas sin abrir: número del badge rojo del CTA.
+  final int unreadCount;
+  final VoidCallback onSeeOffers;
+
+  /// Control flotante arriba a la izquierda del panel (el atrás de la
+  /// pantalla). Va como `leading` de la barra, así que sobrevive al plegado.
+  final Widget? leading;
+
+  /// Abre el visor a pantalla completa en la foto `index`.
+  final void Function(int index)? onOpenViewer;
+
+  @override
+  Widget build(BuildContext context) {
+    // La foto se PLIEGA al bajar (pedido PO 2026-08-01, portado del detalle
+    // del proveedor): `CollapsingPhotoPanel` reemplaza al antiguo
+    // `_AmberPanel` de alto fijo. La hoja va en un
+    // `SliverFillRemaining(hasScrollBody: false)` — `true` (el default) se
+    // probó y falló: con la hoja teniendo su propio `ListView` los dos
+    // scrolls quedaban aislados (panel fijo en 300.0 mientras el título
+    // scrolleaba solo por dentro). `false` deja que el `Column` sin scroll de
+    // la hoja participe del scroll EXTERNO junto con el panel.
+    return Column(
+      children: [
+        Expanded(
+          child: CustomScrollView(
+            slivers: [
+              CollapsingPhotoPanel(
+                images: images,
+                fallbackIcon: phaseChip(phase, 0).$1,
+                leading: leading,
+                onOpenViewer: onOpenViewer,
+              ),
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: RequestDetailSheet(
+                  request: request,
+                  phase: phase,
+                  offers: offers,
+                  closedReason: closedReason,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // El CTA vive FUERA del scroll, anclado abajo por este Column: si
+        // estuviera dentro se iría de pantalla justo cuando hace falta.
+        RequestDetailCta(
+          offers: offers,
+          unreadCount: unreadCount,
+          onSeeOffers: onSeeOffers,
+        ),
+      ],
+    );
+  }
+}
+
 /// Hoja de ofertas (nivel 3): lista de tarjetas; las que siguen SIN ABRIR
 /// llevan borde. Con estado propio para quitar el borde al instante al tocar
 /// una oferta; avisa al detalle (`onSeen`) para bajar el número del botón y, en
@@ -387,6 +491,8 @@ class _OffersSheetState extends State<_OffersSheet> {
   @override
   Widget build(BuildContext context) {
     final list = widget.offers;
+    // Los requisitos son de la SOLICITUD: se calculan una vez, no por oferta.
+    final reqs = requirementsFromRow(widget.request);
     return SizedBox(
       height: MediaQuery.of(context).size.height * .7,
       child: Column(
@@ -440,6 +546,15 @@ class _OffersSheetState extends State<_OffersSheet> {
                         unread: _unread.contains(o['id']),
                         statusChip: offerStatusChip(
                             context, o, isClosedToOffers(widget.acceptedCount)),
+                        coverage: requirementCoverage(
+                          reqs,
+                          OfferCapabilities(
+                            offersShipping: o['offers_shipping'] == true,
+                            offersInstallation: o['offers_installation'] == true,
+                            hasFiscalReceipt: o['has_fiscal_receipt'] == true,
+                            isStateSupplier: o['is_state_supplier'] == true,
+                          ),
+                        ),
                         onTap: () => _open(o),
                       );
                     },
@@ -551,396 +666,6 @@ class _CornerFab extends StatelessWidget {
   );
 }
 
-/// Panel ámbar con la foto grande (cover) + miniaturas al borde derecho, o un
-/// ícono de fase si la solicitud no trae fotos.
-class _AmberPanel extends StatelessWidget {
-  const _AmberPanel({
-    required this.request,
-    required this.phase,
-    required this.onBack,
-  });
-  final Map<String, dynamic> request;
-  final RequestPhase phase;
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    final am = _amber(context);
-    final images =
-        ((request['image_urls'] as List?)?.cast<String>() ?? const <String>[])
-            .where((u) => u.isNotEmpty)
-            .toList();
-    // Sin foto, el panel se pinta LILA CLARO con el ícono violeta (pedido PO
-    // 2026-07-19: "color lila claro al fondo que se ve debajo del
-    // placeholder"); con foto sigue el ámbar de siempre detrás del cover.
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final ph = dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight;
-    final (icon, _) = phaseChip(phase, 0);
-    final topInset = MediaQuery.paddingOf(context).top;
-    return Container(
-      height: 300 + topInset,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: images.isEmpty ? ph.bg : am.panel,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-      ),
-      child: Stack(
-        children: [
-          // La foto LLENA todo el panel ámbar (cover) — si no hay foto queda
-          // el placeholder (ícono de fase centrado sobre lila claro). Sin
-          // cuadro interno. Tocarla abre el visor a pantalla completa.
-          Positioned.fill(
-            child: images.isEmpty
-                ? Center(child: Icon(icon, size: 120, color: ph.ink))
-                : GestureDetector(
-                    onTap: () => showPhotoViewer(context, images),
-                    child: JayaloNetworkImage(
-                      images.first,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          Center(child: Icon(icon, size: 120, color: am.ink)),
-                    ),
-                  ),
-          ),
-          // Miniatura de la 2ª foto pegada al borde derecho (máx. 2 fotos).
-          if (images.length > 1)
-            Positioned(
-              top: topInset + 30,
-              right: 0,
-              child: GestureDetector(
-                onTap: () => showPhotoViewer(context, images, initialIndex: 1),
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.horizontal(
-                    left: Radius.circular(16),
-                  ),
-                  child: JayaloNetworkImage(
-                    images[1],
-                    width: 76,
-                    height: 76,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        Container(width: 76, height: 76, color: am.panel),
-                  ),
-                ),
-              ),
-            ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 8, left: 16),
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: _CornerFab(
-                  icon: Icons.arrow_back_ios_new,
-                  tooltip: 'Atrás',
-                  onTap: onBack,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Hoja blanca del detalle: título + chip de fase, "Desde", avatares anónimos
-/// de proveedores, chips de Detalles (los bullets de la IA), meta de publicación
-/// y el CTA "Ver N ofertas".
-class _DetailSheet extends StatelessWidget {
-  const _DetailSheet({
-    required this.request,
-    required this.phase,
-    required this.offers,
-    required this.unreadCount,
-    required this.onSeeOffers,
-  });
-
-  final Map<String, dynamic> request;
-  final RequestPhase phase;
-  final List<Map<String, dynamic>> offers;
-
-  /// Ofertas sin abrir: número del badge rojo sobre el botón "Ver N ofertas".
-  final int unreadCount;
-  final VoidCallback onSeeOffers;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final bullets =
-        ((request['bullets'] as List?)?.cast<String>() ?? const <String>[])
-            .where((b) => b.trim().isNotEmpty)
-            .toList();
-    final createdAt = DateTime.parse(request['created_at'] as String);
-    final tone = toneFor(context, phase);
-    // "Desde": el total efectivo (precio + envío) más bajo entre las ofertas.
-    final cheapest = offers
-        .map(offerEffectivePrice)
-        .whereType<num>()
-        .fold<num?>(null, (a, b) => a == null ? b : (b < a ? b : a));
-
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(22, 22, 22, 8),
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        request['title'] as String,
-                        style: TextStyle(
-                          // +1pt (pedido PO).
-                          fontSize: 22,
-                          height: 1.2,
-                          fontWeight: FontWeight.w600,
-                          color: jayaloHead(context),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    StatusChip(label: _phaseTitle[phase]!, tone: tone),
-                  ],
-                ),
-                // Pill "Al por mayor" dentro de la solicitud (pedido PO
-                // 2026-07-22): chip violeta debajo del estado, no toca la
-                // etiqueta de la lista. Solo en productos mayoristas.
-                if (request['is_wholesale'] == true) ...[
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: StatusChip(
-                      label: 'Al por mayor',
-                      icon: Icons.inventory_2_outlined,
-                      tone: Theme.of(context).brightness == Brightness.dark
-                          ? JayaloStatus.respondedDark
-                          : JayaloStatus.respondedLight,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Text(
-                      cheapest != null ? 'Desde: ' : 'Aún sin ofertas',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                    if (cheapest != null)
-                      Text(
-                        fmtRD(cheapest),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: jayaloHead(context),
-                        ),
-                      ),
-                    const Spacer(),
-                    _ProviderDots(count: offers.length),
-                  ],
-                ),
-                if (bullets.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  Text(
-                    'Detalles',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final b in bullets)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: cs.surface,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            b,
-                            style: TextStyle(fontSize: 12, color: cs.onSurface),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-                if (requestBudgetLabel(request['budget_min'] as num?,
-                        request['budget_max'] as num?) !=
-                    null) ...[
-                  const SizedBox(height: 16),
-                  Row(children: [
-                    Icon(Icons.payments_outlined,
-                        size: 16, color: cs.onSurfaceVariant),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                          'Presupuesto estimado: ${requestBudgetLabel(request['budget_min'] as num?, request['budget_max'] as num?)}',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: jayaloHead(context))),
-                    ),
-                  ]),
-                ],
-                const SizedBox(height: 18),
-                Text(
-                  'Publicada: ${formatDayLabel(createdAt)} · ${formatTimeHM(createdAt)}',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _phaseCopy[phase]!,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.5,
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-                // Cupos restantes (modelo de hasta 3 finalistas): el cliente
-                // puede aceptar más de una oferta.
-                if (offers.isNotEmpty && phase != RequestPhase.completed) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    clientSlotsMessage(
-                      offers
-                          .where((o) =>
-                              o['status'] == 'accepted' ||
-                              o['status'] == 'completed')
-                          .length,
-                    ),
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: cs.primary,
-                    ),
-                  ),
-                ],
-                // Fase completada: cerrar la promesa del copy de `_phaseCopy`
-                // ("Califica al proveedor para ayudar a la comunidad"), que
-                // hasta ahora no tenía ningún control detrás. Un panel POR
-                // NEGOCIO completado (modelo de hasta 3 finalistas: puede
-                // haber más de uno), no solo el "primero" entre las ofertas.
-                if (phase == RequestPhase.completed)
-                  for (final bizId in completedReviewBusinessIds(offers))
-                    BusinessReviewPanel(
-                      // Key por negocio: si cambian las ofertas completadas,
-                      // cada panel se re-crea y vuelve a cargar SU reseña sin
-                      // que Flutter confunda su estado con el de otro.
-                      key: ValueKey('review-$bizId'),
-                      businessId: bizId,
-                    ),
-              ],
-            ),
-          ),
-          // CTA único: "Ver N ofertas" (violeta, solo navega — aceptar vive por
-          // oferta en la hoja). El "Volver" se quitó: duplicaba la flecha de
-          // atrás flotante del panel (ambos hacían context.pop()). Reserva el
-          // alto de la barra flotante para no quedar tapado.
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              8,
-              16,
-              12 + navBarReservedSpace(context),
-            ),
-            // Badge rojo con el número de ofertas SIN ABRIR (pedido PO
-            // 2026-07-23), en la esquina del botón — la "notificación" que dice
-            // cuántas faltan por revisar.
-            child: OnboardingGuide(
-              guideKey: 'client.view_offers.v1',
-              enabled: offers.isNotEmpty,
-              steps: onboardingCopy['client.view_offers.v1']!,
-              child: Badge(
-                isLabelVisible: unreadCount > 0,
-                label: Text('$unreadCount'),
-                offset: const Offset(-6, 4),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: onSeeOffers,
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                    child: Text(
-                      offers.isEmpty
-                          ? 'Ver ofertas'
-                          : 'Ver ${offers.length} oferta${offers.length == 1 ? '' : 's'}',
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Círculos apilados = cuántos proveedores ofertaron, en el resumen ANTES de
-/// abrir la lista. Ya NO son anónimos (PO 2026-07-28: el cliente ve nombre y
-/// logo de quien oferta) — siguen siendo un contador genérico aquí porque este
-/// resumen no trae `business_id` por tarjeta, solo el total; el avatar real
-/// vive en la cabecera de cada `_OfferCard` dentro de la lista.
-class _ProviderDots extends StatelessWidget {
-  const _ProviderDots({required this.count});
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    if (count == 0) return const SizedBox.shrink();
-    final cs = Theme.of(context).colorScheme;
-    final shown = count > 3 ? 3 : count;
-    return SizedBox(
-      width: 28.0 + (shown - 1) * 18,
-      height: 28,
-      child: Stack(
-        children: [
-          for (var i = 0; i < shown; i++)
-            Positioned(
-              left: i * 18.0,
-              child: Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: cs.primaryContainer,
-                  border: Border.all(
-                    color: cs.surfaceContainerLowest,
-                    width: 2,
-                  ),
-                ),
-                child: Icon(
-                  Icons.person,
-                  size: 15,
-                  color: cs.onPrimaryContainer,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Cabecera de identidad del proveedor dentro de una `_OfferCard` (PO
 /// 2026-07-29): avatar redondo (logo o el mismo ícono de tienda que usa la
 /// hoja de detalle, `offer_actions.dart`), nombre y sellos. Público y sin
@@ -1028,6 +753,7 @@ class _OfferCard extends StatelessWidget {
     required this.cheapest,
     required this.statusChip,
     required this.onTap,
+    required this.coverage,
     this.unverified = false,
     this.unread = false,
     this.providerInfo,
@@ -1037,6 +763,11 @@ class _OfferCard extends StatelessWidget {
   final bool cheapest;
   final Widget statusChip;
   final VoidCallback onTap;
+
+  /// Lo que el cliente exigió en la solicitud y si esta oferta lo cubre, ya
+  /// cotejado por `requirementCoverage`. Vacío = no exigió nada cotejable, y
+  /// entonces el bloque no se pinta.
+  final List<({Requirement key, bool covered, String label})> coverage;
 
   /// La oferta aún no se ha abierto: borde grueso oscuro que lo indica (pedido
   /// PO 2026-07-23). Se quita al tocarla.
@@ -1118,6 +849,7 @@ class _OfferCard extends StatelessWidget {
                     ),
                   ),
                 ],
+                OfferRequirementCoverage(coverage: coverage),
               ],
             ),
           ),

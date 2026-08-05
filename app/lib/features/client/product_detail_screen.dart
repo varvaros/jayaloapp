@@ -13,6 +13,7 @@ import '../../domain/interest_message.dart';
 import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../shared/collapsing_photo_panel.dart';
 import '../../core/motion.dart';
 
 /// `/catalog/:id` (Task 7): detalle del producto/servicio + "Me interesa".
@@ -127,19 +128,26 @@ Widget productBackFab(BuildContext context) => Padding(
       padding: const EdgeInsets.only(top: 8, left: 16),
       child: Align(
         alignment: Alignment.topLeft,
-        child: Material(
-          color: Theme.of(context).colorScheme.surfaceContainerLowest,
-          shape: const CircleBorder(),
-          clipBehavior: Clip.antiAlias,
-          elevation: 1,
-          child: InkWell(
-            onTap: () => context.pop(),
-            child: SizedBox(
-              width: 42,
-              height: 42,
-              child: Icon(Icons.arrow_back_ios_new,
-                  size: 18, color: jayaloHead(context)),
-            ),
+        child: productBackButton(context),
+      ),
+    );
+
+/// El botón PELADO, sin posicionar: va al `leading` de la barra plegable —donde
+/// sigue tocable con el panel encogido— mientras que [productBackFab] lo coloca
+/// en el `Stack` de las pantallas de carga/error, que sí necesitan situarlo.
+Widget productBackButton(BuildContext context) => Center(
+      child: Material(
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        elevation: 1,
+        child: InkWell(
+          onTap: () => context.pop(),
+          child: SizedBox(
+            width: 42,
+            height: 42,
+            child: Icon(Icons.arrow_back_ios_new,
+                size: 18, color: jayaloHead(context)),
           ),
         ),
       ),
@@ -204,6 +212,9 @@ class _ProductDetailViewState extends State<ProductDetailView> {
     final conditionLabel =
         condition == 'nuevo' ? 'Nuevo' : condition == 'usado' ? 'Usado' : null;
     final color = p['color'] as String?;
+    final brand = p['brand'] as String?;
+    final warranty = p['warranty'] as String?;
+    final requiresEvaluation = p['requires_evaluation'] == true;
     final offersShipping = p['offers_shipping'] == true;
     final offersInstallation = p['offers_installation'] == true;
     final rubro = p['rubro'] as String?;
@@ -213,20 +224,35 @@ class _ProductDetailViewState extends State<ProductDetailView> {
     // LLENA (cover) arriba y una hoja blanca redondeada abajo con los datos y
     // el CTA "Solicitar". Con 2+ fotos, una tira de miniaturas cambia la que
     // llena el panel (el detalle de solicitud no tiene varias, el producto sí).
-    return Column(children: [
-      _AmberPanel(
-          images: images, isServicio: isServicio, activeIndex: _activeImg),
-      Expanded(
+    return CustomScrollView(controller: _scroll, slivers: [
+      // Mismo panel que el detalle de solicitud y el de estado: la foto se
+      // PLIEGA al hacer scroll en vez de quedarse fija (pedido PO 2026-08-03 —
+      // era la única de las tres pantallas de detalle que no lo hacía).
+      // `activeIndex` conserva lo que el catálogo sí tenía y las otras no: la
+      // tira de miniaturas elige qué foto llena el panel.
+      CollapsingPhotoPanel(
+        images: images,
+        fallbackIcon:
+            isServicio ? Icons.handyman_outlined : Icons.inventory_2_outlined,
+        activeIndex: _activeImg,
+        leading: productBackButton(context),
+        onOpenViewer: (i) =>
+            showPhotoViewer(context, images, initialIndex: i),
+      ),
+      SliverFillRemaining(
+        // El contenido decide su alto y, si sobra pantalla, la hoja la rellena
+        // igual — que es lo que hacía el `Expanded` de antes.
+        hasScrollBody: false,
         child: Container(
           decoration: BoxDecoration(
             color: cs.surfaceContainerLowest,
             borderRadius:
                 const BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          child: ListView(
-            controller: _scroll,
-            padding: EdgeInsets.fromLTRB(
-                22, 22, 22, 24 + navBarReservedSpace(context)),
+          padding: EdgeInsets.fromLTRB(
+              22, 22, 22, 24 + navBarReservedSpace(context)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (images.length > 1) ...[
                 _ThumbStrip(
@@ -263,11 +289,20 @@ class _ProductDetailViewState extends State<ProductDetailView> {
                     style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
               ],
               const SizedBox(height: 12),
+              // Primero QUÉ es (estado, marca, color, garantía), después qué
+              // pasa con ello (envío, instalación, evaluación) — el mismo orden
+              // con el que se leen los detalles de una oferta.
               Wrap(spacing: 8, runSpacing: 8, children: [
                 if (conditionLabel != null)
                   _Tag(icon: Icons.sell_outlined, label: conditionLabel),
+                if (brand != null && brand.isNotEmpty)
+                  _Tag(icon: Icons.verified_outlined, label: brand),
                 if (color != null && color.isNotEmpty)
                   _Tag(icon: Icons.palette_outlined, label: color),
+                if (warranty != null && warranty.isNotEmpty)
+                  _Tag(
+                      icon: Icons.shield_outlined,
+                      label: 'Garantía: $warranty'),
                 if (offersShipping)
                   const _Tag(
                       icon: Icons.local_shipping_outlined,
@@ -276,6 +311,10 @@ class _ProductDetailViewState extends State<ProductDetailView> {
                   const _Tag(
                       icon: Icons.build_outlined,
                       label: 'Instalación incluida'),
+                if (requiresEvaluation)
+                  const _Tag(
+                      icon: Icons.fact_check_outlined,
+                      label: 'Requiere evaluación'),
               ]),
               if (widget.data.business != null)
                 _BusinessCard(business: widget.data.business!).cascadeIn(0),
@@ -300,66 +339,6 @@ class _ProductDetailViewState extends State<ProductDetailView> {
   }
 }
 
-/// Tono ámbar del panel del detalle (mismos valores que el detalle de
-/// solicitud, `request_status_screen._amber`: cálido, NO lila — así el
-/// detalle no se confunde con el chat).
-({Color panel, Color ink}) _amber(BuildContext context) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  return dark
-      ? (panel: const Color(0xFF3A2C12), ink: const Color(0xFFF0C48C))
-      : (panel: const Color(0xFFF0C48C), ink: const Color(0xFF6B4514));
-}
-
-/// Panel ámbar con la foto activa (cover) llenándolo, igual que el detalle de
-/// solicitud. El ámbar solo asoma si el producto/servicio no tiene fotos
-/// (ícono según tipo). El atrás flota arriba a la izquierda.
-class _AmberPanel extends StatelessWidget {
-  const _AmberPanel(
-      {required this.images,
-      required this.isServicio,
-      required this.activeIndex});
-  final List<String> images;
-  final bool isServicio;
-  final int activeIndex;
-
-  @override
-  Widget build(BuildContext context) {
-    final am = _amber(context);
-    // Sin foto, el panel se pinta LILA CLARO con el ícono violeta (pedido PO
-    // 2026-07-19 para el detalle de solicitud; este panel es "=" por doctrina).
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final ph = dark ? JayaloStatus.respondedDark : JayaloStatus.respondedLight;
-    final topInset = MediaQuery.paddingOf(context).top;
-    final fallbackIcon =
-        isServicio ? Icons.handyman_outlined : Icons.inventory_2_outlined;
-    final main =
-        images.isEmpty ? null : images[activeIndex.clamp(0, images.length - 1)];
-    return Container(
-      height: 300 + topInset,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: main == null ? ph.bg : am.panel,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-      ),
-      child: Stack(children: [
-        // Tocar la foto abre el visor a pantalla completa (desde la activa).
-        Positioned.fill(
-          child: main == null
-              ? Center(child: Icon(fallbackIcon, size: 120, color: ph.ink))
-              : GestureDetector(
-                  onTap: () => showPhotoViewer(context, images,
-                      initialIndex: activeIndex.clamp(0, images.length - 1)),
-                  child: JayaloNetworkImage(main,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Center(
-                          child: Icon(fallbackIcon, size: 120, color: am.ink))),
-                ),
-        ),
-        SafeArea(child: productBackFab(context)),
-      ]),
-    );
-  }
-}
 
 /// Tira de miniaturas para cambiar la foto que llena el panel ámbar (solo
 /// aparece con 2+ fotos).

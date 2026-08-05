@@ -336,6 +336,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
             const SectionHeader(text: 'Tu cuenta'),
         _SettingsRow(icon: Icons.person_outline, title: email),
+        // Corregir la direccion (bug PO 2026-08-04): hasta ahora solo se
+        // podia fijar UNA vez, en el alta — si salia mal ese dia no habia
+        // forma de arreglarla dentro de la app.
+        _SettingsRow(
+          icon: Icons.place_outlined,
+          title: 'Mi dirección',
+          subtitle: 'Dónde te encuentran los proveedores',
+          onTap: () => context.push('/settings/address'),
+        ),
         if (_verified == false)
           _SettingsRow(
             icon: Icons.verified_outlined,

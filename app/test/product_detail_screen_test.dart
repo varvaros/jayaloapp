@@ -213,4 +213,35 @@ void main() {
     expect(stillDisabled.onPressed, isNull);
     expect(calls, 0);
   });
+
+  // Pedido PO 2026-08-03: coherencia visual con las ofertas. `provider_products`
+  // guarda `brand`, `warranty` y `requires_evaluation`, y el detalle no los
+  // pintaba — ni siquiera los traía en su `select`. No existe `delivery_time`
+  // en productos (eso es de ofertas), así que no se inventa.
+  testWidgets('pinta los detalles que el producto sí guarda', (tester) async {
+    setPhoneSize(tester);
+    await tester.pumpWidget(host(view(dataFor(
+      product: {
+        ...producto,
+        'brand': 'DeWalt',
+        'warranty': '1 año',
+        'requires_evaluation': true,
+      },
+    ))));
+    await tester.pumpAndSettle();
+
+    expect(find.text('DeWalt'), findsOneWidget);
+    expect(find.text('Garantía: 1 año'), findsOneWidget);
+    expect(find.text('Requiere evaluación'), findsOneWidget);
+  });
+
+  testWidgets('sin esos datos no aparecen chips vacíos', (tester) async {
+    setPhoneSize(tester);
+    // `producto` no trae brand/warranty y no requiere evaluación.
+    await tester.pumpWidget(host(view(dataFor())));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Requiere evaluación'), findsNothing);
+    expect(find.textContaining('Garantía'), findsNothing);
+  });
 }

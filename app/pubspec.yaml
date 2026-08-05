@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.1+8
+version: 1.0.2+9
 
 environment:
   sdk: ^3.12.2
@@ -48,7 +48,6 @@ dependencies:
   firebase_core: ^4.12.1
   firebase_messaging: ^16.4.3
   geolocator: ^14.0.0
-  geocoding: ^4.0.0
   image_picker: ^1.2.1
   # Recorte de la foto tras tomarla/elegirla (pedido PO: al solicitar aparece
   # un crop). Requiere la UCropActivity en el AndroidManifest.

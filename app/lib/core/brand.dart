@@ -125,6 +125,20 @@ abstract final class JayaloStatus {
   /// receta oklch de los demás status sobre el rosa del gradiente de marca.
   static const reviewLight = (bg: Color(0xFFFFE4F2), ink: Color(0xFF8D2661));
   static const reviewDark = (bg: Color(0xFF492537), ink: Color(0xFFFFB3D7));
+
+  /// Requisitos que el CLIENTE exige en su solicitud (comprobante fiscal,
+  /// suplidor del Estado, envío, instalación, evaluación previa). Teal propio,
+  /// y no uno de los tonos de arriba, porque no es un estado de la oferta del
+  /// proveedor: es una condición del cliente. El ámbar en esta app ya significa
+  /// dinero o espera ("Ya ofertaste", el costo del desbloqueo, la wallet), y
+  /// confundir las dos cosas sería peor que no pintar nada.
+  ///
+  /// Portado del token `--requisito` de la web: `oklch(0.94 0.06 200)` /
+  /// `oklch(0.4 0.12 200)` en claro, `oklch(0.3 0.07 200)` /
+  /// `oklch(0.87 0.11 200)` en oscuro. La conversión oklch→sRGB se calibró
+  /// contra `--status-pending`, que da exactamente el `pendingLight` de arriba.
+  static const requisitoLight = (bg: Color(0xFFBCF8FB), ink: Color(0xFF005961));
+  static const requisitoDark = (bg: Color(0xFF00383C), ink: Color(0xFF6FEAF1));
 }
 
 /// Esquemas M3 con los roles clave clavados a los tokens de la web. Se parte de

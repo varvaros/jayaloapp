@@ -145,4 +145,65 @@ void main() {
       expect(servs, isEmpty);
     });
   });
+
+  group('requestRequirementCols', () {
+    test('nombra las cinco columnas de requisitos', () {
+      for (final col in const [
+        'with_shipping',
+        'with_installation',
+        'requires_evaluation',
+        'requires_fiscal_receipt',
+        'requires_state_supplier',
+      ]) {
+        expect(requestRequirementCols, contains(col), reason: 'falta $col');
+      }
+    });
+
+    test('no lleva espacios: va concatenada dentro de un select de PostgREST', () {
+      expect(requestRequirementCols, isNot(contains(' ')));
+    });
+
+    test('las cinco, separadas por coma, en este orden exacto', () {
+      // Los dos tests de arriba pasarían igual si la constante se rompiera a
+      // 'with_shippingwith_installation...' (sin comas): cada nombre sigue
+      // siendo substring y no hay espacios. Este test fija la lista exacta que
+      // resulta de partir por coma, así que una coma perdida SÍ lo revienta.
+      expect(requestRequirementCols.split(','), [
+        'with_shipping',
+        'with_installation',
+        'requires_evaluation',
+        'requires_fiscal_receipt',
+        'requires_state_supplier',
+      ]);
+    });
+  });
+
+  group('requirementsForRequests', () {
+    test('con lista vacía devuelve mapa vacío SIN tocar la red', () async {
+      // Sin este corto‑circuito el test reventaría al tocar `supa`, que no está
+      // inicializado en un test de unidad. Que pase es la prueba de que existe.
+      expect(await requirementsForRequests(const []), isEmpty);
+    });
+  });
+
+  group('offerFields', () {
+    // El mapa lo COMPARTEN makeOffer y updateOffer. El UPDATE de estas dos
+    // columnas está denegado en la base a propósito (son una foto del momento
+    // de ofertar), así que si se colaran aquí, PostgREST tumbaría la fila
+    // entera y "mejorar oferta" dejaría de funcionar del todo — un fallo que
+    // no aparece hasta que alguien edita una oferta. Este test es la única
+    // barrera automática que existe contra eso.
+    test('NO lleva las capacidades del proveedor', () {
+      final fields = offerFields(price: 100.0, message: 'hola');
+      expect(fields.containsKey('has_fiscal_receipt'), isFalse);
+      expect(fields.containsKey('is_state_supplier'), isFalse);
+    });
+
+    test('sigue llevando lo que sí es editable', () {
+      final fields = offerFields(price: 100.0, message: 'hola');
+      expect(fields['price'], 100.0);
+      expect(fields['message'], 'hola');
+      expect(fields.containsKey('offers_shipping'), isTrue);
+    });
+  });
 }
