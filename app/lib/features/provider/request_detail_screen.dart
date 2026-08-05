@@ -14,6 +14,7 @@ import '../../domain/contact_info.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
 import '../../domain/offer_edit.dart';
+import '../../domain/offer_form_gate.dart';
 import '../../domain/offer_message.dart';
 import '../../domain/pricing.dart';
 import '../../domain/finalist_slots.dart';
@@ -169,6 +170,18 @@ class _ProviderRequestDetailScreenState
   bool _editingInPlace = false;
 
   bool get _editing => _editOfferId != null;
+
+  /// ¿Se está pintando el FORMULARIO de la oferta (y no la tarjeta, el spinner
+  /// o el CTA de completar el negocio)?
+  ///
+  /// Única fuente de verdad de esa decisión: la cadena del `build` la consume y
+  /// el registro del menú del botón central también (ver `_syncCenterAction`).
+  bool get _offerFormVisible => offerFormVisible(
+        editing: _editing,
+        businessId: _businessId,
+        offerChecked: _offerChecked,
+        existingOffer: _existingOffer,
+      );
 
   /// Modos de precio del formulario de SERVICIO (paridad web: fijo / rango /
   /// por hora / a evaluar en sitio). El índice es [_svcMode].
@@ -1747,7 +1760,7 @@ class _ProviderRequestDetailScreenState
         else if (_existingOffer != null &&
             (!_editing || _existingOffer!['status'] != 'pending'))
           _alreadyOfferedCard(context)
-        else ...[
+        else if (_offerFormVisible) ...[
           Text('Tu oferta', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           ..._pricingFields(context),
