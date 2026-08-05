@@ -554,12 +554,21 @@ class _CenterButtonState extends State<_CenterButton>
           child: Stack(
             children: [
               Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                // El `onTap` real vive en el `GestureDetector`, no en la
+                // acción semántica: antes `Semantics` solo ponía `label`/
+                // `button` sin `onTap`, así que un lector de pantalla
+                // anunciaba "Cerrar menú, botón" pero el doble-toque de
+                // TalkBack no tenía qué disparar. `onTap: _close` aquí lo
+                // conecta, y `excludeSemantics: true` evita que el nodo
+                // sintético se duplique con el del `GestureDetector` hijo.
+                child: Semantics(
+                  label: 'Cerrar menú',
+                  button: true,
                   onTap: _close,
-                  child: Semantics(
-                    label: 'Cerrar menú',
-                    button: true,
+                  excludeSemantics: true,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _close,
                     child: FadeTransition(
                       opacity: _curved,
                       child: ColoredBox(
@@ -606,24 +615,42 @@ class _CenterButtonState extends State<_CenterButton>
                   child: SizedBox(
                     width: _centerSize,
                     height: _centerSize,
-                    child: AnimatedRotation(
-                      turns: _open ? .125 : 0,
-                      duration: JayaloMotion.reduced(context)
-                          ? Duration.zero
-                          : JayaloMotion.base,
-                      curve: JayaloMotion.enter,
-                      child: Icon(
-                          _open
-                              ? Icons.close
-                              : (widget.iconOverride ?? widget.destination.icon),
-                          color: cs.onPrimary,
-                          size: 28),
+                    // `RotationTransition` sobre `_curved` en vez de
+                    // `AnimatedRotation` sobre `_open`: con `AnimatedRotation`
+                    // la des-rotación al cerrar esperaba a que TERMINARA el
+                    // fundido del velo (`_anim.reverse().whenComplete(...)`,
+                    // que es cuando `_open` por fin pasa a `false`) y RECIÉN
+                    // AHÍ arrancaba su propia animación — un viaje redondo de
+                    // ~2× la duración base antes de que el botón empezara a
+                    // des-rotar. Aquí el giro sigue a `_curved` cuadro a
+                    // cuadro, así que cierra y des-rota A LA VEZ. El glyph
+                    // cambia a mitad de camino (no con `_open`, que llega
+                    // tarde en el cierre) para que el ícono ya sea el
+                    // correcto cuando el giro pasa por su punto medio.
+                    child: RotationTransition(
+                      turns: _curved.drive(Tween(begin: 0.0, end: .125)),
+                      child: AnimatedBuilder(
+                        animation: _curved,
+                        builder: (context, _) => Icon(
+                            _curved.value > .5
+                                ? Icons.close
+                                : (widget.iconOverride ?? widget.destination.icon),
+                            color: cs.onPrimary,
+                            size: 28),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-            if (widget.active)
+            // La etiqueta registrada (`labelOverride`, p. ej. "Cargar") se
+            // pinta SIEMPRE, esté o no el centro activo: es lo que hace el
+            // botón auto-descriptivo FUERA de su propia pestaña — el caso de
+            // `/provider/request/:id`, donde el centro nunca es la pestaña
+            // activa pero sí tomó el botón (ver `core/center_action.dart`).
+            // Antes solo se pintaba con `widget.active`, así que ese rótulo
+            // registrado nunca llegaba a verse en esa pantalla.
+            if (widget.active || widget.labelOverride != null)
               Positioned(
                 top: _centerSize + 2,
                 child: Text(

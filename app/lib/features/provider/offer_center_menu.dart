@@ -28,19 +28,26 @@ List<CenterMenuItem> buildOfferCenterMenu({
   required VoidCallback onGallery,
   required VoidCallback onStore,
   required VoidCallback onPortfolio,
+  required VoidCallback onCapHit,
 }) {
   final haySitio = photoCount < maxPhotos;
+  // Los tres de FOTO se apagan por dos motivos distintos y no se avisan
+  // igual: al tope de fotos el toque SÍ dice por qué (`onCapHit`); ocupado
+  // (`busy`, con o sin tope) no hay nada que avisar — queda inerte (`null`).
+  final onCapDisabledTap = busy ? null : onCapHit;
   return [
     CenterMenuItem(
         icon: Icons.photo_camera_outlined,
         label: 'Cámara',
         onTap: onCamera,
-        enabled: !busy && haySitio),
+        enabled: !busy && haySitio,
+        onDisabledTap: onCapDisabledTap),
     CenterMenuItem(
         icon: Icons.photo_library_outlined,
         label: 'Galería',
         onTap: onGallery,
-        enabled: !busy && haySitio),
+        enabled: !busy && haySitio,
+        onDisabledTap: onCapDisabledTap),
     CenterMenuItem(
         icon: Icons.storefront_outlined,
         label: 'Mi tienda',
@@ -50,6 +57,7 @@ List<CenterMenuItem> buildOfferCenterMenu({
         icon: Icons.collections_bookmark_outlined,
         label: 'Trabajos',
         onTap: onPortfolio,
-        enabled: !busy && haySitio),
+        enabled: !busy && haySitio,
+        onDisabledTap: onCapDisabledTap),
   ];
 }

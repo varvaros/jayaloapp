@@ -572,7 +572,12 @@ void main() {
       await tester.pumpWidget(host(items((_) {})));
       await tester.tap(find.byIcon(Icons.library_add_outlined));
       await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.close), findsOneWidget);
+      // DOS: la del botón real (que gira) y la del overlay de
+      // `CenterArcMenu` (que la duplica encima porque su blob, pintado
+      // ARRIBA de la barra, tapa la real píxel a píxel — ver el comentario
+      // en `center_arc_menu.dart`). Sin la segunda, la ✕ quedaría invisible
+      // detrás del disco violeta del arco.
+      expect(find.byIcon(Icons.close), findsNWidgets(2));
       expect(find.byIcon(Icons.library_add_outlined), findsNothing);
     });
 

@@ -126,13 +126,18 @@ void main() {
   });
 
   group('barra', () {
-    Widget host({IconData? icon, String? label, VoidCallback? onCenter}) =>
+    Widget host({
+      IconData? icon,
+      String? label,
+      VoidCallback? onCenter,
+      int currentIndex = kCenterIndex,
+    }) =>
         MaterialApp(
           theme: jayaloTheme(Brightness.light),
           home: Scaffold(
             bottomNavigationBar: FloatingNavBar(
               destinations: dests,
-              currentIndex: kCenterIndex,
+              currentIndex: currentIndex,
               centerIconOverride: icon,
               centerLabelOverride: label,
               onSelected: (i) {
@@ -170,6 +175,19 @@ void main() {
       await tester.tap(find.byIcon(Icons.photo_camera_outlined));
       await tester.pump();
       expect(toques, 1);
+    });
+
+    testWidgets(
+        'la etiqueta registrada se pinta SIEMPRE, aunque el centro no sea la '
+        'pestaña activa — es lo que hace el botón auto-descriptivo fuera de '
+        'su pestaña (caso real: /provider/request/:id, kCenterIndex nunca '
+        'activo ahí)', (tester) async {
+      await tester.pumpWidget(host(
+        icon: Icons.library_add_outlined,
+        label: 'Cargar',
+        currentIndex: 0,
+      ));
+      expect(find.text('Cargar'), findsOneWidget);
     });
   });
 }

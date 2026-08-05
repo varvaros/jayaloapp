@@ -32,14 +32,19 @@ void main() {
   group('widget', () {
     late List<String> elegidos;
 
-    List<CenterMenuItem> items({bool tiendaViva = true}) => [
+    List<CenterMenuItem> items({
+      bool tiendaViva = true,
+      VoidCallback? onTiendaDisabledTap,
+    }) =>
+        [
           CenterMenuItem(icon: Icons.photo_camera_outlined, label: 'Cámara', onTap: () {}),
           CenterMenuItem(icon: Icons.photo_library_outlined, label: 'Galería', onTap: () {}),
           CenterMenuItem(
               icon: Icons.storefront_outlined,
               label: 'Mi tienda',
               onTap: () {},
-              enabled: tiendaViva),
+              enabled: tiendaViva,
+              onDisabledTap: onTiendaDisabledTap),
           CenterMenuItem(
               icon: Icons.collections_bookmark_outlined, label: 'Trabajos', onTap: () {}),
         ];
@@ -68,6 +73,17 @@ void main() {
       expect(find.text('Trabajos'), findsOneWidget);
     });
 
+    testWidgets(
+        'con el arco abierto, el propio overlay pinta su ✕ — el blob central '
+        'tapa la del botón real que queda debajo', (tester) async {
+      await tester.pumpWidget(host(items()));
+      expect(
+        find.descendant(
+            of: find.byType(CenterArcMenu), matching: find.byIcon(Icons.close)),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('elegir uno avisa por onPick', (tester) async {
       await tester.pumpWidget(host(items()));
       await tester.tap(find.byIcon(Icons.storefront_outlined));
@@ -75,7 +91,25 @@ void main() {
       expect(elegidos, ['Mi tienda']);
     });
 
-    testWidgets('un ítem deshabilitado NO avisa', (tester) async {
+    testWidgets(
+        'deshabilitado CON onDisabledTap: lo dispara, y NO cuenta como '
+        'elección (no llama a onPick, así que el arco no se cierra)',
+        (tester) async {
+      var avisos = 0;
+      await tester.pumpWidget(host(items(
+        tiendaViva: false,
+        onTiendaDisabledTap: () => avisos++,
+      )));
+      await tester.tap(find.byIcon(Icons.storefront_outlined));
+      await tester.pump();
+      expect(avisos, 1);
+      expect(elegidos, isEmpty, reason: 'avisar por qué no es lo mismo que elegir');
+    });
+
+    testWidgets(
+        'deshabilitado SIN onDisabledTap: el toque queda inerte (apagado '
+        'por una operación en curso, no hay nada que avisar)',
+        (tester) async {
       await tester.pumpWidget(host(items(tiendaViva: false)));
       await tester.tap(find.byIcon(Icons.storefront_outlined));
       await tester.pump();

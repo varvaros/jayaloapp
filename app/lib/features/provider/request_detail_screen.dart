@@ -178,7 +178,19 @@ class _ProviderRequestDetailScreenState
   ///
   /// Única fuente de verdad de esa decisión: la cadena del `build` la consume y
   /// el registro del menú del botón central también (ver `_syncCenterAction`).
-  bool get _offerFormVisible => offerFormVisible(
+  ///
+  /// El guard de `_req != null` NO lo cubre `offerFormVisible`: esa función
+  /// pura modela las TRES ramas internas de la cadena (negocio/edición,
+  /// chequeo de oferta previa, oferta existente), pero el spinner EXTERIOR
+  /// ("todavía no llegó la solicitud", el `if (req == null)` de `build`) es
+  /// un cuarto estado que vive fuera de esas tres. `requestById` (en
+  /// `initState`) no tiene `catchError`: si falla mientras el resto de la
+  /// carga sí termina, `_req` se queda en `null` para siempre pero
+  /// `offerChecked` igual llega a `true` — sin este guard, `_syncCenterAction`
+  /// registraba el menú y el arco quedaba vivo sobre un spinner permanente.
+  bool get _offerFormVisible =>
+      _req != null &&
+      offerFormVisible(
         editing: _editing,
         businessId: _businessId,
         offerChecked: _offerChecked,
@@ -195,13 +207,15 @@ class _ProviderRequestDetailScreenState
   /// con `?edit=<id>` no rompe la igualdad.
   String get _centerRoute => '/provider/request/${widget.requestId}';
 
-  /// Tear-offs guardados UNA vez: `CenterMenuItem` compara sus `onTap` por
-  /// igualdad, y un `() => _pickPhoto(...)` nuevo en cada build rompería la
-  /// comparación por valor y repintaría la barra con cada tecla.
-  late final VoidCallback _menuCamera = () => _pickPhoto(ImageSource.camera);
-  late final VoidCallback _menuGallery = () => _pickPhoto(ImageSource.gallery);
-  late final VoidCallback _menuStore = _pickFromStore;
-  late final VoidCallback _menuPortfolio = _pickFromPortfolio;
+  /// Métodos propios, no clausuras guardadas en campos: `CenterMenuItem`
+  /// compara sus `onTap` por igualdad, y un `() => _pickPhoto(...)` nuevo en
+  /// cada build rompería esa comparación y repintaría la barra con cada
+  /// tecla. Dart garantiza que dos tear-offs del MISMO método sobre la MISMA
+  /// instancia son `==` entre sí, así que `_pickFromStore`/`_pickFromPortfolio`
+  /// se pasan directos (ver más abajo) y solo `_pickPhoto` — que toma un
+  /// argumento — necesita un método propio que lo envuelva.
+  void _menuCamera() => _pickPhoto(ImageSource.camera);
+  void _menuGallery() => _pickPhoto(ImageSource.gallery);
 
   /// Pone al día el botón central de la barra según el estado de ESTA pantalla.
   ///
@@ -218,8 +232,20 @@ class _ProviderRequestDetailScreenState
   /// ese es el caso para el que se escribió. Y no realimenta: el
   /// `ListenableBuilder` del shell envuelve solo la barra, no el `child` del
   /// Navigator anidado.
+  ///
+  /// ⚠️ `ModalRoute.of(context)?.isCurrent`: esta misma pantalla puede vivir
+  /// APILADA dos veces (A abajo, B al frente — p. ej. "ver la misma solicitud"
+  /// abierta desde dos sitios). Un `setState` tardío en A (una carga async que
+  /// termina fuera de orden) dispara su `build`, y sin este guard A volvería a
+  /// tomar el botón con SU ruta aunque B siga al frente — el shell, al ver que
+  /// la ruta activa ya no coincide con `centerActionRoute`, suelta el menú
+  /// entero y el ＋ vuelve a su comportamiento de siempre (empujar
+  /// crear-solicitud SOBRE la oferta de B: el bug original que esta feature
+  /// vino a arreglar). `ModalRoute.of` registra una dependencia de
+  /// `InheritedWidget`, así que un cambio de "quién está al frente" SÍ
+  /// reconstruye a quien perdió el puesto y este guard se vuelve a evaluar.
   void _syncCenterAction() {
-    if (!_offerFormVisible) {
+    if (!_offerFormVisible || ModalRoute.of(context)?.isCurrent != true) {
       releaseCenterAction(_centerOwner);
       return;
     }
@@ -234,8 +260,9 @@ class _ProviderRequestDetailScreenState
         maxPhotos: _maxOfferPhotos,
         onCamera: _menuCamera,
         onGallery: _menuGallery,
-        onStore: _menuStore,
-        onPortfolio: _menuPortfolio,
+        onStore: _pickFromStore,
+        onPortfolio: _pickFromPortfolio,
+        onCapHit: _photoCapToast,
       ),
     );
   }
@@ -426,11 +453,20 @@ class _ProviderRequestDetailScreenState
 
   int get _photoCount => _photos.length + _keptUrls.length;
 
+  /// Toast del tope de fotos para el ítem APAGADO del arco (ver
+  /// `offer_center_menu.dart`, `onCapHit`): al tope, tocar Cámara/Galería/
+  /// Trabajos avisa por qué en vez de quedar mudo.
+  void _photoCapToast() => _toast('Ya tienes 5 fotos');
+
   /// Cámara = una foto; Galería = VARIAS (pedido PO: permitir seleccionar
   /// varias). Cada una se valida y se corta al llegar al tope.
   Future<void> _pickPhoto(ImageSource source) async {
+    // Red DEFENSIVA, no la única: el arco ya apaga estos botones al tope y
+    // avisa con `_photoCapToast`, pero este atajo también se llama desde los
+    // botones del FORMULARIO (más abajo en `build`), que no pasan por el
+    // arco — sin este corte, un toque colado ahí seguiría de largo.
     if (_photoCount >= _maxOfferPhotos) {
-      _toast('Ya tienes 5 fotos');
+      _photoCapToast();
       return;
     }
     final List<XFile> picked;

@@ -27,8 +27,17 @@ const double kSatelliteSize = 44;
 /// de los dos se toca.
 const double kSatelliteSlot = 76;
 
-/// Lado de la caja cuadrada que el arco ocupa, centrada en el botón. Da de
-/// sobra para el satélite más lejano (96 + 38 de slot/2 = 134) y su etiqueta.
+/// Lado de la caja cuadrada que el arco ocupa, centrada en el botón.
+///
+/// La mitad (130) es MENOS que `kArcRadius + kSatelliteSlot / 2` (134): la
+/// etiqueta del satélite más lejano sobresale unos píxeles del borde de la
+/// caja. Eso no recorta nada porque nada en esta cadena recorta: el `Stack`
+/// de `CenterArcMenu` es `Clip.none` y el `OverlayPortal` que lo aloja
+/// (`floating_nav_bar.dart`) tampoco pone clipper — vive de que ningún
+/// ancestro entre esta caja y la pantalla decide cortar. El margen visual (un
+/// texto de 11px centrado, no el círculo) alcanza para que no se sienta
+/// apretado; si algún día algo en el camino empieza a recortar, hay que
+/// agrandar esto o el texto se empieza a comer.
 const double kArcBoxSize = 260;
 
 /// Escalonado entre satélites: el arco se despliega, no aparece de golpe.
@@ -113,6 +122,36 @@ class CenterArcMenu extends StatelessWidget {
                   ),
                 ),
               ),
+              // El disco central de la gota de arriba se pinta ARRIBA de la
+              // barra y cae exacto sobre el botón real (mismo centro, mismo
+              // radio 28): tapa píxel a píxel la ✕ que gira por debajo, en
+              // `floating_nav_bar.dart`. Se duplica el glyph AQUÍ para que se
+              // vea; el de la barra real queda como respaldo semántico (sigue
+              // siendo el que expone `Semantics`/`onTap` de "Cerrar menú").
+              // `IgnorePointer` porque el toque debe seguir llegando al botón
+              // de abajo — es el que de verdad abre y cierra el arco.
+              // `Positioned` DEBE ser hijo directo del `Stack` (es lo que
+              // este mira para leer left/top/width/height); envolverlo en
+              // `IgnorePointer` por fuera lo dejaría sin efecto.
+              Positioned(
+                left: half - centerRadius,
+                top: half - centerRadius,
+                width: centerRadius * 2,
+                height: centerRadius * 2,
+                child: IgnorePointer(
+                  child: FadeTransition(
+                    // En t=0 (cerrado) no debe verse nada — el botón real,
+                    // debajo, ya pinta su propio ＋.
+                    opacity: animation,
+                    child: Center(
+                      child: RotationTransition(
+                        turns: animation.drive(Tween(begin: 0.0, end: .125)),
+                        child: Icon(Icons.close, color: cs.onPrimary, size: 28),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
               for (var i = 0; i < items.length; i++)
                 _Satellite(
                   item: items[i],
@@ -175,7 +214,11 @@ class _Satellite extends StatelessWidget {
                   color: cs.primary,
                   shape: const CircleBorder(),
                   child: InkWell(
-                    onTap: item.enabled ? () => onPick(item) : null,
+                    // Apagado con algo que avisar (p. ej. tope de fotos):
+                    // toca y dispara `onDisabledTap` SIN pasar por `onPick`
+                    // — el arco no se cierra, es solo un aviso. Apagado por
+                    // `busy` (`onDisabledTap` null) el toque queda inerte.
+                    onTap: item.enabled ? () => onPick(item) : item.onDisabledTap,
                     customBorder: const CircleBorder(),
                     child: SizedBox(
                       width: kSatelliteSize,

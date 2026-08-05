@@ -45,6 +45,7 @@ class CenterMenuItem {
     required this.label,
     required this.onTap,
     this.enabled = true,
+    this.onDisabledTap,
   });
 
   final IconData icon;
@@ -55,6 +56,13 @@ class CenterMenuItem {
   /// un arco que pasa de cuatro satélites a uno se lee como un fallo.
   final bool enabled;
 
+  /// Se dispara al tocar el ítem APAGADO — para avisar POR QUÉ, cuando hay
+  /// algo que decir (p. ej. "ya tienes 5 fotos"). `null` = el toque queda
+  /// inerte, que sigue siendo el default correcto cuando lo que apaga el
+  /// ítem es una operación en curso (`busy`): ahí no hay nada que avisar,
+  /// solo esperar.
+  final VoidCallback? onDisabledTap;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -62,10 +70,12 @@ class CenterMenuItem {
           other.icon == icon &&
           other.label == label &&
           other.onTap == onTap &&
-          other.enabled == enabled;
+          other.enabled == enabled &&
+          other.onDisabledTap == onDisabledTap;
 
   @override
-  int get hashCode => Object.hash(icon, label, onTap, enabled);
+  int get hashCode =>
+      Object.hash(icon, label, onTap, enabled, onDisabledTap);
 }
 
 /// `null` = el centro se comporta como siempre (navegar).
@@ -106,7 +116,12 @@ void takeCenterAction({
   VoidCallback? action,
   List<CenterMenuItem>? menu,
 }) {
-  assert(action != null || menu != null,
+  // `menu: []` (no-nulo pero VACÍO) es un estado ambiguo, no uno útil: la
+  // barra lo trata exactamente como `menu: null` (`_CenterButton._toggle`
+  // cae a `widget.onTap` con cualquiera de los dos), así que dejar pasar la
+  // lista vacía aquí solo escondería, en quien llama, el mismo error de
+  // "tomé el botón y no le di nada que hacer" que este assert ya vigila.
+  assert(action != null || (menu != null && menu.isNotEmpty),
       'Un botón tomado que no hace nada es justo el estado que esto viene a eliminar.');
   _applySafely(() {
     // Todo lo que el shell LEE se asigna antes que `centerAction`/

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show VoidCallback;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/core/center_action.dart';
 import 'package:jayalo_app/features/provider/offer_center_menu.dart';
@@ -6,7 +6,11 @@ import 'package:jayalo_app/features/provider/offer_center_menu.dart';
 void main() {
   void nada() {}
 
-  List<CenterMenuItem> menu({required bool busy, required int fotos}) =>
+  List<CenterMenuItem> menu({
+    required bool busy,
+    required int fotos,
+    VoidCallback? onCapHit,
+  }) =>
       buildOfferCenterMenu(
         busy: busy,
         photoCount: fotos,
@@ -15,6 +19,7 @@ void main() {
         onGallery: nada,
         onStore: nada,
         onPortfolio: nada,
+        onCapHit: onCapHit ?? nada,
       );
 
   bool viva(List<CenterMenuItem> m, String label) =>
@@ -47,5 +52,38 @@ void main() {
       'formulario se rearma con cada tecla del campo de precio', () {
     expect(menu(busy: false, fotos: 1), equals(menu(busy: false, fotos: 1)));
     expect(menu(busy: false, fotos: 1), isNot(equals(menu(busy: false, fotos: 5))));
+  });
+
+  test('al tope de fotos (no ocupado) los tres de FOTO llevan onDisabledTap: '
+      'apagados-por-tope SÍ tienen algo que avisar', () {
+    var avisos = 0;
+    void avisar() => avisos++;
+    final m = menu(busy: false, fotos: 5, onCapHit: avisar);
+
+    for (final label in ['Cámara', 'Galería', 'Trabajos']) {
+      final item = m.firstWhere((i) => i.label == label);
+      expect(item.enabled, isFalse);
+      expect(item.onDisabledTap, same(avisar),
+          reason: '$label apagado por TOPE debe avisar por qué');
+    }
+    m.firstWhere((i) => i.label == 'Cámara').onDisabledTap!();
+    expect(avisos, 1);
+
+    // "Mi tienda" no se apaga nunca por tope: no lleva aviso.
+    expect(m.firstWhere((i) => i.label == 'Mi tienda').onDisabledTap, isNull);
+  });
+
+  test('ocupado (busy) los apagados NO llevan onDisabledTap: no hay nada '
+      'que avisar, solo esperar', () {
+    var avisos = 0;
+    void avisar() => avisos++;
+    final m = menu(busy: true, fotos: 0, onCapHit: avisar);
+
+    for (final item in m) {
+      expect(item.enabled, isFalse);
+      expect(item.onDisabledTap, isNull,
+          reason: '${item.label} apagado por BUSY debe quedar inerte');
+    }
+    expect(avisos, 0);
   });
 }
