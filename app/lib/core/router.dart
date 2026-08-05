@@ -20,6 +20,7 @@ import '../features/onboarding/consumer_onboarding_screen.dart';
 import '../features/onboarding/gate_screen.dart';
 import '../features/onboarding/provider_onboarding_screen.dart';
 import '../features/provider/inbox_screen.dart';
+import '../features/provider/add_store_item_screen.dart';
 import '../features/provider/my_business_screen.dart';
 import '../features/provider/my_offers_screen.dart';
 import '../features/provider/product_interest_detail_screen.dart';
@@ -212,6 +213,15 @@ GoRouter buildRouter() => GoRouter(
                 path: '/provider/business',
                 builder: (_, _) =>
                     const BackGuard(child: MyBusinessScreen())),
+            // Alta rápida del agregador de "Mi negocio" (PO 2026-08-05).
+            // `kind` y `bid` viajan por query: la pantalla de origen ya tiene
+            // el negocio cargado y así no se repite el fetch.
+            GoRoute(
+                path: '/provider/business/add',
+                builder: (_, s) => BackGuard(
+                    child: AddStoreItemScreen(
+                        kind: s.uri.queryParameters['kind'] ?? 'producto',
+                        businessId: s.uri.queryParameters['bid'] ?? ''))),
             GoRoute(
                 path: '/settings',
                 builder: (_, _) => const BackGuard(child: SettingsScreen())),

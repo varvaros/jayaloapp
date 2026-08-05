@@ -2532,6 +2532,35 @@ Future<void> saveProductToStore({
   });
 }
 
+/// Foto de un producto/servicio de la tienda → `{uid}/products/<ts>-<rand>`.
+Future<String> uploadStoreProductImage(String filePath) =>
+    _uploadMarketplaceImage(filePath, 'products');
+
+/// Foto de un trabajo del portafolio → `{uid}/portfolio/<ts>-<rand>`.
+Future<String> uploadPortfolioImage(String filePath) =>
+    _uploadMarketplaceImage(filePath, 'portfolio');
+
+/// Alta de un trabajo del portafolio desde la app (espejo del insert de
+/// `PortfolioEditorDialog.tsx` de la web: RLS de dueño, solo exige
+/// business_id + user_id + title). A diferencia de la web, las fotos van a
+/// Storage y aquí se guardan URLs — nunca base64 en la BD (regla de la casa).
+Future<void> savePortfolioItem({
+  required String businessId,
+  required String title,
+  String? description,
+  List<String> imageUrls = const [],
+}) async {
+  final uid = supa.auth.currentUser!.id;
+  await supa.from('provider_portfolio_items').insert({
+    'user_id': uid,
+    'business_id': businessId,
+    'title': title,
+    'description':
+        (description == null || description.trim().isEmpty) ? null : description.trim(),
+    'image_urls': imageUrls,
+  });
+}
+
 /// category_id (slug) + un rubro (NOMBRE) del negocio, para prefijar el
 /// guardado en tienda: `provider_products` exige ambos NOT NULL y la oferta no
 /// los trae. `provider_business_rubros` guarda `rubro_id` (uuid) → se resuelve

@@ -157,4 +157,68 @@ void main() {
     await tester.pump();
     expect(called, isTrue);
   });
+
+  // El agregador (PO 2026-08-05): tarjeta vacía con ＋ que abre el chooser.
+  // Rompe a propósito el "sin CTA de crear" del spec 2026-07-20 — pero SOLO
+  // cuando el dueño puede crear (onAddItem cableado); sin callback, la vista
+  // sigue siendo la de solo lectura de siempre (los tests de arriba lo cubren).
+  const labelAgregador =
+      'Haz ofertas más rápidas con tus productos en tus tiendas';
+
+  testWidgets('el agregador abre el chooser y devuelve el kind elegido',
+      (tester) async {
+    String? chosen;
+    await tester.pumpWidget(host(MyBusinessView(
+      business: negocio,
+      productos: const [],
+      servicios: const [],
+      reviews: const [],
+      rating: null,
+      onAddItem: (kind) async => chosen = kind,
+    )));
+    await tester.pumpAndSettle();
+    await bajar(tester);
+    expect(find.text(labelAgregador), findsOneWidget);
+
+    await tester.tap(find.text(labelAgregador));
+    await tester.pumpAndSettle();
+    expect(find.text('Producto'), findsOneWidget);
+    expect(find.text('Servicio'), findsOneWidget);
+    expect(find.text('Trabajo realizado'), findsOneWidget);
+
+    await tester.tap(find.text('Servicio'));
+    await tester.pumpAndSettle();
+    expect(chosen, 'servicio');
+  });
+
+  testWidgets('sin onAddItem la tarjeta del agregador no existe',
+      (tester) async {
+    await tester.pumpWidget(view());
+    await tester.pumpAndSettle();
+    expect(find.text(labelAgregador), findsNothing);
+  });
+
+  testWidgets('TRABAJOS lista el portafolio o avisa que está vacío',
+      (tester) async {
+    await tester.pumpWidget(host(MyBusinessView(
+      business: negocio,
+      productos: const [],
+      servicios: const [],
+      trabajos: const [
+        {'id': 't1', 'title': 'Instalación de verja', 'image_urls': <String>[]}
+      ],
+      reviews: const [],
+      rating: null,
+    )));
+    await tester.pumpAndSettle();
+    await bajar(tester);
+    expect(find.text('TRABAJOS'), findsOneWidget);
+    expect(find.text('Instalación de verja'), findsOneWidget);
+
+    await tester.pumpWidget(view());
+    await tester.pumpAndSettle();
+    await bajar(tester);
+    expect(
+        find.textContaining('Aún no tienes trabajos'), findsOneWidget);
+  });
 }

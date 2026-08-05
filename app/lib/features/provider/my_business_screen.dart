@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/editor_link_client.dart';
 import '../../core/secure_web_launch.dart';
@@ -54,12 +55,14 @@ class _StoreData {
     required this.business,
     required this.productos,
     required this.servicios,
+    required this.trabajos,
     required this.reviews,
     required this.rating,
   });
   final StoreProfile? business;
   final List<Map<String, dynamic>> productos;
   final List<Map<String, dynamic>> servicios;
+  final List<Map<String, dynamic>> trabajos;
   final List<BusinessReview> reviews;
   final BusinessRating? rating;
 }
@@ -74,25 +77,35 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
         business: null,
         productos: [],
         servicios: [],
+        trabajos: [],
         reviews: [],
         rating: null,
       );
     }
     final results = await Future.wait([
       myStoreProducts(business.id),
+      myPortfolioItems(business.id),
       businessReviews(business.id),
       businessRatings([business.id]),
     ]);
     final (productos, servicios) =
         partitionStoreItems(results[0] as List<Map<String, dynamic>>);
-    final ratings = results[2] as Map<String, BusinessRating>;
+    final ratings = results[3] as Map<String, BusinessRating>;
     return _StoreData(
       business: business,
       productos: productos,
       servicios: servicios,
-      reviews: results[1] as List<BusinessReview>,
+      trabajos: results[1] as List<Map<String, dynamic>>,
+      reviews: results[2] as List<BusinessReview>,
       rating: ratings[business.id],
     );
+  }
+
+  /// Abre el alta rápida del agregador y refresca al volver si hubo alta.
+  Future<void> _openAdd(String businessId, String kind) async {
+    final changed =
+        await context.push<bool>('/provider/business/add?kind=$kind&bid=$businessId');
+    if (changed == true) _refetch();
   }
 
   // Bloque para que setState no devuelva un Future (leer inbox_screen.dart).
@@ -148,11 +161,15 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
                   business: data.business,
                   productos: data.productos,
                   servicios: data.servicios,
+                  trabajos: data.trabajos,
                   reviews: data.reviews,
                   rating: data.rating,
                   onEditWeb: data.business == null
                       ? null
                       : () => _openEditor(data.business!.id),
+                  onAddItem: data.business == null
+                      ? null
+                      : (kind) => _openAdd(data.business!.id, kind),
                 );
               },
             ),
@@ -170,20 +187,28 @@ class MyBusinessView extends StatefulWidget {
     required this.business,
     required this.productos,
     required this.servicios,
+    this.trabajos = const [],
     required this.reviews,
     required this.rating,
     this.onEditWeb,
+    this.onAddItem,
   });
 
   final StoreProfile? business;
   final List<Map<String, dynamic>> productos;
   final List<Map<String, dynamic>> servicios;
+  final List<Map<String, dynamic>> trabajos;
   final List<BusinessReview> reviews;
   final BusinessRating? rating;
 
   /// Abre el editor en la web (magic-link SSO, Task 6). Nulo → el botón no se
   /// dibuja (p. ej. sin negocio). Inyectable para probar sin red.
   final Future<void> Function()? onEditWeb;
+
+  /// Alta rápida del agregador (PO 2026-08-05): recibe el kind elegido en el
+  /// chooser ('producto' | 'servicio' | 'trabajo'). Nulo → la tarjeta no se
+  /// dibuja. Inyectable para probar sin router.
+  final Future<void> Function(String kind)? onAddItem;
 
   @override
   State<MyBusinessView> createState() => _MyBusinessViewState();
@@ -233,14 +258,57 @@ class _MyBusinessViewState extends State<MyBusinessView> {
               label: const Text('Editar en la web'),
             ),
           ),
+        // El agregador (PO 2026-08-05): tarjeta vacía con ＋ que abre el
+        // chooser producto/servicio/trabajo. Rompe a propósito el "solo
+        // lectura" del spec 2026-07-20, decisión del PO: el alta mínima vive
+        // en la app porque alimenta ofertas más rápidas.
+        if (widget.onAddItem != null)
+          _AddToStoreCard(onChoose: _chooseKind).cascadeIn(2),
         const SectionHeader(text: 'PRODUCTOS'),
         ..._itemsOrEmpty(widget.productos, 'Aún no tienes productos.'),
         const SectionHeader(text: 'SERVICIOS'),
         ..._itemsOrEmpty(widget.servicios, 'Aún no tienes servicios.'),
+        const SectionHeader(text: 'TRABAJOS'),
+        if (widget.trabajos.isEmpty)
+          const _EmptyLine(text: 'Aún no tienes trabajos en tu portafolio.')
+        else
+          for (final t in widget.trabajos) _PortfolioTile(item: t),
         const SectionHeader(text: 'OPINIONES'),
         _ReviewsBlock(reviews: widget.reviews, rating: widget.rating),
       ],
     );
+  }
+
+  /// Chooser del agregador: hoja con las tres variantes del alta rápida.
+  Future<void> _chooseKind() async {
+    final kind = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.sell_outlined),
+            title: const Text('Producto'),
+            subtitle: const Text('Algo que vendes en tu tienda'),
+            onTap: () => Navigator.pop(c, 'producto'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.handyman_outlined),
+            title: const Text('Servicio'),
+            subtitle: const Text('Algo que ofreces hacer'),
+            onTap: () => Navigator.pop(c, 'servicio'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.collections_bookmark_outlined),
+            title: const Text('Trabajo realizado'),
+            subtitle: const Text('Para tu portafolio'),
+            onTap: () => Navigator.pop(c, 'trabajo'),
+          ),
+        ]),
+      ),
+    );
+    if (kind == null) return;
+    await widget.onAddItem?.call(kind);
   }
 
   List<Widget> _itemsOrEmpty(List<Map<String, dynamic>> items, String empty) {
@@ -258,6 +326,83 @@ class _MyBusinessViewState extends State<MyBusinessView> {
       if (b.city != null) b.city!,
     ];
     return partes.isEmpty ? null : partes.join(' · ');
+  }
+}
+
+/// La tarjeta del agregador (PO 2026-08-05): "tarjeta vacía con un signo de
+/// ＋". El ＋ va en un aro punteado-suave del color primario para leerse como
+/// hueco por llenar, no como contenido.
+class _AddToStoreCard extends StatelessWidget {
+  const _AddToStoreCard({required this.onChoose});
+  final VoidCallback onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return JayaloCard(
+      onTap: onChoose,
+      child: Column(children: [
+        const SizedBox(height: 6),
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: cs.primary, width: 2),
+          ),
+          child: Icon(Icons.add, size: 28, color: cs.primary),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Haz ofertas más rápidas con tus productos en tus tiendas',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 6),
+      ]),
+    );
+  }
+}
+
+/// Trabajo del portafolio en el escaparate propio: miniatura + título. Más
+/// simple que el carrusel de la tienda pública — aquí solo confirma al dueño
+/// que su alta quedó.
+class _PortfolioTile extends StatelessWidget {
+  const _PortfolioTile({required this.item});
+  final Map<String, dynamic> item;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
+    final img = images.isEmpty ? null : images.first;
+    return JayaloCard(
+      padding: const EdgeInsets.all(10),
+      child: Row(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: img == null || img.isEmpty
+              ? Container(
+                  width: 56,
+                  height: 56,
+                  color: cs.surfaceContainerHighest,
+                  child: Icon(Icons.photo_outlined,
+                      color: cs.onSurfaceVariant, size: 22),
+                )
+              : Image.network(img, width: 56, height: 56, fit: BoxFit.cover),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(item['title'] as String? ?? '',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+        ),
+      ]),
+    );
   }
 }
 
