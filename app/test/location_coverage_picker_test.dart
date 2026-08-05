@@ -66,6 +66,23 @@ void main() {
     expect(find.text('🗺️ Todos los sectores'), findsNothing);
   });
 
+  testWidgets('reelegir el mismo pais no borra provincias ni sectores',
+      (tester) async {
+    final una = citiesFor(kCountries.first).first;
+    provincias = [una];
+    sectores = sectorsFor(kCountries.first, una).take(1).toList();
+    await montar(tester);
+    // Con un solo pais en el catalogo, el desplegable de pais excluye el
+    // pais actual de sus propias opciones (igual que provincia y sector
+    // excluyen lo ya elegido), asi que no queda nada que ofrecer y tocarlo
+    // no debe abrir un menu ni tocar la seleccion vigente.
+    await tester.tap(find.text('País'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DropdownMenuItem<String>), findsNothing);
+    expect(provincias, [una]);
+    expect(sectores, sectorsFor(kCountries.first, una).take(1).toList());
+  });
+
   testWidgets('con todos seleccionados se colapsa a un solo chip',
       (tester) async {
     final una = citiesFor(kCountries.first)
@@ -77,6 +94,11 @@ void main() {
     for (final s in sectores) {
       expect(find.widgetWithText(Chip, s), findsNothing);
     }
+    expect(find.widgetWithText(Chip, kAllSectorsLabel), findsOneWidget);
+    // Y ese chip resumen realmente controla la seleccion: quitarlo la vacia.
+    await tester.tap(find.byTooltip('Quitar $kAllSectorsLabel'));
+    await tester.pumpAndSettle();
+    expect(sectores, isEmpty);
   });
 
   testWidgets('quitar una provincia se lleva sus sectores exclusivos',
@@ -99,5 +121,28 @@ void main() {
     await montar(tester);
     // Se ofrece y se mantiene seleccionado aunque kLocations no lo conozca.
     expect(find.text('Parque del Este'), findsWidgets);
+  });
+
+  testWidgets(
+      'quitar una provincia conserva el sector fuera de catalogo y '
+      'descarta solo los exclusivos de esa provincia', (tester) async {
+    final ciudades = citiesFor(kCountries.first);
+    final a = ciudades[0];
+    final b = ciudades[1];
+    final sectoresB = sectorsFor(kCountries.first, b).toSet();
+    // Un sector que solo pertenece a 'a', calculado en vez de asumido, por si
+    // el catalogo cambia.
+    final exclusivoDeA = sectorsFor(kCountries.first, a)
+        .firstWhere((s) => !sectoresB.contains(s));
+    provincias = [a, b];
+    sectores = [exclusivoDeA, 'Parque del Este'];
+    await montar(tester);
+    await tester.tap(find.byTooltip('Quitar $a'));
+    await tester.pumpAndSettle();
+    // El caso que motiva la union en availableSectors: el sector exclusivo
+    // de 'a' se va con ella, pero el que ningun catalogo conoce sobrevive,
+    // en la misma operacion y con 'b' todavia presente.
+    expect(sectores, isNot(contains(exclusivoDeA)));
+    expect(sectores, contains('Parque del Este'));
   });
 }

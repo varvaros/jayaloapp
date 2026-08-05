@@ -100,8 +100,10 @@ class LocationCoveragePicker extends StatelessWidget {
           context,
           hint: 'País',
           // Se dibuja aunque kCountries tenga un solo elemento: paridad con la
-          // web y el catalogo puede crecer.
-          options: kCountries,
+          // web y el catalogo puede crecer. Excluir el pais actual (mismo
+          // patron que provincia y sector abajo) evita que reelegirlo borre
+          // provincias y sectores sin que el usuario haya cambiado nada.
+          options: kCountries.where((c) => c != country).toList(),
           onPick: _setCountry,
         ),
         if (country.isNotEmpty)
@@ -147,8 +149,8 @@ class LocationCoveragePicker extends StatelessWidget {
     );
   }
 
-  /// Desplegable que ANADE (no que selecciona): al elegir, el valor pasa a los
-  /// chips de abajo y sale de la lista.
+  /// Desplegable que agrega (no que selecciona): al elegir, el valor pasa a
+  /// los chips de abajo y sale de la lista.
   Widget _adder(
     BuildContext context, {
     required String hint,
