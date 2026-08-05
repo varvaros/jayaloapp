@@ -55,6 +55,10 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
   'client.catalog.v1': [
     OnboardingStep('Aquí ves productos que los proveedores ofrecen en sus tiendas.'),
   ],
+  'provider.offer_menu.v1': [
+    OnboardingStep(
+        'Mientras redactas tu oferta, este botón abre un menú para añadir fotos: cámara, galería, tu tienda o tus trabajos.'),
+  ],
   'chat.quick_replies.v1': [
     OnboardingStep('Aquí eliges mensajes predefinidos para responder rápido.'),
   ],

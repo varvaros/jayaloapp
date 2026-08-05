@@ -187,6 +187,26 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               enabled: loc == '/client',
               child: const SizedBox.shrink(),
             ),
+          // Guía spotlight del menú en arco: la PRIMERA vez que la pantalla al
+          // frente registra un menú para el botón central (hoy: redactar una
+          // oferta) se enseña que el botón dejó de navegar y ahora abre el
+          // abanico. Disparo por evento con datos (`enabled` pasa a true al
+          // registrarse el menú), misma ancla externa que la guía del ＋.
+          // Regla de la barra: si el builder LEE un notifier, lo escucha —
+          // aquí se leen el menú y la ruta dueña del botón.
+          ListenableBuilder(
+            listenable:
+                Listenable.merge([centerActionMenu, centerActionRoute]),
+            builder: (context, _) => OnboardingGuide(
+              anchorKey: _plusAnchorKey,
+              guideKey: 'provider.offer_menu.v1',
+              steps: onboardingCopy['provider.offer_menu.v1']!,
+              order: 2,
+              enabled: centerActionMenu.value != null &&
+                  loc == centerActionRoute.value,
+              child: const SizedBox.shrink(),
+            ),
+          ),
         ],
       ),
       // M2 (revisión final de rama): antes era `showNavBar ? FloatingNavBar(
@@ -250,7 +270,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                   final tomado = loc == centerActionRoute.value;
                   return FloatingNavBar(
                     key: const ValueKey('nav-bar-visible'),
-                    centerButtonKey: isClient ? _plusAnchorKey : null,
+                    // Para AMBOS roles: la guía del ＋ (cliente) y la del menú
+                    // en arco (proveedor redactando una oferta) anclan aquí.
+                    centerButtonKey: _plusAnchorKey,
                     destinations: dests,
                     currentIndex: idx,
                     // Cuando la pantalla al frente se apropió del centro (hoy:
