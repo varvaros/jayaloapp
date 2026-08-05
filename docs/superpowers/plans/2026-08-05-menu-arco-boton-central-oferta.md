@@ -36,7 +36,9 @@ métodos que **ya existen**.
   `'Ya tienes 5 fotos'`.
 - **Tope de fotos:** `_maxOfferPhotos = 5` (`request_detail_screen.dart:35`). No hardcodear el 5 en
   código nuevo salvo en el literal del aviso.
-- **Suite verde antes de cada commit:** `flutter analyze` sin errores nuevos y `flutter test` entero.
+- **Verde antes de cada commit:** `flutter analyze` sin errores nuevos, y los tests que cada task
+  nombra. La suite **entera** se corre una vez, en la Task 7 — correrla en cada task multiplicaría el
+  tiempo sin añadir señal.
 - **Los tests NO firman que las cuatro etiquetas quepan.** En `flutter test` el texto mide ~2× lo
   real (tanda A del 2026-08-02, costó dos agentes y un ticket falso). Eso es Task 7, en device.
 
@@ -1104,9 +1106,36 @@ Añadir al final de `app/test/floating_nav_bar_test.dart`:
 
     testWidgets('el ATRÁS del sistema cierra el arco en vez de salir de la '
         'pantalla', (tester) async {
-      await tester.pumpWidget(host(items((_) {})));
+      // ⚠️ Este test NO puede usar el `host()` de arriba. `BackButtonListener`
+      // se cuelga del `backButtonDispatcher` de un `Router` ANCESTRO
+      // (`Router.maybeOf`); con un `MaterialApp` pelado no hay Router, el
+      // listener no se registra y el test daría un falso NEGATIVO silencioso.
+      // En la app real siempre hay uno: `MaterialApp.router` + go_router.
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => Scaffold(
+              bottomNavigationBar: FloatingNavBar(
+                destinations: destinationsFor(RoleState.provider),
+                currentIndex: kCenterIndex,
+                centerMenuItems: items((_) {}),
+                centerIconOverride: Icons.library_add_outlined,
+                centerLabelOverride: 'Cargar',
+                onSelected: (_) {},
+              ),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(
+          theme: jayaloTheme(Brightness.light), routerConfig: router));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byIcon(Icons.library_add_outlined));
       await tester.pumpAndSettle();
+      expect(find.byType(CenterArcMenu), findsOneWidget);
 
       final atendido = await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
@@ -1131,7 +1160,12 @@ Añadir al final de `app/test/floating_nav_bar_test.dart`:
 ```
 
 Añadir los imports que falten al principio del archivo: `center_action.dart`, `center_arc_menu.dart`,
-`session_state.dart`.
+`session_state.dart` y `package:go_router/go_router.dart`.
+
+**Y este aviso para el implementador:** si el test del atrás del sistema sale verde de primeras,
+comprobar que de verdad se está ejerciendo el camino — quitar el `BackButtonListener` de la
+implementación debe ponerlo ROJO. Un listener que nunca se registra da exactamente el mismo verde que
+uno que funciona.
 
 - [ ] **Step 2: Correr para verificar que fallan**
 
@@ -1333,13 +1367,21 @@ Refactor puro: **cero cambio de comportamiento**. Va en su propio commit para qu
 revertir sin arrastrar la feature.
 
 **Files:**
+- Create: `app/lib/domain/offer_form_gate.dart`
 - Modify: `app/lib/features/provider/request_detail_screen.dart:1728-1750`
 - Modify: `app/lib/domain/offer_edit.dart` (solo el comentario de mantenimiento)
-- Test: `app/test/provider_offer_form_gate_test.dart` (nuevo)
+- Test: `app/test/domain/offer_form_gate_test.dart` (nuevo)
 
 **Interfaces:**
-- Produces: `bool get _offerFormVisible` en `_ProviderRequestDetailScreenState` (privado; lo consume
-  la Task 6 desde dentro de la misma clase).
+- Produces:
+  - `bool offerFormVisible({required bool editing, required String? businessId, required bool offerChecked, required Map<String, dynamic>? existingOffer})` en `lib/domain/offer_form_gate.dart` — función pura, sin `BuildContext`.
+  - `bool get _offerFormVisible` en `_ProviderRequestDetailScreenState`, que **delega** en ella
+    (privado; lo consume la Task 6 desde dentro de la misma clase).
+
+**Por qué la regla sale a `lib/domain/`:** un test que reimplementa la condición para compararla
+consigo misma no prueba nada — pasaría igual con el getter roto. `lib/domain/offer_edit.dart` ya es
+exactamente este patrón (regla pura extraída de esta misma pantalla), así que la casa ya tiene sitio
+para esto.
 
 **El porqué:** la decisión está repartida en una cadena `if / else if / else if / else`. Duplicarla
 en la Task 6 para saber si registrar el menú es exactamente el duplicado que `domain/offer_edit.dart`
@@ -1347,57 +1389,39 @@ ya sufre — su comentario apunta a `request_detail_screen.dart:1559-1560`, lín
 
 - [ ] **Step 1: Escribir el test que falla**
 
-Crear `app/test/provider_offer_form_gate_test.dart`. Como el getter es privado, se prueba su **regla**
-en tabla, con la misma lógica escrita en el test — si mañana divergen, este test lo canta:
+Crear `app/test/domain/offer_form_gate_test.dart`. Importa la función **real** — no una copia:
 
 ```dart
 import 'package:flutter_test/flutter_test.dart';
-
-/// La compuerta que decide FORMULARIO vs TARJETA en el detalle de solicitud del
-/// proveedor, extraída a `_offerFormVisible` (`request_detail_screen.dart`).
-///
-/// Es la negación EXACTA de las tres ramas que la preceden:
-///   1. `!_editing && _businessId == null`  → CTA "completa tu negocio"
-///   2. `!_offerChecked`                    → spinner
-///   3. oferta existente que no sea edición de una PENDIENTE → tarjeta
-bool formVisible({
-  required bool editing,
-  required String? businessId,
-  required bool offerChecked,
-  required Map<String, dynamic>? existingOffer,
-}) =>
-    !(!editing && businessId == null) &&
-    offerChecked &&
-    !(existingOffer != null &&
-        (!editing || existingOffer['status'] != 'pending'));
+import 'package:jayalo_app/domain/offer_form_gate.dart';
 
 void main() {
   const bid = 'b-1';
 
   test('sin negocio y sin editar: no hay formulario', () {
     expect(
-        formVisible(
+        offerFormVisible(
             editing: false, businessId: null, offerChecked: true, existingOffer: null),
         isFalse);
   });
 
   test('mientras se comprueba si ya ofertó: no hay formulario', () {
     expect(
-        formVisible(
+        offerFormVisible(
             editing: false, businessId: bid, offerChecked: false, existingOffer: null),
         isFalse);
   });
 
   test('sin oferta previa: formulario', () {
     expect(
-        formVisible(
+        offerFormVisible(
             editing: false, businessId: bid, offerChecked: true, existingOffer: null),
         isTrue);
   });
 
   test('con oferta ya enviada: tarjeta, no formulario', () {
     expect(
-        formVisible(
+        offerFormVisible(
             editing: false,
             businessId: bid,
             offerChecked: true,
@@ -1407,7 +1431,7 @@ void main() {
 
   test('editando una PENDIENTE: formulario', () {
     expect(
-        formVisible(
+        offerFormVisible(
             editing: true,
             businessId: bid,
             offerChecked: true,
@@ -1417,7 +1441,7 @@ void main() {
 
   test('una ACEPTADA no se edita nunca: tarjeta', () {
     expect(
-        formVisible(
+        offerFormVisible(
             editing: true,
             businessId: bid,
             offerChecked: true,
@@ -1427,14 +1451,45 @@ void main() {
 }
 ```
 
-- [ ] **Step 2: Correrlo**
+- [ ] **Step 2: Correrlo para verificar que falla**
 
-Run: `flutter test test/provider_offer_form_gate_test.dart`
-Expected: PASS (el test describe la regla; sirve de red para el paso siguiente).
+Run: `flutter test test/domain/offer_form_gate_test.dart`
+Expected: FAIL de compilación — no existe `lib/domain/offer_form_gate.dart`.
 
-- [ ] **Step 3: Extraer el getter**
+- [ ] **Step 3: Extraer la regla y delegar**
 
-En `app/lib/features/provider/request_detail_screen.dart`, junto a `_editing` (línea 171):
+Crear `app/lib/domain/offer_form_gate.dart`:
+
+```dart
+/// ¿El detalle de solicitud del proveedor pinta el FORMULARIO de la oferta, o
+/// una de las tres cosas que lo sustituyen?
+///
+/// Regla pura, sin `BuildContext` ni estado: así se prueba de verdad, sin montar
+/// una pantalla que necesita red y sesión. Mismo patrón que `offer_edit.dart`.
+///
+/// Es la negación EXACTA de las tres ramas que la preceden en la cadena del
+/// `build` (`request_detail_screen.dart`):
+///   1. `!editing && businessId == null` → CTA "completa tu negocio en la web"
+///   2. `!offerChecked`                  → spinner
+///   3. oferta existente que no sea edición de una PENDIENTE → tarjeta de estado
+///
+/// MANTENIMIENTO: `offer_edit.dart` (`canEditOfferInPlace`) reproduce la TERCERA
+/// de esas condiciones para decidir si "Ver mi oferta" hace algo. Si tocas esta
+/// regla, actualiza también aquella o el botón vuelve a quedar muerto.
+bool offerFormVisible({
+  required bool editing,
+  required String? businessId,
+  required bool offerChecked,
+  required Map<String, dynamic>? existingOffer,
+}) =>
+    !(!editing && businessId == null) &&
+    offerChecked &&
+    !(existingOffer != null &&
+        (!editing || existingOffer['status'] != 'pending'));
+```
+
+En `app/lib/features/provider/request_detail_screen.dart`, junto a `_editing` (línea 171), un getter
+que **delega** (nada de reimplementar la condición):
 
 ```dart
   /// ¿Se está pintando el FORMULARIO de la oferta (y no la tarjeta, el spinner
@@ -1442,18 +1497,15 @@ En `app/lib/features/provider/request_detail_screen.dart`, junto a `_editing` (l
   ///
   /// Única fuente de verdad de esa decisión: la cadena del `build` la consume y
   /// el registro del menú del botón central también (ver `_syncCenterAction`).
-  /// Es la negación exacta de las tres ramas que la preceden ahí abajo.
-  ///
-  /// MANTENIMIENTO: `domain/offer_edit.dart` (`canEditOfferInPlace`) reproduce
-  /// la TERCERA de esas condiciones para decidir si "Ver mi oferta" hace algo.
-  /// Si tocas esta regla, actualiza también aquella o el botón vuelve a quedar
-  /// muerto.
-  bool get _offerFormVisible =>
-      !(!_editing && _businessId == null) &&
-      _offerChecked &&
-      !(_existingOffer != null &&
-          (!_editing || _existingOffer!['status'] != 'pending'));
+  bool get _offerFormVisible => offerFormVisible(
+        editing: _editing,
+        businessId: _businessId,
+        offerChecked: _offerChecked,
+        existingOffer: _existingOffer,
+      );
 ```
+
+con `import '../../domain/offer_form_gate.dart';` arriba.
 
 En la cadena del `build` (línea 1750), la última rama pasa de `else ...[` a
 `else if (_offerFormVisible) ...[`. Las tres ramas previas **no se tocan**: si algún día divergieran,
@@ -1466,16 +1518,16 @@ En `app/lib/domain/offer_edit.dart`, corregir la referencia obsoleta del comenta
 
 - [ ] **Step 4: Correr la suite del proveedor**
 
-Run: `flutter test test/provider_offer_form_gate_test.dart test/inbox_screen_test.dart test/improve_offer_error_test.dart test/finalist_slots_test.dart`
+Run: `flutter test test/domain/ test/inbox_screen_test.dart test/improve_offer_error_test.dart test/finalist_slots_test.dart`
 Expected: PASS.
 
-Run: `flutter analyze lib/features/provider/request_detail_screen.dart lib/domain/offer_edit.dart`
+Run: `flutter analyze lib/features/provider/request_detail_screen.dart lib/domain/`
 Expected: sin errores.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/lib/features/provider/request_detail_screen.dart app/lib/domain/offer_edit.dart app/test/provider_offer_form_gate_test.dart
+git add app/lib/domain/offer_form_gate.dart app/lib/features/provider/request_detail_screen.dart app/lib/domain/offer_edit.dart app/test/domain/offer_form_gate_test.dart
 git commit -m "refactor(app): una sola compuerta para formulario-vs-tarjeta en el detalle de solicitud"
 ```
 
@@ -1713,7 +1765,7 @@ cabe (hoy el formulario esconde los botones, así que ese camino no se daba; con
 
 - [ ] **Step 5: Correr los tests**
 
-Run: `flutter test test/provider_center_menu_test.dart test/provider_offer_form_gate_test.dart`
+Run: `flutter test test/provider_center_menu_test.dart test/domain/offer_form_gate_test.dart`
 Expected: PASS.
 
 Run: `flutter analyze lib/features/provider/`
