@@ -1678,10 +1678,12 @@ class _ProviderRequestDetailScreenState
                   ),
                   // ── 2) INFORMACIÓN ──
                   // El encabezado SOLO si hay algo debajo: una solicitud sin
-                  // bullets, sin presupuesto y sin datos de mayoreo dejaba
-                  // "INFORMACIÓN" flotando sobre un divisor (visto en device
-                  // 2026-08-01). Mismo criterio que `BusinessDetailsCard`, que
-                  // no se dibuja si no tiene filas.
+                  // bullets y sin presupuesto dejaba "INFORMACIÓN" flotando
+                  // sobre un divisor (visto en device 2026-08-01). Los datos
+                  // de mayoreo NO cuentan aquí (ver docstring de `_hasInfo`)
+                  // — viven en `WholesaleCard`, arriba con el título. Mismo
+                  // criterio que `BusinessDetailsCard`, que no se dibuja si
+                  // no tiene filas.
                   if (_hasInfo(req, bullets))
                     sectionHeading(context, 'Información'),
                   if (bullets.isNotEmpty) ...[
