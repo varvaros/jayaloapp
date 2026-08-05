@@ -309,3 +309,69 @@ y volver a correr solo la casilla afectada antes de dar la tanda por cerrada —
 repetir el guion entero por un fallo puntual, salvo que el arreglo haya tocado código compartido
 con otras casillas (por ejemplo, cualquier cambio en `_formSnapshot`/`offerFormDirty` obliga a
 re-correr todo el bloque 4 / Web-4).
+
+---
+
+# Registro de ejecución — 2026-08-05
+
+Ejecutado por adb sobre el Xiaomi `23090RA98G` (Android 16), build debug de
+`feat/correcciones-ui-08-04` (`c594045`) instalado encima del debug anterior sin
+perder la sesión.
+
+## Verificado
+
+- [x] **La rama compila e instala.** `flutter build apk --debug` en verde;
+      `adb install -r` sobre el debug previo mantiene la sesión.
+- [x] **Arranca sin excepciones.** Sin `E/flutter` ni excepciones en logcat tras
+      relanzar; la pantalla de inicio se pinta completa.
+- [x] **Crear solicitud de mayoreo funciona de punta a punta** sobre el código de
+      la rama: conversación con la IA (4 preguntas), resumen correcto con el chip
+      «Al por mayor» y «Cantidad: 500 unidades», rubros, requisito de comprobante
+      fiscal, división «Todo junto», empaque «Caja», condición «Nuevo», y
+      **«¡Tu solicitud está publicada!»**.
+
+## BLOQUEADO — y por qué, verificado en el dispositivo
+
+**Con una sola cuenta no se puede alcanzar la pantalla de detalle de solicitud
+del proveedor**, que es donde viven los puntos 2, 3, 4 y 6.
+
+Comprobado: tras publicar la solicitud, la bandeja del proveedor sigue diciendo
+«Ahora mismo no hay solicitudes abiertas» **incluso en el filtro "Todas"**. Es el
+guard `user_owns_request` (anti auto-oferta) haciendo su trabajo: el autor de una
+solicitud no la ve como proveedor. Correcto por diseño, y bloqueante para el smoke.
+
+Consecuencia por punto:
+
+| Punto | Estado | Qué falta |
+|---|---|---|
+| 1 · Selector país/provincia/sector | Bloqueado | Vive en el alta de un proveedor **nuevo**; registrar cuenta pide OTP |
+| 2 · Marco violeta del precio | Bloqueado | Detalle de solicitud del proveedor |
+| 3 · Servicio sin Estado/Garantía | Bloqueado | Ídem |
+| 4 · Aviso al salir de la oferta | Bloqueado | Ídem |
+| 5 · Estado y garantía obligatorios | Bloqueado | Ídem |
+| 6 · Tarjeta de mayoreo + «INFORMACIÓN» | Bloqueado | Ídem |
+| 7 · Cotejo verde/gris | Bloqueado | Necesita dos ofertas de **otro** proveedor |
+
+**Lo único que hace falta para desbloquear casi todo: una segunda cuenta.** Con
+una cuenta cliente que cree las solicitudes, la cuenta proveedor actual puede
+cubrir los puntos 2 a 6. El punto 1 necesita además un alta de proveedor nueva, y
+el 7 una oferta desde una tercera parte (o desde la cuenta cliente sobre una
+solicitud de la proveedora).
+
+## Hallazgos incidentales (previos a esta tanda, no la bloquean)
+
+1. **La IA extrae la cantidad al resumen pero no rellena el campo obligatorio.**
+   El resumen decía «Cantidad: 500 unidades» y `Cantidad que necesitas *` seguía
+   vacío; el primer «Enviar solicitud» no hacía nada aparente.
+2. **El fallo de validación solo se ve como toast fugaz.** Hubo que capturar la
+   pantalla a los ~600 ms del toque para leer «Indica si lo quieres nuevo o
+   usado.». Conduciendo por adb con esperas normales, el envío parece
+   sencillamente ignorado — el mismo síntoma que ya documenta la nota de memoria
+   para el gate de Producto/Servicio.
+
+## Estado del dispositivo al terminar
+
+Orientación fijada temporalmente en vertical para conducir con coordenadas
+fiables; **auto-rotación restaurada a 1**. Modo avión en 0. Queda instalado el
+build debug de la rama y **una solicitud de mayoreo de prueba publicada** en
+producción, útil como fixture para retomar.
