@@ -317,7 +317,11 @@ class _ProviderRequestDetailScreenState
     // que nada es alcanzable todavia. `_prefillFromOffer` corrige la
     // instantanea cuando la oferta si llega.
     _cleanSnapshot = _formSnapshot();
-    setUnsavedGuard(() => _formSnapshot() != _cleanSnapshot);
+    takeUnsavedGuard(
+      owner: this,
+      check: () => _formSnapshot() != _cleanSnapshot,
+      message: 'Perderás lo que escribiste en esta oferta.',
+    );
     if (_editing) {
       // Modo edición: no hace falta el chequeo "¿ya ofertó?"; traemos la fila
       // COMPLETA de la oferta y prefijamos el formulario.
@@ -416,7 +420,11 @@ class _ProviderRequestDetailScreenState
     // Al final, con TODO ya rellenado: si fuera antes, la instantanea
     // guardaria el formulario vacio y la pantalla naceria sucia.
     _cleanSnapshot = _formSnapshot();
-    setUnsavedGuard(() => _formSnapshot() != _cleanSnapshot);
+    takeUnsavedGuard(
+      owner: this,
+      check: () => _formSnapshot() != _cleanSnapshot,
+      message: 'Perderás lo que escribiste en esta oferta.',
+    );
   }
 
   @override
@@ -427,8 +435,9 @@ class _ProviderRequestDetailScreenState
     releaseCenterAction(_centerOwner);
     // Antes de super.dispose(): una pantalla desmontada que se quede
     // registrada bloquearia el atras de la SIGUIENTE pantalla que visite el
-    // proveedor.
-    setUnsavedGuard(null);
+    // proveedor. La identidad de dueño hace esto inofensivo si otra pantalla
+    // (crear-solicitud apilada encima) registró y soltó entre medias.
+    releaseUnsavedGuard(this);
     for (final c in [
       _price, _min, _max, _hourly, _hours,
       _availability, _duration, _shipping, _installation, _evaluation,
@@ -818,7 +827,7 @@ class _ProviderRequestDetailScreenState
         // Enviada: lo que hay en el formulario ya esta guardado, ni la
         // navegacion de abajo (ruta) ni quedarse en esta pantalla (en sitio)
         // deben preguntar nada. Cubre las DOS salidas de este brazo.
-        setUnsavedGuard(null);
+        releaseUnsavedGuard(this);
         // Entrada en sitio (pedido PO 2026-08-03): no se sale de la solicitud;
         // se vuelve a modo lectura con la tarjeta reflejando lo recién
         // guardado. `_busy` lo repone el `finally` de abajo.
@@ -898,7 +907,7 @@ class _ProviderRequestDetailScreenState
       );
       // Enviada: lo que hay en el formulario ya esta guardado, la navegacion
       // que viene (tras la celebracion) no debe preguntar nada.
-      setUnsavedGuard(null);
+      releaseUnsavedGuard(this);
       if (!mounted) return;
       // ¿Guardar lo ofertado como producto de la tienda? (pedido PO): antes de
       // la celebración, para reusarlo en futuras ofertas.

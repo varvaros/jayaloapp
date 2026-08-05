@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -5,6 +7,7 @@ import '../../core/center_action.dart';
 import '../../core/create_request_nav.dart';
 import '../../core/motion.dart';
 import '../../core/session_state.dart';
+import '../../core/unsaved_guard.dart';
 import '../../data/repos.dart' show solicitudesBadge, messagesBadge, AppCaches;
 import '../shared/onboarding_guide.dart';
 import '../shared/onboarding_copy.dart';
@@ -35,6 +38,33 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Ejecuta el cambio de pestaña ya confirmado (o sin nada que confirmar).
+  ///
+  /// Tic de selección SOLO si la pestaña cambia de verdad (`changed`):
+  /// re-tocar la activa hace un `go` a la misma ruta (no-op visual) y vibrar
+  /// ahí se sentiría como un falso positivo.
+  ///
+  /// Con la ventana de crear solicitud abierta, el `go` pelado la hacía
+  /// DESAPARECER de golpe (pedido PO 2026-08-03): está APILADA con `push`, y
+  /// un `go` reemplaza la pila entera, así que su transición inversa —bajar,
+  /// 300ms— no llegaba a correr nunca. Se cierra con `pop`, que sí la baja, y
+  /// el cambio de pestaña se lanza cuando ha terminado: hacerlo en el mismo
+  /// frame vuelve a abortar la animación.
+  void _goToTab(BuildContext context, String loc, NavDestination d,
+      {required bool changed}) {
+    if (changed) JayaloHaptics.tabChange();
+    if (loc == kCreateRequestRoute) {
+      context.pop();
+      final espera =
+          JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.page;
+      Future.delayed(espera, () {
+        if (context.mounted) context.go(d.route);
+      });
+    } else {
+      context.go(d.route);
+    }
   }
 
   @override
@@ -277,30 +307,22 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                           pushCreateRequestOnce(context);
                         }
                       } else {
-                        // Tic de selección SOLO si la pestaña cambia de verdad:
-                        // re-tocar la que ya está activa hace un `go` a la misma
-                        // ruta (no-op visual) y vibrar ahí se sentiría como un
-                        // falso positivo.
-                        if (i != idx) JayaloHaptics.tabChange();
-                        // Con la ventana de crear solicitud abierta, el `go`
-                        // pelado la hacía DESAPARECER de golpe (pedido PO
-                        // 2026-08-03): está APILADA con `push`, y un `go`
-                        // reemplaza la pila entera, así que su transición
-                        // inversa —bajar, 300ms— no llegaba a correr nunca.
-                        // Se cierra con `pop`, que sí la baja, y el cambio de
-                        // pestaña se lanza cuando ha terminado: hacerlo en el
-                        // mismo frame vuelve a abortar la animación.
-                        if (loc == kCreateRequestRoute) {
-                          context.pop();
-                          final espera = JayaloMotion.reduced(context)
-                              ? Duration.zero
-                              : JayaloMotion.page;
-                          Future.delayed(espera, () {
-                            if (context.mounted) context.go(d.route);
-                          });
-                        } else {
-                          context.go(d.route);
+                        // Antes de navegar: si la pantalla visible tiene
+                        // trabajo sin guardar (crear solicitud, el formulario
+                        // de oferta), se pregunta — mismo aviso que el atrás
+                        // del sistema (BackGuard). Un `go` a la MISMA ruta es
+                        // un no-op de go_router que no pierde nada, así que ahí
+                        // no se molesta. `onSelected` es síncrono: el diálogo
+                        // corre aparte, como hace BackGuard con `unawaited`.
+                        if (loc != d.route && hasUnsavedChanges()) {
+                          unawaited(() async {
+                            final salir = await confirmDiscard(context);
+                            if (!salir || !context.mounted) return;
+                            _goToTab(context, loc, d, changed: i != idx);
+                          }());
+                          return;
                         }
+                        _goToTab(context, loc, d, changed: i != idx);
                       }
                     },
                   );

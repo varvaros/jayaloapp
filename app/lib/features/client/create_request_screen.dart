@@ -11,6 +11,7 @@ import '../../core/ai_client.dart';
 import '../../core/brand.dart';
 import '../../core/center_action.dart';
 import '../../core/create_request_nav.dart';
+import '../../core/unsaved_guard.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_question_options.dart';
 import '../../domain/ai_turns.dart';
@@ -180,6 +181,23 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// un `_showPickSheet` evaluado dos veces no garantiza ser el mismo objeto.
   late final VoidCallback _centerCamera = _showPickSheet;
 
+  /// Lo que `_applySeed` prefijó en el input. Se descuenta de la suciedad:
+  /// abrir una solicitud sembrada y cerrarla sin tocar nada no debe preguntar.
+  String _seedTitle = '';
+
+  /// ¿Hay trabajo del usuario que se perdería al salir? Publicada la solicitud
+  /// no hay nada que perder; antes, cuenta cualquier avance real: el tipo
+  /// elegido, la entrevista empezada (mensajes/respuestas), fotos adjuntas o
+  /// texto propio en el input (el sembrado por `seedFrom` no es suyo).
+  bool _hasUnsavedWork() {
+    if (_submitted) return false;
+    return _kind.isNotEmpty ||
+        _messages.isNotEmpty ||
+        _answers.isNotEmpty ||
+        _photos.isNotEmpty ||
+        _input.text.trim() != _seedTitle.trim();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -194,6 +212,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       route: kCreateRequestRoute,
       action: _centerCamera,
     );
+    // Cualquier salida — atrás del sistema (BackGuard), cambio de pestaña
+    // (home_shell) o la flecha del header — pregunta antes de tirar el
+    // trabajo. La función se registra una vez; la suciedad se evalúa al salir.
+    takeUnsavedGuard(
+      owner: this,
+      check: _hasUnsavedWork,
+      message: 'Perderás lo que escribiste en esta solicitud.',
+    );
     if (widget.seedFrom != null) {
       // fire-and-forget: prefija el input; la foto se adjunta en Task 5.
       _applySeed(widget.seedFrom!);
@@ -203,6 +229,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   @override
   void dispose() {
     releaseCenterAction(_centerCamera);
+    releaseUnsavedGuard(this);
     // Faltaban (auditoría 2026-07-30). Esta es la pantalla que más se abre y
     // cierra del producto — el ＋ de la barra la lanza una y otra vez — así que
     // cada apertura dejaba colgando un TextEditingController con sus listeners
@@ -217,6 +244,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     final row = await requestById(seedFrom);
     if (row == null || !mounted) return;
     final seed = RequestSeed.fromRow(row);
+    _seedTitle = seed.title;
     setState(() => _input.text = seed.title);
 
     final url = seed.imageUrl;
@@ -673,6 +701,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       // Publicada: ya no hay a qué adjuntarle una foto, así que el botón
       // central vuelve a ser el ＋ de siempre mientras se ve el éxito.
       releaseCenterAction(_centerCamera);
+      // Publicada: nada que perder — que ninguna salida pregunte.
+      releaseUnsavedGuard(this);
       setState(() => _submitted = true);
     } catch (e) {
       // Red de seguridad: si el aviso previo no atrapó algo, el trigger de la
@@ -710,7 +740,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             leading: HeaderCircleButton(
               icon: Icons.arrow_back_ios_new,
               tooltip: 'Atrás',
-              onTap: () => context.pop(),
+              // Mismo aviso que el atrás del sistema: esta flecha no pasa por
+              // BackGuard.
+              onTap: () async {
+                if (_hasUnsavedWork()) {
+                  final salir = await confirmDiscard(context);
+                  if (!salir) return;
+                  if (!context.mounted) return;
+                }
+                context.pop();
+              },
             ),
             title: 'Crear solicitud',
             titleAlign: HeaderTitleAlign.center,
