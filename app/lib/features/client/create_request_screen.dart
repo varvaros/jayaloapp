@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/ai_client.dart';
 import '../../core/brand.dart';
 import '../../core/center_action.dart';
+import '../../core/create_request_nav.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_question_options.dart';
 import '../../domain/ai_turns.dart';
@@ -186,7 +187,13 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     // apila una segunda copia de la ruta en la que ya estás), así que se lo
     // queda la cámara — pedido PO 2026-07-28. Se suelta al publicar y en
     // dispose.
-    takeCenterAction(_centerCamera, Icons.photo_camera_outlined);
+    takeCenterAction(
+      owner: _centerCamera,
+      icon: Icons.photo_camera_outlined,
+      label: 'Añadir foto',
+      route: kCreateRequestRoute,
+      action: _centerCamera,
+    );
     if (widget.seedFrom != null) {
       // fire-and-forget: prefija el input; la foto se adjunta en Task 5.
       _applySeed(widget.seedFrom!);

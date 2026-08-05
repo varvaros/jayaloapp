@@ -14,6 +14,10 @@ void main() {
   tearDown(() {
     centerAction.value = null;
     centerActionIcon.value = null;
+    centerActionOwner.value = null;
+    centerActionRoute.value = null;
+    centerActionLabel.value = null;
+    centerActionMenu.value = null;
   });
 
   group('store', () {
@@ -21,7 +25,7 @@ void main() {
       void action() {}
       expect(centerAction.value, isNull);
 
-      takeCenterAction(action, Icons.photo_camera_outlined);
+      takeCenterAction(owner: action, icon: Icons.photo_camera_outlined, action: action);
       expect(centerAction.value, same(action));
       expect(centerActionIcon.value, Icons.photo_camera_outlined);
 
@@ -36,15 +40,88 @@ void main() {
       void saliente() {}
       void entrante() {}
 
-      takeCenterAction(saliente, Icons.photo_camera_outlined);
+      takeCenterAction(owner: saliente, icon: Icons.photo_camera_outlined, action: saliente);
       // La pantalla nueva se monta y toma el botón…
-      takeCenterAction(entrante, Icons.photo_camera_outlined);
+      takeCenterAction(owner: entrante, icon: Icons.photo_camera_outlined, action: entrante);
       // …y recién ahí la vieja se destruye y suelta LO SUYO.
       releaseCenterAction(saliente);
 
       expect(centerAction.value, same(entrante),
           reason: 'la acción de la pantalla al frente debe sobrevivir');
       expect(centerActionIcon.value, isNotNull);
+    });
+
+    test('un menú se registra y se suelta por su DUEÑO, no por su acción', () {
+      final owner = Object();
+      void nada() {}
+      final menu = [
+        CenterMenuItem(icon: Icons.photo_camera_outlined, label: 'Cámara', onTap: nada),
+        CenterMenuItem(icon: Icons.storefront_outlined, label: 'Mi tienda', onTap: nada),
+      ];
+
+      takeCenterAction(
+        owner: owner,
+        icon: Icons.library_add_outlined,
+        label: 'Cargar',
+        route: '/provider/request/abc',
+        menu: menu,
+      );
+
+      expect(centerActionOwner.value, same(owner));
+      expect(centerActionMenu.value, menu);
+      expect(centerActionLabel.value, 'Cargar');
+      expect(centerActionRoute.value, '/provider/request/abc');
+      expect(centerAction.value, isNull, reason: 'un menú no tiene acción directa');
+
+      releaseCenterAction(owner);
+      expect(centerActionOwner.value, isNull);
+      expect(centerActionMenu.value, isNull);
+      expect(centerActionLabel.value, isNull);
+      expect(centerActionRoute.value, isNull);
+      expect(centerActionIcon.value, isNull);
+    });
+
+    test('soltar con un dueño AJENO no roba el botón', () {
+      final saliente = Object();
+      final entrante = Object();
+      void nada() {}
+      final menu = [
+        CenterMenuItem(icon: Icons.storefront_outlined, label: 'Mi tienda', onTap: nada),
+      ];
+
+      takeCenterAction(owner: saliente, icon: Icons.library_add_outlined, menu: menu);
+      takeCenterAction(owner: entrante, icon: Icons.library_add_outlined, menu: menu);
+      releaseCenterAction(saliente);
+
+      expect(centerActionOwner.value, same(entrante),
+          reason: 'el dueño al frente debe sobrevivir al dispose del saliente');
+      expect(centerActionMenu.value, isNotNull);
+    });
+
+    test('reasignar un menú EQUIVALENTE no notifica (el formulario se '
+        'reconstruye con cada tecla del campo de precio)', () {
+      final owner = Object();
+      void nada() {}
+      List<CenterMenuItem> build({required bool enabled}) => [
+            CenterMenuItem(
+                icon: Icons.photo_camera_outlined,
+                label: 'Cámara',
+                onTap: nada,
+                enabled: enabled),
+          ];
+
+      takeCenterAction(owner: owner, icon: Icons.library_add_outlined, menu: build(enabled: true));
+
+      var avisos = 0;
+      void contar() => avisos++;
+      centerActionMenu.addListener(contar);
+      addTearDown(() => centerActionMenu.removeListener(contar));
+
+      takeCenterAction(owner: owner, icon: Icons.library_add_outlined, menu: build(enabled: true));
+      expect(avisos, 0, reason: 'misma lista por VALOR: no debe repintar la barra');
+
+      takeCenterAction(owner: owner, icon: Icons.library_add_outlined, menu: build(enabled: false));
+      expect(avisos, 1, reason: 'cambió `enabled`: eso SÍ tiene que repintarse');
     });
   });
 

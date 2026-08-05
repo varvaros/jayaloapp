@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
@@ -19,26 +20,107 @@ import 'package:flutter/widgets.dart';
 /// Contrato para quien lo tome:
 /// - registrar en `initState` (o cuando la pantalla pasa al frente) y
 ///   **limpiar siempre en `dispose`** con [releaseCenterAction];
+/// - una pantalla cuyo estado cambia **dentro de sí misma** sincroniza desde
+///   `build` (ver la pantalla de la oferta del proveedor);
 /// - solo lo toma la pantalla que está al frente. Si dos lo tomaran, gana la
 ///   última — por eso [releaseCenterAction] comprueba identidad antes de
 ///   limpiar, para que el `dispose` de una pantalla que ya perdió el botón no
 ///   le borre la acción a la que lo tiene ahora.
+
+/// Un destino del menú que despliega el botón central.
 ///
+/// Igualdad **por valor** a propósito: la pantalla que registra el menú lo
+/// reconstruye en cada `build` (su `enabled` depende de si está ocupada y de
+/// cuántas fotos lleva), y el formulario de la oferta se reconstruye con cada
+/// tecla que se escribe en el campo de precio. Sin esta igualdad, cada
+/// pulsación repintaría la barra flotante entera.
+///
+/// `onTap` se compara con `==` y no con `identical`: Dart garantiza que dos
+/// tear-offs del mismo método sobre la misma instancia son iguales, pero NO que
+/// sean el mismo objeto.
+@immutable
+class CenterMenuItem {
+  const CenterMenuItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.enabled = true,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  /// `false` = se pinta atenuado y su toque no dispara [onTap]. No se ESCONDE:
+  /// un arco que pasa de cuatro satélites a uno se lee como un fallo.
+  final bool enabled;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CenterMenuItem &&
+          other.icon == icon &&
+          other.label == label &&
+          other.onTap == onTap &&
+          other.enabled == enabled;
+
+  @override
+  int get hashCode => Object.hash(icon, label, onTap, enabled);
+}
+
 /// `null` = el centro se comporta como siempre (navegar).
 final ValueNotifier<VoidCallback?> centerAction = ValueNotifier(null);
 
 /// Ícono a pintar mientras [centerAction] esté tomado. `null` = el del destino.
 final ValueNotifier<IconData?> centerActionIcon = ValueNotifier(null);
 
-/// Toma el botón central. Idempotente: volver a llamarlo con lo mismo no
-/// notifica a nadie (los `ValueNotifier` ya comparan por igualdad).
-void takeCenterAction(VoidCallback action, IconData icon) => _applySafely(() {
-      // El ÍCONO primero y la acción al final: quien escucha reacciona a la
-      // primera notificación que le llegue, y así cuando llega ya encuentra el
-      // par completo en vez de un ícono todavía viejo.
-      centerActionIcon.value = icon;
-      centerAction.value = action;
-    });
+/// Identidad de quien tomó el botón. Antes ese papel lo hacía el propio
+/// `VoidCallback`; con un menú no hay UN callback que sirva de identidad, hay
+/// cuatro. Registrar un no-op de mentira solo para tener token sería mentir
+/// sobre para qué existe el campo.
+final ValueNotifier<Object?> centerActionOwner = ValueNotifier(null);
+
+/// Ruta que tomó el botón. **Sustituye a la constante cableada** que el shell
+/// comparaba (`kCreateRequestRoute`), que impedía que ninguna otra pantalla
+/// pudiera apropiarse del centro.
+final ValueNotifier<String?> centerActionRoute = ValueNotifier(null);
+
+/// Etiqueta bajo el círculo mientras está tomado. Antes vivía a fuego en
+/// `home_shell.dart` ('Añadir foto').
+final ValueNotifier<String?> centerActionLabel = ValueNotifier(null);
+
+/// Destinos del menú. No-nulo = el centro DESPLIEGA en vez de actuar.
+final ValueNotifier<List<CenterMenuItem>?> centerActionMenu = ValueNotifier(null);
+
+/// Toma el botón central.
+///
+/// Idempotente: volver a llamarlo con lo mismo no notifica a nadie. Los
+/// `ValueNotifier` ya comparan por `==`, así que los escalares se guardan
+/// solos; la LISTA necesita la comparación explícita porque `List` no tiene
+/// igualdad por valor en Dart.
+void takeCenterAction({
+  required Object owner,
+  required IconData icon,
+  String? label,
+  String? route,
+  VoidCallback? action,
+  List<CenterMenuItem>? menu,
+}) {
+  assert(action != null || menu != null,
+      'Un botón tomado que no hace nada es justo el estado que esto viene a eliminar.');
+  _applySafely(() {
+    // Todo lo que el shell LEE se asigna antes que `centerAction`/
+    // `centerActionMenu`, que son los que disparan el repintado: así cuando la
+    // notificación llega, quien escucha encuentra el juego completo y no un
+    // ícono todavía viejo.
+    centerActionIcon.value = icon;
+    centerActionLabel.value = label;
+    centerActionRoute.value = route;
+    centerActionOwner.value = owner;
+    if (!listEquals(centerActionMenu.value, menu)) centerActionMenu.value = menu;
+    centerAction.value = action;
+  });
+}
 
 /// Aplica un cambio de estado del centro sin chocar con la fase de build.
 ///
@@ -71,15 +153,18 @@ void _applySafely(VoidCallback apply) {
   apply();
 }
 
-/// Suelta el botón central, pero SOLO si [action] sigue siendo la registrada.
+/// Suelta el botón central, pero SOLO si [owner] sigue siendo el dueño.
 ///
 /// La comprobación de identidad importa por el orden de ciclo de vida de
 /// Flutter: al reemplazar una pantalla, el `initState` de la nueva corre ANTES
-/// del `dispose` de la vieja. Un `releaseCenterAction()` incondicional en ese
-/// `dispose` borraría la acción que la pantalla nueva acaba de registrar y
-/// dejaría el botón muerto otra vez.
-void releaseCenterAction(VoidCallback action) => _applySafely(() {
-      if (!identical(centerAction.value, action)) return;
+/// del `dispose` de la vieja. Un release incondicional en ese `dispose`
+/// borraría lo que la pantalla nueva acaba de registrar.
+void releaseCenterAction(Object owner) => _applySafely(() {
+      if (!identical(centerActionOwner.value, owner)) return;
+      centerActionOwner.value = null;
       centerAction.value = null;
       centerActionIcon.value = null;
+      centerActionLabel.value = null;
+      centerActionRoute.value = null;
+      centerActionMenu.value = null;
     });
