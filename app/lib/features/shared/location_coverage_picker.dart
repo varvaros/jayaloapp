@@ -166,6 +166,22 @@ class LocationCoveragePicker extends StatelessWidget {
   }) {
     final cs = Theme.of(context).colorScheme;
     return DropdownButtonFormField<String>(
+      // Sin key, Flutter reutiliza el mismo _DropdownButtonFormFieldState
+      // entre rebuilds (mismo tipo y posicion en el arbol) y ese estado
+      // retiene el ultimo valor elegido — pero el item elegido siempre sale
+      // de `options` en el siguiente build (es un "agregar", no un
+      // "seleccionar"), asi que el valor retenido deja de estar en `items`
+      // y DropdownButtonFormField lanza "exactly one item". La key cambia
+      // cada vez que `options` cambia, forzando a Flutter a descartar el
+      // estado viejo en vez de reusarlo, con lo que el valor retenido nunca
+      // sobrevive a un rebuild con opciones distintas.
+      //
+      // `hint` entra en la key ademas de `options`: los tres _adder (pais,
+      // provincia, sector) son hermanos en el mismo Column, y con listas de
+      // opciones vacias (p. ej. al montar, antes de elegir nada) `options`
+      // coincide entre mas de uno — `Object.hashAll(const [])` es el mismo
+      // valor siempre — lo que producia keys duplicadas entre hermanos.
+      key: ValueKey('$hint:${Object.hashAll(options)}'),
       initialValue: null,
       isExpanded: true,
       decoration: InputDecoration(

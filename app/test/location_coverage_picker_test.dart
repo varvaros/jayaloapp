@@ -156,14 +156,12 @@ void main() {
     // origen antes de que `addAll` pueda copiar nada.
     //
     // Se elige el sector por "Todos los sectores" y no por un item
-    // individual: tocar un item individual deja el desplegable con opciones
-    // no vacias en el siguiente build y choca con un problema aparte de
-    // `DropdownButtonFormField` (retiene el `value` seleccionado entre
-    // rebuilds; si ese valor deja de estar en `items` porque ya se
-    // selecciono, lanza "exactly one item" incluso con el fix de este
-    // hallazgo aplicado). Con "Todos los sectores" las opciones quedan
-    // vacias en el siguiente build y ese problema no se dispara — mismo
-    // camino de codigo en `_addSector`, sin acoplar dos bugs en un test.
+    // individual: este test es sobre el bug de alias de listas (el fix de
+    // arriba en este mismo archivo), no sobre el bug — ya arreglado, ver los
+    // tests de mas abajo — de `DropdownButtonFormField` reteniendo su
+    // `value` entre rebuilds. Usar "Todos" mantiene este test enfocado en un
+    // solo hallazgo a la vez, y ejercita el mismo camino de codigo en
+    // `_addSector` de todas formas.
     final una = citiesFor(kCountries.first).first;
     final todosLosSectoresDeUna = sectorsFor(kCountries.first, una);
     provincias = [una];
@@ -200,5 +198,54 @@ void main() {
     // La provincia elegida antes de tocar el sector debe seguir ahi.
     expect(provincias, [una]);
     expect(find.widgetWithText(Chip, una), findsOneWidget);
+  });
+
+  testWidgets(
+      'elegir provincias una por una, por nombre, no lanza la excepcion de '
+      'DropdownButtonFormField y sobrevive a picks repetidos', (tester) async {
+    // Regresion: `_adder` reutilizaba el mismo _DropdownButtonFormFieldState
+    // entre rebuilds (sin key) porque es el mismo tipo en la misma posicion
+    // del arbol. Ese estado retiene el value recien elegido, pero el item
+    // elegido SIEMPRE sale de `options` en el siguiente build (es un
+    // "agregar", no un "seleccionar"): el value retenido deja de estar en
+    // `items` y `DropdownButtonFormField` lanza "exactly one item". Esto
+    // pasaba con CUALQUIER provincia o sector individual — el gesto normal,
+    // no un caso raro — y ningun test anterior lo ejercitaba: todos preseteaban
+    // las listas sin tocar el desplegable, o usaban el atajo "Todos los
+    // sectores", que deja `options` vacio y evita el choque por otra via.
+    final ciudades = citiesFor(kCountries.first);
+    final a = ciudades[0];
+    final b = ciudades[1];
+    await montar(tester);
+    await tester.tap(find.text('Provincia'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(a));
+    await tester.pumpAndSettle();
+    expect(provincias, [a]);
+    expect(find.widgetWithText(Chip, a), findsOneWidget);
+    // Segunda provincia individual: si la key no cambiara con `options`, el
+    // desplegable seguiria cargando el _value_ retenido de `a` y esta
+    // segunda seleccion repetiria la misma excepcion.
+    await tester.tap(find.text('Provincia'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(b));
+    await tester.pumpAndSettle();
+    expect(provincias, [a, b]);
+    expect(find.widgetWithText(Chip, b), findsOneWidget);
+  });
+
+  testWidgets(
+      'elegir un sector individual (no "Todos"), por nombre, no lanza la '
+      'excepcion de DropdownButtonFormField', (tester) async {
+    final una = citiesFor(kCountries.first).first;
+    final sectorElegido = sectorsFor(kCountries.first, una).first;
+    provincias = [una];
+    await montar(tester);
+    await tester.tap(find.text('Sector (opcional)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(sectorElegido));
+    await tester.pumpAndSettle();
+    expect(sectores, [sectorElegido]);
+    expect(find.widgetWithText(Chip, sectorElegido), findsOneWidget);
   });
 }
