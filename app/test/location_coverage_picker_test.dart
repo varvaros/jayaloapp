@@ -145,4 +145,60 @@ void main() {
     expect(sectores, isNot(contains(exclusivoDeA)));
     expect(sectores, contains('Parque del Este'));
   });
+
+  testWidgets(
+      'elegir un sector no vacia la provincia cuando el anfitrion muta '
+      'las listas in-place (como hace la pantalla real)', (tester) async {
+    // `provider_onboarding_screen.dart` no reasigna `provincias = cities;`
+    // como el resto de este archivo: hace `_cities..clear()..addAll(cities)`
+    // sobre la lista que YA tiene. Si el widget reenvia su propia `cities`
+    // por referencia (el bug que este test caza), `clear()` vacia tambien el
+    // origen antes de que `addAll` pueda copiar nada.
+    //
+    // Se elige el sector por "Todos los sectores" y no por un item
+    // individual: tocar un item individual deja el desplegable con opciones
+    // no vacias en el siguiente build y choca con un problema aparte de
+    // `DropdownButtonFormField` (retiene el `value` seleccionado entre
+    // rebuilds; si ese valor deja de estar en `items` porque ya se
+    // selecciono, lanza "exactly one item" incluso con el fix de este
+    // hallazgo aplicado). Con "Todos los sectores" las opciones quedan
+    // vacias en el siguiente build y ese problema no se dispara — mismo
+    // camino de codigo en `_addSector`, sin acoplar dos bugs en un test.
+    final una = citiesFor(kCountries.first).first;
+    final todosLosSectoresDeUna = sectorsFor(kCountries.first, una);
+    provincias = [una];
+    await tester.pumpWidget(MaterialApp(
+      theme: jayaloTheme(Brightness.light),
+      home: StatefulBuilder(builder: (c, setLocal) {
+        return Scaffold(
+          body: SingleChildScrollView(
+            child: LocationCoveragePicker(
+              country: pais,
+              cities: provincias,
+              sectors: sectores,
+              onChanged: ({required country, required cities, required sectors}) {
+                setLocal(() {
+                  pais = country;
+                  provincias
+                    ..clear()
+                    ..addAll(cities);
+                  sectores
+                    ..clear()
+                    ..addAll(sectors);
+                });
+              },
+            ),
+          ),
+        );
+      }),
+    ));
+    await tester.tap(find.text('Sector (opcional)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(kAllSectorsLabel));
+    await tester.pumpAndSettle();
+    expect(sectores.toSet(), todosLosSectoresDeUna.toSet());
+    // La provincia elegida antes de tocar el sector debe seguir ahi.
+    expect(provincias, [una]);
+    expect(find.widgetWithText(Chip, una), findsOneWidget);
+  });
 }

@@ -650,14 +650,20 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         cities: _cities,
         sectors: _sectors,
         onChanged: ({required country, required cities, required sectors}) {
+          // `cities`/`sectors` pueden ser el mismo objeto que `_cities`/
+          // `_sectors` (el picker a veces reenvia la lista sin tocar):
+          // copiar ANTES de vaciar, o `clear()` tambien vacia el origen y
+          // `addAll` copia de una lista ya vacia.
+          final nuevasCiudades = List.of(cities);
+          final nuevosSectores = List.of(sectors);
           setState(() {
             _country = country;
             _cities
               ..clear()
-              ..addAll(cities);
+              ..addAll(nuevasCiudades);
             _sectors
               ..clear()
-              ..addAll(sectors);
+              ..addAll(nuevosSectores);
           });
         },
       ),

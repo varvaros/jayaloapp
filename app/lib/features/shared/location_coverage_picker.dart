@@ -57,7 +57,10 @@ class LocationCoveragePicker extends StatelessWidget {
 
   void _addCity(String c) {
     final next = [...cities, c];
-    onChanged(country: country, cities: next, sectors: sectors);
+    // `sectors` se reenvia como copia: un consumidor puede vaciar in-place
+    // lo que recibe (`clear()`/`addAll`) y no debe vaciar tambien `sectors`
+    // de este widget si son el mismo objeto.
+    onChanged(country: country, cities: next, sectors: List.of(sectors));
   }
 
   void _removeCity(String c) {
@@ -80,12 +83,14 @@ class LocationCoveragePicker extends StatelessWidget {
 
   void _addSector(String s) {
     final next = s == kAllSectorsLabel ? availableSectors : [...sectors, s];
-    onChanged(country: country, cities: cities, sectors: next);
+    // `cities` se reenvia como copia por la misma razon que arriba: un
+    // consumidor que mute in-place lo que recibe no debe vaciar `cities`.
+    onChanged(country: country, cities: List.of(cities), sectors: next);
   }
 
   void _removeSector(String s) => onChanged(
         country: country,
-        cities: cities,
+        cities: List.of(cities),
         sectors: sectors.where((x) => x != s).toList(),
       );
 
@@ -142,7 +147,9 @@ class LocationCoveragePicker extends StatelessWidget {
             child: _todosLosSectores
                 ? _chips([kAllSectorsLabel],
                     onRemove: (_) => onChanged(
-                        country: country, cities: cities, sectors: const []))
+                        country: country,
+                        cities: List.of(cities),
+                        sectors: const []))
                 : _chips(sectors, onRemove: _removeSector),
           ),
       ],
