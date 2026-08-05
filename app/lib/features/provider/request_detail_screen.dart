@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/config.dart';
 import '../../core/brand.dart';
+import '../../core/center_action.dart';
 import '../../data/repos.dart';
 import '../../core/motion.dart';
 import '../../core/safe_image_picker.dart';
@@ -30,6 +31,7 @@ import '../shared/wholesale_card.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../../core/unsaved_guard.dart';
+import 'offer_center_menu.dart';
 import 'offer_requirements_warning.dart';
 import 'unlock_flow.dart';
 
@@ -182,6 +184,61 @@ class _ProviderRequestDetailScreenState
         offerChecked: _offerChecked,
         existingOffer: _existingOffer,
       );
+
+  /// Identidad de esta pantalla ante el store del botón central. Un `Object()`
+  /// pelado basta: lo único que se le pide es no ser igual al de nadie más.
+  final Object _centerOwner = Object();
+
+  /// La ruta que el shell compara. Se compone de lo que la pantalla ya sabe, sin
+  /// leer inherited widgets (`GoRouterState.of` no se puede usar en `initState`).
+  /// El shell compara contra `uri.path`, SIN query, así que entrar en edición
+  /// con `?edit=<id>` no rompe la igualdad.
+  String get _centerRoute => '/provider/request/${widget.requestId}';
+
+  /// Tear-offs guardados UNA vez: `CenterMenuItem` compara sus `onTap` por
+  /// igualdad, y un `() => _pickPhoto(...)` nuevo en cada build rompería la
+  /// comparación por valor y repintaría la barra con cada tecla.
+  late final VoidCallback _menuCamera = () => _pickPhoto(ImageSource.camera);
+  late final VoidCallback _menuGallery = () => _pickPhoto(ImageSource.gallery);
+  late final VoidCallback _menuStore = _pickFromStore;
+  late final VoidCallback _menuPortfolio = _pickFromPortfolio;
+
+  /// Pone al día el botón central de la barra según el estado de ESTA pantalla.
+  ///
+  /// ⚠️ Se llama desde `build`, y eso es deliberado. `CreateRequestScreen`
+  /// registra en `initState` y suelta en `dispose`, y le basta porque su estado
+  /// no cambia. Aquí el formulario aparece y desaparece DENTRO de la misma
+  /// pantalla: al enviar la oferta, al entrar en edición en sitio, al
+  /// cancelarla, al borrar. Registrar en esos cuatro sitios funciona hoy y se
+  /// rompe en silencio la primera vez que alguien añada un quinto camino;
+  /// desde `build` no se puede desincronizar.
+  ///
+  /// Escribir notifiers desde `build` es seguro PRECISAMENTE porque
+  /// `_applySafely` (en `core/center_action.dart`) aplaza al final del frame:
+  /// ese es el caso para el que se escribió. Y no realimenta: el
+  /// `ListenableBuilder` del shell envuelve solo la barra, no el `child` del
+  /// Navigator anidado.
+  void _syncCenterAction() {
+    if (!_offerFormVisible) {
+      releaseCenterAction(_centerOwner);
+      return;
+    }
+    takeCenterAction(
+      owner: _centerOwner,
+      icon: Icons.library_add_outlined,
+      label: 'Cargar',
+      route: _centerRoute,
+      menu: buildOfferCenterMenu(
+        busy: _busy,
+        photoCount: _photoCount,
+        maxPhotos: _maxOfferPhotos,
+        onCamera: _menuCamera,
+        onGallery: _menuGallery,
+        onStore: _menuStore,
+        onPortfolio: _menuPortfolio,
+      ),
+    );
+  }
 
   /// Modos de precio del formulario de SERVICIO (paridad web: fijo / rango /
   /// por hora / a evaluar en sitio). El índice es [_svcMode].
@@ -337,6 +394,10 @@ class _ProviderRequestDetailScreenState
 
   @override
   void dispose() {
+    // Salir de la pantalla no siempre pasa por un `build` con el formulario ya
+    // cerrado. La guarda de identidad del store hace que esto sea inofensivo si
+    // la pantalla entrante ya tomó el botón.
+    releaseCenterAction(_centerOwner);
     // Antes de super.dispose(): una pantalla desmontada que se quede
     // registrada bloquearia el atras de la SIGUIENTE pantalla que visite el
     // proveedor.
@@ -368,6 +429,10 @@ class _ProviderRequestDetailScreenState
   /// Cámara = una foto; Galería = VARIAS (pedido PO: permitir seleccionar
   /// varias). Cada una se valida y se corta al llegar al tope.
   Future<void> _pickPhoto(ImageSource source) async {
+    if (_photoCount >= _maxOfferPhotos) {
+      _toast('Ya tienes 5 fotos');
+      return;
+    }
     final List<XFile> picked;
     if (source == ImageSource.gallery) {
       picked = await guardedPick(
@@ -1590,6 +1655,7 @@ class _ProviderRequestDetailScreenState
 
   @override
   Widget build(BuildContext context) {
+    _syncCenterAction();
     final req = _req;
     if (req == null) {
       return Scaffold(
