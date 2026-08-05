@@ -130,7 +130,7 @@ class _ProviderRequestDetailScreenState
   ///
   /// `_hasFiscalReceipt`/`_isStateSupplier` SI cuentan aqui aunque el brief
   /// original no los listaba: son interruptores tocables por el proveedor
-  /// (`:1710-1720`), no solo lectura. En edicion estan `enabled: false` y no
+  /// (`:1773-1790`), no solo lectura. En edicion estan `enabled: false` y no
   /// se pueden tocar, pero en creacion si.
   String _formSnapshot() => [
         _price.text, _min.text, _max.text, _hourly.text, _hours.text,
@@ -142,7 +142,7 @@ class _ProviderRequestDetailScreenState
         '$_offersShipping', '$_offersInstallation', '$_requiresEvaluation',
         '$_hasFiscalReceipt', '$_isStateSupplier',
         _colors.join(','),
-        _photos.length.toString(),
+        _photos.map((x) => x.path).join(','),
         _keptUrls.join(','),
       ].join('\u0000');
 
@@ -209,6 +209,18 @@ class _ProviderRequestDetailScreenState
             ? setState(() => _offerCount = m[widget.requestId] ?? 0)
             : null)
         .catchError((_) {});
+    // Registro inicial, ANTES de la rama edicion/creacion: si `offerForEdit`
+    // (mas abajo) devuelve null o falla, el formulario igual se muestra
+    // (compuerta `:1717-1737`, cae al `else` de abajo) pero `_prefillFromOffer`
+    // nunca corre, y ese era el UNICO otro registro en la rama de edicion.
+    // Sin esto, esa combinacion (fetch fallido + formulario visible) se
+    // quedaba sin guard: se podia escribir una oferta completa y salir sin
+    // aviso. Instantanea vacia aqui es segura: el formulario esta detras del
+    // spinner (`!_offerChecked`) hasta que la carga (la que sea) termine, asi
+    // que nada es alcanzable todavia. `_prefillFromOffer` corrige la
+    // instantanea cuando la oferta si llega.
+    _cleanSnapshot = _formSnapshot();
+    setUnsavedGuard(() => _formSnapshot() != _cleanSnapshot);
     if (_editing) {
       // Modo edición: no hace falta el chequeo "¿ya ofertó?"; traemos la fila
       // COMPLETA de la oferta y prefijamos el formulario.
@@ -265,8 +277,6 @@ class _ProviderRequestDetailScreenState
         if (mounted) setState(() => _offerChecked = true);
       });
     });
-    _cleanSnapshot = _formSnapshot();
-    setUnsavedGuard(() => _formSnapshot() != _cleanSnapshot);
   }
 
   /// Vuelca una oferta existente en los controles del formulario (modo edición).
