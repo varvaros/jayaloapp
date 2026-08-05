@@ -206,99 +206,105 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                   messagesBadge,
                   centerAction,
                   centerActionIcon,
+                  centerActionRoute,
+                  centerActionLabel,
+                  centerActionMenu,
                 ]),
-                builder: (context, _) => FloatingNavBar(
-                  key: const ValueKey('nav-bar-visible'),
-                  centerButtonKey: isClient ? _plusAnchorKey : null,
-                  destinations: dests,
-                  currentIndex: idx,
-                  // Cuando la pantalla al frente se apropió del centro (hoy:
-                  // crear solicitud lo vuelve una CÁMARA, porque ahí dentro
-                  // navegar es un no-op — ver el guard de `onSelected`), la
-                  // barra se pinta con SU ícono y SU etiqueta.
-                  // Guard por ruta: `dispose()` del `CreateRequestScreen`
-                  // corre DESPUÉS de que el shell se reconstruya con la ruta
-                  // nueva, así que `centerActionIcon` puede seguir con el
-                  // valor viejo por un frame. Condicionar a que `loc` siga
-                  // en la ruta que tomó el centro evita el parpadeo.
-                  centerIconOverride: loc == kCreateRequestRoute
-                      ? centerActionIcon.value
-                      : null,
-                  centerLabelOverride:
-                      centerAction.value != null && loc == kCreateRequestRoute
-                          ? 'Añadir foto'
-                          : null,
-                  // Badges de la barra: "Solicitudes" (índice 0, significado por
-                  // rol) y "Mensajes" (mensajes de chat sin leer, pedido PO
-                  // 2026-07-21). Cada pantalla mantiene su contador al día.
-                  badges: {
-                    if (solicitudesBadge.value > 0)
-                      dests[0].route: solicitudesBadge.value,
-                    if (messagesBadge.count > 0)
-                      '/messages': messagesBadge.count,
-                  },
-                  // El centro (crear solicitud) se APILA con `push`: así corre
-                  // la transición modal de su CustomTransitionPage (sube por
-                  // encima de la pestaña actual, que queda viva debajo) y el
-                  // ATRÁS la cierra volviendo a donde estaba. Un `go` la
-                  // trataría como pestaña más (swap sin animación de ruta —
-                  // el gotcha del ShellRoute). El guard evita apilar dos
-                  // copias si se toca ＋ estando ya en la ventana. Las
-                  // pestañas normales siguen con `go` (reemplazo, no pila).
-                  onSelected: (i) {
-                    final d = dests[i];
-                    if (d.isCenter) {
-                      // Si la pantalla al frente tomó el centro, gana ella: es
-                      // justo el caso en que navegar no haría nada. El guard
-                      // de ruta evita invocar un callback de un State que ya
-                      // salió pero cuyo `dispose` aún no corrió.
-                      final taken = centerAction.value;
-                      if (taken != null && loc == kCreateRequestRoute) {
-                        taken();
+                builder: (context, _) {
+                  // El guard por ubicación sigue existiendo por la misma razón
+                  // de siempre: el `dispose()` de la pantalla saliente corre
+                  // DESPUÉS de que el shell se reconstruya con la ruta nueva,
+                  // así que los notifiers pueden traer el valor viejo por un
+                  // frame. Lo que cambia es que ya no compara contra una
+                  // constante: cualquier pantalla puede tomar el botón.
+                  final tomado = loc == centerActionRoute.value;
+                  return FloatingNavBar(
+                    key: const ValueKey('nav-bar-visible'),
+                    centerButtonKey: isClient ? _plusAnchorKey : null,
+                    destinations: dests,
+                    currentIndex: idx,
+                    // Cuando la pantalla al frente se apropió del centro (hoy:
+                    // crear solicitud lo vuelve una CÁMARA, porque ahí dentro
+                    // navegar es un no-op — ver el guard de `onSelected`), la
+                    // barra se pinta con SU ícono y SU etiqueta.
+                    centerIconOverride: tomado ? centerActionIcon.value : null,
+                    centerLabelOverride: tomado ? centerActionLabel.value : null,
+                    centerMenuItems: tomado ? centerActionMenu.value : null,
+                    // Badges de la barra: "Solicitudes" (índice 0, significado por
+                    // rol) y "Mensajes" (mensajes de chat sin leer, pedido PO
+                    // 2026-07-21). Cada pantalla mantiene su contador al día.
+                    badges: {
+                      if (solicitudesBadge.value > 0)
+                        dests[0].route: solicitudesBadge.value,
+                      if (messagesBadge.count > 0)
+                        '/messages': messagesBadge.count,
+                    },
+                    // El centro (crear solicitud) se APILA con `push`: así corre
+                    // la transición modal de su CustomTransitionPage (sube por
+                    // encima de la pestaña actual, que queda viva debajo) y el
+                    // ATRÁS la cierra volviendo a donde estaba. Un `go` la
+                    // trataría como pestaña más (swap sin animación de ruta —
+                    // el gotcha del ShellRoute). El guard evita apilar dos
+                    // copias si se toca ＋ estando ya en la ventana. Las
+                    // pestañas normales siguen con `go` (reemplazo, no pila).
+                    onSelected: (i) {
+                      final d = dests[i];
+                      if (d.isCenter) {
+                        final tomado = loc == centerActionRoute.value;
+                        // Con menú, la barra ya abrió el arco por su cuenta y
+                        // nunca llega hasta aquí. La guarda es defensiva: sin
+                        // ella, un toque que se colara empujaría crear-solicitud
+                        // encima de la oferta a medio llenar, que es justo el bug
+                        // que esta feature viene a eliminar.
+                        if (tomado && centerActionMenu.value != null) return;
+                        final taken = centerAction.value;
+                        if (taken != null && tomado) {
+                          taken();
+                        } else {
+                          // El guardia vive en el helper y mira la pila VIVA del
+                          // router: `loc` viene del build y va un frame por
+                          // detrás, así que dos toques rápidos lo burlaban.
+                          //
+                          // `pushCreateRequestOnce` empuja la CONSTANTE, no
+                          // `d.route`. Hoy coinciden para ambos roles
+                          // (`nav_destinations.dart`), pero si el centro vuelve a
+                          // divergir por rol el botón navegaría a la pantalla
+                          // equivocada sin que ningún test lo notara. El assert
+                          // sella ese acoplamiento.
+                          assert(d.route == kCreateRequestRoute,
+                              'El destino central (${d.route}) dejó de ser $kCreateRequestRoute: '
+                              'pushCreateRequestOnce ya no sirve para este rol.');
+                          pushCreateRequestOnce(context);
+                        }
                       } else {
-                        // El guardia vive en el helper y mira la pila VIVA del
-                        // router: `loc` viene del build y va un frame por
-                        // detrás, así que dos toques rápidos lo burlaban.
-                        //
-                        // `pushCreateRequestOnce` empuja la CONSTANTE, no
-                        // `d.route`. Hoy coinciden para ambos roles
-                        // (`nav_destinations.dart`), pero si el centro vuelve a
-                        // divergir por rol el botón navegaría a la pantalla
-                        // equivocada sin que ningún test lo notara. El assert
-                        // sella ese acoplamiento.
-                        assert(d.route == kCreateRequestRoute,
-                            'El destino central (${d.route}) dejó de ser $kCreateRequestRoute: '
-                            'pushCreateRequestOnce ya no sirve para este rol.');
-                        pushCreateRequestOnce(context);
+                        // Tic de selección SOLO si la pestaña cambia de verdad:
+                        // re-tocar la que ya está activa hace un `go` a la misma
+                        // ruta (no-op visual) y vibrar ahí se sentiría como un
+                        // falso positivo.
+                        if (i != idx) JayaloHaptics.tabChange();
+                        // Con la ventana de crear solicitud abierta, el `go`
+                        // pelado la hacía DESAPARECER de golpe (pedido PO
+                        // 2026-08-03): está APILADA con `push`, y un `go`
+                        // reemplaza la pila entera, así que su transición
+                        // inversa —bajar, 300ms— no llegaba a correr nunca.
+                        // Se cierra con `pop`, que sí la baja, y el cambio de
+                        // pestaña se lanza cuando ha terminado: hacerlo en el
+                        // mismo frame vuelve a abortar la animación.
+                        if (loc == kCreateRequestRoute) {
+                          context.pop();
+                          final espera = JayaloMotion.reduced(context)
+                              ? Duration.zero
+                              : JayaloMotion.page;
+                          Future.delayed(espera, () {
+                            if (context.mounted) context.go(d.route);
+                          });
+                        } else {
+                          context.go(d.route);
+                        }
                       }
-                    } else {
-                      // Tic de selección SOLO si la pestaña cambia de verdad:
-                      // re-tocar la que ya está activa hace un `go` a la misma
-                      // ruta (no-op visual) y vibrar ahí se sentiría como un
-                      // falso positivo.
-                      if (i != idx) JayaloHaptics.tabChange();
-                      // Con la ventana de crear solicitud abierta, el `go`
-                      // pelado la hacía DESAPARECER de golpe (pedido PO
-                      // 2026-08-03): está APILADA con `push`, y un `go`
-                      // reemplaza la pila entera, así que su transición
-                      // inversa —bajar, 300ms— no llegaba a correr nunca.
-                      // Se cierra con `pop`, que sí la baja, y el cambio de
-                      // pestaña se lanza cuando ha terminado: hacerlo en el
-                      // mismo frame vuelve a abortar la animación.
-                      if (loc == kCreateRequestRoute) {
-                        context.pop();
-                        final espera = JayaloMotion.reduced(context)
-                            ? Duration.zero
-                            : JayaloMotion.page;
-                        Future.delayed(espera, () {
-                          if (context.mounted) context.go(d.route);
-                        });
-                      } else {
-                        context.go(d.route);
-                      }
-                    }
-                  },
-                ),
+                    },
+                  );
+                },
               )
             : const SizedBox.shrink(key: ValueKey('nav-bar-hidden')),
       ),

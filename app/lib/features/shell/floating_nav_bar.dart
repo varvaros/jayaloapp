@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../core/center_action.dart';
 import '../../core/motion.dart';
 import 'nav_destinations.dart';
 
@@ -72,6 +73,7 @@ class FloatingNavBar extends StatelessWidget {
     this.centerButtonKey,
     this.centerIconOverride,
     this.centerLabelOverride,
+    this.centerMenuItems,
   });
 
   final List<NavDestination> destinations;
@@ -99,6 +101,12 @@ class FloatingNavBar extends StatelessWidget {
   /// [onSelected], igual que hace con los badges.
   final IconData? centerIconOverride;
   final String? centerLabelOverride;
+
+  /// Destinos que el centro DESPLIEGA en arco al tocarlo, o `null` para el
+  /// comportamiento de siempre (un toque = un `onSelected`). La barra sigue sin
+  /// saber qué hace cada ítem: solo lo pinta y lo avisa, igual que con los
+  /// badges. Quien lo dibuja es `center_arc_menu.dart`.
+  final List<CenterMenuItem>? centerMenuItems;
 
   @override
   Widget build(BuildContext context) {
