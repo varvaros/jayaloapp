@@ -28,6 +28,7 @@ import '../shared/section_heading.dart';
 import '../shared/wholesale_card.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../../core/unsaved_guard.dart';
 import 'offer_requirements_warning.dart';
 import 'unlock_flow.dart';
 
@@ -118,6 +119,32 @@ class _ProviderRequestDetailScreenState
   // Modo edición: fotos YA subidas de la oferta (URLs) que se conservan; el
   // proveedor puede quitarlas o sumar nuevas ([_photos]) hasta el tope.
   final List<String> _keptUrls = [];
+
+  /// Foto del formulario en su estado "limpio": vacio al crear, o lo que dejo
+  /// `_prefillFromOffer` al editar. La suciedad se decide comparando contra
+  /// esto, no contra cadenas vacias.
+  String _cleanSnapshot = '';
+
+  /// Serializa TODO lo que el proveedor puede cambiar. Si se anade un campo
+  /// nuevo al formulario, hay que sumarlo aqui o el aviso de salida no lo vera.
+  ///
+  /// `_hasFiscalReceipt`/`_isStateSupplier` SI cuentan aqui aunque el brief
+  /// original no los listaba: son interruptores tocables por el proveedor
+  /// (`:1710-1720`), no solo lectura. En edicion estan `enabled: false` y no
+  /// se pueden tocar, pero en creacion si.
+  String _formSnapshot() => [
+        _price.text, _min.text, _max.text, _hourly.text, _hours.text,
+        _availability.text, _duration.text,
+        _shipping.text, _installation.text, _evaluation.text,
+        _brand.text, _warranty.text, _delivery.text,
+        _condition,
+        '$_fixed', '$_svcMode',
+        '$_offersShipping', '$_offersInstallation', '$_requiresEvaluation',
+        '$_hasFiscalReceipt', '$_isStateSupplier',
+        _colors.join(','),
+        _photos.length.toString(),
+        _keptUrls.join(','),
+      ].join('\u0000');
 
   /// Reputación del CLIENTE que hizo la solicitud (pedido PO 2026-07-22): el
   /// proveedor la ve para decidir si le conviene ofertar. No expone contacto.
@@ -215,6 +242,11 @@ class _ProviderRequestDetailScreenState
         _hasFiscalReceipt = b?.hasFiscalReceipt ?? false;
         _isStateSupplier = b?.isStateSupplier ?? false;
       });
+      // Re-fijar la instantanea: el premarcado llega async y no es una
+      // edicion del proveedor. El formulario todavia esta detras del spinner
+      // (`!_offerChecked`, mas abajo) asi que no hay nada que el proveedor
+      // pueda haber tocado todavia.
+      _cleanSnapshot = _formSnapshot();
       if (b == null) {
         setState(() => _offerChecked = true);
         return;
@@ -233,6 +265,8 @@ class _ProviderRequestDetailScreenState
         if (mounted) setState(() => _offerChecked = true);
       });
     });
+    _cleanSnapshot = _formSnapshot();
+    setUnsavedGuard(() => _formSnapshot() != _cleanSnapshot);
   }
 
   /// Vuelca una oferta existente en los controles del formulario (modo edición).
@@ -272,10 +306,18 @@ class _ProviderRequestDetailScreenState
       ..clear()
       ..addAll(((o['image_urls'] as List?)?.cast<String>() ?? const [])
           .where((u) => u.isNotEmpty));
+    // Al final, con TODO ya rellenado: si fuera antes, la instantanea
+    // guardaria el formulario vacio y la pantalla naceria sucia.
+    _cleanSnapshot = _formSnapshot();
+    setUnsavedGuard(() => _formSnapshot() != _cleanSnapshot);
   }
 
   @override
   void dispose() {
+    // Antes de super.dispose(): una pantalla desmontada que se quede
+    // registrada bloquearia el atras de la SIGUIENTE pantalla que visite el
+    // proveedor.
+    setUnsavedGuard(null);
     for (final c in [
       _price, _min, _max, _hourly, _hours,
       _availability, _duration, _shipping, _installation, _evaluation,
@@ -649,6 +691,10 @@ class _ProviderRequestDetailScreenState
         );
         if (!mounted) return;
         _toast('Oferta actualizada');
+        // Enviada: lo que hay en el formulario ya esta guardado, ni la
+        // navegacion de abajo (ruta) ni quedarse en esta pantalla (en sitio)
+        // deben preguntar nada. Cubre las DOS salidas de este brazo.
+        setUnsavedGuard(null);
         // Entrada en sitio (pedido PO 2026-08-03): no se sale de la solicitud;
         // se vuelve a modo lectura con la tarjeta reflejando lo recién
         // guardado. `_busy` lo repone el `finally` de abajo.
@@ -726,6 +772,9 @@ class _ProviderRequestDetailScreenState
         hasFiscalReceipt: _hasFiscalReceipt,
         isStateSupplier: _isStateSupplier,
       );
+      // Enviada: lo que hay en el formulario ya esta guardado, la navegacion
+      // que viene (tras la celebracion) no debe preguntar nada.
+      setUnsavedGuard(null);
       if (!mounted) return;
       // ¿Guardar lo ofertado como producto de la tienda? (pedido PO): antes de
       // la celebración, para reusarlo en futuras ofertas.
@@ -990,6 +1039,15 @@ class _ProviderRequestDetailScreenState
       _photos.clear();
       _condition = '';
     });
+    // Cancelar YA es la respuesta explicita del proveedor a "¿salir y
+    // descartar los cambios?" — no debe preguntar de nuevo. Este metodo no
+    // vuelve a correr `_prefillFromOffer` (el formulario ya no se muestra:
+    // vuelve la tarjeta), asi que lo que haya quedado escrito en los
+    // controladores de texto se toma como el nuevo estado "limpio". La
+    // proxima vez que se entre en edicion, `_editInPlace` -> `_prefillFromOffer`
+    // vuelve a rellenar todo desde `_existingOffer` (que nunca cambio, porque
+    // no se guardo nada) y pisa cualquier resto de este intento cancelado.
+    _cleanSnapshot = _formSnapshot();
   }
 
   /// Tarjeta de la oferta ya enviada, consciente del ESTADO (pedido PO
@@ -1858,7 +1916,16 @@ class _ProviderRequestDetailScreenState
           clipBehavior: Clip.antiAlias,
           elevation: 1,
           child: InkWell(
-            onTap: () => context.pop(),
+            onTap: () async {
+              // Mismo aviso que el atras del sistema: esta flecha no pasa por
+              // BackGuard.
+              if (hasUnsavedChanges()) {
+                final salir = await confirmDiscard(context);
+                if (!salir) return;
+                if (!context.mounted) return;
+              }
+              context.pop();
+            },
             child: SizedBox(
               width: 42,
               height: 42,
