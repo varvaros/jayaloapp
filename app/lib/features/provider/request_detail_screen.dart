@@ -16,7 +16,6 @@ import '../../domain/money.dart';
 import '../../domain/offer_edit.dart';
 import '../../domain/offer_message.dart';
 import '../../domain/pricing.dart';
-import '../../domain/wholesale.dart';
 import '../../domain/finalist_slots.dart';
 import '../../domain/request_requirements.dart';
 import '../shared/request_requirement_badges.dart';
@@ -26,8 +25,10 @@ import '../shared/customer_rep_card.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
 import '../shared/section_heading.dart';
+import '../shared/wholesale_card.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../../core/unsaved_guard.dart';
 import 'offer_requirements_warning.dart';
 import 'unlock_flow.dart';
 
@@ -119,6 +120,32 @@ class _ProviderRequestDetailScreenState
   // proveedor puede quitarlas o sumar nuevas ([_photos]) hasta el tope.
   final List<String> _keptUrls = [];
 
+  /// Foto del formulario en su estado "limpio": vacio al crear, o lo que dejo
+  /// `_prefillFromOffer` al editar. La suciedad se decide comparando contra
+  /// esto, no contra cadenas vacias.
+  String _cleanSnapshot = '';
+
+  /// Serializa TODO lo que el proveedor puede cambiar. Si se anade un campo
+  /// nuevo al formulario, hay que sumarlo aqui o el aviso de salida no lo vera.
+  ///
+  /// `_hasFiscalReceipt`/`_isStateSupplier` SI cuentan aqui aunque el brief
+  /// original no los listaba: son interruptores tocables por el proveedor
+  /// (`:1773-1790`), no solo lectura. En edicion estan `enabled: false` y no
+  /// se pueden tocar, pero en creacion si.
+  String _formSnapshot() => [
+        _price.text, _min.text, _max.text, _hourly.text, _hours.text,
+        _availability.text, _duration.text,
+        _shipping.text, _installation.text, _evaluation.text,
+        _brand.text, _warranty.text, _delivery.text,
+        _condition,
+        '$_fixed', '$_svcMode',
+        '$_offersShipping', '$_offersInstallation', '$_requiresEvaluation',
+        '$_hasFiscalReceipt', '$_isStateSupplier',
+        _colors.join(','),
+        _photos.map((x) => x.path).join(','),
+        _keptUrls.join(','),
+      ].join('\u0000');
+
   /// Reputación del CLIENTE que hizo la solicitud (pedido PO 2026-07-22): el
   /// proveedor la ve para decidir si le conviene ofertar. No expone contacto.
   Map<String, dynamic>? _custRep;
@@ -182,6 +209,18 @@ class _ProviderRequestDetailScreenState
             ? setState(() => _offerCount = m[widget.requestId] ?? 0)
             : null)
         .catchError((_) {});
+    // Registro inicial, ANTES de la rama edicion/creacion: si `offerForEdit`
+    // (mas abajo) devuelve null o falla, el formulario igual se muestra
+    // (compuerta `:1717-1737`, cae al `else` de abajo) pero `_prefillFromOffer`
+    // nunca corre, y ese era el UNICO otro registro en la rama de edicion.
+    // Sin esto, esa combinacion (fetch fallido + formulario visible) se
+    // quedaba sin guard: se podia escribir una oferta completa y salir sin
+    // aviso. Instantanea vacia aqui es segura: el formulario esta detras del
+    // spinner (`!_offerChecked`) hasta que la carga (la que sea) termine, asi
+    // que nada es alcanzable todavia. `_prefillFromOffer` corrige la
+    // instantanea cuando la oferta si llega.
+    _cleanSnapshot = _formSnapshot();
+    setUnsavedGuard(() => _formSnapshot() != _cleanSnapshot);
     if (_editing) {
       // Modo edición: no hace falta el chequeo "¿ya ofertó?"; traemos la fila
       // COMPLETA de la oferta y prefijamos el formulario.
@@ -215,6 +254,11 @@ class _ProviderRequestDetailScreenState
         _hasFiscalReceipt = b?.hasFiscalReceipt ?? false;
         _isStateSupplier = b?.isStateSupplier ?? false;
       });
+      // Re-fijar la instantanea: el premarcado llega async y no es una
+      // edicion del proveedor. El formulario todavia esta detras del spinner
+      // (`!_offerChecked`, mas abajo) asi que no hay nada que el proveedor
+      // pueda haber tocado todavia.
+      _cleanSnapshot = _formSnapshot();
       if (b == null) {
         setState(() => _offerChecked = true);
         return;
@@ -237,8 +281,8 @@ class _ProviderRequestDetailScreenState
 
   /// Vuelca una oferta existente en los controles del formulario (modo edición).
   /// Los campos se guardan como columnas propias (no solo dentro del mensaje),
-  /// así que la reconstrucción es directa. Único no restaurable: "Nuevo/Usado"
-  /// (`_condition`), que la web guarda solo dentro del mensaje.
+  /// asi que la reconstruccion es directa. "Nuevo/Usado" no tiene columna
+  /// propia y se recupera del mensaje con `conditionFromOfferMessage`.
   void _prefillFromOffer(Map<String, dynamic> o) {
     final mode = o['pricing_mode'] as String? ?? 'fixed';
     _svcMode = _svcModes.indexOf(mode).clamp(0, _svcModes.length - 1);
@@ -263,6 +307,7 @@ class _ProviderRequestDetailScreenState
     _isStateSupplier = o['is_state_supplier'] == true;
     _brand.text = (o['product_brand'] as String?) ?? '';
     _warranty.text = (o['product_warranty'] as String?) ?? '';
+    _condition = conditionFromOfferMessage((o['message'] as String?) ?? '');
     _delivery.text = (o['delivery_time'] as String?) ?? '';
     _colors
       ..clear()
@@ -271,10 +316,18 @@ class _ProviderRequestDetailScreenState
       ..clear()
       ..addAll(((o['image_urls'] as List?)?.cast<String>() ?? const [])
           .where((u) => u.isNotEmpty));
+    // Al final, con TODO ya rellenado: si fuera antes, la instantanea
+    // guardaria el formulario vacio y la pantalla naceria sucia.
+    _cleanSnapshot = _formSnapshot();
+    setUnsavedGuard(() => _formSnapshot() != _cleanSnapshot);
   }
 
   @override
   void dispose() {
+    // Antes de super.dispose(): una pantalla desmontada que se quede
+    // registrada bloquearia el atras de la SIGUIENTE pantalla que visite el
+    // proveedor.
+    setUnsavedGuard(null);
     for (final c in [
       _price, _min, _max, _hourly, _hours,
       _availability, _duration, _shipping, _installation, _evaluation,
@@ -533,6 +586,19 @@ class _ProviderRequestDetailScreenState
       // validación de precio aquí.
     }
 
+    // Solo producto: en servicio estos dos campos ni se envian (ver los
+    // `isService ? '' : ...` de composeOfferMessage mas abajo).
+    if (!isService) {
+      if (_condition.isEmpty) {
+        return _toast('Elige si el producto es nuevo o usado.');
+      }
+      if (_warranty.text.trim().isEmpty) {
+        // 'Sin garantia' es uno de los presets: exigir el campo no obliga a
+        // nadie a prometer garantia, solo a decirlo.
+        return _toast('Elige la garantía.');
+      }
+    }
+
     // Cotejo contra lo que el cliente marcó. Solo al CREAR: en edición las dos
     // capacidades están congeladas (su UPDATE está denegado), así que no habría
     // nada que corregir y el aviso solo estorbaría.
@@ -635,6 +701,10 @@ class _ProviderRequestDetailScreenState
         );
         if (!mounted) return;
         _toast('Oferta actualizada');
+        // Enviada: lo que hay en el formulario ya esta guardado, ni la
+        // navegacion de abajo (ruta) ni quedarse en esta pantalla (en sitio)
+        // deben preguntar nada. Cubre las DOS salidas de este brazo.
+        setUnsavedGuard(null);
         // Entrada en sitio (pedido PO 2026-08-03): no se sale de la solicitud;
         // se vuelve a modo lectura con la tarjeta reflejando lo recién
         // guardado. `_busy` lo repone el `finally` de abajo.
@@ -712,6 +782,9 @@ class _ProviderRequestDetailScreenState
         hasFiscalReceipt: _hasFiscalReceipt,
         isStateSupplier: _isStateSupplier,
       );
+      // Enviada: lo que hay en el formulario ya esta guardado, la navegacion
+      // que viene (tras la celebracion) no debe preguntar nada.
+      setUnsavedGuard(null);
       if (!mounted) return;
       // ¿Guardar lo ofertado como producto de la tienda? (pedido PO): antes de
       // la celebración, para reusarlo en futuras ofertas.
@@ -976,6 +1049,15 @@ class _ProviderRequestDetailScreenState
       _photos.clear();
       _condition = '';
     });
+    // Cancelar YA es la respuesta explicita del proveedor a "¿salir y
+    // descartar los cambios?" — no debe preguntar de nuevo. Este metodo no
+    // vuelve a correr `_prefillFromOffer` (el formulario ya no se muestra:
+    // vuelve la tarjeta), asi que lo que haya quedado escrito en los
+    // controladores de texto se toma como el nuevo estado "limpio". La
+    // proxima vez que se entre en edicion, `_editInPlace` -> `_prefillFromOffer`
+    // vuelve a rellenar todo desde `_existingOffer` (que nunca cambio, porque
+    // no se guardo nada) y pisa cualquier resto de este intento cancelado.
+    _cleanSnapshot = _formSnapshot();
   }
 
   /// Tarjeta de la oferta ya enviada, consciente del ESTADO (pedido PO
@@ -1093,9 +1175,31 @@ class _ProviderRequestDetailScreenState
 
   /// Campos de precio, ramificados por kind: producto = fijo/rango; servicio =
   /// 4 modos (fijo/rango/por hora/a evaluar), paridad con la web.
+  ///
+  /// Todo el bloque va dentro de un marco violeta (pedido PO 2026-08-04). El
+  /// selector de modo entra en el marco a proposito: elegir "Rango" o "Por
+  /// hora" es parte de decir el precio, no un ajuste aparte.
   List<Widget> _pricingFields(BuildContext context) {
-    if (!_isService) {
-      return [
+    final cs = Theme.of(context).colorScheme;
+    return [
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: cs.primary.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.primary, width: 1.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: _isService
+              ? _servicePricing(context)
+              : _productPricing(context),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _productPricing(BuildContext context) => [
         PillSegmented(
           options: const ['Precio fijo', 'Rango'],
           index: _fixed ? 0 : 1,
@@ -1111,17 +1215,16 @@ class _ProviderRequestDetailScreenState
             Expanded(child: _numField(_max, 'Hasta (RD\$)')),
           ]),
       ];
-    }
-    return [
-      PillSegmented(
-        options: const ['Fijo', 'Rango', 'Por hora', 'A evaluar'],
-        index: _svcMode,
-        onChanged: (i) => setState(() => _svcMode = i),
-      ),
-      const SizedBox(height: 12),
-      ..._svcModeFields(context),
-    ];
-  }
+
+  List<Widget> _servicePricing(BuildContext context) => [
+        PillSegmented(
+          options: const ['Fijo', 'Rango', 'Por hora', 'A evaluar'],
+          index: _svcMode,
+          onChanged: (i) => setState(() => _svcMode = i),
+        ),
+        const SizedBox(height: 12),
+        ..._svcModeFields(context),
+      ];
 
   List<Widget> _svcModeFields(BuildContext context) {
     switch (_svcModes[_svcMode]) {
@@ -1196,10 +1299,13 @@ class _ProviderRequestDetailScreenState
       style: TextStyle(
           fontSize: 13, fontWeight: FontWeight.w600, color: jayaloHead(context)));
 
-  /// ¿La sección "Información" tiene algo que enseñar? Es exactamente lo que
-  /// se dibuja debajo del encabezado: datos de mayoreo, bullets y presupuesto.
+  /// ¿La seccion "Informacion" tiene algo que ensenar? Es exactamente lo que
+  /// se dibuja debajo del encabezado: bullets y presupuesto.
+  ///
+  /// `is_wholesale` NO cuenta desde 2026-08-04: los datos de mayoreo se
+  /// mudaron a `WholesaleCard`, arriba con el titulo. Volver a sumarlo aqui
+  /// deja "INFORMACION" flotando sobre un divisor sin nada debajo.
   static bool _hasInfo(Map<String, dynamic> req, List<String> bullets) =>
-      req['is_wholesale'] == true ||
       bullets.isNotEmpty ||
       requestBudgetLabel(req['budget_min'] as num?, req['budget_max'] as num?) !=
           null;
@@ -1287,11 +1393,11 @@ class _ProviderRequestDetailScreenState
   /// Detalles del producto con selectores (paridad web): estado (nuevo/usado),
   /// color (círculos), garantía (chips) y tiempo de entrega (calendario).
   List<Widget> _productDetails(BuildContext context) => [
-        _sectionLabel('Detalles del producto (opcional)'),
+        _sectionLabel('Detalles del producto'),
         const SizedBox(height: 8),
         _txtField(_brand, 'Marca'),
         const SizedBox(height: 14),
-        _sectionLabel('Estado'),
+        _sectionLabel('Estado *'),
         const SizedBox(height: 8),
         _chipSelect(_conditionOptions, _condition,
             (v) => setState(() => _condition = v)),
@@ -1300,7 +1406,7 @@ class _ProviderRequestDetailScreenState
         const SizedBox(height: 8),
         _colorSwatches(),
         const SizedBox(height: 14),
-        _sectionLabel('Garantía'),
+        _sectionLabel('Garantía *'),
         const SizedBox(height: 8),
         _chipSelect(_warrantyPresets, _warranty.text,
             (v) => setState(() => _warranty.text = v)),
@@ -1489,7 +1595,6 @@ class _ProviderRequestDetailScreenState
       );
     }
     final cs = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final bullets = List<String>.from(req['bullets'] as List? ?? const []);
     final images =
         ((req['image_urls'] as List?)?.cast<String>() ?? const <String>[])
@@ -1537,13 +1642,13 @@ class _ProviderRequestDetailScreenState
                           color: jayaloHead(context))),
                   if (req['is_wholesale'] == true)
                     Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: StatusChip(
-                          label: 'Al por mayor',
-                          icon: Icons.storefront_outlined,
-                          tone: dark
-                              ? JayaloStatus.respondedDark
-                              : JayaloStatus.respondedLight),
+                      padding: const EdgeInsets.only(top: 10),
+                      child: WholesaleCard(
+                        quantity: (req['wholesale_quantity'] as num?)?.toInt(),
+                        split: req['wholesale_split'] as String?,
+                        packaging: req['wholesale_packaging'] as String?,
+                        note: req['wholesale_note'] as String?,
+                      ),
                     ),
                   // Lo que el cliente EXIGE. Va con el título y el chip de
                   // mayoreo, no bajo "Información": es identidad de la
@@ -1573,34 +1678,14 @@ class _ProviderRequestDetailScreenState
                   ),
                   // ── 2) INFORMACIÓN ──
                   // El encabezado SOLO si hay algo debajo: una solicitud sin
-                  // bullets, sin presupuesto y sin datos de mayoreo dejaba
-                  // "INFORMACIÓN" flotando sobre un divisor (visto en device
-                  // 2026-08-01). Mismo criterio que `BusinessDetailsCard`, que
-                  // no se dibuja si no tiene filas.
+                  // bullets y sin presupuesto dejaba "INFORMACIÓN" flotando
+                  // sobre un divisor (visto en device 2026-08-01). Los datos
+                  // de mayoreo NO cuentan aquí (ver docstring de `_hasInfo`)
+                  // — viven en `WholesaleCard`, arriba con el título. Mismo
+                  // criterio que `BusinessDetailsCard`, que no se dibuja si
+                  // no tiene filas.
                   if (_hasInfo(req, bullets))
                     sectionHeading(context, 'Información'),
-                  if (req['is_wholesale'] == true) ...[
-                    const SizedBox(height: 8),
-                    if (req['wholesale_quantity'] != null)
-                      Text('Cantidad: ${req['wholesale_quantity']}',
-                          style: TextStyle(
-                              fontSize: 13, color: cs.onSurfaceVariant)),
-                    if (req['wholesale_split'] != null)
-                      Text(
-                          'División: ${wholesaleSplitLabel(req['wholesale_split'] as String?)}',
-                          style: TextStyle(
-                              fontSize: 13, color: cs.onSurfaceVariant)),
-                    if (req['wholesale_packaging'] != null)
-                      Text(
-                          'Empaque: ${wholesalePackagingLabel(req['wholesale_packaging'] as String?)}',
-                          style: TextStyle(
-                              fontSize: 13, color: cs.onSurfaceVariant)),
-                    if ((req['wholesale_note'] as String?)?.isNotEmpty ==
-                        true)
-                      Text('Detalle: ${req['wholesale_note']}',
-                          style: TextStyle(
-                              fontSize: 13, color: cs.onSurfaceVariant)),
-                  ],
                   if (bullets.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Text('Detalles',
@@ -1843,7 +1928,16 @@ class _ProviderRequestDetailScreenState
           clipBehavior: Clip.antiAlias,
           elevation: 1,
           child: InkWell(
-            onTap: () => context.pop(),
+            onTap: () async {
+              // Mismo aviso que el atras del sistema: esta flecha no pasa por
+              // BackGuard.
+              if (hasUnsavedChanges()) {
+                final salir = await confirmDiscard(context);
+                if (!salir) return;
+                if (!context.mounted) return;
+              }
+              context.pop();
+            },
             child: SizedBox(
               width: 42,
               height: 42,

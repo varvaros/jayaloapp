@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/brand.dart';
 import '../../domain/request_requirements.dart';
 
 /// Lo que el cliente exigió en su solicitud y si ESTA oferta lo cubre, dentro de
@@ -23,6 +24,8 @@ class OfferRequirementCoverage extends StatelessWidget {
   Widget build(BuildContext context) {
     if (coverage.isEmpty) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final verde = dark ? JayaloColors.dSuccess : JayaloColors.success;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -41,21 +44,27 @@ class OfferRequirementCoverage extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Tono neutro también en el negativo (decisión PO): sin ámbar ni
-                // ícono de alarma. El cliente ve el hueco y decide; no se acusa
-                // a un proveedor que quizá cumple y solo no lo declaró.
+                // Verde lo que esta oferta cubre, gris lo que no (pedido PO
+                // 2026-08-04, que revierte la decision anterior de pintar los
+                // dos estados en gris). El negativo sigue SIN ambar ni icono
+                // de alarma: no se acusa a un proveedor que quiza cumple y
+                // solo no lo declaro. El estado tampoco depende solo del
+                // color: los dos iconos ya son distintos.
                 Icon(
                   c.covered
                       ? Icons.check_circle_outline
                       : Icons.remove_circle_outline,
                   size: 13,
-                  color: cs.onSurfaceVariant,
+                  color: c.covered ? verde : cs.onSurfaceVariant,
                 ),
                 const SizedBox(width: 5),
                 Expanded(
                   child: Text(
                     c.label,
-                    style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: c.covered ? verde : cs.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],

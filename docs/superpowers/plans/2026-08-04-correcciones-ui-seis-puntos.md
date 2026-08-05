@@ -2250,3 +2250,76 @@ cd /c/Users/ac/Downloads/jayalo-main/jayalo-main && npx tsc --noEmit && npm run 
 Nada se pushea ni se mergea sin decisión del PO. Estado esperado al cierre:
 dos ramas nuevas sin pushear, un commit suelto en
 `feat/cotejo-visible-cliente`, y el guion de smoke con sus casillas marcadas.
+
+---
+
+## Task 17: Quitar la caja de texto libre de la oferta (web)
+
+**Añadida el 2026-08-04 por decisión del PO**, después de la investigación de
+paridad: «el comentario no debería estar en la web tampoco. Es un hueco para
+que pongan datos de contacto».
+
+### Lo que la investigación encontró, y por qué el alcance es más pequeño de lo que parece
+
+En el formulario de **crear** oferta **no hay ningún campo de texto libre**.
+`comment` tiene exactamente tres escritores, ninguno es un input del usuario:
+
+- `applyPackage` — une las líneas del paquete del proveedor.
+- `loadFromProduct` — nombre y descripción del producto de su catálogo.
+- `clearFromProduct` — lo vacía.
+
+Ese contenido nace de `provider_products` / `provider_packages`, cuyas columnas
+`name` y `description` **ya las vigila el trigger `enforce_no_contact_info`** en
+origen. Así que ahí no hay hueco que tapar.
+
+El hueco real es **una sola caja**: el `<Textarea>` «Mensaje» de
+`ImproveOfferDialog`, donde el proveedor sí escribe libremente, y cuyo valor va
+directo a `provider_offers.message`.
+
+### Diseño
+
+Quitar ese `<Textarea>` y su estado editable. **No** borrar el texto ya
+guardado: al mejorar una oferta, la parte no-condición del mensaje se conserva
+tal cual estaba.
+
+Concretamente, hoy el diálogo hace `splitCondition(offer.message)` al abrir y
+`withCondition(condition, comment)` al guardar. Se mantiene exactamente ese
+flujo — lo único que desaparece es la capacidad de **editar** `comment`. El
+valor entra y sale intacto.
+
+Se muestra el mensaje en **solo lectura** dentro del diálogo, para que el
+proveedor siga viendo qué lee el cliente. Ocultarlo del todo sería peor: dejaría
+al proveedor sin saber qué se está enviando en su nombre.
+
+La condición («Nuevo/Usado») y el precio siguen siendo editables: son campos
+estructurados, no texto libre.
+
+### Lo que este cambio NO hace, y conviene decirlo
+
+No cierra la elusión de contacto. El trigger vigila ocho columnas de
+`provider_offers` y varias siguen siendo texto libre en las dos superficies
+(`availability_note`, `estimated_duration`, `product_brand`, `delivery_time`,
+`rejection_reason`, `cancellation_reason`). Quitar esta caja estrecha la
+superficie y da paridad con la app; la barrera sigue siendo el trigger.
+
+Aparte, la guarda actual no detecta handles de redes sociales, números
+deletreados, números extranjeros ni dígitos separados con `/` — este último
+excluido a propósito del normalizador. Endurecerla es un trabajo distinto y
+**no entra aquí**.
+
+### Efecto sobre la Task 14
+
+`ImproveOfferDialog` quedó sin aviso de «cambios sin guardar» a propósito,
+porque esta tarea lo reestructura. Al terminar aquí, ese diálogo sigue teniendo
+precio y condición editables: **decidir y dejar dicho** si merece su propio
+aviso al cerrar, o si con dos campos estructurados no hace falta. Registrar la
+decisión, no dejarla implícita.
+
+### Verificación
+
+`npx tsc --noEmit` en 0 y la suite verde. El typecheck es aquí el que caza los
+usos que queden del estado eliminado.
+
+Ningún test cubre el diálogo (vitest corre en node). La comprobación real es del
+smoke: mejorar una oferta creada desde el catálogo y confirmar que el texto del
+producto sigue llegando al cliente intacto, y que ya no hay dónde escribir.

@@ -11,9 +11,11 @@ import '../../core/geocode_client.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
+import '../../domain/locations.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
 import '../shared/brand_kit.dart';
+import '../shared/location_coverage_picker.dart';
 import '../shared/violet_header.dart';
 
 /// Alta de proveedor (spec §7): pasos que SOLO recolectan; la única escritura
@@ -52,10 +54,9 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   List<Map<String, dynamic>> _dbRubros = [];
   bool _loadingRubros = false;
   String? _rubrosError;
+  String _country = kCountries.first;
   final List<String> _cities = [];
   final List<String> _sectors = [];
-  final _cityInput = TextEditingController();
-  final _sectorInput = TextEditingController();
   final _address = TextEditingController();
   bool _locating = false;
   // Coordenada de "Usar mi ubicación". Ahora se PERSISTE: antes se pedía
@@ -120,7 +121,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     _page.dispose();
     for (final c in [
       _first, _last, _name, _rnc, _profession,
-      _cityInput, _sectorInput, _address, _local,
+      _address, _local,
     ]) {
       c.dispose();
     }
@@ -294,7 +295,9 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           .lookup(lat: pos.latitude, lng: pos.longitude, accessToken: token);
       if (!mounted) return;
       setState(() {
-        if (place.city.isNotEmpty && !_cities.contains(place.city)) {
+        if (place.city.isNotEmpty &&
+            citiesFor(_country).contains(place.city) &&
+            !_cities.contains(place.city)) {
           _cities.add(place.city);
         }
         if (place.sector.isNotEmpty && !_sectors.contains(place.sector)) {
@@ -304,23 +307,16 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           _address.text = place.street;
         }
       });
+      // La ciudad tiene que existir en el catalogo o el selector no puede
+      // ofrecerla: si no coincide, se avisa y el proveedor la elige a mano.
+      if (place.city.isNotEmpty && !citiesFor(_country).contains(place.city)) {
+        _snack('No reconocimos "${place.city}" — elige tu provincia.');
+      }
     } catch (_) {
       _snack('No pudimos captar tu ubicación — escribe tu ciudad y sector.');
     } finally {
       if (mounted) setState(() => _locating = false);
     }
-  }
-
-  void _addChip(List<String> list, TextEditingController input) {
-    final v = input.text.trim();
-    if (v.isEmpty || list.contains(v)) {
-      input.clear();
-      return;
-    }
-    setState(() {
-      list.add(v);
-      input.clear();
-    });
   }
 
   // ── WhatsApp: chequeo inmediato (rebote de 500 ms) ─────────────────────────
@@ -380,7 +376,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           'rnc': _businessType == 'formal' ? _rnc.text.trim() : '',
           'description': '',
           'whatsapp': phoneE164,
-          'country': 'República Dominicana',
+          'country': _country,
           // Varias ciudades/sectores se guardan unidas por ", " (como la web).
           'city': _cities.join(', '),
           'sector': _sectors.join(', '),
@@ -649,10 +645,28 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         label: const Text('Usar mi ubicación'),
       ),
       const SizedBox(height: 12),
-      _chipField(controller: _cityInput, label: 'Ciudad', list: _cities),
-      const SizedBox(height: 10),
-      _chipField(
-          controller: _sectorInput, label: 'Sector (opcional)', list: _sectors),
+      LocationCoveragePicker(
+        country: _country,
+        cities: _cities,
+        sectors: _sectors,
+        onChanged: ({required country, required cities, required sectors}) {
+          // `cities`/`sectors` pueden ser el mismo objeto que `_cities`/
+          // `_sectors` (el picker a veces reenvia la lista sin tocar):
+          // copiar ANTES de vaciar, o `clear()` tambien vacia el origen y
+          // `addAll` copia de una lista ya vacia.
+          final nuevasCiudades = List.of(cities);
+          final nuevosSectores = List.of(sectors);
+          setState(() {
+            _country = country;
+            _cities
+              ..clear()
+              ..addAll(nuevasCiudades);
+            _sectors
+              ..clear()
+              ..addAll(nuevosSectores);
+          });
+        },
+      ),
       const SizedBox(height: 10),
       _field(_address, 'Dirección (opcional)',
           hint: 'Calle, número, referencia', caps: true),
@@ -705,36 +719,6 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         for (final it in items)
           InputChip(label: Text(it.label), onDeleted: () => onRemove(it.id)),
       ]);
-
-  Widget _chipField({
-    required TextEditingController controller,
-    required String label,
-    required List<String> list,
-  }) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        Expanded(
-          child: TextField(
-            controller: controller,
-            textCapitalization: TextCapitalization.words,
-            textInputAction: TextInputAction.done,
-            decoration: filledField(context, label),
-            onSubmitted: (_) => _addChip(list, controller),
-          ),
-        ),
-        const SizedBox(width: 8),
-        FilledButton(
-          onPressed: () => _addChip(list, controller),
-          child: const Text('Agregar'),
-        ),
-      ]),
-      if (list.isNotEmpty) ...[
-        const SizedBox(height: 8),
-        _chips(list.map((v) => (id: v, label: v)).toList(),
-            onRemove: (v) => setState(() => list.remove(v))),
-      ],
-    ]);
-  }
 
   // ── Paso 3: WhatsApp ───────────────────────────────────────────────────────
 

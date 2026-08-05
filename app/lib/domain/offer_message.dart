@@ -59,3 +59,32 @@ String composeOfferMessage({
   }
   return parts.join(' · ');
 }
+
+/// Inverso de la condicion que escribe [composeOfferMessage].
+///
+/// La oferta NO guarda "Nuevo/Usado" en columna propia: viaja dentro de
+/// `message` como la parte `Estado: <valor>`. Con el campo vuelto obligatorio,
+/// editar una oferta sin esto obligaria al proveedor a volver a marcarlo en
+/// cada pasada.
+///
+/// En la app el mensaje se arma solo con partes estructuradas unidas por
+/// ' · ' (decision PO 2026-07-20, que quito la caja de texto libre). La WEB
+/// todavia tiene esa caja y su texto acaba en la misma columna, asi que este
+/// parser tiene que ser conservador y lo es: exige el prefijo 'Estado: '
+/// exacto sobre una parte completa y solo acepta 'Nuevo' o 'Usado'. Un
+/// proveedor tendria que escribir literalmente "Estado: Nuevo" como segmento
+/// entre ' · ' para enganarlo, y el dano seria prellenar un valor plausible.
+///
+/// Devuelve '' si no reconoce nada: el peor caso deja el campo vacio y el
+/// proveedor elige, que es exactamente lo que pasaba antes de esta funcion.
+/// Nunca inventa un valor.
+String conditionFromOfferMessage(String message) {
+  const prefijo = 'Estado: ';
+  for (final parte in message.split(' · ')) {
+    final t = parte.trim();
+    if (!t.startsWith(prefijo)) continue;
+    final valor = t.substring(prefijo.length).trim();
+    if (valor == 'Nuevo' || valor == 'Usado') return valor;
+  }
+  return '';
+}

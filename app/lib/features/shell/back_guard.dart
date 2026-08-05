@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/session_state.dart';
+import '../../core/unsaved_guard.dart';
 import '../../domain/back_intent.dart';
 import 'home_scroll.dart';
 
@@ -15,7 +18,15 @@ class BackGuard extends StatelessWidget {
   const BackGuard({super.key, required this.child});
   final Widget child;
 
-  void _handleBack(BuildContext context) {
+  Future<void> _handleBack(BuildContext context) async {
+    // Antes de cualquier navegacion: si la pantalla actual tiene trabajo sin
+    // guardar, se pregunta. Vale para las cinco BackAction — la de irse a otra
+    // pantalla y la de salir de la app.
+    if (hasUnsavedChanges()) {
+      final salir = await confirmDiscard(context);
+      if (!salir) return;
+      if (!context.mounted) return;
+    }
     final loc = GoRouterState.of(context).matchedLocation;
     final home = homePathFor(provider: roleStore.value == RoleState.provider);
     final c = homeScrollController;
@@ -64,7 +75,7 @@ class BackGuard extends StatelessWidget {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        _handleBack(context);
+        unawaited(_handleBack(context));
       },
       child: child,
     );
