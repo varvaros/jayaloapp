@@ -530,7 +530,14 @@ class _CenterButtonState extends State<_CenterButton>
       button: true,
       selected: widget.active,
       excludeSemantics: true,
-      onTap: widget.onTap,
+      // `_toggle` ya cae a `widget.onTap` cuando no hay menú (ver más abajo):
+      // apuntar la acción semántica ahí, no a `widget.onTap` directo, porque
+      // `excludeSemantics: true` tapa TODA la semántica de los descendientes
+      // (incluido el `InkWell` cuyo `onTap` real es `_toggle`) — esta es la
+      // ÚNICA acción de "activar" que un lector de pantalla expone para el
+      // botón. Con `widget.onTap` aquí, TalkBack/VoiceOver navegaba en vez de
+      // abrir el arco: nunca podían alcanzar el menú.
+      onTap: _toggle,
       child: OverlayPortal(
         controller: _portal,
         overlayChildBuilder: (context) => BackButtonListener(

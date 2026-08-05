@@ -544,6 +544,30 @@ void main() {
       expect(toques, 0, reason: 'la barra se queda el toque: no debe navegar');
     });
 
+    testWidgets(
+        'con menú, la acción semántica de "activar" ABRE el arco (no '
+        'navega) — `tester.tap()` no cazaría esto: hace hit-test por '
+        'coordenadas, y `excludeSemantics: true` deja la acción de tap '
+        'del nodo del centro como la ÚNICA vía que un lector de pantalla '
+        'tiene para llegar al botón', (tester) async {
+      final handle = tester.ensureSemantics();
+      var toques = 0;
+      final log = <String>[];
+      await tester.pumpWidget(host(items(log.add), onCenter: () => toques++));
+
+      final nodo = tester.getSemantics(find.bySemanticsLabel('Cargar'));
+      nodo.owner!.performAction(nodo.id, SemanticsAction.tap);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CenterArcMenu), findsOneWidget,
+          reason: 'un doble-tap de TalkBack/VoiceOver debe abrir el arco, '
+              'igual que el toque físico');
+      expect(toques, 0,
+          reason: 'la acción semántica tampoco debe navegar cuando hay menú');
+
+      handle.dispose();
+    });
+
     testWidgets('abierto, el ícono del centro es una ✕', (tester) async {
       await tester.pumpWidget(host(items((_) {})));
       await tester.tap(find.byIcon(Icons.library_add_outlined));
@@ -581,31 +605,12 @@ void main() {
 
     testWidgets('el ATRÁS del sistema cierra el arco en vez de salir de la '
         'pantalla', (tester) async {
-      // ⚠️ Este test NO puede usar el `host()` de arriba. `BackButtonListener`
-      // se cuelga del `backButtonDispatcher` de un `Router` ANCESTRO
-      // (`Router.maybeOf`); con un `MaterialApp` pelado no hay Router, el
-      // listener no se registra y el test daría un falso NEGATIVO silencioso.
-      // En la app real siempre hay uno: `MaterialApp.router` + go_router.
-      final router = GoRouter(
-        routes: [
-          GoRoute(
-            path: '/',
-            builder: (_, _) => Scaffold(
-              bottomNavigationBar: FloatingNavBar(
-                destinations: destinationsFor(RoleState.provider),
-                currentIndex: kCenterIndex,
-                centerMenuItems: items((_) {}),
-                centerIconOverride: Icons.library_add_outlined,
-                centerLabelOverride: 'Cargar',
-                onSelected: (_) {},
-              ),
-            ),
-          ),
-        ],
-      );
-
-      await tester.pumpWidget(MaterialApp.router(
-          theme: jayaloTheme(Brightness.light), routerConfig: router));
+      // `host()` ya usa `MaterialApp.router` (ver su comentario): el
+      // `BackButtonListener` que cuelga el arco exige un `Router` ancestro
+      // en cuanto se MONTA, no solo cuando de verdad se pulsa atrás — así que
+      // este test puede reusarlo igual que sus hermanos, no hace falta
+      // duplicar el andamiaje de go_router aquí.
+      await tester.pumpWidget(host(items((_) {})));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byIcon(Icons.library_add_outlined));
