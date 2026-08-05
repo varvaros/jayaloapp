@@ -375,3 +375,74 @@ Orientación fijada temporalmente en vertical para conducir con coordenadas
 fiables; **auto-rotación restaurada a 1**. Modo avión en 0. Queda instalado el
 build debug de la rama y **una solicitud de mayoreo de prueba publicada** en
 producción, útil como fixture para retomar.
+
+---
+
+# Registro de ejecución — 2026-08-05, segunda pasada (con las dos cuentas)
+
+El PO facilitó las dos cuentas: cliente `ohuaord@gmail.com` y proveedor
+`amaury@elcorito.com`. Con eso el smoke sí se pudo correr. Fixtures creados
+desde el cliente y publicados en producción: una solicitud de producto
+(«Nevera de 11 pies», con comprobante fiscal + envío + Nuevo), una de servicio
+(«Instalación de aire acondicionado de 12,000 BTU») y una de mayoreo
+(«Vasos plásticos desechables», 300 uds, todo junto, bolsa, comprobante fiscal).
+
+## Resultados
+
+- [x] **Punto 2 — marco violeta en el precio.** Verificado en producto y en
+      servicio. El selector «Precio fijo / Rango» queda DENTRO del marco, que
+      es lo que se pidió. El precio escrito sobrevive dentro del marco.
+- [x] **Punto 3 — servicio sin Estado ni Garantía.** El formulario de servicio
+      va del bloque de precio a Disponibilidad → Duración estimada → «Lo que
+      puedes cumplir» → Fotos → Enviar. No aparece «Detalles del producto»,
+      ni «Estado», ni «Garantía» en ninguna parte.
+- [x] **Punto 4 — aviso al salir.** Con un precio escrito, el **atrás del
+      sistema** (el camino que pasa por `BackGuard` y el predictive back de
+      Android 16) muestra «¿Salir y descartar los cambios?» con el cuerpo
+      «Perderás lo que escribiste en esta oferta.» y los botones «Seguir
+      editando» y «Salir y descartar» (este en rojo). «Seguir editando»
+      retiene la pantalla y conserva el precio.
+- [x] **Punto 5 — estado y garantía obligatorios.** Los rótulos salen como
+      «Estado *» y «Garantía *», y el encabezado ya no dice «(opcional)».
+      Enviar sin nada → «Elige si el producto es nuevo o usado.». Marcar
+      «Nuevo» y reenviar → «Elige la garantía.». Las dos validaciones son
+      independientes y en ese orden. Con «Sin garantía» marcado, la oferta se
+      envía — o sea, exigir el campo no obliga a prometer garantía.
+- [x] **Punto 6 — tarjeta de mayoreo.** El rótulo «Al por mayor» es el
+      encabezado de la tarjeta, en violeta y grande, con Cantidad 300,
+      División «Todo junto» y Empaque «Bolsa» como filas etiqueta/valor. Los
+      slugs salen traducidos, no crudos. La tarjeta va pegada al título, y los
+      bullets siguen apareciendo aparte bajo «INFORMACIÓN».
+
+## No verificado, y por qué
+
+- [ ] **Punto 1 — selector de país/provincia/sector.** Vive en el alta de un
+      proveedor **nuevo**. Registrar una cuenta exige teclear un OTP, que no se
+      puede hacer conduciendo por adb. **Sigue pendiente y necesita a una
+      persona.** Es además el punto donde la revisión encontró el crash del
+      `DropdownButtonFormField` al elegir una provincia concreta, así que es el
+      que más falta hace ver en device.
+- [ ] **Punto 6b — «INFORMACIÓN» flotando sin nada debajo.** No reproducible a
+      mano: la conversación con la IA siempre extrae bullets, y el respaldo por
+      SQL de la sección 0 no estaba disponible en esta sesión (el MCP de
+      Supabase no está autenticado). El caso queda cubierto solo por lectura de
+      código.
+- [ ] **Punto 7 — cotejo verde/gris.** Se dejó preparado: hay una oferta
+      enviada sobre la solicitud de mayoreo que **no** cubre el comprobante
+      fiscal que el cliente pidió, así que al verla desde el cliente debe salir
+      esa condición en gris. Falta volver a la cuenta cliente y mirarlo.
+- [ ] **Toda la mitad web.** No se tocó en esta pasada.
+
+## Hallazgos incidentales (previos a esta tanda)
+
+1. **La IA extrae la cantidad al resumen pero no rellena el campo obligatorio.**
+   El resumen decía «Cantidad: 300 unidades» y `Cantidad que necesitas *`
+   seguía vacío; el primer envío no hacía nada aparente.
+2. **Los fallos de validación solo se ven como toast fugaz.** Hubo que capturar
+   en ráfaga inmediatamente después del toque para leerlos. Con esperas
+   normales, enviar parece sencillamente ignorado. Afecta a «Indica si lo
+   quieres nuevo o usado», «Selecciona dónde se hace el servicio» y a los dos
+   toasts del punto 5.
+3. **Para adb: `KEYCODE_BACK` no sirve para cerrar el teclado** — sale de la
+   pantalla y pierde el borrador. Hay que usar la tecla de confirmación del
+   propio teclado.
