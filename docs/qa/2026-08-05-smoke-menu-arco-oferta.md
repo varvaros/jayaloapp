@@ -69,12 +69,13 @@ sin ofertar.
 
 - [x] **1. VERDE.** Al entrar a la solicitud, SIN desplazar, el centro ya dice "Cargar" con el
       icono de biblioteca. No hace falta llegar al formulario: basta con que este montado.
-- [x] **2. FALLABA — ARREGLADO Y RE-VERIFICADO** (commit ). El arco desplegaba bien, pero **el centro se veia como un ＋**.
-      Causa: el giro de 45 grados estaba pensado para un simbolo + (+ girado 45 = x) y el glifo
-      TAMBIEN cambiaba a  — dos transformaciones que dicen "conviertelo en equis" se
-      cancelan. Pasa a un cuarto de vuelta en los dos sitios ( y
-      ); la equis es simetrica a 90 grados. **Ningun test lo veia**: los dos
-      que habia afirmaban el TOKEN del icono, no el angulo. Se anadio uno que mira el giro.
+- [x] **2. FALLABA — ARREGLADO Y RE-VERIFICADO** (commit `7965acc`). El arco desplegaba bien,
+      pero **el centro se veia como un ＋**. Causa: el giro de 45 grados estaba pensado para un
+      simbolo + (+ girado 45 = x) y el glifo TAMBIEN cambiaba a `Icons.close` — dos
+      transformaciones que dicen "conviertelo en equis" se cancelan. Pasa a un cuarto de vuelta
+      en los dos sitios (`center_arc_menu.dart:148` y `floating_nav_bar.dart:631`); la equis es
+      simetrica a 90 grados. **Ningun test lo veia**: los dos que habia afirmaban el TOKEN del
+      icono, no el angulo con que se pinta. Se anadio uno que mira el giro.
 - [~] **3. PARCIAL.** El **atras del sistema** cierra el arco y NO sale de la pantalla (verde).
       Falta comprobar el cierre por la propia ✕ y por el velo.
 - [ ] 4. Sin ejecutar: Camara y Galeria abren selectores del sistema.
@@ -89,4 +90,4 @@ sin ofertar.
 - [x] **11. VERDE.** Las cuatro etiquetas —Camara, Galeria, Mi tienda, Trabajos— caben sin
       solaparse en este device (1220x2712).
 - [ ] 12. **Es juicio del PO**, no mio: si la gota queda sosa, los mandos son 2.2 / 1.2 / .6 en
-      .
+      `_bridge` (`center_arc_menu.dart`).
