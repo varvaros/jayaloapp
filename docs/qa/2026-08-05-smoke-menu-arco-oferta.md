@@ -1,6 +1,6 @@
 # Smoke — menú en arco del botón central al ofertar (2026-08-05)
 
-Estado: **pendiente de ejecutar**. Este documento solo se escribe en esta tarea; no se corre.
+Estado: **ejecutado parcialmente el 2026-08-06** sobre el APK 1.0.2+12 (rama temporal de device con la Fase 2). Resultados por casilla al final.
 
 ## Contexto
 
@@ -58,3 +58,35 @@ de sleeps a ojo.
 
 Anotar el resultado de cada casilla en este mismo fichero al correrlo. Si algo falla, arreglarlo
 y volver a correr solo la casilla afectada antes de dar la tanda por cerrada.
+
+
+---
+
+## Resultado de la ejecucion (2026-08-06, device 23090RA98G, APK 1.0.2+12)
+
+Conducido por adb desde la cuenta getto (proveedor). Solicitud usada: "Nevera de 11 pies",
+sin ofertar.
+
+- [x] **1. VERDE.** Al entrar a la solicitud, SIN desplazar, el centro ya dice "Cargar" con el
+      icono de biblioteca. No hace falta llegar al formulario: basta con que este montado.
+- [x] **2. FALLABA — ARREGLADO Y RE-VERIFICADO** (commit ). El arco desplegaba bien, pero **el centro se veia como un ＋**.
+      Causa: el giro de 45 grados estaba pensado para un simbolo + (+ girado 45 = x) y el glifo
+      TAMBIEN cambiaba a  — dos transformaciones que dicen "conviertelo en equis" se
+      cancelan. Pasa a un cuarto de vuelta en los dos sitios ( y
+      ); la equis es simetrica a 90 grados. **Ningun test lo veia**: los dos
+      que habia afirmaban el TOKEN del icono, no el angulo. Se anadio uno que mira el giro.
+- [~] **3. PARCIAL.** El **atras del sistema** cierra el arco y NO sale de la pantalla (verde).
+      Falta comprobar el cierre por la propia ✕ y por el velo.
+- [ ] 4. Sin ejecutar: Camara y Galeria abren selectores del sistema.
+- [ ] 5. **No ejecutable hoy**: getto no tiene productos, asi que "Mi tienda" no tiene que
+      autocompletar. Hace falta sembrar al menos un producto.
+- [ ] 6. Sin ejecutar: exige cargar 5 fotos primero.
+- [ ] 7. Sin ejecutar (**la mas probable de fallar segun el propio guion**): enviar la oferta y ver
+      si el centro vuelve a "Crear solicitud" sin parpadeo.
+- [ ] 8. Sin ejecutar.
+- [ ] 9. Sin ejecutar (no regresion dentro de crear solicitud).
+- [ ] 10. Sin ejecutar (reducir animaciones del sistema).
+- [x] **11. VERDE.** Las cuatro etiquetas —Camara, Galeria, Mi tienda, Trabajos— caben sin
+      solaparse en este device (1220x2712).
+- [ ] 12. **Es juicio del PO**, no mio: si la gota queda sosa, los mandos son 2.2 / 1.2 / .6 en
+      .
