@@ -320,6 +320,14 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           wholesale: r['is_wholesale'] == true,
                           offerStatus: _offeredStatuses[r['id']],
                           offerCount: _offerCounts[r['id']] ?? 0,
+                          matchLevel: r['match_level'] as String?,
+                          // Se compone aquí y no en la tarjeta para que el
+                          // widget no tenga que saber que la ubicación viene
+                          // partida en dos columnas de la BD.
+                          location: [r['sector'], r['city']]
+                              .whereType<String>()
+                              .where((v) => v.isNotEmpty)
+                              .join(' · '),
                           createdAt: DateTime.parse(r['created_at'] as String),
                           // push (no go): apila el detalle para que el atrás
                           // vuelva a la bandeja (el go reemplazaba la pila y la
@@ -375,6 +383,8 @@ class _InboxCard extends StatelessWidget {
     this.wholesale = false,
     this.offerStatus,
     this.offerCount = 0,
+    this.matchLevel,
+    this.location = '',
   });
 
   final String title;
@@ -396,6 +406,17 @@ class _InboxCard extends StatelessWidget {
   /// Cuántas ofertas ha recibido la solicitud EN TOTAL (FOMO, pedido PO
   /// 2026-07-21): solo el número, no se pueden ver. 0 = no se muestra chip.
   final int offerCount;
+
+  /// `'rubro'` = la solicitud cae en un rubro EXACTO de este negocio;
+  /// `'categoria'` = solo coincide la categoría. Desde la migración
+  /// 20260806120000 la bandeja se abre a toda la categoría, así que este sello
+  /// es lo que distingue "esto es justo lo tuyo" de "esto es de tu ramo". El
+  /// orden ya lo da la RPC — aquí solo se pinta.
+  final String? matchLevel;
+
+  /// `sector · ciudad` de la solicitud, ya compuesto. Vacío en las solicitudes
+  /// creadas antes de la migración: entonces no se pinta nada.
+  final String location;
 
   /// Miniatura de la foto del cliente (nunca ícono roto: cae al ícono si no
   /// hay foto o falla la URL). Antes la lista era solo-ícono — el PO reportó
@@ -471,12 +492,46 @@ class _InboxCard extends StatelessWidget {
                     style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
                   ),
                 ],
+                if (location.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.place_outlined,
+                        size: 13,
+                        color: cs.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 3),
+                      Expanded(
+                        child: Text(
+                          location,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 4),
                 Wrap(
                   spacing: 8,
                   runSpacing: 4,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
+                    // Va primero a propósito: es la razón por la que la RPC
+                    // sube esta solicitud al tope de la lista.
+                    if (matchLevel == 'rubro')
+                      StatusChip(
+                        label: 'Tu especialidad',
+                        icon: Icons.workspace_premium_outlined,
+                        tone: Theme.of(context).brightness == Brightness.dark
+                            ? JayaloStatus.respondedDark
+                            : JayaloStatus.respondedLight,
+                      ),
                     Text(
                       timeAgo(createdAt),
                       style: TextStyle(
@@ -640,7 +695,8 @@ class _InterestCard extends StatelessWidget {
                       )
                     else
                       StatusChip(
-                        label: '$productInterestUnlockCost crédito'
+                        label:
+                            '$productInterestUnlockCost crédito'
                             '${productInterestUnlockCost == 1 ? '' : 's'}',
                         icon: Icons.lock_outline,
                         tone: offerBadgeTone(context, 'pending'),

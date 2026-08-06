@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/error_reporter.dart';
 import '../core/ttl_cache.dart';
 import '../domain/chat.dart' show QuickItem;
 import '../domain/contact_info.dart'
@@ -212,7 +214,8 @@ void wireCacheInvalidation() {
 /// había y refresca por detrás. Si lo que vuelve es distinto, sube
 /// `requestsChanged` — el mismo tick que ya escuchan las pantallas para
 /// recargarse, así que no hace falta que ninguna sepa que existe un caché.
-Future<List<Map<String, dynamic>>> myRequests() => AppCaches.myRequests.readFresh(
+Future<List<Map<String, dynamic>>> myRequests() =>
+    AppCaches.myRequests.readFresh(
       _fetchMyRequests,
       equals: AppCaches.sameRows,
       onChanged: () => requestsChanged.value++,
@@ -458,10 +461,31 @@ Future<void> submitRequest({
 }) async {
   final uid = supa.auth.currentUser!.id;
   final isService = kind == 'servicio';
+
+  // Ubicación del cliente, COPIADA al crear (paridad web requests/new.tsx): si
+  // el cliente se muda, la solicitud vieja debe seguir diciendo dónde era el
+  // trabajo. Un fallo aquí no puede tumbar el envío — una solicitud sin
+  // ubicación sigue sirviendo —, pero se reporta: si no, "el cliente no tiene
+  // ubicación" y "la lectura falló" se ven exactamente igual.
+  Map<String, dynamic>? prof;
+  try {
+    prof = await supa
+        .from('profiles')
+        .select('city,sector,lat,lng')
+        .eq('user_id', uid)
+        .maybeSingle();
+  } catch (e, s) {
+    unawaited(reportError(e, s));
+  }
+
   try {
     await supa.from('customer_requests').insert({
       'user_id': uid,
       'client_request_id': clientRequestId,
+      'city': prof?['city'] ?? '',
+      'sector': prof?['sector'] ?? '',
+      'lat': prof?['lat'],
+      'lng': prof?['lng'],
       'kind': kind,
       'title': title,
       'description': bullets.join(' • '),
@@ -733,7 +757,10 @@ Future<void> makeOffer({
   // una columna vigilada nueva no puede quedarse sin cobertura por olvido. El
   // JY422 del trigger sigue siendo la autoridad; esto solo evita el viaje.
   if (payloadHasContactInfo(fields)) {
-    throw PostgrestException(message: contactInfoMessage, code: contactInfoCode);
+    throw PostgrestException(
+      message: contactInfoMessage,
+      code: contactInfoCode,
+    );
   }
   try {
     await supa.from('provider_offers').insert({
@@ -808,7 +835,10 @@ Future<void> updateOffer({
   );
   // Misma red de seguridad que en [makeOffer]: barrido del payload entero.
   if (payloadHasContactInfo(fields)) {
-    throw PostgrestException(message: contactInfoMessage, code: contactInfoCode);
+    throw PostgrestException(
+      message: contactInfoMessage,
+      code: contactInfoCode,
+    );
   }
   await supa.from('provider_offers').update(fields).eq('id', offerId);
   AppCaches.invalidateRequestLists();
@@ -831,10 +861,8 @@ Future<void> deleteOffer(String offerId) =>
 /// Mis ofertas, amortiguadas (ver [myRequests] para el porqué). No avisa por
 /// `requestsChanged`: esa pantalla no lo escucha, y su propio pull-to-refresh
 /// más el `onResume` del shell ya cubren el caso de datos viejos.
-Future<List<Map<String, dynamic>>> myOffers() => AppCaches.myOffers.readFresh(
-      _fetchMyOffers,
-      equals: AppCaches.sameRows,
-    );
+Future<List<Map<String, dynamic>>> myOffers() =>
+    AppCaches.myOffers.readFresh(_fetchMyOffers, equals: AppCaches.sameRows);
 
 Future<List<Map<String, dynamic>>> _fetchMyOffers() async {
   final uid = supa.auth.currentUser!.id;
@@ -1472,11 +1500,9 @@ const chatMsgCols = 'id,sender_id,kind,body,created_at';
 /// de no leídos. Se deja así a propósito — el badge de Mensajes tiene su propio
 /// store en vivo y el chat trae realtime, así que la lista no es la fuente por
 /// la que el usuario se entera de un mensaje nuevo.
-Future<List<Map<String, dynamic>>> conversationsList() =>
-    AppCaches.conversations.readFresh(
-      _fetchConversationsList,
-      equals: AppCaches.sameRows,
-    );
+Future<List<Map<String, dynamic>>> conversationsList() => AppCaches
+    .conversations
+    .readFresh(_fetchConversationsList, equals: AppCaches.sameRows);
 
 Future<List<Map<String, dynamic>>> _fetchConversationsList() async =>
     List<Map<String, dynamic>>.from(
@@ -1571,7 +1597,10 @@ Future<void> markConversationCompleted(String convId) async => supa.rpc(
 /// IRREVERSIBLE y no veía cambiar nada. `setConversationArchived` ya lo hacía;
 /// la asimetría era el olvido.
 Future<void> markConversationLost(String convId) async {
-  await supa.from('conversations').update({'status': 'perdido'}).eq('id', convId);
+  await supa
+      .from('conversations')
+      .update({'status': 'perdido'})
+      .eq('id', convId);
   AppCaches.conversations.clear();
 }
 
@@ -1619,11 +1648,10 @@ bool conversationArchived(Map<String, dynamic> c) => c['archived'] == true;
 /// Lanza `PostgrestException` con `code == 'P0001'` para las reglas de negocio
 /// (precio no menor, conversación cerrada, no eres el proveedor); pasarla por
 /// [improveOfferErrorCopy] para el mensaje al usuario.
-Future<void> improveOfferPrice(String convId, num newPrice) async =>
-    supa.rpc(
-      'improve_offer_price',
-      params: {'_conversation_id': convId, '_new_price': newPrice},
-    );
+Future<void> improveOfferPrice(String convId, num newPrice) async => supa.rpc(
+  'improve_offer_price',
+  params: {'_conversation_id': convId, '_new_price': newPrice},
+);
 
 Future<bool> hasConversationRating(String convId) async =>
     (await supa
@@ -2252,8 +2280,10 @@ Future<Map<String, BusinessCardInfo>> businessesCardInfo(
   final rows = List<Map<String, dynamic>>.from(
     await supa
         .from('provider_businesses')
-        .select('id,name,logo_url,whatsapp_verified_at,'
-            'identity_verified_at,business_verified_at')
+        .select(
+          'id,name,logo_url,whatsapp_verified_at,'
+          'identity_verified_at,business_verified_at',
+        )
         .inFilter('id', ids),
   );
   return {
