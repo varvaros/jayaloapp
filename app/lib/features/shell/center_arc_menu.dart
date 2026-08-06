@@ -94,7 +94,8 @@ class CenterArcMenu extends StatelessWidget {
           // Con "reducir animaciones" no hay escalonado: todos a la vez.
           double tFor(int i) {
             if (reduced) return animation.value;
-            final delay = (_stagger.inMilliseconds * i) /
+            final delay =
+                (_stagger.inMilliseconds * i) /
                 JayaloMotion.base.inMilliseconds;
             final span = 1 - delay;
             if (span <= 0) return animation.value;
@@ -145,7 +146,14 @@ class CenterArcMenu extends StatelessWidget {
                     opacity: animation,
                     child: Center(
                       child: RotationTransition(
-                        turns: animation.drive(Tween(begin: 0.0, end: .125)),
+                        // Un CUARTO de vuelta, no un octavo. El glifo ya ES una
+                        // ✕: a 45° se ve como un ＋ y el usuario lee "añadir"
+                        // donde debería leer "cerrar" (lo cazó el smoke en
+                        // device, ningún test lo veía porque todos afirmaban el
+                        // token del icono, no su ángulo). La ✕ es simétrica a
+                        // 90°, así que el giro se conserva y el estado final es
+                        // una ✕ de verdad.
+                        turns: animation.drive(Tween(begin: 0.0, end: .25)),
                         child: Icon(Icons.close, color: cs.onPrimary, size: 28),
                       ),
                     ),
@@ -184,7 +192,9 @@ class _Satellite extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     // Atenuado, no de otro color: sigue siendo el mismo botón, apagado.
-    final fg = item.enabled ? cs.onPrimary : cs.onPrimary.withValues(alpha: .38);
+    final fg = item.enabled
+        ? cs.onPrimary
+        : cs.onPrimary.withValues(alpha: .38);
     // ⚠️ El `left` se descuenta con el ancho del SLOT, no con el del círculo.
     // La columna la ensancha su ETIQUETA ("Mi tienda" mide más que los 44 del
     // círculo), así que restar `kSatelliteSize / 2` dejaría cada satélite
@@ -218,7 +228,9 @@ class _Satellite extends StatelessWidget {
                     // toca y dispara `onDisabledTap` SIN pasar por `onPick`
                     // — el arco no se cierra, es solo un aviso. Apagado por
                     // `busy` (`onDisabledTap` null) el toque queda inerte.
-                    onTap: item.enabled ? () => onPick(item) : item.onDisabledTap,
+                    onTap: item.enabled
+                        ? () => onPick(item)
+                        : item.onDisabledTap,
                     customBorder: const CircleBorder(),
                     child: SizedBox(
                       width: kSatelliteSize,
@@ -310,10 +322,18 @@ class ArcBlobPainter extends CustomPainter {
     return Path()
       ..moveTo(a1.dx, a1.dy)
       ..quadraticBezierTo(
-          mid.dx + perp.dx * waist, mid.dy + perp.dy * waist, b1.dx, b1.dy)
+        mid.dx + perp.dx * waist,
+        mid.dy + perp.dy * waist,
+        b1.dx,
+        b1.dy,
+      )
       ..lineTo(b2.dx, b2.dy)
       ..quadraticBezierTo(
-          mid.dx - perp.dx * waist, mid.dy - perp.dy * waist, a2.dx, a2.dy)
+        mid.dx - perp.dx * waist,
+        mid.dy - perp.dy * waist,
+        a2.dx,
+        a2.dy,
+      )
       ..close();
   }
 

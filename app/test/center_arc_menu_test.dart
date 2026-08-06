@@ -35,36 +35,49 @@ void main() {
     List<CenterMenuItem> items({
       bool tiendaViva = true,
       VoidCallback? onTiendaDisabledTap,
-    }) =>
-        [
-          CenterMenuItem(icon: Icons.photo_camera_outlined, label: 'Cámara', onTap: () {}),
-          CenterMenuItem(icon: Icons.photo_library_outlined, label: 'Galería', onTap: () {}),
-          CenterMenuItem(
-              icon: Icons.storefront_outlined,
-              label: 'Mi tienda',
-              onTap: () {},
-              enabled: tiendaViva,
-              onDisabledTap: onTiendaDisabledTap),
-          CenterMenuItem(
-              icon: Icons.collections_bookmark_outlined, label: 'Trabajos', onTap: () {}),
-        ];
+    }) => [
+      CenterMenuItem(
+        icon: Icons.photo_camera_outlined,
+        label: 'Cámara',
+        onTap: () {},
+      ),
+      CenterMenuItem(
+        icon: Icons.photo_library_outlined,
+        label: 'Galería',
+        onTap: () {},
+      ),
+      CenterMenuItem(
+        icon: Icons.storefront_outlined,
+        label: 'Mi tienda',
+        onTap: () {},
+        enabled: tiendaViva,
+        onDisabledTap: onTiendaDisabledTap,
+      ),
+      CenterMenuItem(
+        icon: Icons.collections_bookmark_outlined,
+        label: 'Trabajos',
+        onTap: () {},
+      ),
+    ];
 
     Widget host(List<CenterMenuItem> its) => MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: CenterArcMenu(
-                animation: const AlwaysStoppedAnimation(1),
-                items: its,
-                centerRadius: 28,
-                onPick: (it) => elegidos.add(it.label),
-              ),
-            ),
+      home: Scaffold(
+        body: Center(
+          child: CenterArcMenu(
+            animation: const AlwaysStoppedAnimation(1),
+            items: its,
+            centerRadius: 28,
+            onPick: (it) => elegidos.add(it.label),
           ),
-        );
+        ),
+      ),
+    );
 
     setUp(() => elegidos = []);
 
-    testWidgets('pinta los cuatro íconos y sus cuatro etiquetas', (tester) async {
+    testWidgets('pinta los cuatro íconos y sus cuatro etiquetas', (
+      tester,
+    ) async {
       await tester.pumpWidget(host(items()));
       expect(find.byIcon(Icons.photo_camera_outlined), findsOneWidget);
       expect(find.byIcon(Icons.storefront_outlined), findsOneWidget);
@@ -74,13 +87,46 @@ void main() {
     });
 
     testWidgets(
-        'con el arco abierto, el propio overlay pinta su ✕ — el blob central '
-        'tapa la del botón real que queda debajo', (tester) async {
+      'con el arco abierto, el propio overlay pinta su ✕ — el blob central '
+      'tapa la del botón real que queda debajo',
+      (tester) async {
+        await tester.pumpWidget(host(items()));
+        expect(
+          find.descendant(
+            of: find.byType(CenterArcMenu),
+            matching: find.byIcon(Icons.close),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('abierta del todo, la ✕ NO queda a 45° — ahí se vería como un ＋', (
+      tester,
+    ) async {
+      // Lo cazó el smoke en device (2026-08-06): el giro estaba pensado para un
+      // ＋ (＋ girado 45° = ✕), pero el glifo TAMBIÉN se cambió a `Icons.close`.
+      // Dos transformaciones que dicen "conviértelo en equis" se cancelan y el
+      // usuario ve un ＋. Ningún test lo veía: todos afirmaban el TOKEN del
+      // icono, que era correcto, no el ángulo con que se pinta.
+      // Un cuarto de vuelta sí vale: la ✕ es simétrica a 90°, así que el giro
+      // se conserva y el estado final es una ✕ de verdad.
       await tester.pumpWidget(host(items()));
+      final giro = tester.widget<RotationTransition>(
+        find
+            .ancestor(
+              of: find.byIcon(Icons.close),
+              matching: find.byType(RotationTransition),
+            )
+            .first,
+      );
+      final vueltas = giro.turns.value;
       expect(
-        find.descendant(
-            of: find.byType(CenterArcMenu), matching: find.byIcon(Icons.close)),
-        findsOneWidget,
+        (vueltas * 4) % 1,
+        closeTo(0, 0.001),
+        reason:
+            'con la animación al final el giro debe ser múltiplo de 90°, '
+            'no de 45°: a 45° la ✕ se ve como un ＋ (vueltas=$vueltas)',
       );
     });
 
@@ -91,47 +137,60 @@ void main() {
       expect(elegidos, ['Mi tienda']);
     });
 
-    testWidgets(
-        'deshabilitado CON onDisabledTap: lo dispara, y NO cuenta como '
-        'elección (no llama a onPick, así que el arco no se cierra)',
-        (tester) async {
+    testWidgets('deshabilitado CON onDisabledTap: lo dispara, y NO cuenta como '
+        'elección (no llama a onPick, así que el arco no se cierra)', (
+      tester,
+    ) async {
       var avisos = 0;
-      await tester.pumpWidget(host(items(
-        tiendaViva: false,
-        onTiendaDisabledTap: () => avisos++,
-      )));
+      await tester.pumpWidget(
+        host(items(tiendaViva: false, onTiendaDisabledTap: () => avisos++)),
+      );
       await tester.tap(find.byIcon(Icons.storefront_outlined));
       await tester.pump();
       expect(avisos, 1);
-      expect(elegidos, isEmpty, reason: 'avisar por qué no es lo mismo que elegir');
+      expect(
+        elegidos,
+        isEmpty,
+        reason: 'avisar por qué no es lo mismo que elegir',
+      );
     });
 
     testWidgets(
-        'deshabilitado SIN onDisabledTap: el toque queda inerte (apagado '
-        'por una operación en curso, no hay nada que avisar)',
-        (tester) async {
-      await tester.pumpWidget(host(items(tiendaViva: false)));
-      await tester.tap(find.byIcon(Icons.storefront_outlined));
-      await tester.pump();
-      expect(elegidos, isEmpty);
-    });
+      'deshabilitado SIN onDisabledTap: el toque queda inerte (apagado '
+      'por una operación en curso, no hay nada que avisar)',
+      (tester) async {
+        await tester.pumpWidget(host(items(tiendaViva: false)));
+        await tester.tap(find.byIcon(Icons.storefront_outlined));
+        await tester.pump();
+        expect(elegidos, isEmpty);
+      },
+    );
 
     testWidgets('con la animación en 0 no hay nada tocable', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: CenterArcMenu(
-              animation: const AlwaysStoppedAnimation(0),
-              items: items(),
-              centerRadius: 28,
-              onPick: (it) => elegidos.add(it.label),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: CenterArcMenu(
+                animation: const AlwaysStoppedAnimation(0),
+                items: items(),
+                centerRadius: 28,
+                onPick: (it) => elegidos.add(it.label),
+              ),
             ),
           ),
         ),
-      ));
-      await tester.tap(find.byIcon(Icons.storefront_outlined), warnIfMissed: false);
+      );
+      await tester.tap(
+        find.byIcon(Icons.storefront_outlined),
+        warnIfMissed: false,
+      );
       await tester.pump();
-      expect(elegidos, isEmpty, reason: 'cerrado, los satélites están dentro del centro');
+      expect(
+        elegidos,
+        isEmpty,
+        reason: 'cerrado, los satélites están dentro del centro',
+      );
     });
   });
 }

@@ -304,7 +304,9 @@ class _SideItem extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = active
         ? cs.onPrimaryContainer
-        : (isDark ? cs.onSurfaceVariant : cs.onPrimaryContainer.withValues(alpha: .6));
+        : (isDark
+              ? cs.onSurfaceVariant
+              : cs.onPrimaryContainer.withValues(alpha: .6));
     final reduced = JayaloMotion.reduced(context);
     return Semantics(
       label: destination.label,
@@ -330,13 +332,20 @@ class _SideItem extends StatelessWidget {
                     right: -8,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 1),
-                      constraints:
-                          const BoxConstraints(minWidth: 16, minHeight: 16),
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
                       decoration: BoxDecoration(
                         color: cs.error,
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: cs.primaryContainer, width: 1.5),
+                        border: Border.all(
+                          color: cs.primaryContainer,
+                          width: 1.5,
+                        ),
                       ),
                       child: Text(
                         badge > 99 ? '99+' : '$badge',
@@ -367,8 +376,9 @@ class _SideItem extends StatelessWidget {
               // cero — pero deja al menos un frame entre el inicio y el fin
               // de la animación, evitando la completitud síncrona que
               // dispara el bug.
-              duration:
-                  reduced ? const Duration(milliseconds: 1) : JayaloMotion.base,
+              duration: reduced
+                  ? const Duration(milliseconds: 1)
+                  : JayaloMotion.base,
               curve: JayaloMotion.enter,
               child: active
                   ? Padding(
@@ -378,9 +388,10 @@ class _SideItem extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: color),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: color,
+                        ),
                       ),
                     )
                   : const SizedBox(width: 1),
@@ -572,8 +583,9 @@ class _CenterButtonState extends State<_CenterButton>
                     child: FadeTransition(
                       opacity: _curved,
                       child: ColoredBox(
-                        color:
-                            Theme.of(context).colorScheme.scrim.withValues(alpha: .32),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.scrim.withValues(alpha: .32),
                       ),
                     ),
                   ),
@@ -628,15 +640,21 @@ class _CenterButtonState extends State<_CenterButton>
                     // tarde en el cierre) para que el ícono ya sea el
                     // correcto cuando el giro pasa por su punto medio.
                     child: RotationTransition(
-                      turns: _curved.drive(Tween(begin: 0.0, end: .125)),
+                      // .25 y no .125: el glifo de destino ya es una ✕, así que
+                      // a 45° las dos transformaciones se cancelan y se ve un ＋
+                      // (mismo motivo que en `center_arc_menu.dart`, donde vive
+                      // la ✕ que de verdad se ve — esta queda debajo del blob).
+                      turns: _curved.drive(Tween(begin: 0.0, end: .25)),
                       child: AnimatedBuilder(
                         animation: _curved,
                         builder: (context, _) => Icon(
-                            _curved.value > .5
-                                ? Icons.close
-                                : (widget.iconOverride ?? widget.destination.icon),
-                            color: cs.onPrimary,
-                            size: 28),
+                          _curved.value > .5
+                              ? Icons.close
+                              : (widget.iconOverride ??
+                                    widget.destination.icon),
+                          color: cs.onPrimary,
+                          size: 28,
+                        ),
                       ),
                     ),
                   ),
@@ -657,9 +675,10 @@ class _CenterButtonState extends State<_CenterButton>
                   label,
                   maxLines: 1,
                   style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onPrimaryContainer),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onPrimaryContainer,
+                  ),
                 ),
               ),
           ],
