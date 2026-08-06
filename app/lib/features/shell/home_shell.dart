@@ -25,6 +25,9 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   final GlobalKey _plusAnchorKey = GlobalKey();
 
+  /// Hay un `confirmDiscard` de la barra abierto. Ver el uso en `onSelected`.
+  bool _asking = false;
+
   @override
   void initState() {
     super.initState();
@@ -337,10 +340,24 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                         // no se molesta. `onSelected` es síncrono: el diálogo
                         // corre aparte, como hace BackGuard con `unawaited`.
                         if (loc != d.route && hasUnsavedChanges()) {
+                          // Un solo diálogo a la vez. La barrera modal solo
+                          // bloquea a partir del frame SIGUIENTE, así que dos
+                          // toques simultáneos (multitáctil, dos destinos)
+                          // apilaban dos `confirmDiscard` — y al responder el
+                          // de arriba, el `context.pop()` de `_goToTab` cerraba
+                          // el segundo diálogo en vez de la ventana de crear
+                          // solicitud (go_router popea la ruta más alta,
+                          // diálogos incluidos).
+                          if (_asking) return;
+                          _asking = true;
                           unawaited(() async {
-                            final salir = await confirmDiscard(context);
-                            if (!salir || !context.mounted) return;
-                            _goToTab(context, loc, d, changed: i != idx);
+                            try {
+                              final salir = await confirmDiscard(context);
+                              if (!salir || !context.mounted) return;
+                              _goToTab(context, loc, d, changed: i != idx);
+                            } finally {
+                              _asking = false;
+                            }
                           }());
                           return;
                         }

@@ -35,15 +35,44 @@ void main() {
   });
 
   test('soltar con OTRO dueño no toca el registro vigente', () {
-    // El caso real: crear-solicitud se apila sobre el detalle del proveedor,
-    // registra encima y al morir suelta. El registro del de abajo ya fue
-    // pisado, pero un dueño viejo tampoco puede borrar al nuevo.
     final viejo = Object();
     takeUnsavedGuard(owner: viejo, check: () => false);
     takeUnsavedGuard(owner: owner, check: () => true);
     releaseUnsavedGuard(viejo);
     expect(hasUnsavedChanges(), isTrue,
         reason: 'el dueño viejo no debe poder soltar el registro del nuevo');
+  });
+
+  test('al morir la pantalla de ARRIBA, la de abajo recupera su guard', () {
+    // El caso real que un solo hueco no cubría: el ＋ de la barra apila
+    // crear-solicitud encima de CUALQUIER pantalla (p. ej. el alta de un
+    // artículo de la tienda, a medio llenar). Al cerrarla, la de abajo sigue
+    // viva y sucia — si su registro se hubiera perdido, el atrás del sistema y
+    // el cambio de pestaña la descartarían en silencio.
+    final abajo = Object();
+    takeUnsavedGuard(
+        owner: abajo, check: () => true, message: 'Perderás el artículo.');
+    takeUnsavedGuard(owner: owner, check: () => false); // crear-solicitud
+    expect(hasUnsavedChanges(), isFalse, reason: 'manda la de arriba');
+
+    releaseUnsavedGuard(owner); // se cierra crear-solicitud
+    expect(hasUnsavedChanges(), isTrue,
+        reason: 'la de abajo vuelve a mandar, no queda desprotegida');
+    addTearDown(() => releaseUnsavedGuard(abajo));
+  });
+
+  test('re-registrar el mismo dueño NO le roba el turno a la de arriba', () {
+    // El detalle de oferta re-registra tras un await (`_prefillFromOffer`). Si
+    // eso lo subiera al tope, le robaría el guard a la pantalla que el usuario
+    // tiene delante — y el diálogo diría "esta oferta" estando en otra cosa.
+    final abajo = Object();
+    takeUnsavedGuard(owner: abajo, check: () => true, message: 'la oferta');
+    takeUnsavedGuard(owner: owner, check: () => false, message: 'la de arriba');
+
+    takeUnsavedGuard(owner: abajo, check: () => true, message: 'la oferta');
+    expect(hasUnsavedChanges(), isFalse,
+        reason: 'sigue mandando la de arriba, no la que re-registró');
+    addTearDown(() => releaseUnsavedGuard(abajo));
   });
 
   testWidgets('el dialogo usa el mensaje del guard registrado', (tester) async {

@@ -14,44 +14,58 @@ import 'package:flutter/material.dart';
 /// mantenerlos sincronizados con listeners seria una fuente de bugs sin
 /// ninguna ventaja, porque el valor solo hace falta una vez.
 ///
-/// Con DUEÑO explicito, como `center_action`: crear-solicitud se APILA con
-/// `push` encima de una pantalla que puede tener su propio guard registrado
-/// (el detalle de solicitud del proveedor). Sin dueño, el dispose de la
-/// pantalla de arriba borraria el registro de la de abajo, que sigue viva.
-///
 /// Patron igual al de `roleStore` y `homeScrollController`: singleton de
 /// modulo, no InheritedWidget, porque quien pregunta (BackGuard) esta en otra
 /// rama del arbol que quien responde.
-Object? _owner;
-bool Function()? _check;
-String? _message;
+class _GuardEntry {
+  _GuardEntry(this.owner, this.check, this.message);
+  final Object owner;
+  final bool Function() check;
+  final String? message;
+}
 
-/// Registra la comprobacion de ESTA pantalla. Pisa cualquier registro previo:
-/// la pantalla mas reciente es la visible y la unica que puede perder trabajo.
+/// PILA, no un solo hueco. Las pantallas se APILAN de verdad: crear-solicitud
+/// se empuja con `push` encima de cualquier otra (el ＋ de la barra lo hace
+/// desde donde sea), y cuando muere, la de abajo sigue viva y sucia. Con un
+/// solo registro, ese `dispose` dejaba el store en null y la pantalla de abajo
+/// perdia el aviso para siempre — justo el bug que este guard viene a eliminar.
+final List<_GuardEntry> _stack = [];
+
+_GuardEntry? get _top => _stack.isEmpty ? null : _stack.last;
+
+/// Registra la comprobacion de ESTA pantalla en el tope de la pila.
+///
+/// Si el `owner` YA esta registrado, se actualiza EN SU SITIO en vez de subir
+/// al tope: una pantalla de abajo que re-registra despues de un await (el
+/// `_prefillFromOffer` del detalle de oferta) no debe robarle el turno a la que
+/// el usuario tiene delante.
+///
 /// `message` es el cuerpo del dialogo de descarte; sin el se usa uno generico.
 void takeUnsavedGuard({
   required Object owner,
   required bool Function() check,
   String? message,
 }) {
-  _owner = owner;
-  _check = check;
-  _message = message;
+  final entry = _GuardEntry(owner, check, message);
+  final i = _stack.indexWhere((e) => identical(e.owner, owner));
+  if (i == -1) {
+    _stack.add(entry);
+  } else {
+    _stack[i] = entry;
+  }
 }
 
-/// Quita el registro SOLO si sigue siendo de `owner`. Inofensivo si otra
-/// pantalla ya registro encima (mismo contrato que `releaseCenterAction`).
-/// Quien registra DEBE soltar en `dispose`, o una pantalla muerta seguira
+/// Quita el registro de `owner` este donde este en la pila. Inofensivo si ya no
+/// esta. Quien registra DEBE soltar en `dispose`, o una pantalla muerta seguira
 /// bloqueando el atras de la siguiente.
 void releaseUnsavedGuard(Object owner) {
-  if (!identical(_owner, owner)) return;
-  _owner = null;
-  _check = null;
-  _message = null;
+  _stack.removeWhere((e) => identical(e.owner, owner));
 }
 
-/// `false` si no hay nada registrado. Se consulta en cada llamada.
-bool hasUnsavedChanges() => _check?.call() ?? false;
+/// `false` si no hay nada registrado. Manda el TOPE de la pila — la pantalla
+/// que el usuario tiene delante es la unica que puede perder trabajo ahora
+/// mismo. Se consulta en cada llamada.
+bool hasUnsavedChanges() => _top?.check() ?? false;
 
 /// Pregunta si se puede tirar el trabajo. `true` = el usuario quiere salir.
 /// El cuerpo lo pone quien registro el guard, porque quien pregunta (BackGuard,
@@ -61,7 +75,7 @@ Future<bool> confirmDiscard(BuildContext context) async {
     context: context,
     builder: (c) => AlertDialog(
       title: const Text('¿Salir y descartar los cambios?'),
-      content: Text(_message ?? 'Perderás lo que escribiste.'),
+      content: Text(_top?.message ?? 'Perderás lo que escribiste.'),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(c, false),

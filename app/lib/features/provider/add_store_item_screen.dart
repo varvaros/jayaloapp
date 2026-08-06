@@ -53,6 +53,10 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
   final _desc = TextEditingController();
   final _price = TextEditingController();
   final List<XFile> _photos = [];
+
+  /// Ruta local → URL ya subida. Evita re-subir el mismo fichero en cada
+  /// reintento del guardado (ver `_save`).
+  final Map<String, String> _uploaded = {};
   bool _busy = false;
   bool _saved = false;
 
@@ -71,14 +75,25 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
       check: _hasUnsavedWork,
       message: 'Perderás lo que escribiste aquí.',
     );
+    // Sin negocio no hay nada que dar de alta: sin este corte se subían las
+    // fotos a Storage (huérfanas) y el insert reventaba con un 22P02 traducido
+    // al genérico "No se pudo guardar".
+    if (widget.businessId.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _toast('No encontramos tu negocio.');
+        context.pop();
+      });
+      return;
+    }
     if (!_esTrabajo) {
       myBusinessCategoryRubro(widget.businessId).then((v) {
         if (mounted) setState(() => _catRubro = v);
       }).catchError((_) {
-        // Sin red no se puede saber; el guardado reintentará y avisará.
-        if (mounted) {
-          setState(() => _catRubro = (categoryId: null, rubro: null));
-        }
+        // Se queda en NULL a propósito, no en `(null, null)`: eso significa
+        // "todavía no se sabe" y deja que `_save` REINTENTE. Fijarlo a
+        // (null, null) convertía un fallo de red pasajero en un "tu negocio no
+        // tiene categoría" permanente, sin más salida que cerrar y volver.
       });
     }
   }
@@ -150,7 +165,14 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
     // carga aún en vuelo se reintenta aquí en vez de dejar el botón muerto.
     if (!_esTrabajo) {
       _catRubro ??= await _fetchCatRubroSafely();
-      if (_catRubro?.categoryId == null || _catRubro?.rubro == null) {
+      // Los dos motivos por los que aquí puede faltar el dato NO se avisan
+      // igual: null = no se pudo consultar (se reintenta al volver a pulsar);
+      // (null, null) = el negocio de verdad no los tiene configurados.
+      if (_catRubro == null) {
+        _toast('No pudimos verificar tu negocio. Revisa tu conexión.');
+        return;
+      }
+      if (_catRubro!.categoryId == null || _catRubro!.rubro == null) {
         _toast(
             'Tu negocio aún no tiene categoría y rubro. Complétalos desde "Editar en la web".');
         return;
@@ -159,9 +181,14 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
     setState(() => _busy = true);
     try {
       // Fotos a Storage ANTES del insert — nunca base64 en la BD.
-      final urls = await Future.wait(_photos.map((x) => _esTrabajo
-          ? uploadPortfolioImage(x.path)
-          : uploadStoreProductImage(x.path)));
+      //
+      // Cacheadas por ruta: si el insert falla y el usuario reintenta (el toast
+      // se lo pide), sin esto se volvían a subir los MISMOS ficheros y se
+      // acumulaba una copia por intento.
+      final urls = await Future.wait(_photos.map((x) async =>
+          _uploaded[x.path] ??= await (_esTrabajo
+              ? uploadPortfolioImage(x.path)
+              : uploadStoreProductImage(x.path))));
       if (_esTrabajo) {
         await savePortfolioItem(
           businessId: widget.businessId,

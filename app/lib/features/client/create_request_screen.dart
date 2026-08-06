@@ -185,6 +185,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// abrir una solicitud sembrada y cerrarla sin tocar nada no debe preguntar.
   String _seedTitle = '';
 
+  /// Cuántas de las fotos las puso la siembra, no el usuario. Mismo motivo que
+  /// [_seedTitle]. Es un CONTEO y no un flag porque `_applySeed` siempre siembra
+  /// al principio: las del usuario se añaden después, así que cualquier
+  /// `_photos.length` por encima de esto es trabajo suyo.
+  int _seedPhotos = 0;
+
   /// ¿Hay trabajo del usuario que se perdería al salir? Publicada la solicitud
   /// no hay nada que perder; antes, cuenta cualquier avance real: el tipo
   /// elegido, la entrevista empezada (mensajes/respuestas), fotos adjuntas o
@@ -194,7 +200,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     return _kind.isNotEmpty ||
         _messages.isNotEmpty ||
         _answers.isNotEmpty ||
-        _photos.isNotEmpty ||
+        _photos.length > _seedPhotos ||
         _input.text.trim() != _seedTitle.trim();
   }
 
@@ -261,7 +267,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       await f.writeAsBytes(bytes);
       final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
       if (!mounted) return;
-      setState(() => _photos.add(_PendingPhoto(XFile(f.path), dataUrl)));
+      setState(() {
+        _photos.add(_PendingPhoto(XFile(f.path), dataUrl));
+        // La foto la puso la SIEMBRA, no el usuario: no cuenta como trabajo
+        // suyo (ver `_hasUnsavedWork`). Sin esto, abrir "Yo también quiero
+        // esto" sobre una solicitud con foto y salir sin tocar nada
+        // preguntaba si descartar algo que nunca escribió.
+        _seedPhotos = _photos.length;
+      });
     } catch (_) {
       // Best-effort: si la descarga falla, se sigue solo con el título.
     }
