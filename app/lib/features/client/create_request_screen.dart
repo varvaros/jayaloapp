@@ -15,6 +15,8 @@ import '../../core/unsaved_guard.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_question_options.dart';
 import '../../domain/ai_turns.dart';
+import '../../domain/catalog.dart';
+import '../../domain/rubro_choices.dart';
 import '../../core/motion.dart';
 import '../../core/safe_image_picker.dart';
 import '../../domain/contact_info.dart';
@@ -168,6 +170,13 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   String _budgetMax = '';
   Set<String> _selectedRubros = {};
   Map<String, String> _rubroNames = {};
+  // Catálogo de rubros de las categorías objetivo. Las sugerencias de la IA son
+  // una AYUDA, no la única fuente de opciones: el servidor puede devolver cero
+  // rubros (retiró su fallback "top-3" en 35b7263) y sin catálogo la sección
+  // obligatoria se quedaba sin una sola ficha que tocar. Ver `rubro_choices.dart`.
+  List<Map<String, dynamic>> _catalogRubros = [];
+  bool _loadingCatalog = false;
+  String? _catalogError;
   int _aiAnswered = 0;
 
   // Detalles de mayoreo (obligatorios cuando la solicitud es al por mayor —
@@ -522,6 +531,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           _rubros = r.rubros;
           _current = r;
         });
+        // En paralelo al auto-"ok": el catálogo debe estar listo cuando se pinte
+        // el formulario final, tanto si la IA sugirió rubros como si no.
+        unawaited(_loadRubroCatalog());
         await _send('ok', force: true);
       case AiReady rd:
         setState(() {
@@ -539,6 +551,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         if (_rubroNames.isEmpty && _rubros.isNotEmpty) {
           unawaited(_loadRubroNames());
         }
+        // Red de seguridad: si la IA saltó el turno `routing` (el prompt se lo
+        // pide, nada lo obliga) no hay categorías ni catálogo. Con categorías,
+        // se carga aquí por si el turno `routing` no llegó a dispararlo.
+        if (_catalogRubros.isEmpty && !_loadingCatalog) {
+          unawaited(_loadRubroCatalog());
+        }
     }
   }
 
@@ -549,6 +567,39 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     } catch (_) {
       // Sin nombres se muestran chips genéricos; no bloquea el flujo.
     }
+  }
+
+  /// Lee los rubros de las categorías objetivo para que SIEMPRE haya algo que
+  /// elegir, sugiera la IA o no. Sin esto, un turno `routing` con `rubros: []`
+  /// dejaba la sección obligatoria vacía y la solicitud no se podía enviar.
+  Future<void> _loadRubroCatalog() async {
+    if (_categories.isEmpty) return;
+    setState(() {
+      _loadingCatalog = true;
+      _catalogError = null;
+    });
+    try {
+      final rows = await rubrosForCategories(List.of(_categories));
+      if (mounted) setState(() => _catalogRubros = rows);
+    } catch (e) {
+      debugPrint('[create_request] catálogo de rubros falló: $e');
+      if (mounted) {
+        setState(() => _catalogError = 'No pudimos cargar los rubros.');
+      }
+    } finally {
+      if (mounted) setState(() => _loadingCatalog = false);
+    }
+  }
+
+  /// El usuario elige la categoría a mano cuando la IA no emitió turno `routing`
+  /// (sin categorías no hay catálogo que leer, y volveríamos al bloqueo).
+  void _pickCategory(String id) {
+    setState(() {
+      _categories = [id];
+      _catalogRubros = [];
+      _selectedRubros = {};
+    });
+    unawaited(_loadRubroCatalog());
   }
 
   Map<String, dynamic> _turnToJson(AiTurn t) => switch (t) {
@@ -1392,6 +1443,102 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   // ── FORMULARIO FINAL (paridad requests/new.tsx) ────────────────────────
 
+  /// Rótulo de un rubro: primero el catálogo (tiene el nombre real), luego los
+  /// nombres que se pidieron para los sugeridos, y solo entonces el genérico.
+  String _rubroLabel(String id, Map<String, String> fromCatalog) =>
+      fromCatalog[id] ?? _rubroNames[id] ?? 'Sugerido';
+
+  /// Fichas de rubro. Se alimentan del catálogo de las categorías objetivo MÁS
+  /// lo que sugirió la IA (ver `rubroChoiceIds`), nunca solo de la IA.
+  Widget _rubroChips(ColorScheme cs) {
+    final names = {
+      for (final r in _catalogRubros)
+        if (r['id'] is String && r['name'] is String)
+          r['id'] as String: r['name'] as String,
+    };
+    final ids = rubroChoiceIds(catalog: _catalogRubros, suggested: _rubros);
+
+    if (ids.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _catalogError ?? 'No hay rubros para esta categoría.',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 6),
+          TextButton(
+            // Limpia también la selección: un rubro de la categoría anterior
+            // sería huérfano de la nueva y el trigger
+            // `trg_validate_customer_request_rubros` rechazaría el INSERT.
+            onPressed: () => setState(() {
+              _categories = [];
+              _catalogRubros = [];
+              _selectedRubros = {};
+              _catalogError = null;
+            }),
+            child: const Text('Elegir otra categoría'),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_catalogError != null) ...[
+          Text(
+            _catalogError!,
+            style: TextStyle(fontSize: 12, color: cs.error),
+          ),
+          const SizedBox(height: 6),
+        ],
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            for (final id in ids)
+              FilterChip(
+                label: Text(_rubroLabel(id, names)),
+                selected: _selectedRubros.contains(id),
+                onSelected: (on) => setState(() {
+                  if (on) {
+                    _selectedRubros.add(id);
+                  } else {
+                    _selectedRubros.remove(id);
+                  }
+                }),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Salida de emergencia cuando la IA no dejó categorías: elegir una a mano
+  /// carga su catálogo de rubros y desbloquea el envío.
+  Widget _categoryFallbackPicker(ColorScheme cs) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'Elige primero la categoría de lo que buscas:',
+        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+      ),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        children: [
+          for (final c in kCategories)
+            ActionChip(
+              label: Text(c.name),
+              onPressed: () => _pickCategory(c.id),
+            ),
+        ],
+      ),
+    ],
+  );
+
   Widget _sectionTitle(String text, {bool required = false}) => Padding(
     padding: const EdgeInsets.only(bottom: 2),
     child: Row(
@@ -1605,30 +1752,18 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
         ),
         const SizedBox(height: 8),
-        if (_rubroNames.isEmpty && _rubros.isNotEmpty)
+        // Sin categorías la IA no clasificó (saltó el turno `routing`): no hay
+        // catálogo que leer, así que el usuario elige la categoría a mano en vez
+        // de quedarse ante una sección obligatoria y vacía.
+        if (_categories.isEmpty)
+          _categoryFallbackPicker(cs)
+        else if (_loadingCatalog && _catalogRubros.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
             child: Center(child: JayaloSpinner(size: 16)),
           )
         else
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              for (final id in _rubros)
-                FilterChip(
-                  label: Text(_rubroNames[id] ?? 'Sugerido'),
-                  selected: _selectedRubros.contains(id),
-                  onSelected: (on) => setState(() {
-                    if (on) {
-                      _selectedRubros.add(id);
-                    } else {
-                      _selectedRubros.remove(id);
-                    }
-                  }),
-                ),
-            ],
-          ),
+          _rubroChips(cs),
         const SizedBox(height: 16),
         // Requisitos transversales (aplican a producto Y servicio, pedido PO
         // 2026-07-22): van fuera del bloque `if (!isService)`.
