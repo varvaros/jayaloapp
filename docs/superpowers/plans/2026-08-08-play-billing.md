@@ -177,12 +177,20 @@ DECLARE
 BEGIN
   -- Los créditos son AUTORITATIVOS del servidor: se resuelven por el id de
   -- producto contra la tabla, nunca se aceptan del cliente.
+  --
+  -- SIN filtro por `is_active`, a propósito (corregido en revisión el
+  -- 2026-08-08; el plan lo mandaba y estaba MAL): `is_active` gobierna qué se
+  -- OFRECE a la venta, no qué se puede acreditar. Cuando esta RPC corre,
+  -- Google YA cobró. Si el admin desactiva un paquete y Play sigue
+  -- vendiéndolo —son dos catálogos distintos—, filtrar aquí haría que la
+  -- resolución no encontrara fila, que la excepción de abajo hiciera rollback
+  -- de TODO, y que la compra desapareciera sin dejar ni registro: el usuario
+  -- paga y no recibe nada. El índice único parcial ya garantiza como mucho
+  -- una fila por play_product_id.
   SELECT p.id, p.points, p.price_usd
     INTO v_pkg_id, v_pkg_pts, v_pkg_price
     FROM public.credit_packages p
-   WHERE p.play_product_id = _product_id
-     AND p.is_active
-   LIMIT 1;
+   WHERE p.play_product_id = _product_id;
 
   IF v_pkg_id IS NULL THEN
     RAISE EXCEPTION 'unknown_play_product:%', _product_id;
@@ -411,7 +419,12 @@ export type PlayPurchase = {
   purchaseState?: number;
   /** 0 = sin reconocer, 1 = reconocida. */
   acknowledgementState?: number;
-  /** Solo viene en compras que NO son reales: 0 = Test, 1 = Promo, 2 = Rewarded. */
+  /**
+   * Solo viene si la compra NO pasó por el flujo de cobro estándar:
+   * 0 = Test (license tester), 1 = Promo (código promocional),
+   * 2 = Rewarded (recompensa por ver un anuncio).
+   * Lo que significa "no hubo dinero" es su PRESENCIA, no su valor.
+   */
   purchaseType?: number;
   orderId?: string;
 };
@@ -422,15 +435,16 @@ export type PurchaseVerdict =
 
 /** Compra pagada. Cualquier otro estado no acredita nada. */
 const PURCHASED = 0;
-/** `purchaseType` 0 = compra de un license tester: no hay dinero de verdad. */
-const TEST_PURCHASE = 0;
 
 export function judgePurchase(p: PlayPurchase): PurchaseVerdict {
   if (p?.purchaseState !== PURCHASED) return { ok: false, reason: "not_purchased" };
   return {
     ok: true,
     needsAcknowledge: p.acknowledgementState !== 1,
-    environment: p.purchaseType === TEST_PURCHASE ? "sandbox" : "live",
+    // Cualquier purchaseType presente significa que no entró dinero (tester,
+    // promo o recompensa). Ojo: comparar contra `undefined`, NUNCA `if
+    // (p.purchaseType)` — el caso del tester es 0, que es falsy.
+    environment: p.purchaseType !== undefined ? "sandbox" : "live",
   };
 }
 ```
