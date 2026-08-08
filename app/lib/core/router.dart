@@ -19,6 +19,7 @@ import '../features/onboarding/choose_role_screen.dart';
 import '../features/onboarding/consumer_onboarding_screen.dart';
 import '../features/onboarding/gate_screen.dart';
 import '../features/onboarding/provider_onboarding_screen.dart';
+import '../features/provider/credit_shop_screen.dart';
 import '../features/provider/inbox_screen.dart';
 import '../features/provider/add_store_item_screen.dart';
 import '../features/provider/my_business_screen.dart';
@@ -222,6 +223,11 @@ GoRouter buildRouter() => GoRouter(
                     child: AddStoreItemScreen(
                         kind: s.uri.queryParameters['kind'] ?? 'producto',
                         businessId: s.uri.queryParameters['bid'] ?? ''))),
+            // Tienda de créditos IN-APP. Sustituye al link-out al wallet web
+            // (ADR-0031): Play prohíbe llevar al usuario a otro método de pago.
+            GoRoute(
+                path: '/tienda-creditos',
+                builder: (_, _) => const BackGuard(child: CreditShopScreen())),
             GoRoute(
                 path: '/settings',
                 builder: (_, _) => const BackGuard(child: SettingsScreen())),
@@ -391,6 +397,11 @@ GoRouter buildRouter() => GoRouter(
             }),
       ],
     );
+
+/// Sustituye a `openProviderWallet` (ADR-0031). El pago ocurre DENTRO de la
+/// app: Play prohíbe llevar al usuario a otro método de pago.
+Future<void> openCreditShop(BuildContext context) =>
+    context.push('/tienda-creditos');
 
 class _AuthNotifier extends ChangeNotifier {
   _AuthNotifier() {

@@ -38,12 +38,12 @@ class PlayBillingService {
     required Future<void> Function(PurchaseDetails) completePurchase,
     InAppPurchase? iap,
   })  : _verify = verifyClient,
-        _accessToken = accessToken,
+        _readAccessToken = accessToken,
         _complete = completePurchase,
         _iapOrNull = iap;
 
   final PlayVerifyClient _verify;
-  final Future<String?> Function() _accessToken;
+  final Future<String?> Function() _readAccessToken;
   final Future<void> Function(PurchaseDetails) _complete;
 
   // PEREZOSO a propósito: `InAppPurchase.instance` toca el canal de
@@ -101,7 +101,7 @@ class PlayBillingService {
   }
 
   Future<void> _verifyAndCredit(PurchaseDetails p) async {
-    final jwt = await _accessToken();
+    final jwt = await _readAccessToken();
     if (jwt == null) {
       // Sin sesión no se puede acreditar a nadie. La compra queda VIVA (no se
       // completa) y se reintenta cuando el usuario vuelva a entrar.

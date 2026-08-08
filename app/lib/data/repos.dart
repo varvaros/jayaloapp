@@ -7,6 +7,7 @@ import '../core/ttl_cache.dart';
 import '../domain/chat.dart' show QuickItem;
 import '../domain/contact_info.dart'
     show contactInfoCode, contactInfoMessage, payloadHasContactInfo;
+import '../domain/credit_shop.dart' show ShopPackage;
 import '../domain/geo.dart' show mapsLinkFor;
 import '../domain/phase.dart';
 import '../domain/profile_address.dart';
@@ -1508,6 +1509,30 @@ Future<({bool ok, bool businessBadgeVerified})> verifyOtp({
   } on FunctionException catch (e) {
     _throwFunctionError(e);
   }
+}
+
+/// Paquetes activos con producto de Play. Los créditos SIEMPRE vienen de aquí
+/// (la consola de Play solo aporta el precio localizado).
+///
+/// `credit_packages` tiene GRANT SELECT para `authenticated` y política
+/// USING (true), así que se lee directo sin RPC.
+Future<List<ShopPackage>> activeCreditPackages() async {
+  final rows = await supa
+      .from('credit_packages')
+      .select('id, points, price_usd, label, play_product_id')
+      .eq('is_active', true)
+      .not('play_product_id', 'is', null)
+      .order('sort_order');
+  return (rows as List)
+      .cast<Map<String, dynamic>>()
+      .map((r) => ShopPackage(
+            id: r['id'] as String,
+            points: (r['points'] as num).toInt(),
+            priceUSD: (r['price_usd'] as num).toDouble(),
+            label: r['label'] as String?,
+            playProductId: r['play_product_id'] as String?,
+          ))
+      .toList();
 }
 
 /// Magic link autenticado hacia /provider/wallet (ADR-0031): evita que el
