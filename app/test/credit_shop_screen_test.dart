@@ -123,6 +123,19 @@ void main() {
     expect(find.textContaining('jayalo.com'), findsNothing);
   });
 
+  // Decisión PO 2026-08-08: el desbloqueo más barato cuesta 1 crédito, así
+  // que el tope honesto es "hasta N clientes" con N = créditos del paquete.
+  testWidgets('promete "Hasta N clientes desbloqueados"', (t) async {
+    await t.pumpWidget(host(CreditShopBody(
+      tiers: tiers,
+      playPrices: const {'creditos_10usd': 'RD\$650.00'},
+      onBuy: (_) {},
+    )));
+
+    expect(find.text('Hasta 10 clientes desbloqueados'), findsOneWidget);
+    expect(find.textContaining('contactos'), findsNothing);
+  });
+
   testWidgets('el CTA entrega el id de producto de Play', (t) async {
     String? bought;
     await t.pumpWidget(host(CreditShopBody(
@@ -214,6 +227,63 @@ void main() {
     await t.pumpAndSettle();
     return svc;
   }
+
+  // El eslabón que une la decisión del PO con la pantalla: `_load` tiene que
+  // pasar los `rawPrice` de Play al dominio. Con el USD de la BD estos dos
+  // paquetes dirían "Ahorras 9%"; en RD\$ el ahorro real es 10%.
+  testWidgets('el ahorro pintado sale del precio de Play', (t) async {
+    debugPlayBilling = PlayBillingService(
+      verifyClient: _NoVerify(),
+      accessToken: () async => 'JWT',
+      finishPurchase: (_) async {},
+      iap: _ScreenIap(
+        buyResult: true,
+        products: [
+          ProductDetails(
+            id: 'creditos_10usd',
+            title: 'Inicial',
+            description: '',
+            price: 'RD\$650.00',
+            rawPrice: 650,
+            currencyCode: 'DOP',
+          ),
+          ProductDetails(
+            id: 'creditos_50usd',
+            title: 'Popular',
+            description: '',
+            price: 'RD\$3,200.00',
+            rawPrice: 3200,
+            currencyCode: 'DOP',
+          ),
+        ],
+      ),
+    );
+    addTearDown(() => debugPlayBilling = null);
+
+    await t.pumpWidget(MaterialApp(
+      home: CreditShopScreen(
+        loadPackages: () async => const [
+          ShopPackage(
+              id: 'a',
+              points: 10,
+              priceUSD: 10,
+              label: 'Inicial — 10 puntos',
+              playProductId: 'creditos_10usd'),
+          ShopPackage(
+              id: 'b',
+              points: 55,
+              priceUSD: 50,
+              label: 'Popular — 55 puntos',
+              playProductId: 'creditos_50usd'),
+        ],
+      ),
+    ));
+    await t.pumpAndSettle();
+
+    expect(find.text('Ahorras 10%'), findsOneWidget,
+        reason: 'el % debe salir de los RD\$ que el usuario tiene delante, '
+            'no del USD de la BD (que diría 9%)');
+  });
 
   // Important de la revisión: el listener global de `app.dart` y el de esta
   // pantalla oían el mismo evento y encolaban DOS snackbars de ~9 s por la

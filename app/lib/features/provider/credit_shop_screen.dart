@@ -10,8 +10,10 @@
 ///   pasa los datos ya resueltos.
 ///
 /// ⚠️ El precio que se pinta es SIEMPRE `ProductDetails.price` de Play
-/// (localizado, y con impuesto donde Google lo recauda), nunca el `priceUSD` de
-/// la BD. `priceUSD` solo alimenta el cálculo del ahorro.
+/// (localizado, y con impuesto donde Google lo recauda), nunca el `priceUSD`
+/// de la BD. Y el «Ahorras X%» sale de `ProductDetails.rawPrice` (decisión PO
+/// 2026-08-08): con el USD de la BD el % no cuadraba con los RD$ pintados al
+/// lado — decía 9% donde el ahorro real era 10,5%.
 library;
 
 import 'dart:async';
@@ -206,7 +208,7 @@ class _TierCard extends StatelessWidget {
                       ?.copyWith(fontWeight: FontWeight.w800)),
               const Text('créditos'),
               const SizedBox(height: 6),
-              Text('~${tier.contactsEstimate} contactos',
+              Text('Hasta ${tier.maxUnlocks} clientes desbloqueados',
                   style: TextStyle(fontSize: 13, color: mutedFg)),
               if (tier.savingsPct > 0)
                 Padding(
@@ -317,7 +319,12 @@ class _CreditShopScreenState extends State<CreditShopScreen> {
       };
       if (!mounted) return;
       setState(() {
-        _tiers = buildShopTiers(packages);
+        // Los `rawPrice` de Play alimentan el "Ahorras X%" y la insignia:
+        // el % tiene que salir de la misma moneda que el precio pintado al
+        // lado, no del USD de la BD (decía 9% donde el ahorro real era 10,5%).
+        _tiers = buildShopTiers(packages, rawPrices: {
+          for (final e in products.entries) e.key: e.value.rawPrice,
+        });
         _products = products;
         _playPrices = {
           for (final e in products.entries) e.key: e.value.price,
