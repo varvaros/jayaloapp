@@ -12,8 +12,14 @@ import 'brand_kit.dart';
 /// reusarse en "Mi tienda". La línea de reputación se oculta si el `item` no
 /// trae `avg_rating`/`reviews_count` (Mi tienda no la pasa).
 class ProductListCard extends StatelessWidget {
-  const ProductListCard({super.key, required this.item});
+  const ProductListCard({super.key, required this.item, this.onEdit});
   final Map<String, dynamic> item;
+
+  /// Lápiz de edición a la derecha (PO 2026-08-08). Solo lo pasa "Mi negocio",
+  /// que es la única superficie donde las fichas son del propio proveedor: en
+  /// el catálogo y en la tienda ajena queda `null` y la tarjeta se pinta
+  /// EXACTAMENTE como antes.
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -106,6 +112,12 @@ class ProductListCard extends StatelessWidget {
               ],
             ),
           ),
+          if (onEdit != null)
+            IconButton(
+              tooltip: 'Editar',
+              icon: const Icon(Icons.edit_outlined, size: 20),
+              onPressed: onEdit,
+            ),
         ],
       ),
     );

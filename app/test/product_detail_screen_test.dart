@@ -110,6 +110,9 @@ void main() {
     expect(find.textContaining('Este es tu producto'), findsOneWidget);
     expect(find.text('Solicitar'), findsNothing);
     expect(find.text('Solicitud enviada'), findsNothing);
+    // …pero SÍ el camino a editarlo (PO 2026-08-08): antes esta rama era una
+    // frase muerta y la única edición posible sacaba al proveedor a la web.
+    expect(find.text('Editar producto'), findsOneWidget);
   });
 
   testWidgets(

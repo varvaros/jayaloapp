@@ -280,12 +280,26 @@ class _ProductDetailViewState extends State<ProductDetailView> {
               if (widget.data.business != null)
                 _BusinessCard(business: widget.data.business!).cascadeIn(0),
               const SizedBox(height: 20),
-              _CtaArea(data: widget.data, onOpenInterest: _openInterest),
+              _CtaArea(
+                data: widget.data,
+                onOpenInterest: _openInterest,
+                onEdit: _openEditor,
+              ),
             ],
           ),
         ),
       ),
     ]);
+  }
+
+  /// Abre el editor y, si guardó (`pop(true)`), refresca esta ficha: el
+  /// proveedor tiene que ver el precio o la foto nuevos al volver, no los
+  /// viejos. Se reusa `onInterestSent` porque es exactamente el mismo gesto
+  /// del padre (`_refetch`), no un efecto distinto.
+  Future<void> _openEditor() async {
+    final saved = await context
+        .push<bool>('/provider/product/${widget.data.product['id']}/edit');
+    if (saved == true) widget.onInterestSent();
   }
 
   Future<void> _openInterest() async {
@@ -492,17 +506,38 @@ class _BusinessCard extends StatelessWidget {
 /// `products.$productId.tsx`): "Solicitar" / "Solicitud enviada", con el
 /// mismo ícono `ShoppingBag`.
 class _CtaArea extends StatelessWidget {
-  const _CtaArea({required this.data, required this.onOpenInterest});
+  const _CtaArea({
+    required this.data,
+    required this.onOpenInterest,
+    required this.onEdit,
+  });
   final ProductDetailData data;
   final Future<void> Function() onOpenInterest;
+
+  /// Solo se usa en la rama del DUEÑO: abre el editor del producto.
+  final Future<void> Function() onEdit;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (data.isOwner) {
-      return Text('Este es tu producto.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: cs.onSurfaceVariant));
+      // El dueño no tiene nada que solicitarse a sí mismo, pero SÍ tiene algo
+      // que hacer aquí: editarlo (PO 2026-08-08). Antes esta rama era una
+      // frase muerta y el único camino de edición sacaba al proveedor a la web.
+      return Column(children: [
+        Text('Este es tu producto.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: cs.onSurfaceVariant)),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () => onEdit(),
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('Editar producto'),
+          ),
+        ),
+      ]);
     }
     if (data.hasInterest) {
       return Column(children: [

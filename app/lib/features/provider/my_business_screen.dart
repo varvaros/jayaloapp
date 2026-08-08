@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/editor_link_client.dart';
 import '../../core/secure_web_launch.dart';
@@ -121,6 +122,15 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
     }
   }
 
+  /// Editor del producto EN LA APP (PO 2026-08-08). Al volver con `true` se
+  /// refresca el escaparate: el proveedor acaba de cambiar el precio o la foto
+  /// y tiene que verlo aquí, no la versión vieja que quedó en el `Future`.
+  Future<void> _openProductEditor(String productId) async {
+    final saved =
+        await context.push<bool>('/provider/product/$productId/edit');
+    if (saved == true && mounted) _refetch();
+  }
+
   void _toast(String m) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
@@ -153,6 +163,7 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
                   onEditWeb: data.business == null
                       ? null
                       : () => _openEditor(data.business!.id),
+                  onEditProduct: _openProductEditor,
                 );
               },
             ),
@@ -173,6 +184,7 @@ class MyBusinessView extends StatefulWidget {
     required this.reviews,
     required this.rating,
     this.onEditWeb,
+    this.onEditProduct,
   });
 
   final StoreProfile? business;
@@ -184,6 +196,12 @@ class MyBusinessView extends StatefulWidget {
   /// Abre el editor en la web (magic-link SSO, Task 6). Nulo → el botón no se
   /// dibuja (p. ej. sin negocio). Inyectable para probar sin red.
   final Future<void> Function()? onEditWeb;
+
+  /// Abre el editor EN LA APP de un producto/servicio de la tienda por su id
+  /// (PO 2026-08-08). Nulo → las fichas no muestran el lápiz. Los datos del
+  /// NEGOCIO (portada, ficha, sellos) siguen editándose solo en la web: ahí no
+  /// hay paridad todavía y "Editar en la web" se queda para eso.
+  final void Function(String productId)? onEditProduct;
 
   @override
   State<MyBusinessView> createState() => _MyBusinessViewState();
@@ -245,7 +263,15 @@ class _MyBusinessViewState extends State<MyBusinessView> {
 
   List<Widget> _itemsOrEmpty(List<Map<String, dynamic>> items, String empty) {
     if (items.isEmpty) return [_EmptyLine(text: empty)];
-    return [for (final i in items) ProductListCard(item: i)];
+    return [
+      for (final i in items)
+        ProductListCard(
+          item: i,
+          onEdit: widget.onEditProduct == null
+              ? null
+              : () => widget.onEditProduct!(i['id'] as String),
+        ),
+    ];
   }
 
   /// Categoría y ciudad en UNA línea bajo el nombre, como la web en móvil.

@@ -19,6 +19,7 @@ import '../features/onboarding/choose_role_screen.dart';
 import '../features/onboarding/consumer_onboarding_screen.dart';
 import '../features/onboarding/gate_screen.dart';
 import '../features/onboarding/provider_onboarding_screen.dart';
+import '../features/provider/edit_product_screen.dart';
 import '../features/provider/inbox_screen.dart';
 import '../features/provider/my_business_screen.dart';
 import '../features/provider/my_offers_screen.dart';
@@ -328,6 +329,40 @@ GoRouter buildRouter() => GoRouter(
                   ),
                   child: BackGuard(
                       child: ProductDetailScreen(
+                          productId: s.pathParameters['id']!)),
+                )),
+        // Editar un producto/servicio de la propia tienda (PO 2026-08-08:
+        // "debe permitir editar el producto desde la app"). TOP-LEVEL a
+        // propósito, no dentro del shell: se llega desde "Mi negocio"
+        // (shell) y también desde el detalle del producto, que a su vez
+        // existe en las dos variantes — la del shell (`/catalog/:id`) y la
+        // del navigator raíz (`/product/:id`, sobre la tienda). Una ruta del
+        // shell empujada desde una raíz se monta DEBAJO y se ve vacía (mismo
+        // gotcha que documenta `/product/:id`); una raíz se apila bien desde
+        // ambas. Es además un formulario a pantalla completa: no quiere la
+        // barra flotante encima.
+        GoRoute(
+            path: '/provider/product/:id/edit',
+            pageBuilder: (context, s) => CustomTransitionPage(
+                  key: s.pageKey,
+                  transitionDuration: JayaloMotion.reduced(context)
+                      ? Duration.zero
+                      : JayaloMotion.page,
+                  reverseTransitionDuration: JayaloMotion.reduced(context)
+                      ? Duration.zero
+                      : JayaloMotion.page,
+                  transitionsBuilder: (context, animation, _, child) =>
+                      SlideTransition(
+                    position: Tween<Offset>(
+                            begin: const Offset(1, 0), end: Offset.zero)
+                        .animate(CurvedAnimation(
+                            parent: animation,
+                            curve: JayaloMotion.enter,
+                            reverseCurve: JayaloMotion.exit)),
+                    child: child,
+                  ),
+                  child: BackGuard(
+                      child: EditProductScreen(
                           productId: s.pathParameters['id']!)),
                 )),
         // Chat: Scaffold de PRIMER NIVEL para que el composer reciba el inset

@@ -1434,6 +1434,12 @@ Future<String> uploadRequestImage(String filePath) =>
 Future<String> uploadOfferImage(String filePath) =>
     _uploadMarketplaceImage(filePath, 'offers');
 
+/// Foto de un producto de la TIENDA → `{uid}/products/<ts>-<rand>.<ext>`.
+/// Mismo bucket público que el resto: la política de subida solo mira que la
+/// PRIMERA carpeta sea el uid, así que la carpeta nueva no necesita migración.
+Future<String> uploadProductImage(String filePath) =>
+    _uploadMarketplaceImage(filePath, 'products');
+
 final _rand = Random();
 
 Future<String> _uploadMarketplaceImage(String filePath, String kind) async {
@@ -2304,6 +2310,70 @@ Future<List<Map<String, dynamic>>> myPortfolioItems(String businessId) async =>
           .limit(200),
     );
 
+/// Columnas que necesita el EDITOR de un producto de la tienda: las de
+/// [storeProductCols] más `user_id` (para no abrir el formulario sobre un
+/// producto ajeno — la RLS ya impide guardarlo, pero un aviso claro es mejor
+/// que un "Guardado ✓" sobre un UPDATE que no afectó ninguna fila) y
+/// `brand`/`warranty`, que la lista no pinta pero el editor sí edita.
+const editStoreProductCols = '$storeProductCols,user_id,brand,warranty';
+
+/// Un producto/servicio de la tienda con todo lo que el editor necesita.
+/// `null` si el id no existe.
+Future<Map<String, dynamic>?> storeProductForEdit(String id) async => await supa
+    .from('provider_products')
+    .select(editStoreProductCols)
+    .eq('id', id)
+    .maybeSingle();
+
+/// Campos EDITABLES de un producto/servicio de la tienda. Aísla la forma del
+/// payload en un solo lugar para que CREAR ([saveProductToStore]) y EDITAR
+/// ([updateStoreProduct]) no se desincronicen — mismo patrón que `_offerFields`
+/// para las ofertas.
+///
+/// Todo campo de texto que entre a este mapa queda cubierto AUTOMÁTICAMENTE por
+/// el barrido anti-elusión de sus dos llamantes (`payloadHasContactInfo`), así
+/// que no hay lista de campos vigilados que mantener a mano.
+///
+/// Los TRES precios se escriben SIEMPRE, con `null` en los que no aplican: en
+/// un UPDATE, omitir una columna la deja como estaba, así que un producto que
+/// pasa de rango a precio fijo se quedaría con el `price_min`/`price_max`
+/// viejos colgando — y el rango es justo lo que la tarjeta del catálogo pinta
+/// cuando existe. Lo mismo vale para `condition`/`brand`/`warranty`: vaciar un
+/// campo en el formulario tiene que poder BORRARLO, no solo dejarlo intacto.
+Map<String, dynamic> storeProductFields({
+  required String name,
+  required String description,
+  required String categoryId,
+  required String kind,
+  String color = '',
+  double? price,
+  double? priceMin,
+  double? priceMax,
+  List<String> imageUrls = const [],
+  String? condition,
+  String? brand,
+  String? warranty,
+  bool offersShipping = false,
+  bool offersInstallation = false,
+  bool requiresEvaluation = false,
+}) => {
+  'name': name,
+  'description': description,
+  'color': color,
+  'category_id': categoryId,
+  'kind': kind,
+  'price': price,
+  'price_min': priceMin,
+  'price_max': priceMax,
+  'image_urls': imageUrls,
+  'condition': condition,
+  'brand': (brand ?? '').trim().isEmpty ? null : brand!.trim(),
+  'warranty': (warranty ?? '').trim().isEmpty ? null : warranty!.trim(),
+  'offers_shipping': offersShipping,
+  'offers_installation': offersInstallation,
+  'requires_evaluation': requiresEvaluation,
+};
+
 /// Guarda como producto de la tienda lo que el proveedor acaba de ofertar
 /// (pedido PO 2026-07-21: "¿guardar este producto para envíos futuros?").
 /// RLS: owner insert. category_id/rubro/kind/color son NOT NULL en la tabla.
@@ -2328,22 +2398,83 @@ Future<void> saveProductToStore({
   await supa.from('provider_products').insert({
     'user_id': uid,
     'business_id': businessId,
-    'name': name,
-    'description': description,
-    'color': color,
-    'category_id': categoryId,
+    // `rubro` y `tags` son del INSERT: el rubro sale del negocio (no del
+    // formulario) y `tags` solo existe para satisfacer el NOT NULL.
     'rubro': rubro,
-    'kind': kind,
-    'price': price,
-    'price_min': priceMin,
-    'price_max': priceMax,
-    'image_urls': imageUrls,
     'tags': const <String>[],
-    'condition': condition,
-    'offers_shipping': offersShipping,
-    'offers_installation': offersInstallation,
-    'requires_evaluation': requiresEvaluation,
+    ...storeProductFields(
+      name: name,
+      description: description,
+      categoryId: categoryId,
+      kind: kind,
+      color: color,
+      price: price,
+      priceMin: priceMin,
+      priceMax: priceMax,
+      imageUrls: imageUrls,
+      condition: condition,
+      offersShipping: offersShipping,
+      offersInstallation: offersInstallation,
+      requiresEvaluation: requiresEvaluation,
+    ),
   });
+}
+
+/// Edita un producto/servicio YA publicado en la tienda (pedido PO 2026-08-08:
+/// "debe permitir editar el producto desde la app"). Hasta hoy el único camino
+/// de edición era salir de la app por el magic-link de "Editar en la web".
+///
+/// `business_id` y `rubro` NO se tocan: el rubro sale del negocio
+/// ([myBusinessCategoryRubro]), no de este formulario. `kind` viaja por
+/// [storeProductFields] pero el editor le pasa el que ya tenía — cambiar un
+/// producto a servicio movería la ficha de sección sin que nadie lo pida.
+///
+/// La autoridad es la RLS (`Products: update`, dueño por `user_id`); el filtro
+/// del cliente es solo por id, porque un UPDATE sobre una fila ajena
+/// simplemente no afecta filas.
+Future<void> updateStoreProduct({
+  required String productId,
+  required String name,
+  required String description,
+  required String categoryId,
+  required String kind,
+  String color = '',
+  double? price,
+  double? priceMin,
+  double? priceMax,
+  List<String> imageUrls = const [],
+  String? condition,
+  String? brand,
+  String? warranty,
+  bool offersShipping = false,
+  bool offersInstallation = false,
+  bool requiresEvaluation = false,
+}) async {
+  final fields = storeProductFields(
+    name: name,
+    description: description,
+    categoryId: categoryId,
+    kind: kind,
+    color: color,
+    price: price,
+    priceMin: priceMin,
+    priceMax: priceMax,
+    imageUrls: imageUrls,
+    condition: condition,
+    brand: brand,
+    warranty: warranty,
+    offersShipping: offersShipping,
+    offersInstallation: offersInstallation,
+    requiresEvaluation: requiresEvaluation,
+  );
+  // Misma red de seguridad que [makeOffer]: barre el payload ENTERO en vez de
+  // confiar en una lista de campos revisada a mano. El trigger `JY422` de la BD
+  // sigue siendo la autoridad; esto solo evita el viaje (y no gasta las subidas
+  // de fotos que ya se hicieron).
+  if (payloadHasContactInfo(fields)) {
+    throw PostgrestException(message: contactInfoMessage, code: contactInfoCode);
+  }
+  await supa.from('provider_products').update(fields).eq('id', productId);
 }
 
 /// category_id (slug) + un rubro (NOMBRE) del negocio, para prefijar el

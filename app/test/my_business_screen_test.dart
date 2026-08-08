@@ -142,6 +142,36 @@ void main() {
     expect(find.textContaining('No encontramos tu negocio'), findsOneWidget);
   });
 
+  // PO 2026-08-08: "debe permitir editar el producto desde la app". El
+  // escaparate sigue siendo de solo lectura para los datos del NEGOCIO (eso
+  // es "Editar en la web"), pero cada ficha estrena su lápiz.
+  testWidgets('el lápiz de una ficha abre el editor con SU id',
+      (tester) async {
+    String? pedido;
+    await tester.pumpWidget(host(MyBusinessView(
+      business: negocio,
+      productos: unProducto,
+      servicios: unServicio,
+      reviews: const [],
+      rating: null,
+      onEditProduct: (id) => pedido = id,
+    )));
+    await tester.pumpAndSettle();
+    await bajar(tester);
+    await tester.tap(find.byTooltip('Editar').first);
+    await tester.pump();
+    expect(pedido, 'p1');
+  });
+
+  testWidgets('sin onEditProduct las fichas no muestran lápiz',
+      (tester) async {
+    await tester.pumpWidget(view(productos: unProducto));
+    await tester.pumpAndSettle();
+    await bajar(tester);
+    expect(find.text('Taladro'), findsOneWidget);
+    expect(find.byTooltip('Editar'), findsNothing);
+  });
+
   testWidgets('el botón Editar en la web invoca el callback', (tester) async {
     var called = false;
     await tester.pumpWidget(host(MyBusinessView(
