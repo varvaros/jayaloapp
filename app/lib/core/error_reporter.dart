@@ -18,6 +18,11 @@ bool shouldSend(String key, DateTime now) {
   return true;
 }
 
+/// Solo para tests: observa cada llamada a [reportError] sin tocar la red.
+/// Se invoca ANTES del dedup, así los tests ven todos los reportes.
+@visibleForTesting
+void Function(Object error)? debugOnReport;
+
 String? _release;
 
 Future<void> _loadRelease() async {
@@ -29,6 +34,7 @@ Future<void> _loadRelease() async {
 
 Future<void> reportError(Object error, StackTrace? stack) async {
   try {
+    debugOnReport?.call(error);
     final type = error.runtimeType.toString();
     final message = error.toString();
     if (!shouldSend('$type|$message', DateTime.now())) return;

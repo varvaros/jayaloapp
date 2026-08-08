@@ -485,6 +485,66 @@ void main() {
     });
   });
 
+  // Minor de la revisión de la tarea 10: sin el producto en el evento, el
+  // desenlace de un pago DIFERIDO de otra compra (que Google confirma en
+  // segundo plano y llega como `purchased`, no como restaurada) soltaría el
+  // spinner de la compra que tiene la hoja abierta. La tienda necesita saber
+  // DE QUÉ producto es cada evento.
+  group('productId en el evento', () {
+    test('la compra verificada lleva su productId', () async {
+      final svc = PlayBillingService(
+        verifyClient: _FakeVerify(
+            const PlayVerifyResult(balance: 65, points: 55, credited: true)),
+        accessToken: () async => 'JWT',
+        finishPurchase: (_) async {},
+      );
+      final events = <CreditPurchaseEvent>[];
+      svc.events.listen(events.add);
+
+      await svc.handlePurchases([_purchase('TOK', PurchaseStatus.purchased)]);
+      await pumpEventQueue();
+
+      expect(events.single.productId, 'creditos_50usd');
+    });
+
+    test('el pending de una verificación reintentable también lo lleva', () async {
+      final svc = PlayBillingService(
+        verifyClient: _FakeVerify(
+          const PlayVerifyResult(balance: 0, points: 0, credited: false),
+          error: PlayVerifyException(502, 'caído', retryable: true),
+        ),
+        accessToken: () async => 'JWT',
+        finishPurchase: (_) async {},
+      );
+      final events = <CreditPurchaseEvent>[];
+      svc.events.listen(events.add);
+
+      await svc.handlePurchases([_purchase('TOK', PurchaseStatus.purchased)]);
+      await pumpEventQueue();
+
+      expect(events.single.kind, CreditPurchaseKind.pending);
+      expect(events.single.productId, 'creditos_50usd');
+    });
+
+    test('los eventos sintéticos (sin compra detrás) van sin productId', () async {
+      final svc = PlayBillingService(
+        verifyClient: _FakeVerify(
+            const PlayVerifyResult(balance: 0, points: 0, credited: false)),
+        accessToken: () async => 'JWT',
+        finishPurchase: (_) async {},
+      );
+      final events = <CreditPurchaseEvent>[];
+      svc.events.listen(events.add);
+
+      await svc.handlePurchases([_sintetica(PurchaseStatus.canceled)]);
+      await pumpEventQueue();
+
+      expect(events.single.productId, isNull,
+          reason: 'la cancelación de la hoja es del flujo vivo: la tienda debe '
+              'poder soltar el spinner con ella aunque no traiga producto');
+    });
+  });
+
   // C-2 de la revisión de la tienda: `buyConsumable` NO lanza cuando
   // `launchBillingFlow` falla — devuelve `false` (el caso típico es
   // ITEM_ALREADY_OWNED, justo el estado que deja una compra sin consumir).

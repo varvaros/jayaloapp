@@ -170,10 +170,15 @@ class _TierCard extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
+          // Center + scroll y NO un Column a secas: PageView da constraints
+          // de alto EXACTAS, y con la fuente grande del sistema (ajuste de
+          // accesibilidad) el contenido no cabe — sin esto, el CTA "Comprar",
+          // último hijo, se recortaba en release sin franja amarilla.
+          child: Center(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
               if (name != null)
                 Chip(
                   label: Text(name),
@@ -234,7 +239,9 @@ class _TierCard extends StatelessWidget {
                         child: CircularProgressIndicator(strokeWidth: 2.4))
                     : const Text('Comprar'),
               ),
-            ],
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -302,10 +309,25 @@ class _CreditShopScreenState extends State<CreditShopScreen> {
           ? null
           : await _billing.loadProducts(ids);
 
+      // ⚠️ El plugin calcula notFoundIDs = pedidos − devueltos SIN importar
+      // la causa: un device sin Play o un BillingClient caído meten TODOS los
+      // ids ahí (con o sin `error`). Eso NO es "producto sin dar de alta":
+      // es un fallo de carga — estado de error con Reintentar, y sin falsa
+      // alarma de configuración al tracker (cada device sin Play sería una).
+      if (resp != null && (resp.error != null || resp.productDetails.isEmpty)) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _error = 'No pudimos conectar con Google Play. Intenta de nuevo.';
+        });
+        return;
+      }
+
       if (resp != null && resp.notFoundIDs.isNotEmpty) {
-        // La tarjeta no se pinta (el body filtra por precio), pero que un
-        // paquete activo no exista en la consola es un fallo de configuración
-        // que nadie vería si no se reporta.
+        // Play SÍ respondió con productos: lo que falta aquí es un alta
+        // pendiente en la consola. La tarjeta no se pinta (el body filtra por
+        // precio), pero es un fallo de configuración que nadie vería si no
+        // se reporta.
         unawaited(reportError(
           StateError(
               'Play no conoce estos productos: ${resp.notFoundIDs.join(", ")}'),
@@ -349,7 +371,14 @@ class _CreditShopScreenState extends State<CreditShopScreen> {
     // creería que su compra ya terminó y cancelaría un pago real. Su
     // desenlace feliz lo anuncia el listener global de `app.dart`.
     if (e.fromRestore) return;
-    setState(() => _busy = null);
+    // Un evento de OTRO producto tampoco es el desenlace de la compra en
+    // curso: un pago DIFERIDO de otra sesión que Google confirma en segundo
+    // plano llega como `purchased` (no restaurada) y soltaría este spinner.
+    // Los eventos sin producto (sintéticos: cancelar la hoja, error previo
+    // al cobro) sí son del flujo vivo y deben soltar.
+    final deOtraCompra =
+        e.productId != null && _busy != null && e.productId != _busy;
+    if (!deOtraCompra) setState(() => _busy = null);
     switch (e.kind) {
       case CreditPurchaseKind.credited:
         // El "Listo. Tienes N créditos." lo pinta SOLO el listener global de
@@ -456,7 +485,14 @@ class _MascotBand extends StatelessWidget {
             bottom: 16,
             right: 150,
             child: Text(
-              'Recarga y sigue desbloqueando contactos',
+              // «clientes», no «contactos»: el vocabulario de la tienda
+              // (decisión PO 08-08, «Hasta N clientes desbloqueados»).
+              'Recarga y sigue desbloqueando clientes',
+              // Tope de líneas: anclado abajo en un Stack con Clip.none, sin
+              // esto el texto crecía hacia ARRIBA con fuente grande en
+              // pantallas estrechas y pintaba encima del AppBar.
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                   color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
             ),

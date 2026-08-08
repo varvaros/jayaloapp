@@ -26,10 +26,17 @@ enum CreditPurchaseKind {
 
 class CreditPurchaseEvent {
   const CreditPurchaseEvent(this.kind,
-      {this.balance, this.points, this.fromRestore = false});
+      {this.balance, this.points, this.fromRestore = false, this.productId});
   final CreditPurchaseKind kind;
   final int? balance;
   final int? points;
+
+  /// Producto de Play al que pertenece el evento, o `null` si no hay compra
+  /// detrás (los sintéticos: cancelar la hoja, error previo al cobro). La
+  /// tienda lo usa para no soltar el spinner de una compra por el desenlace
+  /// de OTRA (p. ej. un pago diferido de otra sesión que Google confirma en
+  /// segundo plano y llega como `purchased`, no como restaurada).
+  final String? productId;
 
   /// `true` si el evento viene de una compra RESTAURADA (`restorePurchases`),
   /// no de la compra en curso. Una restaurada puede aterrizar con la hoja de
@@ -192,16 +199,23 @@ class PlayBillingService {
     }
   }
 
+  /// El plugin fabrica compras SINTÉTICAS (productID vacío) cuando no hay
+  /// compra detrás: ahí el evento va sin producto.
+  static String? _productOf(PurchaseDetails p) =>
+      p.productID.isEmpty ? null : p.productID;
+
   Future<void> _handleOne(PurchaseDetails p) async {
     final token = p.verificationData.serverVerificationData;
 
     switch (p.status) {
       case PurchaseStatus.pending:
-        _emit(const CreditPurchaseEvent(CreditPurchaseKind.pending));
+        _emit(CreditPurchaseEvent(CreditPurchaseKind.pending,
+            productId: _productOf(p)));
         return;
 
       case PurchaseStatus.canceled:
-        _emit(const CreditPurchaseEvent(CreditPurchaseKind.canceled));
+        _emit(CreditPurchaseEvent(CreditPurchaseKind.canceled,
+            productId: _productOf(p)));
         return;
 
       case PurchaseStatus.error:
@@ -213,7 +227,8 @@ class PlayBillingService {
         // completar la compra" a quien ya pagó, y encima reconocerla (lo que
         // apaga el reembolso automático de Google), es el peor final posible.
         if (token.isEmpty) {
-          _emit(const CreditPurchaseEvent(CreditPurchaseKind.failed));
+          _emit(CreditPurchaseEvent(CreditPurchaseKind.failed,
+              productId: _productOf(p)));
           return;
         }
         await _verifyAndCredit(p);
@@ -243,12 +258,13 @@ class PlayBillingService {
     // status a `error` por un consumo fallido, el origen se pierde — ese caso
     // se trata como en curso, que es el lado seguro para el spinner.)
     final restored = p.status == PurchaseStatus.restored;
+    final product = _productOf(p);
     final jwt = await _readAccessToken();
     if (jwt == null) {
       // Sin sesión no se puede acreditar a nadie. La compra queda VIVA (no se
       // termina) y se recupera con `restorePurchases` cuando vuelva a entrar.
       _emit(CreditPurchaseEvent(CreditPurchaseKind.pending,
-          fromRestore: restored));
+          fromRestore: restored, productId: product));
       return;
     }
 
@@ -276,7 +292,7 @@ class PlayBillingService {
       // Transitorio: la compra sigue viva en la cola de Play y `start()` la
       // vuelve a traer en el próximo arranque.
       _emit(CreditPurchaseEvent(CreditPurchaseKind.pending,
-          fromRestore: restored));
+          fromRestore: restored, productId: product));
       return;
     }
 
@@ -291,10 +307,11 @@ class PlayBillingService {
         balance: ok.balance,
         points: ok.points,
         fromRestore: restored,
+        productId: product,
       ));
     } else {
       _emit(CreditPurchaseEvent(CreditPurchaseKind.failed,
-          fromRestore: restored));
+          fromRestore: restored, productId: product));
     }
 
     try {
