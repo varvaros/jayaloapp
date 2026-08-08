@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/brand.dart';
+import 'core/play_billing_service.dart';
 import 'core/motion.dart';
 import 'data/repos.dart';
 import 'core/theme_store.dart';
@@ -167,6 +168,7 @@ class _JayaloAppState extends State<JayaloApp> {
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   StreamSubscription<Uri>? _linkSub;
   StreamSubscription<AuthState>? _authSub;
+  StreamSubscription<CreditPurchaseEvent>? _billingSub;
 
   @override
   void initState() {
@@ -178,6 +180,34 @@ class _JayaloAppState extends State<JayaloApp> {
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (data.event == AuthChangeEvent.signedIn) onboardingStore.reload();
     });
+    _initPlayBilling();
+  }
+
+  /// Recuperacion de compras de Play, AL ARRANCAR y no al abrir la tienda.
+  ///
+  /// Una compra puede quedar cobrada y sin acreditar por muchas vias que el
+  /// servidor marca como reintentables: Google caido, sesion vencida, un pago
+  /// diferido que Google confirma horas despues. El reintento consiste en
+  /// pedirle a Play las compras vivas (`restorePurchases`) y volver a
+  /// verificarlas. Si eso solo ocurriera al abrir la tienda de creditos, el
+  /// usuario que pago y no volvio a entrar ahi no cobraria nunca.
+  ///
+  /// El listener global existe porque para entonces la tienda no esta montada
+  /// y nadie mas veria el resultado.
+  Future<void> _initPlayBilling() async {
+    _billingSub = playBilling.events.listen((e) {
+      if (e.kind != CreditPurchaseKind.credited) return;
+      // El saldo autoritativo lo acaba de devolver el servidor: sembrar el
+      // cache evita que el navbar siga ensenando el saldo viejo hasta que
+      // caduque el TTL, justo cuando el usuario acaba de pagar.
+      if (e.balance != null) AppCaches.wallet.set(e.balance);
+      _messengerKey.currentState?.showSnackBar(SnackBar(
+        content: Text('Listo. Tienes ${e.balance ?? 0} creditos.'),
+      ));
+    });
+    // Sin sesion no hay a quien acreditar; al entrar se reintenta.
+    if (Supabase.instance.client.auth.currentSession == null) return;
+    await playBilling.start();
   }
 
   /// Deep link de retorno de la recarga por PayPal (jayalo://wallet): trae la
@@ -232,6 +262,7 @@ class _JayaloAppState extends State<JayaloApp> {
   void dispose() {
     _linkSub?.cancel();
     _authSub?.cancel();
+    _billingSub?.cancel();
     super.dispose();
   }
 

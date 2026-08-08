@@ -80,6 +80,7 @@ dependencies:
   smart_auth: ^3.2.0
   flutter_local_notifications: ^22.2.0
   in_app_purchase: ^3.3.0
+  in_app_purchase_android: ^0.5.2
 
 dev_dependencies:
   flutter_test:

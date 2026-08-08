@@ -18,12 +18,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/brand.dart';
 import '../../core/error_reporter.dart';
 import '../../core/play_billing_service.dart';
-import '../../core/play_verify_client.dart';
 import '../../data/repos.dart' show activeCreditPackages;
 import '../../domain/credit_shop.dart';
 
@@ -246,7 +244,10 @@ class CreditShopScreen extends StatefulWidget {
 }
 
 class _CreditShopScreenState extends State<CreditShopScreen> {
-  late final PlayBillingService _billing;
+  // El servicio es GLOBAL y no se destruye con la pantalla: una compra pagada
+  // puede llegar despues de que el usuario salga de aqui, y con un servicio
+  // por pantalla ese evento moria con ella.
+  final PlayBillingService _billing = playBilling;
   StreamSubscription<CreditPurchaseEvent>? _events;
 
   List<ShopTier> _tiers = const [];
@@ -259,20 +260,14 @@ class _CreditShopScreenState extends State<CreditShopScreen> {
   @override
   void initState() {
     super.initState();
-    _billing = PlayBillingService(
-      verifyClient: PlayVerifyClient(),
-      accessToken: () async =>
-          Supabase.instance.client.auth.currentSession?.accessToken,
-      completePurchase: (p) => InAppPurchase.instance.completePurchase(p),
-    );
     _events = _billing.events.listen(_onEvent);
     unawaited(_load());
   }
 
   @override
   void dispose() {
+    // Solo la SUSCRIPCION. El servicio sobrevive a la pantalla a proposito.
     _events?.cancel();
-    _billing.dispose();
     super.dispose();
   }
 
@@ -282,9 +277,9 @@ class _CreditShopScreenState extends State<CreditShopScreen> {
       _error = null;
     });
     try {
-      // El stream ANTES de nada: las compras que quedaron a medias en un
-      // arranque anterior se re-entregan al engancharlo, y hay que estar
-      // escuchando para acreditarlas.
+      // El stream y la recuperacion ANTES de nada: `start()` engancha
+      // `purchaseStream` y ademas pide a Play las compras que quedaron a
+      // medias, que en Android NO se re-entregan solas.
       await _billing.start();
 
       final packages = await activeCreditPackages();
