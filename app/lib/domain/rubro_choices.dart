@@ -15,19 +15,20 @@
 /// categorías objetivo es lo que garantiza que siempre haya algo que elegir.
 library;
 
-/// Ids de rubro a ofrecer, en orden de presentación.
+/// Ids que se pintan como FICHAS, arriba: lo sugerido por la IA más lo que el
+/// usuario ya añadió desde el desplegable.
 ///
-/// [catalog] son las filas de `rubros` de las categorías objetivo, tal como las
-/// devuelve `rubrosForCategories` (claves `id`, `name`, `category_id`).
-/// [suggested] son los ids que sugirió la IA en el turno `routing`.
+/// Pedido del PO (2026-08-07): la parrilla con el catálogo entero en fichas es
+/// tediosa. Arriba solo lo relevante; el resto se elige en un desplegable.
 ///
-/// Los sugeridos van delante para que la ayuda de la IA siga siendo visible sin
-/// tener que buscar. Un sugerido que no esté en el catálogo se conserva igual:
-/// si la lectura del catálogo falló, perderlo dejaría al usuario tan bloqueado
-/// como en el bug original.
-List<String> rubroChoiceIds({
-  required List<Map<String, dynamic>> catalog,
+/// Un sugerido se queda como ficha aunque esté DESmarcado — si desapareciera al
+/// desmarcarlo, el usuario no podría volver a marcarlo sin buscarlo. Y un
+/// seleccionado que no esté en el catálogo tampoco se pierde, o quedaría
+/// enviado sin forma de quitarlo.
+List<String> rubroChipIds({
   required List<String> suggested,
+  required Set<String> selected,
+  required List<Map<String, dynamic>> catalog,
 }) {
   final out = <String>[];
   final seen = <String>{};
@@ -40,8 +41,31 @@ List<String> rubroChoiceIds({
   for (final id in suggested) {
     add(id);
   }
+  // Los añadidos a mano van detrás, en el orden del catálogo (estable entre
+  // rebuilds; el de un Set no lo es).
   for (final row in catalog) {
-    add(row['id'] as String?);
+    final id = row['id'] as String?;
+    if (id != null && selected.contains(id)) add(id);
+  }
+  // Y por último lo seleccionado que no aparece en el catálogo.
+  for (final id in selected) {
+    add(id);
+  }
+  return out;
+}
+
+/// Resto del catálogo, para el desplegable: lo que no está ya como ficha.
+List<String> rubroDropdownIds({
+  required List<Map<String, dynamic>> catalog,
+  required List<String> shown,
+}) {
+  final ya = shown.toSet();
+  final out = <String>[];
+  for (final row in catalog) {
+    final id = row['id'] as String?;
+    if (id != null && id.isNotEmpty && !ya.contains(id) && !out.contains(id)) {
+      out.add(id);
+    }
   }
   return out;
 }

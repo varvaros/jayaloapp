@@ -1456,9 +1456,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         if (r['id'] is String && r['name'] is String)
           r['id'] as String: r['name'] as String,
     };
-    final ids = rubroChoiceIds(catalog: _catalogRubros, suggested: _rubros);
+    // Arriba solo lo relevante (sugerido + ya elegido); el resto del catálogo
+    // vive en el desplegable. Pedido del PO: la parrilla completa es tediosa.
+    final ids = rubroChipIds(
+      suggested: _rubros,
+      selected: _selectedRubros,
+      catalog: _catalogRubros,
+    );
+    final masOpciones = rubroDropdownIds(catalog: _catalogRubros, shown: ids);
 
-    if (ids.isEmpty) {
+    if (ids.isEmpty && masOpciones.isEmpty) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1493,27 +1500,73 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           ),
           const SizedBox(height: 6),
         ],
-        Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          children: [
-            for (final id in ids)
-              FilterChip(
-                label: Text(_rubroLabel(id, names)),
-                selected: _selectedRubros.contains(id),
-                onSelected: (on) => setState(() {
-                  if (on) {
-                    _selectedRubros.add(id);
-                  } else {
-                    _selectedRubros.remove(id);
-                  }
-                }),
-              ),
-          ],
-        ),
+        if (ids.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              for (final id in ids)
+                FilterChip(
+                  label: Text(_rubroLabel(id, names)),
+                  selected: _selectedRubros.contains(id),
+                  onSelected: (on) => setState(() {
+                    if (on) {
+                      _selectedRubros.add(id);
+                    } else {
+                      _selectedRubros.remove(id);
+                    }
+                  }),
+                ),
+            ],
+          ),
+        if (masOpciones.isNotEmpty) ...[
+          SizedBox(height: ids.isEmpty ? 0 : 12),
+          _rubroDropdown(cs, masOpciones, names),
+        ],
       ],
     );
   }
+
+  /// Desplegable que AGREGA (no que selecciona): al elegir, el rubro sube a las
+  /// fichas de arriba ya marcado y sale de la lista.
+  ///
+  /// ⚠️ La `key` DEBE cambiar con las opciones. Sin ella Flutter reutiliza el
+  /// `_DropdownButtonFormFieldState`, que retiene el último valor elegido — y
+  /// ese valor ya no está en `items` en el rebuild siguiente, con lo que
+  /// `DropdownButtonFormField` lanza "exactly one item". Mismo patrón y misma
+  /// razón que el `_adder` de `shared/location_coverage_picker.dart`.
+  Widget _rubroDropdown(
+    ColorScheme cs,
+    List<String> opciones,
+    Map<String, String> names,
+  ) => DropdownButtonFormField<String>(
+    key: ValueKey('rubro-adder:${Object.hashAll(opciones)}'),
+    initialValue: null,
+    isExpanded: true,
+    decoration: InputDecoration(
+      labelText: 'Añadir otro rubro…',
+      filled: true,
+      fillColor: cs.surfaceContainerHighest,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+    ),
+    items: [
+      for (final id in opciones)
+        DropdownMenuItem(
+          value: id,
+          child: Text(
+            _rubroLabel(id, names),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+    ],
+    onChanged: (v) {
+      if (v == null) return;
+      setState(() => _selectedRubros.add(v));
+    },
+  );
 
   /// Salida de emergencia cuando la IA no dejó categorías: elegir una a mano
   /// carga su catálogo de rubros y desbloquea el envío.
