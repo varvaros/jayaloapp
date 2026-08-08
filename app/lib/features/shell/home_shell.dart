@@ -75,9 +75,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // Al volver del background puede haber mensajes nuevos (llegaron por push).
     if (state == AppLifecycleState.resumed) {
       messagesBadge.refresh();
-      // Y el saldo pudo cambiar fuera de la app: la recarga por PayPal se hace
-      // en la web (deep link `jayalo://wallet`), así que el número cacheado
-      // vuelve a la fuente en la próxima lectura.
+      // Y el saldo pudo cambiar sin que esta pantalla se enterara (una compra
+      // que quedó pendiente y acreditó al reintentar), así que el número
+      // cacheado vuelve a la fuente en la próxima lectura.
       AppCaches.onResume();
     }
   }

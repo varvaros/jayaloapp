@@ -28,9 +28,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/config.dart';
-import '../../core/secure_web_launch.dart';
 import '../../core/motion.dart';
+import '../../core/router.dart' show openCreditShop;
 import '../../data/repos.dart';
 import '../../domain/pricing.dart';
 import '../../domain/recharge.dart';
@@ -54,22 +53,6 @@ int estimatedUnlockCost(Map<String, dynamic> o) {
 
 void _snack(BuildContext context, String msg) => ScaffoldMessenger.of(context)
     .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
-
-/// ADR-0031: el pago SIEMPRE ocurre fuera de la app (navegador del sistema).
-/// Intenta abrir con un magic link autenticado (evita el segundo login);
-/// si falla, cae al link plano (el usuario puede necesitar loguearse ahí).
-Future<void> openProviderWallet(BuildContext context) async {
-  Uri target = Uri.parse(AppConfig.walletUrl);
-  try {
-    target = Uri.parse(await createWalletLoginLink());
-  } catch (_) {}
-  // Custom Tabs, NO intent público: el magic link es canjeable por una sesión
-  // completa. Ver `core/secure_web_launch.dart`.
-  final ok = await launchAuthenticatedUrl(target);
-  if (!ok && context.mounted) {
-    _snack(context, 'No se pudo abrir el navegador. Visita jayalo.com para recargar.');
-  }
-}
 
 /// Arranca el flujo completo: chequeo de revelable → hoja de desbloqueo (hold
 /// + costo + saldo) → celebración → hoja de contacto. [onChanged] se llama
@@ -168,7 +151,8 @@ Future<void> startUnlockFlow(
               FilledButton(
                 onPressed: () {
                   Navigator.pop(ctx);
-                  openProviderWallet(context);
+                  // Play Billing: la recarga ocurre DENTRO de la app.
+                  openCreditShop(context);
                 },
                 child: const Text('Saldo insuficiente — Recargar'),
               )

@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
-import '../../core/config.dart';
+import '../../core/router.dart' show openCreditShop;
 import '../../core/motion.dart';
-import '../../core/secure_web_launch.dart';
 import '../../data/repos.dart';
 import '../../domain/pricing.dart';
 import '../../domain/recharge.dart';
@@ -170,18 +169,9 @@ class _ProductInterestDetailScreenState
     );
   }
 
-  /// ADR-0031: el pago SIEMPRE ocurre fuera de la app (navegador del sistema).
-  Future<void> _openWallet() async {
-    Uri target = Uri.parse(AppConfig.walletUrl);
-    try {
-      target = Uri.parse(await createWalletLoginLink());
-    } catch (_) {}
-    // Custom Tabs, NO intent público (ver `core/secure_web_launch.dart`).
-    final ok = await launchAuthenticatedUrl(target);
-    if (!ok && mounted) {
-      _snack('No se pudo abrir el navegador. Visita jayalo.com para recargar.');
-    }
-  }
+  /// Play Billing: la recarga ocurre DENTRO de la app (sustituye al link-out
+  /// de ADR-0031, que Play prohíbe).
+  Future<void> _openWallet() => openCreditShop(context);
 
   Future<void> _openChat() async {
     String? convId;

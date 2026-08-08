@@ -996,7 +996,7 @@ Future<List<Map<String, dynamic>>> _fetchMyOffers() async {
 /// web) — era la query más llamada del backend porque cada pantalla que muestra
 /// el saldo lo pedía al montar. Se invalida solo en los tres momentos en que
 /// puede haber cambiado: un desbloqueo (lo SIEMBRA con el saldo que devuelve la
-/// RPC), volver del background (pudo recargar en la web) y cerrar sesión.
+/// RPC), volver del background (pudo comprar créditos) y cerrar sesión.
 Future<int?> walletBalance() => AppCaches.wallet.read(() async {
   final uid = supa.auth.currentUser!.id;
   final row = await supa
@@ -1533,23 +1533,6 @@ Future<List<ShopPackage>> activeCreditPackages() async {
             playProductId: r['play_product_id'] as String?,
           ))
       .toList();
-}
-
-/// Magic link autenticado hacia /provider/wallet (ADR-0031): evita que el
-/// proveedor tenga que loguearse a mano en el navegador al recargar. El pago
-/// sigue ocurriendo 100% en la web — esto es solo un handoff de sesión.
-Future<String> createWalletLoginLink() async {
-  try {
-    final res = await supa.functions.invoke('create-wallet-login-link');
-    final data = res.data as Map<String, dynamic>?;
-    final url = data?['url'] as String?;
-    if (data?['ok'] != true || url == null) {
-      throw Exception(data?['error'] ?? 'No se pudo generar el enlace');
-    }
-    return url;
-  } on FunctionException catch (e) {
-    _throwFunctionError(e);
-  }
 }
 
 /// Chequeo liviano PRE-cobro (paridad web ProviderOffersSection.tsx:670):

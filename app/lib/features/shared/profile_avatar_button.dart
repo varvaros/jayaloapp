@@ -12,13 +12,12 @@ import 'package:image_picker/image_picker.dart';
 
 import 'network_image.dart';
 
-import '../../core/config.dart';
-import '../../core/secure_web_launch.dart';
 import '../../core/motion.dart';
 import '../../core/safe_image_picker.dart';
 import '../../core/session_state.dart';
+import '../../core/router.dart' show openCreditShop;
 import '../../data/repos.dart'
-    show myProfile, walletBalance, createWalletLoginLink, updateMyAvatar, isAdmin;
+    show myProfile, walletBalance, updateMyAvatar, isAdmin;
 
 /// Foto + nombre cacheados UNA sola vez y compartidos por las 6 instancias
 /// del avatar (mismo espíritu que `NotifCountStore` en
@@ -108,7 +107,8 @@ class ProfileStore extends ChangeNotifier {
 final profileStore = ProfileStore();
 
 /// Resultado especial del menú: "Recargar créditos" no es una ruta del router
-/// sino el wallet EXTERNO (ADR-0031, el pago siempre fuera de la app).
+/// sino la tienda de créditos IN-APP (Play Billing sustituyó al link-out
+/// externo de ADR-0031).
 const _kWalletAction = '__wallet__';
 
 /// Abre el menú de perfil (role-aware). Proveedor: encabezado con nombre +
@@ -284,23 +284,9 @@ Future<void> openProfileMenu(BuildContext context,
   context.push(route);
 }
 
-/// Abre el wallet en el navegador del sistema (ADR-0031: el pago SIEMPRE ocurre
-/// fuera de la app). Intenta un enlace de login de un solo uso; si falla, cae a
-/// la URL genérica; si el navegador no abre, avisa. Mismo comportamiento que
-/// `inbox_screen._openWallet`.
-Future<void> openExternalWallet(BuildContext context) async {
-  Uri target = Uri.parse(AppConfig.walletUrl);
-  try {
-    target = Uri.parse(await createWalletLoginLink());
-  } catch (_) {}
-  // Custom Tabs, NO intent público (ver `core/secure_web_launch.dart`).
-  final ok = await launchAuthenticatedUrl(target);
-  if (!ok && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'No se pudo abrir el navegador. Visita jayalo.com para recargar.')));
-  }
-}
+/// Abre la tienda de créditos IN-APP. Sustituye al link-out al navegador de
+/// ADR-0031: Play prohíbe llevar al usuario a otro método de pago.
+Future<void> openExternalWallet(BuildContext context) => openCreditShop(context);
 
 /// Encabezado del menú (solo proveedor): foto/inicial + nombre, y debajo el
 /// saldo de créditos RESALTADO — número grande en violeta sobre una banda

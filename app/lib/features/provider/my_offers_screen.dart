@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
+import '../../core/router.dart' show openCreditShop;
 import '../../data/repos.dart';
 import '../client/my_requests_screen.dart' show MyRequestsScreen, timeAgo;
 import '../client/request_status_screen.dart' show offerPriceLabel;
@@ -71,7 +72,9 @@ class _MyOffersScreenState extends State<MyOffersScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Al volver del navegador (recarga PayPal), refrescar el saldo (spec §6).
+    // Al volver al primer plano, refrescar el saldo (spec §6). Con Play
+    // Billing la compra ocurre in-app, pero el saldo puede haber cambiado
+    // igual (una compra pendiente que acreditó al reintentar).
     if (state == AppLifecycleState.resumed) _refetch();
   }
 
@@ -473,7 +476,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     }
   }
 
-  Future<void> _openWallet() => openProviderWallet(context);
+  Future<void> _openWallet() => openCreditShop(context);
 }
 
 /// "W1 · Tarjeta ámbar" (elegida por el PO): el saldo en el tono del dinero,

@@ -1,6 +1,6 @@
 /// Tienda de créditos IN-APP (Play Billing v1).
 ///
-/// Sustituye al link-out a `/provider/wallet` de ADR-0031: Play prohíbe llevar
+/// Sustituye al link-out al wallet web de ADR-0031: Play prohíbe llevar
 /// al usuario a otro método de pago, así que la recarga ocurre aquí dentro.
 ///
 /// Dos piezas a propósito:
