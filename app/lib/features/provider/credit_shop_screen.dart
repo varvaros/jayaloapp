@@ -336,10 +336,18 @@ class _CreditShopScreenState extends State<CreditShopScreen> {
 
   void _onEvent(CreditPurchaseEvent e) {
     if (!mounted) return;
+    // Una compra RESTAURADA no es la compra en curso: llega por
+    // `restorePurchases()` y puede aterrizar con la hoja de Google abierta
+    // para OTRA compra. Si soltara el spinner o pintara avisos, el usuario
+    // creería que su compra ya terminó y cancelaría un pago real. Su
+    // desenlace feliz lo anuncia el listener global de `app.dart`.
+    if (e.fromRestore) return;
     setState(() => _busy = null);
     switch (e.kind) {
       case CreditPurchaseKind.credited:
-        _snack('Listo. Tienes ${e.balance ?? 0} créditos.');
+        // El "Listo. Tienes N créditos." lo pinta SOLO el listener global de
+        // `app.dart` (que además siembra el cache del saldo): pintarlo aquí
+        // también encolaba dos snackbars de ~9 s por la misma compra.
         break;
       case CreditPurchaseKind.pending:
         // ⚠️ NUNCA decir que el pago falló: el usuario ya pagó y el dinero

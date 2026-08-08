@@ -25,10 +25,18 @@ enum CreditPurchaseKind {
 }
 
 class CreditPurchaseEvent {
-  const CreditPurchaseEvent(this.kind, {this.balance, this.points});
+  const CreditPurchaseEvent(this.kind,
+      {this.balance, this.points, this.fromRestore = false});
   final CreditPurchaseKind kind;
   final int? balance;
   final int? points;
+
+  /// `true` si el evento viene de una compra RESTAURADA (`restorePurchases`),
+  /// no de la compra en curso. Una restaurada puede aterrizar con la hoja de
+  /// Google abierta para OTRA compra: la tienda no puede soltar su spinner ni
+  /// pintar avisos por ella, o el usuario cancela un pago real creyendo que
+  /// ya compró.
+  final bool fromRestore;
 }
 
 /// Termina una compra en Google. **En Android "terminar" un consumible es
@@ -230,11 +238,17 @@ class PlayBillingService {
   }
 
   Future<void> _verifyAndCreditInner(PurchaseDetails p, String token) async {
+    // El origen se decide por el status de PLAY, no por quién llamó: solo
+    // `restored` viene de `restorePurchases`. (Si el plugin sobrescribió el
+    // status a `error` por un consumo fallido, el origen se pierde — ese caso
+    // se trata como en curso, que es el lado seguro para el spinner.)
+    final restored = p.status == PurchaseStatus.restored;
     final jwt = await _readAccessToken();
     if (jwt == null) {
       // Sin sesión no se puede acreditar a nadie. La compra queda VIVA (no se
       // termina) y se recupera con `restorePurchases` cuando vuelva a entrar.
-      _emit(const CreditPurchaseEvent(CreditPurchaseKind.pending));
+      _emit(CreditPurchaseEvent(CreditPurchaseKind.pending,
+          fromRestore: restored));
       return;
     }
 
@@ -261,7 +275,8 @@ class PlayBillingService {
     if (ok == null && !terminal) {
       // Transitorio: la compra sigue viva en la cola de Play y `start()` la
       // vuelve a traer en el próximo arranque.
-      _emit(const CreditPurchaseEvent(CreditPurchaseKind.pending));
+      _emit(CreditPurchaseEvent(CreditPurchaseKind.pending,
+          fromRestore: restored));
       return;
     }
 
@@ -275,9 +290,11 @@ class PlayBillingService {
         CreditPurchaseKind.credited,
         balance: ok.balance,
         points: ok.points,
+        fromRestore: restored,
       ));
     } else {
-      _emit(const CreditPurchaseEvent(CreditPurchaseKind.failed));
+      _emit(CreditPurchaseEvent(CreditPurchaseKind.failed,
+          fromRestore: restored));
     }
 
     try {

@@ -44,6 +44,29 @@ class _NoVerify implements PlayVerifyClient {
       throw StateError('la pantalla no debe verificar nada en este test');
 }
 
+class _OkVerify implements PlayVerifyClient {
+  @override
+  Future<PlayVerifyResult> verify({
+    required String accessToken,
+    required String purchaseToken,
+    required String productId,
+  }) async =>
+      const PlayVerifyResult(balance: 65, points: 55, credited: true);
+}
+
+/// Compra viva tal como la entrega el plugin tras un cobro real.
+PurchaseDetails _compra(String token, PurchaseStatus status) => PurchaseDetails(
+      productID: 'creditos_10usd',
+      purchaseID: 'p1',
+      verificationData: PurchaseVerificationData(
+        localVerificationData: '{}',
+        serverVerificationData: token,
+        source: 'google_play',
+      ),
+      transactionDate: null,
+      status: status,
+    )..pendingCompletePurchase = true;
+
 void main() {
   final tiers = buildShopTiers(const [
     ShopPackage(id: 'a', points: 10, priceUSD: 10, label: 'Inicial — 10 puntos',
@@ -150,6 +173,103 @@ void main() {
     expect(selloBottom, lessThanOrEqualTo(844 - barra),
         reason: 'el sello (y el CTA por encima de él) debe quedar por encima '
             'de la barra flotante, no debajo');
+  });
+
+  // Monta la pantalla completa con un servicio real sobre dobles y devuelve
+  // el servicio, para poder inyectarle lotes de compras como hace Play.
+  Future<PlayBillingService> montarTienda(WidgetTester t) async {
+    final svc = PlayBillingService(
+      verifyClient: _OkVerify(),
+      accessToken: () async => 'JWT',
+      finishPurchase: (_) async {},
+      iap: _ScreenIap(
+        buyResult: true,
+        products: [
+          ProductDetails(
+            id: 'creditos_10usd',
+            title: 'Inicial',
+            description: '',
+            price: 'RD\$650.00',
+            rawPrice: 650,
+            currencyCode: 'DOP',
+          ),
+        ],
+      ),
+    );
+    debugPlayBilling = svc;
+    addTearDown(() => debugPlayBilling = null);
+
+    await t.pumpWidget(MaterialApp(
+      home: CreditShopScreen(
+        loadPackages: () async => const [
+          ShopPackage(
+              id: 'a',
+              points: 10,
+              priceUSD: 10,
+              label: 'Inicial — 10 puntos',
+              playProductId: 'creditos_10usd'),
+        ],
+      ),
+    ));
+    await t.pumpAndSettle();
+    return svc;
+  }
+
+  // Important de la revisión: el listener global de `app.dart` y el de esta
+  // pantalla oían el mismo evento y encolaban DOS snackbars de ~9 s por la
+  // misma compra (con dos ortografías distintas). El aviso de crédito tiene
+  // UN dueño: el global, que funciona aunque la tienda no esté montada.
+  testWidgets('la pantalla no duplica el aviso de crédito, pero sí suelta el CTA',
+      (t) async {
+    final svc = await montarTienda(t);
+
+    await t.tap(find.byKey(const ValueKey('buy_creditos_10usd')));
+    await t.pump();
+
+    await svc.handlePurchases([_compra('TOK', PurchaseStatus.purchased)]);
+    await t.pumpAndSettle();
+
+    expect(find.textContaining('Listo'), findsNothing,
+        reason: 'el "Listo. Tienes N créditos." lo pinta SOLO el listener '
+            'global de app.dart; aquí duplicaba el aviso');
+    final btn = t.widget<FilledButton>(
+        find.byKey(const ValueKey('buy_creditos_10usd')));
+    expect(btn.onPressed, isNotNull,
+        reason: 'la compra en curso terminó: el CTA debe volver');
+  });
+
+  // Important de la revisión: una compra VIEJA recuperada por
+  // `restorePurchases` podía aterrizar con la hoja de Google abierta; su
+  // evento soltaba el spinner y pintaba el éxito detrás de la hoja, y el
+  // usuario cancelaba un pago real creyendo que ya compró.
+  testWidgets('un evento de compra restaurada no toca la compra en curso',
+      (t) async {
+    final svc = await montarTienda(t);
+
+    await t.tap(find.byKey(const ValueKey('buy_creditos_10usd')));
+    await t.pump(); // hoja de Google "abierta": _busy puesto
+
+    await svc.handlePurchases([_compra('TOK-VIEJO', PurchaseStatus.restored)]);
+    // Sin pumpAndSettle: el spinner del CTA (que DEBE seguir vivo) anima sin
+    // fin y no dejaría asentar nunca. Pumps finitos: microtask + un frame.
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 100));
+
+    var btn = t.widget<FilledButton>(
+        find.byKey(const ValueKey('buy_creditos_10usd')));
+    expect(btn.onPressed, isNull,
+        reason: 'la compra restaurada no es la compra en curso: el CTA debe '
+            'seguir bloqueado mientras la hoja de Google está abierta');
+    expect(find.byType(SnackBar), findsNothing,
+        reason: 'nada que pintar detrás de la hoja de pago');
+
+    // El desenlace de la compra EN CURSO sí libera.
+    await svc.handlePurchases([_compra('TOK-NUEVO', PurchaseStatus.purchased)]);
+    await t.pumpAndSettle();
+
+    btn = t.widget<FilledButton>(
+        find.byKey(const ValueKey('buy_creditos_10usd')));
+    expect(btn.onPressed, isNotNull);
   });
 
   // C-2 de la revisión: `buyConsumable` devuelve `false` cuando la hoja de

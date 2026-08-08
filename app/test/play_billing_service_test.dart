@@ -421,6 +421,70 @@ void main() {
     expect(verify.seenTokens, ['TOK']);
   });
 
+  // Important de la revisión de la tienda: `restorePurchases()` puede
+  // entregar una compra VIEJA justo cuando el usuario tiene la hoja de Google
+  // abierta para otra. Si su evento es indistinguible del de la compra en
+  // curso, la pantalla suelta el spinner y pinta "Listo" detrás de la hoja —
+  // y el usuario cancela un pago real creyendo que ya compró. El origen tiene
+  // que viajar en el evento.
+  group('fromRestore', () {
+    test('una compra restaurada acreditada viene marcada', () async {
+      final svc = PlayBillingService(
+        verifyClient: _FakeVerify(
+            const PlayVerifyResult(balance: 65, points: 55, credited: true)),
+        accessToken: () async => 'JWT',
+        finishPurchase: (_) async {},
+      );
+      final events = <CreditPurchaseEvent>[];
+      svc.events.listen(events.add);
+
+      await svc.handlePurchases([_purchase('TOK', PurchaseStatus.restored)]);
+      await pumpEventQueue();
+
+      expect(events.single.kind, CreditPurchaseKind.credited);
+      expect(events.single.fromRestore, isTrue);
+    });
+
+    // El camino del `pending` pasa por `_verifyAndCredit`, no por el switch
+    // de estados: el marcado tiene que sobrevivir también ahí.
+    test('una restaurada con verificación reintentable marca el pending', () async {
+      final svc = PlayBillingService(
+        verifyClient: _FakeVerify(
+          const PlayVerifyResult(balance: 0, points: 0, credited: false),
+          error: PlayVerifyException(502, 'caído', retryable: true),
+        ),
+        accessToken: () async => 'JWT',
+        finishPurchase: (_) async {},
+      );
+      final events = <CreditPurchaseEvent>[];
+      svc.events.listen(events.add);
+
+      await svc.handlePurchases([_purchase('TOK', PurchaseStatus.restored)]);
+      await pumpEventQueue();
+
+      expect(events.single.kind, CreditPurchaseKind.pending);
+      expect(events.single.fromRestore, isTrue);
+    });
+
+    test('la compra en curso NO viene marcada', () async {
+      final svc = PlayBillingService(
+        verifyClient: _FakeVerify(
+            const PlayVerifyResult(balance: 65, points: 55, credited: true)),
+        accessToken: () async => 'JWT',
+        finishPurchase: (_) async {},
+      );
+      final events = <CreditPurchaseEvent>[];
+      svc.events.listen(events.add);
+
+      await svc.handlePurchases([_purchase('TOK', PurchaseStatus.purchased)]);
+      await pumpEventQueue();
+
+      expect(events.single.fromRestore, isFalse,
+          reason: 'el desenlace de la compra en curso SÍ debe soltar el '
+              'spinner de la tienda');
+    });
+  });
+
   // C-2 de la revisión de la tienda: `buyConsumable` NO lanza cuando
   // `launchBillingFlow` falla — devuelve `false` (el caso típico es
   // ITEM_ALREADY_OWNED, justo el estado que deja una compra sin consumir).

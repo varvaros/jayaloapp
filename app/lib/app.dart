@@ -201,8 +201,11 @@ class _JayaloAppState extends State<JayaloApp> {
       // cache evita que el navbar siga ensenando el saldo viejo hasta que
       // caduque el TTL, justo cuando el usuario acaba de pagar.
       if (e.balance != null) AppCaches.wallet.set(e.balance);
+      // UNICO dueno del aviso de credito: la tienda no pinta el suyo (dos
+      // listeners sobre el mismo ScaffoldMessenger encolaban dos snackbars
+      // de ~9 s por la misma compra).
       _messengerKey.currentState?.showSnackBar(SnackBar(
-        content: Text('Listo. Tienes ${e.balance ?? 0} creditos.'),
+        content: Text('Listo. Tienes ${e.balance ?? 0} créditos.'),
       ));
     });
     // Sin sesion no hay a quien acreditar. `watchAuth` rearranca cuando la
