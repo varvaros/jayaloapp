@@ -4,9 +4,8 @@ import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
-import 'package:url_launcher/url_launcher.dart';
-import '../../core/config.dart';
 import '../../core/brand.dart';
+import '../verification/id_doc_sheet.dart';
 import '../../core/center_action.dart';
 import '../../data/repos.dart';
 import '../../core/motion.dart';
@@ -1118,11 +1117,16 @@ class _ProviderRequestDetailScreenState
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         duration: const Duration(seconds: 8),
         content: Text(reason),
+        // La cedula se registra DENTRO de la app (Ajustes -> "Validar
+        // negocio" usa la misma hoja). Sacar al navegador aqui llevaba al
+        // panel web, que trae dos botones de "Recargar creditos" con PayPal:
+        // un link-out prohibido por la politica de pagos de Play.
         action: SnackBarAction(
           label: 'Completar',
-          onPressed: () => launchUrl(
-              Uri.parse('${AppConfig.siteUrl}/provider'),
-              mode: LaunchMode.externalApplication),
+          onPressed: () {
+            final id = _businessId;
+            if (id != null) showIdDocSheet(context, businessId: id);
+          },
         ),
       ));
       return;
@@ -1852,9 +1856,12 @@ class _ProviderRequestDetailScreenState
                   const Divider(height: 32),
                   if (!_editing && _businessId == null)
           FilledButton(
-            onPressed: () => launchUrl(Uri.parse('${AppConfig.siteUrl}/provider'),
-                mode: LaunchMode.externalApplication),
-            child: const Text('Completa tu negocio en jayalo.com para ofertar'),
+            // Antes abria jayalo.com/provider en el navegador. Ese panel tiene
+            // "Recargar creditos" -> PayPal, asi que era un link-out aunque el
+            // boton hablara de completar el negocio: lo que cuenta es donde
+            // deja al usuario. El alta vive en la app.
+            onPressed: () => context.push('/onboarding/provider'),
+            child: const Text('Completa tu negocio para ofertar'),
           )
         else if (!_offerChecked)
           const Padding(
