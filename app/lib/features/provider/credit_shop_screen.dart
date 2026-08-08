@@ -24,6 +24,7 @@ import '../../core/error_reporter.dart';
 import '../../core/play_billing_service.dart';
 import '../../data/repos.dart' show activeCreditPackages;
 import '../../domain/credit_shop.dart';
+import '../shell/floating_nav_bar.dart' show navBarReservedSpace;
 
 /// Parte PURA de la tienda: sin plugin, sin red, sin Supabase. Todo lo que
 /// pinta llega por parámetro, que es lo que la hace testeable.
@@ -109,7 +110,11 @@ class _CreditShopBodyState extends State<CreditShopBody> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          // La ruta vive en el shell y la barra FLOTA sobre el cuerpo
+          // (extendBody): sin esta reserva, el sello queda siempre debajo de
+          // la píldora y en un 360×640 la píldora tapa el CTA "Comprar".
+          padding: EdgeInsets.fromLTRB(
+              16, 12, 16, 12 + navBarReservedSpace(context)),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -237,7 +242,11 @@ class _TierCard extends StatelessWidget {
 
 /// Pantalla completa: carga paquetes + precios de Play y cablea las compras.
 class CreditShopScreen extends StatefulWidget {
-  const CreditShopScreen({super.key});
+  const CreditShopScreen({super.key, this.loadPackages = activeCreditPackages});
+
+  /// Inyectable solo para poder montar la pantalla completa en tests sin
+  /// Supabase. En producción siempre es [activeCreditPackages].
+  final Future<List<ShopPackage>> Function() loadPackages;
 
   @override
   State<CreditShopScreen> createState() => _CreditShopScreenState();
@@ -282,7 +291,7 @@ class _CreditShopScreenState extends State<CreditShopScreen> {
       // medias, que en Android NO se re-entregan solas.
       await _billing.start();
 
-      final packages = await activeCreditPackages();
+      final packages = await widget.loadPackages();
       final ids = packages
           .map((p) => p.playProductId)
           .whereType<String>()
@@ -354,7 +363,15 @@ class _CreditShopScreenState extends State<CreditShopScreen> {
     if (product == null) return;
     setState(() => _busy = playProductId);
     try {
-      await _billing.buy(product);
+      // `false` = la hoja de Google NO se abrió (el plugin no lanza en ese
+      // caso). El stream no va a emitir nada, así que nadie más soltaría el
+      // spinner: hay que deshacer aquí.
+      final opened = await _billing.buy(product);
+      if (!opened) {
+        if (!mounted) return;
+        setState(() => _busy = null);
+        _snack('No se pudo abrir el pago. Intenta de nuevo.');
+      }
     } catch (e, s) {
       unawaited(reportError(e, s));
       if (!mounted) return;

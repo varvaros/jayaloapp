@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:jayalo_app/core/play_billing_service.dart';
 import 'package:jayalo_app/core/play_verify_client.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'
+    show AuthChangeEvent, AuthState, Session, User;
 
 /// Doble de `PlayVerifyClient` que registra lo que recibió.
 class _FakeVerify implements PlayVerifyClient {
@@ -42,6 +44,11 @@ class _GatedVerify implements PlayVerifyClient {
 /// Doble de `InAppPurchase` para observar los dos parámetros de los que depende
 /// que no se pierda dinero: `autoConsume` y la llamada a `restorePurchases`.
 class _FakeIap implements InAppPurchase {
+  _FakeIap({this.buyResult = true});
+
+  /// Lo que devuelve `launchBillingFlow`: `false` significa que la hoja de
+  /// Google NO se abrió (p. ej. ITEM_ALREADY_OWNED) — el plugin NO lanza.
+  final bool buyResult;
   bool? autoConsumeVisto;
   bool restoreLlamado = false;
 
@@ -51,7 +58,7 @@ class _FakeIap implements InAppPurchase {
     bool autoConsume = true,
   }) async {
     autoConsumeVisto = autoConsume;
-    return true;
+    return buyResult;
   }
 
   @override
@@ -412,6 +419,120 @@ void main() {
     await pumpEventQueue();
 
     expect(verify.seenTokens, ['TOK']);
+  });
+
+  // C-2 de la revisión de la tienda: `buyConsumable` NO lanza cuando
+  // `launchBillingFlow` falla — devuelve `false` (el caso típico es
+  // ITEM_ALREADY_OWNED, justo el estado que deja una compra sin consumir).
+  // Con `buy` tipado `Future<void>` ese `false` se perdía y el spinner de la
+  // tienda se quedaba girando para siempre.
+  test('buy propaga el false de una hoja de pago que no se abrió', () async {
+    final iap = _FakeIap(buyResult: false);
+    final svc = PlayBillingService(
+      verifyClient:
+          _FakeVerify(const PlayVerifyResult(balance: 0, points: 0, credited: false)),
+      accessToken: () async => 'JWT',
+      finishPurchase: (_) async {},
+      iap: iap,
+    );
+
+    expect(await svc.buy(_producto('creditos_50usd')), isFalse,
+        reason: 'si la hoja no se abre, el stream no va a emitir nada: '
+            'la pantalla necesita este false para soltar el spinner');
+  });
+
+  // ── C-1 de la revisión de la tienda: la recuperación al arrancar dependía
+  // de que `currentSession` ya estuviera recuperada en `initState` (una
+  // carrera), y si el usuario iniciaba sesión DESPUÉS de abrir la app, nadie
+  // volvía a llamar a `start()`: una compra a medias no se acreditaba hasta
+  // que el usuario entrara a la tienda por su cuenta.
+  group('watchAuth', () {
+    PlayBillingService svcCon(_FakeIap iap) => PlayBillingService(
+          verifyClient: _FakeVerify(
+              const PlayVerifyResult(balance: 0, points: 0, credited: false)),
+          accessToken: () async => 'JWT',
+          finishPurchase: (_) async {},
+          iap: iap,
+        );
+
+    Session sesion() => Session(
+          accessToken: 'jwt',
+          tokenType: 'bearer',
+          user: const User(
+            id: 'u1',
+            appMetadata: {},
+            userMetadata: {},
+            aud: 'authenticated',
+            createdAt: '2026-01-01T00:00:00Z',
+          ),
+        );
+
+    test('al iniciar sesión arranca la recuperación de compras', () async {
+      final iap = _FakeIap();
+      final svc = svcCon(iap);
+      final auth = StreamController<AuthState>();
+      addTearDown(auth.close);
+
+      svc.watchAuth(auth.stream);
+      expect(iap.restoreLlamado, isFalse,
+          reason: 'sin sesión todavía no hay a quién acreditar');
+
+      auth.add(AuthState(AuthChangeEvent.signedIn, sesion()));
+      await pumpEventQueue();
+
+      expect(iap.restoreLlamado, isTrue,
+          reason: 'instalar → abrir sin sesión → iniciar sesión → comprar: '
+              'sin este rearranque la compra a medias no se recupera nunca '
+              'desde el arranque, solo si el usuario abre la tienda');
+    });
+
+    // La carrera del arranque en frío: `Supabase.initialize` no espera a
+    // `recoverSession()`, así que el guard de `currentSession == null` salta
+    // aunque HAYA sesión guardada. `initialSession` con sesión es el aviso de
+    // que la recuperación terminó.
+    test('initialSession CON sesión también arranca', () async {
+      final iap = _FakeIap();
+      final svc = svcCon(iap);
+      final auth = StreamController<AuthState>();
+      addTearDown(auth.close);
+
+      svc.watchAuth(auth.stream);
+      auth.add(AuthState(AuthChangeEvent.initialSession, sesion()));
+      await pumpEventQueue();
+
+      expect(iap.restoreLlamado, isTrue);
+    });
+
+    test('initialSession SIN sesión no arranca nada', () async {
+      final iap = _FakeIap();
+      final svc = svcCon(iap);
+      final auth = StreamController<AuthState>();
+      addTearDown(auth.close);
+
+      svc.watchAuth(auth.stream);
+      auth.add(AuthState(AuthChangeEvent.initialSession, null));
+      await pumpEventQueue();
+
+      expect(iap.restoreLlamado, isFalse,
+          reason: 'restaurar sin sesión solo produce verificaciones que van '
+              'a morir en el guard del JWT');
+    });
+
+    test('un refresh de token no re-dispara la restauración', () async {
+      final iap = _FakeIap();
+      final svc = svcCon(iap);
+      final auth = StreamController<AuthState>();
+      addTearDown(auth.close);
+
+      svc.watchAuth(auth.stream);
+      auth.add(AuthState(AuthChangeEvent.tokenRefreshed, sesion()));
+      await pumpEventQueue();
+
+      expect(iap.restoreLlamado, isFalse,
+          reason: 'el refresh es ~cada hora: restaurar en cada uno haría '
+              'reaparecer el aviso de "estamos confirmando" de una compra '
+              'atascada una y otra vez');
+    });
   });
 
   test('emitir tras dispose no lanza ni impide terminar la compra', () async {

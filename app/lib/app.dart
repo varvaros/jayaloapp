@@ -205,7 +205,12 @@ class _JayaloAppState extends State<JayaloApp> {
         content: Text('Listo. Tienes ${e.balance ?? 0} creditos.'),
       ));
     });
-    // Sin sesion no hay a quien acreditar; al entrar se reintenta.
+    // Sin sesion no hay a quien acreditar. `watchAuth` rearranca cuando la
+    // sesion APARECE: cubre el arranque en frio (`Supabase.initialize` no
+    // espera a `recoverSession()`, asi que el guard de abajo puede saltar
+    // aunque haya sesion guardada) y el login posterior a abrir la app. Sin
+    // el, la recuperacion volvia a depender de abrir la tienda.
+    playBilling.watchAuth(Supabase.instance.client.auth.onAuthStateChange);
     if (Supabase.instance.client.auth.currentSession == null) return;
     await playBilling.start();
   }

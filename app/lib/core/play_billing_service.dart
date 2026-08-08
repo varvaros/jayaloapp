@@ -90,6 +90,7 @@ class PlayBillingService {
 
   final _events = StreamController<CreditPurchaseEvent>.broadcast();
   StreamSubscription<List<PurchaseDetails>>? _sub;
+  StreamSubscription<AuthState>? _authSub;
 
   /// Tokens con una verificación en vuelo. `purchaseStream` puede entregar la
   /// misma compra en dos lotes (p. ej. una `restorePurchases` solapada con un
@@ -127,6 +128,28 @@ class PlayBillingService {
     }
   }
 
+  /// Rearranca la recuperación cuando APARECE una sesión.
+  ///
+  /// [start] necesita sesión para acreditar, pero en el arranque en frío
+  /// `Supabase.initialize` no espera a `recoverSession()`: mirar
+  /// `currentSession` una sola vez en `initState` es una carrera que se
+  /// pierde. Y hay un caso determinista: abrir la app sin sesión e iniciar
+  /// sesión después — ahí nadie volvía a llamar a [start] y una compra a
+  /// medias solo se recuperaba si el usuario abría la tienda por su cuenta.
+  ///
+  /// Dispara con `signedIn` (login en caliente) y con `initialSession` con
+  /// sesión (la recuperación del arranque terminó y sí había). NO con
+  /// `tokenRefreshed`: es ~cada hora, y restaurar en cada refresh haría
+  /// reaparecer el aviso de una compra atascada una y otra vez.
+  void watchAuth(Stream<AuthState> states) {
+    if (_disposed) return;
+    _authSub ??= states.listen((s) {
+      final arranca = s.event == AuthChangeEvent.signedIn ||
+          (s.event == AuthChangeEvent.initialSession && s.session != null);
+      if (arranca) unawaited(start());
+    });
+  }
+
   Future<bool> isAvailable() => _iap.isAvailable();
 
   /// Devuelve la respuesta ENTERA, no solo la lista: la tienda necesita
@@ -136,7 +159,13 @@ class PlayBillingService {
 
   /// `autoConsume: false` es la línea que sostiene todo el diseño — ver el
   /// aviso de la cabecera de la clase.
-  Future<void> buy(ProductDetails product) => _iap.buyConsumable(
+  ///
+  /// Devuelve `false` si la hoja de pago NO llegó a abrirse (el plugin no
+  /// lanza: `buyConsumable` devuelve el resultado de `launchBillingFlow`, y
+  /// ITEM_ALREADY_OWNED — una compra sin consumir — es el disparador típico).
+  /// En ese caso `purchaseStream` no va a emitir nada: quien llama tiene que
+  /// deshacer su "compra en curso" con este valor, porque no habrá evento.
+  Future<bool> buy(ProductDetails product) => _iap.buyConsumable(
         purchaseParam: PurchaseParam(productDetails: product),
         autoConsume: false,
       );
@@ -265,6 +294,8 @@ class PlayBillingService {
     _disposed = true;
     _sub?.cancel();
     _sub = null;
+    _authSub?.cancel();
+    _authSub = null;
     _events.close();
   }
 }
