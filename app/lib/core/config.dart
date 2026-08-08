@@ -11,6 +11,7 @@ abstract final class AppConfig {
   static const editorLinkEndpoint = '$siteUrl/api/app/business-editor-link';
   static const reverseGeocodeEndpoint = '$siteUrl/api/app/reverse-geocode';
   static const deleteAccountEndpoint = '$siteUrl/api/app/delete-account';
+  static const playVerifyEndpoint = '$siteUrl/api/app/play-verify';
   static const walletUrl = '$siteUrl/provider/wallet';
   static const termsUrl = '$siteUrl/terminos';
   static const privacyUrl = '$siteUrl/privacidad';
