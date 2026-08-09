@@ -1,7 +1,13 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/editor_link_client.dart';
+import '../../core/error_reporter.dart';
+import '../../core/safe_image_picker.dart';
 import '../../core/secure_web_launch.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
@@ -9,8 +15,16 @@ import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
+import '../shared/local_image_guard.dart';
 import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
+
+/// Elige una foto de la galería con la guarda global de `image_picker`
+/// (`safe_image_picker.dart`) — mismo patrón que `_pickAvatar` en
+/// `profile_avatar_button.dart`. Default real de `MyBusinessView.pickImage`;
+/// inyectable en tests para no depender del canal de plataforma del picker.
+Future<XFile?> _pickBusinessImage() => guardedPick(
+    (p) => p.pickImage(source: ImageSource.gallery, maxWidth: 1600, imageQuality: 85));
 
 /// Perfil del negocio para "Mi tienda" (espejo del record que devuelve
 /// `myBusinessProfile()` en `repos.dart`): cabecera + detalles.
@@ -44,10 +58,12 @@ typedef StoreProfile = ({
 });
 
 /// "Mi tienda" (spec 2026-07-20-mi-tienda-solo-lectura): *Mi negocio* muestra el
-/// escaparate de SOLO LECTURA — detalles del negocio + productos + servicios +
-/// opiniones. La edición NO vive en la app (V2): el botón "Editar en la web"
-/// (Task 6) lleva a jayalo.com ya logueado. Antes esta pantalla era una tarjeta
-/// de conteo inerte ("se administran desde jayalo.com").
+/// escaparate — detalles del negocio + productos + servicios + opiniones — de
+/// SOLO LECTURA salvo dos excepciones deliberadas: el agregador (PO
+/// 2026-08-05, alta rápida de producto/servicio/trabajo) y, desde 2026-08-09,
+/// la portada y el logo (tocar para cambiar, mantener presionado para
+/// quitar). El resto de la edición sigue sin vivir en la app (V2): el botón
+/// "Editar en la web" (Task 6) lleva a jayalo.com ya logueado.
 class MyBusinessScreen extends StatefulWidget {
   const MyBusinessScreen({super.key});
   @override
@@ -197,6 +213,11 @@ class MyBusinessView extends StatefulWidget {
     required this.rating,
     this.onEditWeb,
     this.onAddItem,
+    this.pickImage = _pickBusinessImage,
+    this.updateCover = updateBusinessCover,
+    this.updateLogo = updateBusinessLogo,
+    this.clearCover = clearBusinessCover,
+    this.clearLogo = clearBusinessLogo,
   });
 
   final StoreProfile? business;
@@ -215,6 +236,16 @@ class MyBusinessView extends StatefulWidget {
   /// dibuja. Inyectable para probar sin router.
   final Future<void> Function(String kind)? onAddItem;
 
+  /// Portada y logo editables desde "Mi negocio" (2026-08-09): elegir,
+  /// subir y quitar. Inyectables (patrón `CreditShopScreen.loadPackages`)
+  /// para probar sin picker/red real; el default es la implementación real
+  /// de `repos.dart` / `safe_image_picker.dart`.
+  final Future<XFile?> Function() pickImage;
+  final Future<String> Function(String businessId, String filePath) updateCover;
+  final Future<String> Function(String businessId, String filePath) updateLogo;
+  final Future<void> Function(String businessId) clearCover;
+  final Future<void> Function(String businessId) clearLogo;
+
   @override
   State<MyBusinessView> createState() => _MyBusinessViewState();
 }
@@ -222,10 +253,132 @@ class MyBusinessView extends StatefulWidget {
 class _MyBusinessViewState extends State<MyBusinessView> {
   final _scroll = ScrollController();
 
+  /// Copia local de portada/logo: arrancan del negocio cargado y se
+  /// actualizan tras subir/quitar, sin esperar a que la pantalla contenedora
+  /// vuelva a pedir todo el escaparate a la red.
+  String? _coverUrl;
+  String? _logoUrl;
+  bool _coverBusy = false;
+  bool _logoBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _coverUrl = widget.business?.coverUrl;
+    _logoUrl = widget.business?.logoUrl;
+  }
+
   @override
   void dispose() {
     _scroll.dispose();
     super.dispose();
+  }
+
+  void _toast(String m) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+    }
+  }
+
+  /// Diálogo «¿Quitar…?» — mismo patrón que `confirmDiscard`
+  /// (`core/unsaved_guard.dart`): dos botones de texto, el destructivo en
+  /// rojo (`cs.error`).
+  Future<bool> _confirmRemove(String title, String message) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text('Quitar',
+                style: TextStyle(color: Theme.of(c).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<void> _changeCover() async {
+    final b = widget.business;
+    if (b == null || _coverBusy) return;
+    final picked = await widget.pickImage();
+    if (picked == null || !mounted) return;
+    final file = File(picked.path);
+    final err = validateLocalImage(file);
+    if (err != null) return _toast(err);
+    setState(() => _coverBusy = true);
+    try {
+      final url = await widget.updateCover(b.id, file.path);
+      if (mounted) setState(() => _coverUrl = url);
+    } catch (e, s) {
+      unawaited(reportError(e, s));
+      if (mounted) _toast('No se pudo subir la portada. Intenta de nuevo.');
+    } finally {
+      if (mounted) setState(() => _coverBusy = false);
+    }
+  }
+
+  Future<void> _removeCover() async {
+    final b = widget.business;
+    if (b == null || _coverBusy) return;
+    final ok = await _confirmRemove(
+        '¿Quitar la portada?', 'Tu negocio se mostrará sin portada.');
+    if (!ok || !mounted) return;
+    setState(() => _coverBusy = true);
+    try {
+      await widget.clearCover(b.id);
+      if (mounted) setState(() => _coverUrl = null);
+    } catch (e, s) {
+      unawaited(reportError(e, s));
+      if (mounted) _toast('No se pudo quitar la portada. Intenta de nuevo.');
+    } finally {
+      if (mounted) setState(() => _coverBusy = false);
+    }
+  }
+
+  Future<void> _changeLogo() async {
+    final b = widget.business;
+    if (b == null || _logoBusy) return;
+    final picked = await widget.pickImage();
+    if (picked == null || !mounted) return;
+    final file = File(picked.path);
+    final err = validateLocalImage(file);
+    if (err != null) return _toast(err);
+    setState(() => _logoBusy = true);
+    try {
+      final url = await widget.updateLogo(b.id, file.path);
+      if (mounted) setState(() => _logoUrl = url);
+    } catch (e, s) {
+      unawaited(reportError(e, s));
+      if (mounted) _toast('No se pudo subir el logo. Intenta de nuevo.');
+    } finally {
+      if (mounted) setState(() => _logoBusy = false);
+    }
+  }
+
+  Future<void> _removeLogo() async {
+    final b = widget.business;
+    if (b == null || _logoBusy) return;
+    final ok = await _confirmRemove(
+        '¿Quitar el logo?', 'Tu negocio se mostrará sin logo.');
+    if (!ok || !mounted) return;
+    setState(() => _logoBusy = true);
+    try {
+      await widget.clearLogo(b.id);
+      if (mounted) setState(() => _logoUrl = null);
+    } catch (e, s) {
+      unawaited(reportError(e, s));
+      if (mounted) _toast('No se pudo quitar el logo. Intenta de nuevo.');
+    } finally {
+      if (mounted) setState(() => _logoBusy = false);
+    }
   }
 
   @override
@@ -248,10 +401,21 @@ class _MyBusinessViewState extends State<MyBusinessView> {
         // tarjeta con logo y nombre, y tres chips sueltos.
         BusinessCoverHero(
           name: b.name,
-          coverUrl: b.coverUrl,
-          logoUrl: b.logoUrl,
+          coverUrl: _coverUrl,
+          logoUrl: _logoUrl,
           subtitle: _subtitleFor(b),
           seals: b.seals,
+          // Editable siempre en "Mi negocio": esta pantalla SOLO muestra el
+          // negocio propio (nunca el de otro proveedor). Quitar solo se
+          // ofrece si hay algo que quitar.
+          onCoverTap: _changeCover,
+          onCoverLongPress:
+              (_coverUrl != null && _coverUrl!.isNotEmpty) ? _removeCover : null,
+          onLogoTap: _changeLogo,
+          onLogoLongPress:
+              (_logoUrl != null && _logoUrl!.isNotEmpty) ? _removeLogo : null,
+          coverBusy: _coverBusy,
+          logoBusy: _logoBusy,
         ).cascadeIn(0),
         BusinessDetailsCard(business: b.raw).cascadeIn(1),
         if (widget.onEditWeb != null)
