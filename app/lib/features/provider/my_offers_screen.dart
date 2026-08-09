@@ -38,7 +38,29 @@ bool needsCustomerReview(
     !reviewed.contains(offer['id']);
 
 class MyOffersScreen extends StatefulWidget {
-  const MyOffersScreen({super.key});
+  const MyOffersScreen({
+    super.key,
+    this.fetchOffers = myOffers,
+    this.fetchBalance = walletBalance,
+    this.fetchReviewed = customerReviewsFor,
+    this.leading = const HeaderAvatar(),
+    this.actions = const [HeaderBell()],
+  });
+
+  /// Inyectables (mismo patrón que `MyBusinessView.pickImage`/`updateCover`):
+  /// el default es la implementación real de `repos.dart`; los tests pasan
+  /// dobles para no tocar Supabase.
+  final Future<List<Map<String, dynamic>>> Function() fetchOffers;
+  final Future<int?> Function() fetchBalance;
+  final Future<Set<String>> Function(List<String> offerIds) fetchReviewed;
+
+  /// Inyectables (mismo patrón que `ProviderInboxView.leading`/`.actions`):
+  /// `HeaderAvatar`/`HeaderBell` tocan Supabase en su `initState` (vía
+  /// `profileStore`/`notifCountStore`), que revienta si Supabase no está
+  /// inicializado — los tests pasan widgets inertes.
+  final Widget? leading;
+  final List<Widget> actions;
+
   @override
   State<MyOffersScreen> createState() => _MyOffersScreenState();
 }
@@ -79,12 +101,13 @@ class _MyOffersScreenState extends State<MyOffersScreen>
   }
 
   Future<void> _refetch() async {
-    final results = await Future.wait([myOffers(), walletBalance()]);
+    final results =
+        await Future.wait([widget.fetchOffers(), widget.fetchBalance()]);
     final offers = results[0] as List<Map<String, dynamic>>;
     // En lote, no por tarjeta. Best-effort: sin esto solo se pierde el botón.
     var reviewed = <String>{};
     try {
-      reviewed = await customerReviewsFor(
+      reviewed = await widget.fetchReviewed(
         offers.map((o) => o['id'] as String).toList(),
       );
     } catch (_) {}
@@ -127,10 +150,10 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     return Scaffold(
       body: Column(
         children: [
-          const VioletHeader(
-            leading: HeaderAvatar(),
+          VioletHeader(
+            leading: widget.leading,
             title: 'Mis ofertas',
-            actions: [HeaderBell()],
+            actions: widget.actions,
           ),
           // Segmentado "Mis ofertas · Mis pedidos" (PO 2026-07-30).
           //
@@ -471,8 +494,17 @@ class _MyOffersScreenState extends State<MyOffersScreen>
       // Flujo compartido (unlock_flow.dart): revelable → hold + costo →
       // celebración → contacto.
       startUnlockFlow(context, o, onChanged: _refetch);
-    } else if (unlocked || st == 'completed') {
-      showOfferContactSheet(context, o, onChanged: _refetch);
+    } else {
+      // Historial (rechazada / completada / aceptada y desbloqueada, pedido PO
+      // 2026-08-09): antes rechazada no hacía NADA y completada/desbloqueada
+      // abría directo la hoja de contacto. Ahora todas llevan al DETALLE de
+      // la solicitud (mismo push que usan las tarjetas de "Solicitudes para
+      // ti" y las pendientes de arriba, sin `?edit=`): la pantalla ya sabe
+      // mostrar "Ver mi oferta"/"Ver contacto" según el estado
+      // (`_alreadyOfferedCard`), así que no hay que duplicar esa lógica aquí.
+      context.push('/provider/request/${o['request_id']}').then((_) {
+        if (mounted) _refetch();
+      });
     }
   }
 
