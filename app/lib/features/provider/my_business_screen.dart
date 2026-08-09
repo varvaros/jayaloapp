@@ -18,6 +18,7 @@ import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
 import '../shared/local_image_guard.dart';
 import '../shared/product_list_card.dart';
+import '../shared/service_chips_editor.dart';
 import '../shared/text_editor_sheet.dart';
 import '../shared/violet_header.dart';
 
@@ -221,6 +222,7 @@ class MyBusinessView extends StatefulWidget {
     this.clearCover = clearBusinessCover,
     this.clearLogo = clearBusinessLogo,
     this.updateDescription = updateBusinessDescription,
+    this.updateServices = updateBusinessServices,
   });
 
   final StoreProfile? business;
@@ -256,6 +258,12 @@ class MyBusinessView extends StatefulWidget {
   final Future<void> Function(String businessId, String description)
       updateDescription;
 
+  /// Chips de servicios editables desde "Mi negocio" (Task 5, 2026-08-09):
+  /// mismo patrón inyectable que `updateDescription`; el default es
+  /// `updateBusinessServices` de `repos.dart`.
+  final Future<void> Function(String businessId, List<String> services)
+      updateServices;
+
   @override
   State<MyBusinessView> createState() => _MyBusinessViewState();
 }
@@ -275,12 +283,17 @@ class _MyBusinessViewState extends State<MyBusinessView> {
   String? _description;
   bool _descriptionBusy = false;
 
+  /// Copia local de los chips de servicios — mismo motivo que `_description`.
+  List<String> _services = const [];
+  bool _servicesBusy = false;
+
   @override
   void initState() {
     super.initState();
     _coverUrl = widget.business?.coverUrl;
     _logoUrl = widget.business?.logoUrl;
     _description = widget.business?.description;
+    _services = widget.business?.services ?? const [];
   }
 
   @override
@@ -419,6 +432,30 @@ class _MyBusinessViewState extends State<MyBusinessView> {
     }
   }
 
+  /// Abre el editor de chips de servicios con la lista actual. `null` =
+  /// cancelado (mismo contrato que `_editDescription`, sin comparar con la
+  /// lista anterior: el editor ya evita escrituras vacías por su cuenta —
+  /// aquí cualquier no-null es una edición explícita del dueño, no hay un
+  /// "no cambió nada" trivial de detectar con listas).
+  Future<void> _editServices() async {
+    final b = widget.business;
+    if (b == null || _servicesBusy) return;
+    final result = await showServiceChipsEditor(context, initial: _services);
+    if (result == null || !mounted) return;
+    setState(() => _servicesBusy = true);
+    try {
+      await widget.updateServices(b.id, result);
+      if (mounted) setState(() => _services = result);
+    } catch (e, s) {
+      unawaited(reportError(e, s));
+      if (mounted) {
+        _toast('No se pudo guardar los servicios. Intenta de nuevo.');
+      }
+    } finally {
+      if (mounted) setState(() => _servicesBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final b = widget.business;
@@ -461,7 +498,16 @@ class _MyBusinessViewState extends State<MyBusinessView> {
           busy: _descriptionBusy,
           onTap: _editDescription,
         ).cascadeIn(1),
-        BusinessDetailsCard(business: b.raw).cascadeIn(2),
+        // Chips de servicios (Task 5, 2026-08-09): bajo la descripción,
+        // dentro de la misma sección "SOBRE EL NEGOCIO" (no una nueva
+        // `SectionHeader` — mismo trato que la descripción, un dato más de
+        // la ficha del negocio, no un listado aparte).
+        _ServicesCard(
+          services: _services,
+          busy: _servicesBusy,
+          onTap: _editServices,
+        ).cascadeIn(2),
+        BusinessDetailsCard(business: b.raw).cascadeIn(3),
         if (widget.onEditWeb != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -476,7 +522,7 @@ class _MyBusinessViewState extends State<MyBusinessView> {
         // lectura" del spec 2026-07-20, decisión del PO: el alta mínima vive
         // en la app porque alimenta ofertas más rápidas.
         if (widget.onAddItem != null)
-          _AddToStoreCard(onChoose: _chooseKind).cascadeIn(3),
+          _AddToStoreCard(onChoose: _chooseKind).cascadeIn(4),
         const SectionHeader(text: 'PRODUCTOS'),
         ..._itemsOrEmpty(widget.productos, 'Aún no tienes productos.'),
         const SectionHeader(text: 'SERVICIOS'),
@@ -614,6 +660,41 @@ class _AboutCard extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                           color: cs.primary)),
                 ]),
+    );
+  }
+}
+
+/// Chips de servicios (Task 5, 2026-08-09), bajo la descripción: mismo
+/// tratamiento visual que `_AboutCard` — vacío → píldora "+ Añadir
+/// servicios"; con chips → `ServiceChipsWrap` (compartida con la tienda
+/// pública, allí en modo solo lectura). Tocar la tarjeta abre el editor con
+/// la lista actual, sea cual sea su tamaño.
+class _ServicesCard extends StatelessWidget {
+  const _ServicesCard(
+      {required this.services, required this.busy, required this.onTap});
+
+  final List<String> services;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return JayaloCard(
+      onTap: busy ? null : onTap,
+      child: busy
+          ? const Center(child: JayaloSpinner(size: 18))
+          : services.isEmpty
+              ? Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.add, size: 18, color: cs.primary),
+                  const SizedBox(width: 6),
+                  Text('Añadir servicios',
+                      style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: cs.primary)),
+                ])
+              : ServiceChipsWrap(services: services),
     );
   }
 }

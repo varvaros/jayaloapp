@@ -8,6 +8,7 @@ import '../shared/brand_kit.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
 import '../shared/product_list_card.dart';
+import '../shared/service_chips_editor.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
 
@@ -262,10 +263,24 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
     );
   }
 
+  /// Chips de servicios (Task 5, 2026-08-09) — solo lectura, bajo la
+  /// portada, en el mismo lugar donde iría la descripción del negocio (esta
+  /// pantalla no la pinta hoy en ningún sitio). Sin chips no dibuja nada:
+  /// la tienda ajena nunca ofrece un "+" de edición.
+  Widget? _servicesBlock() {
+    final services = _identity?.services ?? const [];
+    if (services.isEmpty) return null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: ServiceChipsWrap(services: services),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final section = _sections[_tab];
     final repCard = _repCard();
+    final servicesBlock = _servicesBlock();
     return Scaffold(
       body: Column(children: [
         VioletHeader(
@@ -298,6 +313,8 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
                       seals: _sealLabels(),
                     ),
                   ),
+                  if (servicesBlock != null)
+                    SliverToBoxAdapter(child: servicesBlock),
                   if (repCard != null) SliverToBoxAdapter(child: repCard),
                   SliverToBoxAdapter(
                     child: BusinessDetailsCard(

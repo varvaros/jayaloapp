@@ -2342,29 +2342,33 @@ myBusinessProfile() async {
     wholesale: biz['is_wholesale'] == true,
     description: (desc != null && desc.isNotEmpty) ? desc : null,
     seals: verificationSealsFrom(biz),
-    services: await _myBusinessServices(biz['id'] as String),
+    services: await _businessServicesById(biz['id'] as String),
     raw: biz,
   );
 }
 
 /// `true` si el error de Postgrest es "la columna `services` no existe"
 /// (42703 = `undefined_column`, o el mensaje la nombra explícitamente) — el
-/// ÚNICO caso que [_myBusinessServices] debe tragar mientras la migración de
-/// Task 1 no esté aplicada en prod. Pura y testeable a propósito: cualquier
-/// otro error (timeout de red, token vencido, RLS) debe propagar, no
-/// disfrazarse de "negocio sin chips".
+/// ÚNICO caso que [_businessServicesById] debe tragar mientras la migración
+/// de Task 1 no esté aplicada en prod. Pura y testeable a propósito:
+/// cualquier otro error (timeout de red, token vencido, RLS) debe propagar,
+/// no disfrazarse de "negocio sin chips".
 bool isMissingServicesColumnError(PostgrestException e) {
   if (e.code == '42703') return true;
   final msg = e.message.toLowerCase();
   return msg.contains('column') && msg.contains('services');
 }
 
-// TODO(tarea-11): plegar `services` al select principal de arriba y borrar
-// esta función una vez la migración de Task 1 (`provider_businesses.services
-// text[]`) esté aplicada en prod. Hasta entonces, pedirla en el select
-// principal rompería `myBusinessProfile()` entero con un error de columna
-// inexistente — se aísla en un select aparte, tolerante SOLO a ese error.
-Future<List<String>> _myBusinessServices(String businessId) async {
+// TODO(tarea-11): plegar `services` a los selects principales de arriba
+// (`myBusinessProfile` y `businessPublicIdentity`) y borrar esta función una
+// vez la migración de Task 1 (`provider_businesses.services text[]`) esté
+// aplicada en prod. Hasta entonces, pedirla en el select principal rompería
+// esos métodos enteros con un error de columna inexistente — se aísla en un
+// select aparte, tolerante SOLO a ese error. `services` es de lectura
+// pública (mismos grants por columna que el resto de la ficha), así que la
+// misma consulta sirve tanto para el negocio propio como para el ajeno
+// (Task 5, 2026-08-09) — no hizo falta duplicarla.
+Future<List<String>> _businessServicesById(String businessId) async {
   try {
     final row = await supa
         .from('provider_businesses')
@@ -2498,10 +2502,15 @@ Future<String?> providerBusinessType(String businessId) async {
 /// la portada y las columnas de detalle también son de lectura pública (están
 /// en los mismos grants por columna), así que la tienda ajena puede lucir
 /// igual que la propia sin abrir ni un permiso nuevo.
+///
+/// `services` (Task 5, 2026-08-09) sigue el mismo trato: chips de servicios
+/// del negocio, de lectura pública, con el fallback tolerante de
+/// [_businessServicesById] mientras la migración de Task 1 no esté en prod.
 typedef BusinessIdentity = ({
   String name,
   String? logoUrl,
   String? coverUrl,
+  List<String> services,
   Map<String, dynamic> raw,
 });
 
@@ -2524,6 +2533,7 @@ Future<BusinessIdentity?> businessPublicIdentity(String businessId) async {
         : 'Proveedor',
     logoUrl: (logo != null && logo.isNotEmpty) ? logo : null,
     coverUrl: (cover != null && cover.isNotEmpty) ? cover : null,
+    services: await _businessServicesById(businessId),
     raw: row,
   );
 }
