@@ -2847,6 +2847,30 @@ Future<List<Map<String, dynamic>>> myPackages(String businessId) async =>
           .limit(100),
     );
 
+/// Arma el payload de [savePackage], sin tocar Supabase — extraído para
+/// poder probar el fix del hallazgo C-1 (revisión final) sin un cliente real.
+/// `provider_packages.price` es `NOT NULL DEFAULT 0` en la base: mandar
+/// `price: null` explícito (precio en blanco en el formulario) pisaba ese
+/// default con un `null` real y el INSERT/UPDATE entero reventaba con 23502
+/// ("not-null constraint"). `price ?? 0` respeta la intención del default de
+/// la columna en vez de contradecirlo.
+@visibleForTesting
+Map<String, dynamic> packagePayload({
+  required String businessId,
+  required String name,
+  String description = '',
+  double? price,
+  required List<String> items,
+  String? imageUrl,
+}) => {
+  'business_id': businessId,
+  'name': name,
+  'description': description,
+  'price': price ?? 0,
+  'items': items,
+  'image_url': imageUrl,
+};
+
 /// Alta o edición de un paquete propio (RLS: dueño). `id` nulo → INSERT;
 /// con `id` → UPDATE. La tabla exige `user_id` NOT NULL en el insert — la web
 /// lo manda explícito (`PackageEditorDialog.tsx:147`), así que aquí también
@@ -2861,14 +2885,14 @@ Future<void> savePackage({
   required List<String> items,
   String? imageUrl,
 }) async {
-  final payload = {
-    'business_id': businessId,
-    'name': name,
-    'description': description,
-    'price': price,
-    'items': items,
-    'image_url': imageUrl,
-  };
+  final payload = packagePayload(
+    businessId: businessId,
+    name: name,
+    description: description,
+    price: price,
+    items: items,
+    imageUrl: imageUrl,
+  );
   if (id == null) {
     final uid = supa.auth.currentUser!.id;
     await supa.from('provider_packages').insert({'user_id': uid, ...payload});

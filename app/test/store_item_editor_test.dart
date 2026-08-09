@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
+import 'package:jayalo_app/domain/contact_info.dart'
+    show contactInfoCode, contactInfoMessage;
 import 'package:jayalo_app/features/provider/add_store_item_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 void main() {
   Widget host(Widget child) => MaterialApp(
@@ -218,11 +221,16 @@ void main() {
       expect(find.byKey(const Key('campo-disponibilidad')), findsOneWidget);
       expect(find.byKey(const Key('campo-duracion')), findsOneWidget);
 
-      // Nada de producto.
+      // Nada de producto — salvo garantía (hallazgo I-1, revisión final: la
+      // web SÍ permite garantía en servicios; `productOnly: false`).
       expect(find.text('Ofrezco envío'), findsNothing);
       expect(find.byKey(const Key('campo-marca')), findsNothing);
-      expect(find.text('Sin garantía'), findsNothing);
-      expect(find.text('7 días'), findsNothing); // kDeliveryOptions
+      expect(find.text('Tiempo de entrega'), findsNothing); // solo producto
+      expect(find.text('Hoy'), findsNothing); // kDeliveryOptions, único ahí
+
+      // I-1: garantía SÍ se muestra para servicio (paridad con producto).
+      expect(find.text('Garantía'), findsOneWidget);
+      expect(find.text('Sin garantía'), findsOneWidget); // kWarrantyOptions
     });
 
     // Fix round 1 (Critical 2): caso exacto de revisión — un servicio
@@ -279,6 +287,95 @@ void main() {
       expect(updatedPayload!['price'], isNull);
       expect(updatedPayload!['price_min'], 1000.0);
       expect(updatedPayload!['price_max'], 3000.0);
+    });
+
+    // Hallazgo I-1 (revisión final): `updateStoreItem` mandaba
+    // `warranty: null` SIEMPRE al editar un servicio, aunque el editor no
+    // mostrara garantía — borrando en silencio lo que se hubiera puesto
+    // desde la web (que sí permite garantía en servicios). El fix: el campo
+    // se ve, se prellena desde la columna real y viaja en el payload.
+    testWidgets(
+        'editar servicio con warranty en columna: se prellena y el payload '
+        'la conserva', (tester) async {
+      final servicioConGarantia = <String, dynamic>{
+        'id': 's2',
+        'name': 'Instalación eléctrica',
+        'description': '',
+        'color': '',
+        'price': 1500,
+        'price_min': null,
+        'price_max': null,
+        'image_urls': <String>[],
+        'category_id': 'ferreteria',
+        'rubro': 'Herramientas',
+        'kind': 'servicio',
+        'condition': null,
+        'offers_shipping': false,
+        'offers_installation': false,
+        'requires_evaluation': false,
+        'warranty': '1 año',
+        'offer_defaults': {'pricing_mode': 'fixed'},
+      };
+      Map<String, dynamic>? updatedPayload;
+      Future<void> captureUpdate(
+          String id, Map<String, dynamic> payload) async {
+        updatedPayload = payload;
+      }
+
+      setTallPhoneSize(tester);
+      await tester.pumpWidget(host(AddStoreItemScreen(
+        kind: 'servicio',
+        businessId: 'biz-1',
+        initial: servicioConGarantia,
+        saveProduct: noopSave,
+        updateItem: captureUpdate,
+        savePortfolio: noopPortfolio,
+        fetchCatRubro: fakeCatRubro,
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      // Sin tocar el chip de garantía: si el prellenado (columna real →
+      // `_warranty.text`) no funcionara, esto viajaría vacío/null en vez de
+      // conservar '1 año'.
+      expect(updatedPayload, isNotNull);
+      expect(updatedPayload!['warranty'], '1 año');
+    });
+
+    // Hallazgo I-3 (revisión final): un `catch (_)` genérico en `_save`
+    // convertía el JY422 del trigger `enforce_no_contact_info` en el mismo
+    // "No se pudo guardar" de cualquier otro fallo. Mismo patrón que
+    // `package_editor_screen.dart` (`isContactInfoError`/`contactInfoMessage`).
+    testWidgets(
+        'guardar con un dato de contacto en el texto muestra el mensaje de '
+        'contacto, no el genérico', (tester) async {
+      setTallPhoneSize(tester);
+      await tester.pumpWidget(host(AddStoreItemScreen(
+        kind: 'servicio',
+        businessId: 'biz-1',
+        saveProduct: noopSave,
+        updateItem: (id, payload) async {
+          throw const PostgrestException(
+              message: 'contains contact info', code: contactInfoCode);
+        },
+        savePortfolio: noopPortfolio,
+        fetchCatRubro: fakeCatRubro,
+        initial: const {
+          'id': 's3',
+          'name': 'Instalación',
+          'description': '',
+          'kind': 'servicio',
+        },
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(contactInfoMessage), findsOneWidget);
+      expect(find.text('No se pudo guardar. Intenta de nuevo.'), findsNothing);
     });
   });
 

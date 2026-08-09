@@ -148,7 +148,9 @@ void main() {
     expect(find.text('¿Eliminar de tu tienda?'), findsOneWidget);
     expect(deletedId, isNull); // aún no confirmó
 
-    await tester.tap(find.text('Quitar'));
+    // Borrado PERMANENTE: 'Eliminar', no 'Quitar' (hallazgo COPY, revisión
+    // final — unificado con paquetes/trabajos, que ya usaban 'Eliminar').
+    await tester.tap(find.text('Eliminar'));
     await tester.pumpAndSettle();
 
     expect(deletedId, 'p1');
@@ -281,6 +283,90 @@ void main() {
     expect(find.text(labelAgregador), findsNothing);
   });
 
+  // Hallazgo I-2 (revisión final): «+ Añadir …» al final de CADA sección de
+  // catálogo con contenido, y «+» con etiqueta en las vacías — antes solo
+  // Paquetes lo tenía. Cablea al `onAddItem` del kind correcto (mismo
+  // callback del agregador, sin pasar por el chooser: el kind ya se sabe).
+  group('«+ Añadir …» por sección (I-2, revisión final)', () {
+    testWidgets(
+        'PRODUCTOS vacío con onAddItem: «+ Añadir producto» reemplaza el '
+        'aviso y llama a onAddItem con kind producto', (tester) async {
+      String? chosen;
+      await tester.pumpWidget(host(MyBusinessView(
+        business: negocio,
+        productos: const [],
+        servicios: const [],
+        reviews: const [],
+        rating: null,
+        onAddItem: (kind) async => chosen = kind,
+      )));
+      await tester.pumpAndSettle();
+      await bajar(tester);
+
+      expect(find.text('Añadir producto'), findsOneWidget);
+      // La fila «+» sustituye el aviso de texto cuando hay alta disponible.
+      expect(find.textContaining('Aún no tienes productos'), findsNothing);
+
+      await tester.tap(find.text('Añadir producto'));
+      await tester.pump();
+      expect(chosen, 'producto');
+    });
+
+    testWidgets(
+        'PRODUCTOS con contenido y onAddItem: la fila «+ Añadir producto» '
+        'sigue disponible al final', (tester) async {
+      await tester.pumpWidget(host(MyBusinessView(
+        business: negocio,
+        productos: unProducto,
+        servicios: const [],
+        reviews: const [],
+        rating: null,
+        onAddItem: (kind) async {},
+      )));
+      await tester.pumpAndSettle();
+      await bajar(tester);
+
+      expect(find.text('Taladro'), findsOneWidget);
+      expect(find.text('Añadir producto'), findsOneWidget);
+    });
+
+    testWidgets(
+        'SERVICIOS vacío con onAddItem: «+ Añadir servicio» llama a '
+        'onAddItem con kind servicio', (tester) async {
+      String? chosen;
+      await tester.pumpWidget(host(MyBusinessView(
+        business: negocio,
+        productos: const [],
+        servicios: const [],
+        reviews: const [],
+        rating: null,
+        onAddItem: (kind) async => chosen = kind,
+      )));
+      await tester.pumpAndSettle();
+      await bajar(tester);
+
+      expect(find.text('Añadir servicio'), findsOneWidget);
+      expect(find.textContaining('Aún no tienes servicios'), findsNothing);
+
+      await tester.tap(find.text('Añadir servicio'));
+      await tester.pump();
+      expect(chosen, 'servicio');
+    });
+
+    testWidgets(
+        'sin onAddItem, PRODUCTOS/SERVICIOS vacíos siguen mostrando el '
+        'aviso de texto (sin fila «+»)', (tester) async {
+      await tester.pumpWidget(view());
+      await tester.pumpAndSettle();
+      await bajar(tester);
+
+      expect(find.textContaining('Aún no tienes productos'), findsOneWidget);
+      expect(find.textContaining('Aún no tienes servicios'), findsOneWidget);
+      expect(find.text('Añadir producto'), findsNothing);
+      expect(find.text('Añadir servicio'), findsNothing);
+    });
+  });
+
   testWidgets('TRABAJOS lista el portafolio o avisa que está vacío',
       (tester) async {
     await tester.pumpWidget(host(MyBusinessView(
@@ -303,5 +389,31 @@ void main() {
     await bajar(tester);
     expect(
         find.textContaining('Aún no tienes trabajos'), findsOneWidget);
+  });
+
+  testWidgets(
+      'TRABAJOS vacío con onAddItem: «+ Añadir trabajo» llama a onAddItem '
+      'con kind trabajo (I-2, revisión final)', (tester) async {
+    String? chosen;
+    await tester.pumpWidget(host(MyBusinessView(
+      business: negocio,
+      productos: const [],
+      servicios: const [],
+      trabajos: const [],
+      reviews: const [],
+      rating: null,
+      onAddItem: (kind) async => chosen = kind,
+    )));
+    await tester.pumpAndSettle();
+    await bajar(tester);
+    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Añadir trabajo'), findsOneWidget);
+    expect(find.textContaining('Aún no tienes trabajos'), findsNothing);
+
+    await tester.tap(find.text('Añadir trabajo'));
+    await tester.pump();
+    expect(chosen, 'trabajo');
   });
 }

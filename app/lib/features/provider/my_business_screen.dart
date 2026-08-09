@@ -18,6 +18,7 @@ import '../shared/brand_kit.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
 import '../shared/local_image_guard.dart';
+import '../shared/network_image.dart';
 import '../shared/product_list_card.dart';
 import '../shared/service_chips_editor.dart';
 import '../shared/text_editor_sheet.dart';
@@ -52,7 +53,7 @@ typedef StoreProfile = ({
 
   /// Chips de servicios del negocio (Task 2, editable desde la app). Lista
   /// vacía mientras la migración de `provider_businesses.services` no esté
-  /// aplicada en prod — ver `_myBusinessServices` en `repos.dart`.
+  /// aplicada en prod — ver `_businessServicesById` en `repos.dart`.
   List<String> services,
 
   /// La fila cruda de `provider_businesses`, para `BusinessDetailsCard`: las
@@ -460,12 +461,11 @@ class _MyBusinessViewState extends State<MyBusinessView> {
   /// rojo (`cs.error`).
   ///
   /// [confirmLabel] por defecto es 'Quitar' (portada/logo: reversible, basta
-  /// con subir otra foto). Un borrado PERMANENTE (paquete, Task 7) debe decir
-  /// 'Eliminar' — hallazgo del revisor de la Task 6, que dejó "Quitar" en el
-  /// borrado de producto/servicio de la tienda; no se retocó ESE call site
-  /// aquí (fuera del alcance de esta tarea, y ya tiene su propio test que
-  /// depende del texto actual), pero el parámetro queda disponible por si se
-  /// corrige en una tarea futura.
+  /// con subir otra foto). Un borrado PERMANENTE (producto/servicio,
+  /// paquete, trabajo) debe decir 'Eliminar' — hallazgo del revisor de la
+  /// Task 6, que dejó "Quitar" en el borrado de producto/servicio de la
+  /// tienda mientras paquetes/trabajos ya usaban 'Eliminar'; unificado en la
+  /// ronda de revisión final (hallazgo COPY).
   Future<bool> _confirmRemove(String title, String message,
       {String confirmLabel = 'Quitar'}) async {
     final ok = await showDialog<bool>(
@@ -680,25 +680,15 @@ class _MyBusinessViewState extends State<MyBusinessView> {
         if (widget.onAddItem != null)
           _AddToStoreCard(onChoose: _chooseKind).cascadeIn(4),
         const SectionHeader(text: 'PRODUCTOS'),
-        ..._itemsOrEmpty(widget.productos, 'Aún no tienes productos.'),
+        ..._itemsOrEmpty(widget.productos, 'Aún no tienes productos.',
+            'producto', 'Añadir producto'),
         const SectionHeader(text: 'SERVICIOS'),
-        ..._itemsOrEmpty(widget.servicios, 'Aún no tienes servicios.'),
+        ..._itemsOrEmpty(widget.servicios, 'Aún no tienes servicios.',
+            'servicio', 'Añadir servicio'),
         const SectionHeader(text: 'PAQUETES'),
         ..._packagesOrAdd(widget.paquetes),
         const SectionHeader(text: 'TRABAJOS'),
-        if (widget.trabajos.isEmpty)
-          const _EmptyLine(text: 'Aún no tienes trabajos en tu portafolio.')
-        else
-          for (final t in widget.trabajos)
-            _PortfolioTile(
-              item: t,
-              onTap: widget.onEditTrabajo == null
-                  ? null
-                  : () => widget.onEditTrabajo!(t),
-              onLongPress: widget.onDeleteTrabajo == null
-                  ? null
-                  : () => _confirmDeleteTrabajo(t),
-            ),
+        ..._trabajosOrAdd(widget.trabajos),
         const SectionHeader(text: 'OPINIONES'),
         _ReviewsBlock(reviews: widget.reviews, rating: widget.rating),
       ],
@@ -737,8 +727,21 @@ class _MyBusinessViewState extends State<MyBusinessView> {
     await widget.onAddItem?.call(kind);
   }
 
-  List<Widget> _itemsOrEmpty(List<Map<String, dynamic>> items, String empty) {
-    if (items.isEmpty) return [_EmptyLine(text: empty)];
+  /// Productos/servicios propios + la fila «+ Añadir …» al final, cuando el
+  /// dueño puede crear (`onAddItem` cableado) — mismo patrón que
+  /// [_packagesOrAdd]/[_trabajosOrAdd] (hallazgo I-2, revisión final: antes
+  /// solo Paquetes tenía esta fila). Con la sección vacía, la fila «+» ya
+  /// trae su propia etiqueta y sustituye el aviso de texto — sin
+  /// `onAddItem` (vista sin capacidad de alta), la sección vacía sigue
+  /// avisando con [_EmptyLine] (comportamiento previo).
+  List<Widget> _itemsOrEmpty(
+    List<Map<String, dynamic>> items,
+    String empty,
+    String kind,
+    String addLabel,
+  ) {
+    final onAdd = widget.onAddItem;
+    if (items.isEmpty && onAdd == null) return [_EmptyLine(text: empty)];
     return [
       for (final i in items)
         ProductListCard(
@@ -747,22 +750,26 @@ class _MyBusinessViewState extends State<MyBusinessView> {
           onLongPress:
               widget.onDeleteItem == null ? null : () => _confirmDeleteItem(i),
         ),
+      if (onAdd != null) _AddLineTile(label: addLabel, onTap: () => onAdd(kind)),
     ];
   }
 
-  /// «¿Eliminar de tu tienda?» — mismo diálogo de confirmación que
-  /// portada/logo ([_confirmRemove]), con la etiqueta que pide el brief.
+  /// Borrado PERMANENTE de un producto/servicio — «Eliminar», no «Quitar»
+  /// (hallazgo COPY, revisión final: unificado con paquetes/trabajos, que ya
+  /// usaban 'Eliminar' para el mismo tipo de borrado sin vuelta atrás).
   Future<void> _confirmDeleteItem(Map<String, dynamic> item) async {
     final ok = await _confirmRemove(
-        '¿Eliminar de tu tienda?', 'Esta acción no se puede deshacer.');
+        '¿Eliminar de tu tienda?', 'Esta acción no se puede deshacer.',
+        confirmLabel: 'Eliminar');
     if (!ok || !mounted) return;
     await widget.onDeleteItem?.call(item);
   }
 
-  /// Paquetes propios + la fila «+ Añadir paquete» al final, SIEMPRE (Task
-  /// 7) — a diferencia de PRODUCTOS/SERVICIOS (que solo muestran un aviso de
-  /// texto cuando están vacíos), la sección de paquetes ofrece la alta
-  /// directo ahí mismo porque no hay un chooser compartido que la cubra.
+  /// Paquetes propios + la fila «+ Añadir paquete» al final, SIEMPRE que el
+  /// dueño pueda crear (Task 7). Mismo patrón que [_itemsOrEmpty]/
+  /// [_trabajosOrAdd] (I-2, revisión final) — paquetes no tiene aviso de
+  /// texto para su estado vacío porque nunca tuvo uno: siempre fue solo la
+  /// fila de alta.
   List<Widget> _packagesOrAdd(List<Map<String, dynamic>> paquetes) => [
         for (final p in paquetes)
           _PackageTile(
@@ -775,8 +782,35 @@ class _MyBusinessViewState extends State<MyBusinessView> {
                 : () => _confirmDeletePackage(p),
           ),
         if (widget.onAddPackage != null)
-          _AddPackageTile(onTap: () => widget.onAddPackage!.call()),
+          _AddLineTile(
+              label: 'Añadir paquete', onTap: () => widget.onAddPackage!.call()),
       ];
+
+  /// Trabajos del portafolio propio + la fila «+ Añadir trabajo» al final,
+  /// cuando el dueño puede crear (I-2, revisión final) — mismo patrón que
+  /// [_itemsOrEmpty]: sección vacía sin `onAddItem` sigue avisando con texto
+  /// plano; con `onAddItem`, la fila «+» sustituye el aviso.
+  List<Widget> _trabajosOrAdd(List<Map<String, dynamic>> trabajos) {
+    final onAdd = widget.onAddItem;
+    if (trabajos.isEmpty && onAdd == null) {
+      return [
+        const _EmptyLine(text: 'Aún no tienes trabajos en tu portafolio.'),
+      ];
+    }
+    return [
+      for (final t in trabajos)
+        _PortfolioTile(
+          item: t,
+          onTap:
+              widget.onEditTrabajo == null ? null : () => widget.onEditTrabajo!(t),
+          onLongPress: widget.onDeleteTrabajo == null
+              ? null
+              : () => _confirmDeleteTrabajo(t),
+        ),
+      if (onAdd != null)
+        _AddLineTile(label: 'Añadir trabajo', onTap: () => onAdd('trabajo')),
+    ];
+  }
 
   /// Borrado PERMANENTE de un paquete — el botón dice 'Eliminar', no
   /// 'Quitar' (constraint explícita de la Task 7).
@@ -944,14 +978,15 @@ class _PortfolioTile extends StatelessWidget {
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
           child: img == null || img.isEmpty
-              ? Container(
+              ? _tilePlaceholder(cs, Icons.photo_outlined)
+              : JayaloNetworkImage(
+                  img,
                   width: 56,
                   height: 56,
-                  color: cs.surfaceContainerHighest,
-                  child: Icon(Icons.photo_outlined,
-                      color: cs.onSurfaceVariant, size: 22),
-                )
-              : Image.network(img, width: 56, height: 56, fit: BoxFit.cover),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) =>
+                      _tilePlaceholder(cs, Icons.photo_outlined),
+                ),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -987,14 +1022,15 @@ class _PackageTile extends StatelessWidget {
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
           child: img == null || img.isEmpty
-              ? Container(
+              ? _tilePlaceholder(cs, Icons.inventory_2_outlined)
+              : JayaloNetworkImage(
+                  img,
                   width: 56,
                   height: 56,
-                  color: cs.surfaceContainerHighest,
-                  child: Icon(Icons.inventory_2_outlined,
-                      color: cs.onSurfaceVariant, size: 22),
-                )
-              : Image.network(img, width: 56, height: 56, fit: BoxFit.cover),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) =>
+                      _tilePlaceholder(cs, Icons.inventory_2_outlined),
+                ),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -1007,7 +1043,14 @@ class _PackageTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 4),
-              Text(price == null ? 'Consultar precio' : fmtRD(price),
+              // (price == null || price == 0): C-1 hace que un precio en
+              // blanco se guarde como 0 (la columna es NOT NULL DEFAULT 0),
+              // no como null — sin este OR, "Consultar precio" quedaba
+              // inalcanzable para un paquete guardado sin precio.
+              Text(
+                  (price == null || price == 0)
+                      ? 'Consultar precio'
+                      : fmtRD(price),
                   style: TextStyle(
                       fontWeight: FontWeight.w700, color: cs.primary)),
             ],
@@ -1018,11 +1061,25 @@ class _PackageTile extends StatelessWidget {
   }
 }
 
-/// «+ Añadir paquete» — mismo tratamiento visual que `_AboutCard`/
-/// `_ServicesCard` en su estado vacío: fila con ícono `+` y texto en el color
-/// primario. Va SIEMPRE al final de la sección PAQUETES, con o sin paquetes.
-class _AddPackageTile extends StatelessWidget {
-  const _AddPackageTile({required this.onTap});
+/// Miniatura vacía/rota de un [_PortfolioTile]/[_PackageTile]: mismo
+/// contenedor gris con ícono en ambos, factorizado tras el hallazgo M-1
+/// (revisión final) al sumarles `errorBuilder`.
+Widget _tilePlaceholder(ColorScheme cs, IconData icon) => Container(
+      width: 56,
+      height: 56,
+      color: cs.surfaceContainerHighest,
+      child: Icon(icon, color: cs.onSurfaceVariant, size: 22),
+    );
+
+/// «+ Añadir …» — mismo tratamiento visual que `_AboutCard`/`_ServicesCard`
+/// en su estado vacío: fila con ícono `+` y texto en el color primario. Va
+/// al final de cada sección de catálogo (productos, servicios, paquetes,
+/// trabajos) que el dueño puede editar (hallazgo I-2, revisión final: antes
+/// solo Paquetes la tenía, con el nombre `_AddPackageTile` — generalizada
+/// aquí con [label] en vez de duplicar el widget por sección).
+class _AddLineTile extends StatelessWidget {
+  const _AddLineTile({required this.label, required this.onTap});
+  final String label;
   final VoidCallback onTap;
 
   @override
@@ -1033,7 +1090,7 @@ class _AddPackageTile extends StatelessWidget {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.add, size: 18, color: cs.primary),
         const SizedBox(width: 6),
-        Text('Añadir paquete',
+        Text(label,
             style: TextStyle(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
@@ -1043,7 +1100,12 @@ class _AddPackageTile extends StatelessWidget {
   }
 }
 
-/// Aviso discreto para una sección vacía (sin CTA de crear: eso es V2/web).
+/// Aviso discreto para una sección de catálogo vacía SIN capacidad de alta
+/// (el `onAddItem`/`onAddPackage` correspondiente no está cableado). Cuando
+/// SÍ hay alta disponible, la sección vacía muestra [_AddLineTile] en su
+/// lugar — su propia etiqueta hace de aviso (hallazgo I-2, revisión final;
+/// el comentario anterior decía "sin CTA de crear: eso es V2/web", que dejó
+/// de ser cierto con el agregador y con esta misma tarea).
 class _EmptyLine extends StatelessWidget {
   const _EmptyLine({required this.text});
   final String text;

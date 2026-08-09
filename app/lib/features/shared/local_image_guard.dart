@@ -1,7 +1,12 @@
 import 'dart:io';
 
-/// Extensiones aceptadas para subir una imagen elegida localmente (portada,
-/// logo — y las tareas 6-8 que reusan este mismo guard).
+/// Extensiones aceptadas para subir una imagen elegida localmente: portada y
+/// logo del negocio (`my_business_screen.dart`) y la foto de un paquete
+/// (`package_editor_screen.dart`, Task 7). El editor de ítem de tienda
+/// (Tasks 6/8, `add_store_item_screen.dart`) NO reusa este guard — usa su
+/// propio `validatePickedImage` (`domain/image_pick.dart`), con reglas de
+/// cupo distintas (varias fotos, no una sola) — corregido en la revisión
+/// final (hallazgo M-6): el comentario anterior afirmaba lo contrario.
 const _allowedImageExtensions = {'jpg', 'jpeg', 'png', 'webp'};
 
 /// Tope de tamaño para una imagen subida desde el picker: 5 MB.

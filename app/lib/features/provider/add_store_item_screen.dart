@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,9 +6,11 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/brand.dart';
+import '../../core/error_reporter.dart';
 import '../../core/safe_image_picker.dart';
 import '../../core/unsaved_guard.dart';
 import '../../data/repos.dart';
+import '../../domain/contact_info.dart' show contactInfoMessage, isContactInfoError;
 import '../../domain/image_pick.dart';
 import '../../domain/offer_defaults.dart';
 import '../shared/brand_kit.dart';
@@ -296,6 +299,12 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
       if (hrs != null) _hours.text = '$hrs';
       _availability.text = (defaults[OfferDefaults.availability] as String?) ?? '';
       _duration.text = (defaults[OfferDefaults.duration] as String?) ?? '';
+      // Hallazgo I-1 (revisión final): `warranty` es columna REAL también
+      // para un servicio (paridad con la web) — mismo criterio que la rama
+      // de producto de abajo, la columna real gana sobre el jsonb.
+      _warranty.text = (item['warranty'] as String?) ??
+          (defaults[OfferDefaults.warranty] as String?) ??
+          '';
     } else {
       // Rango si hay min/max guardados; fijo en cualquier otro caso
       // (incluido "sin precio todavía").
@@ -464,17 +473,22 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
   /// Columnas REALES `brand`/`warranty` (Fix round 1, Important 4): el mismo
   /// dato que entra a `offer_defaults`, pero también en su columna propia —
   /// para que "Marca"/"Garantía" muevan la ficha pública (`productDetail`)
-  /// y no solo el molde de oferta. Nunca pueden divergir: se calculan de la
-  /// MISMA fuente (`_brand.text`/`_warranty.text`) que usa
-  /// `_offerDefaultsForSave`.
+  /// y no solo el molde de oferta. Se calculan de la MISMA fuente
+  /// (`_brand.text`/`_warranty.text`) que usa `_offerDefaultsForSave`, EXCEPTO
+  /// en un caso desde I-1 (revisión final): un servicio SÍ tiene columna
+  /// `warranty` (paridad con la web), pero su `offer_defaults.warranty` sigue
+  /// vacío a propósito, igual que ya hacía `request_detail_screen.dart` con
+  /// el molde de oferta de un servicio — divergen ahí adrede, no es un bug.
   String? get _brandColumn {
     if (_isService) return null;
     final t = _brand.text.trim();
     return t.isEmpty ? null : t;
   }
 
+  /// Hallazgo I-1 (revisión final): a diferencia de [_brandColumn]
+  /// (producto-only, la web tampoco pide marca en servicios), `warranty` SÍ
+  /// aplica a servicio — no gatear por `_isService` aquí es justo el fix.
   String? get _warrantyColumn {
-    if (_isService) return null;
     final t = _warranty.text.trim();
     return t.isEmpty ? null : t;
   }
@@ -608,8 +622,18 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
           : (_esTrabajo ? 'Trabajo agregado.' : 'Agregado a tu tienda.'));
       // `true` = hubo cambio: "Mi negocio" refresca su listado al volver.
       context.pop(true);
-    } catch (_) {
-      _toast('No se pudo guardar. Intenta de nuevo.');
+    } catch (e, s) {
+      // Hallazgo I-3 (revisión final): un `catch (_)` genérico convertía un
+      // JY422 del trigger `enforce_no_contact_info` (teléfono/correo pegado
+      // en nombre/descripción) en el mismo "No se pudo guardar" de un fallo
+      // cualquiera, y el error ni llegaba al reporter — mismo patrón que
+      // `package_editor_screen.dart:_save`.
+      if (isContactInfoError(e)) {
+        _toast(contactInfoMessage);
+      } else {
+        unawaited(reportError(e, s));
+        _toast('No se pudo guardar. Intenta de nuevo.');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -887,6 +911,16 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
         const SizedBox(height: 12),
         _txtField(_duration, 'Duración estimada (ej: 2 días)',
             key: const Key('campo-duracion')),
+        const SizedBox(height: 14),
+        // Hallazgo I-1 (revisión final): la web permite garantía en
+        // servicios (`productOnly: false`), pero este editor solo la
+        // mostraba para producto — y el UPDATE mandaba `warranty: null`
+        // SIEMPRE en un servicio, borrando en silencio lo que se hubiera
+        // puesto desde la web. Mismo chip que en `_productMoldeFields`.
+        _sectionLabel('Garantía'),
+        const SizedBox(height: 8),
+        _chipSelect(kWarrantyOptions, _warranty.text,
+            (v) => setState(() => _warranty.text = v)),
       ];
 
   List<Widget> _svcModeFields() {

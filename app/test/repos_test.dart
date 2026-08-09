@@ -283,4 +283,29 @@ void main() {
       expect(seen!['offer_defaults'], {'pricing_mode': 'range'});
     });
   });
+
+  group('packagePayload (hallazgo C-1, revisión final)', () {
+    // `provider_packages.price` es NOT NULL DEFAULT 0: guardar un paquete
+    // con el precio en blanco (price: null desde PackageEditorScreen) mandaba
+    // 'price': null explícito y el INSERT/UPDATE reventaba con 23502. El
+    // payload debe llevar 0 en su lugar.
+    test('precio vacío (null) → el payload lleva price 0, no null', () {
+      final payload = packagePayload(
+        businessId: 'biz-1',
+        name: 'Plan Básico',
+        items: const ['Corte'],
+      );
+      expect(payload['price'], 0);
+    });
+
+    test('con precio, el payload lo conserva tal cual', () {
+      final payload = packagePayload(
+        businessId: 'biz-1',
+        name: 'Plan Full',
+        price: 1500,
+        items: const ['Corte', 'Lavado'],
+      );
+      expect(payload['price'], 1500);
+    });
+  });
 }
