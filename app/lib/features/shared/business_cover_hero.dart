@@ -209,13 +209,21 @@ class BusinessCoverHero extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(18),
-            child: hasLogo
-                ? JayaloNetworkImage(
-                    logo,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => placeholder(),
-                  )
-                : placeholder(),
+            child: Container(
+              // Fondo propio de la tarjeta (mismo tono que el placeholder):
+              // con `contain` el logo puede no llenar el cuadrado, y el hueco
+              // que deja debe verse neutro, no transparente sobre la portada.
+              color: cs.surface,
+              child: hasLogo
+                  ? JayaloNetworkImage(
+                      logo,
+                      // COMPLETO, nunca recortado (pedido PO 2026-08-09: el PO
+                      // subió su logo y `cover` se lo comía por los bordes).
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) => placeholder(),
+                    )
+                  : placeholder(),
+            ),
           ),
           // Badge circular "+" en la esquina: solo logo vacío y editable —
           // con logo puesto tocar para CAMBIARLO no necesita esta pista.

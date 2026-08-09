@@ -59,6 +59,20 @@ void main() {
       expect(find.byIcon(Icons.add), findsNothing);
     });
 
+    // Pedido PO 2026-08-09: el logo del negocio se veía RECORTADO (el PO subió
+    // el suyo y `BoxFit.cover` se lo comía por los bordes). Debe verse
+    // COMPLETO — `BoxFit.contain` — dentro de la tarjeta del logo.
+    testWidgets('logo con imagen: se ve COMPLETO (BoxFit.contain), no recortado',
+        (t) async {
+      await t.pumpWidget(_wrap(const BusinessCoverHero(
+          name: 'N', logoUrl: 'https://x/logo.jpg')));
+      final img = t.widget<Image>(find.descendant(
+        of: find.byKey(businessCoverHeroLogoKey),
+        matching: find.byType(Image),
+      ));
+      expect(img.fit, BoxFit.contain);
+    });
+
     testWidgets('coverBusy pinta un spinner superpuesto', (t) async {
       await t.pumpWidget(_wrap(const BusinessCoverHero(
           name: 'N', coverUrl: null, coverBusy: true)));
