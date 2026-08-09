@@ -322,7 +322,6 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                         }
                         final card = _InboxCard(
                           title: r['title'] as String? ?? '',
-                          description: r['description'] as String? ?? '',
                           kind: r['kind'] as String?,
                           imageUrl: r['image_url'] as String?,
                           wholesale: r['is_wholesale'] == true,
@@ -378,10 +377,13 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
 /// el ícono de producto/servicio en contenedor redondeado, como una
 /// notificación. El acento usa el primario del tema (violeta claro / azul
 /// oscuro).
+///
+/// SIN descripción (pedido PO 2026-08-09): la lista ya no la muestra —
+/// se sigue viendo en el detalle de la solicitud, que ya la pinta. El
+/// espacio que dejó libre pasó a la miniatura, ahora más grande.
 class _InboxCard extends StatelessWidget {
   const _InboxCard({
     required this.title,
-    required this.description,
     required this.kind,
     required this.createdAt,
     required this.onTap,
@@ -393,7 +395,6 @@ class _InboxCard extends StatelessWidget {
   });
 
   final String title;
-  final String description;
   final String? kind;
   final DateTime createdAt;
   final VoidCallback onTap;
@@ -417,33 +418,40 @@ class _InboxCard extends StatelessWidget {
   /// texto completo vive en el detalle.
   final RequestRequirements requirements;
 
+  /// Lado de la miniatura: sin descripción en la tarjeta (pedido PO
+  /// 2026-08-09) la foto pasa a ser la protagonista — antes 44, mismo tamaño
+  /// que la miniatura de "Tus solicitudes" del cliente (54) queda chica al
+  /// lado de un título de hasta 2 líneas.
+  static const _thumbSize = 64.0;
+  static const _thumbRadius = 16.0;
+
   /// Miniatura de la foto del cliente (nunca ícono roto: cae al ícono si no
   /// hay foto o falla la URL). Antes la lista era solo-ícono — el PO reportó
   /// "todas las solicitudes salen sin imágenes" (2026-07-20).
   Widget _leading(ColorScheme cs) {
     Widget ph() => Container(
-      width: 44,
-      height: 44,
+      width: _thumbSize,
+      height: _thumbSize,
       decoration: BoxDecoration(
         color: cs.primary.withValues(alpha: .14),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(_thumbRadius),
       ),
       child: Icon(
         kind == 'producto'
             ? Icons.inventory_2_outlined
             : Icons.handyman_outlined,
-        size: 20,
+        size: 26,
         color: cs.primary,
       ),
     );
     final url = imageUrl;
     if (url == null || url.isEmpty) return ph();
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(_thumbRadius),
       child: JayaloNetworkImage(
         url,
-        width: 44,
-        height: 44,
+        width: _thumbSize,
+        height: _thumbSize,
         fit: BoxFit.cover,
         loadingBuilder: (c, child, p) => p == null ? child : ph(),
         errorBuilder: (c, e, s) => ph(),
@@ -463,7 +471,7 @@ class _InboxCard extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               _leading(cs),
-              if (wholesale) const WholesaleRibbon(radius: 12),
+              if (wholesale) const WholesaleRibbon(radius: _thumbRadius),
             ],
           ),
           const SizedBox(width: 12),
@@ -482,16 +490,7 @@ class _InboxCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                if (description.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-                  ),
-                ],
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Wrap(
                   spacing: 8,
                   runSpacing: 4,

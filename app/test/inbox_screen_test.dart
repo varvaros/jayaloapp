@@ -274,4 +274,81 @@ void main() {
     expect(find.byIcon(Icons.local_shipping_outlined), findsNothing);
     expect(find.byIcon(Icons.receipt_long_outlined), findsNothing);
   });
+
+  // Pedido PO 2026-08-09: la tarjeta de "Solicitudes para ti" ya NO muestra
+  // la descripción (se sigue viendo en el detalle) y usa ese espacio para una
+  // foto más grande. Solo la lista del PROVEEDOR cambia — la del cliente
+  // ("Tus solicitudes") no se toca.
+  group('tarjeta del proveedor sin descripción, foto más grande (08-09)', () {
+    Future<List<Map<String, dynamic>>> conFotoYDescripcion(
+            {String? kind, required bool todas}) async =>
+        todas
+            ? []
+            : [
+                {
+                  'id': 'req-foto',
+                  'source': 'marketplace',
+                  'title': 'Necesito un plomero',
+                  'description': 'Fuga de agua en la cocina, urge',
+                  'kind': 'servicio',
+                  'image_url': 'https://x/foto.jpg',
+                  'created_at': DateTime.now().toIso8601String(),
+                },
+              ];
+
+    testWidgets('la descripción de la solicitud NO se pinta en la tarjeta',
+        (tester) async {
+      await tester.pumpWidget(host(ProviderInboxView(
+          fetch: conFotoYDescripcion,
+          leading: const SizedBox.shrink(),
+          actions: const [])));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Necesito un plomero'), findsOneWidget);
+      expect(find.text('Fuga de agua en la cocina, urge'), findsNothing);
+    });
+
+    testWidgets('la miniatura crece a 64x64 (antes 44x44)', (tester) async {
+      await tester.pumpWidget(host(ProviderInboxView(
+          fetch: conFotoYDescripcion,
+          leading: const SizedBox.shrink(),
+          actions: const [])));
+      await tester.pumpAndSettle();
+
+      final img = tester.widget<Image>(find.byType(Image).first);
+      expect(img.width, 64);
+      expect(img.height, 64);
+    });
+
+    testWidgets(
+        'sin foto: el placeholder también crece a 64x64 y sigue mostrando el ícono',
+        (tester) async {
+      Future<List<Map<String, dynamic>>> sinFoto(
+              {String? kind, required bool todas}) async =>
+          todas
+              ? []
+              : [
+                  {
+                    'id': 'req-sinfoto',
+                    'source': 'marketplace',
+                    'title': 'Necesito un electricista',
+                    'description': 'Cambiar breaker',
+                    'kind': 'servicio',
+                    'created_at': DateTime.now().toIso8601String(),
+                  },
+                ];
+      await tester.pumpWidget(host(ProviderInboxView(
+          fetch: sinFoto, leading: const SizedBox.shrink(), actions: const [])));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.handyman_outlined), findsOneWidget);
+      final placeholder = tester.widget<Container>(find
+          .ancestor(
+              of: find.byIcon(Icons.handyman_outlined),
+              matching: find.byType(Container))
+          .first);
+      expect(placeholder.constraints?.maxWidth, 64);
+      expect(placeholder.constraints?.maxHeight, 64);
+    });
+  });
 }
