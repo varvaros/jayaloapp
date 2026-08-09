@@ -16,8 +16,15 @@ void main() {
   /// La portada editorial (2026-08-01) es MUCHO más alta que la cabecera de
   /// tarjeta que sustituyó, así que en el viewport de 800x600 de los tests las
   /// secciones de abajo ya no nacen construidas. Se baja como bajaría alguien.
+  ///
+  /// Por clave (2026-08-09, tercera vuelta): `find.byType(ListView)` dejó de
+  /// bastar desde que PAQUETES y TRABAJOS montan su propio `ListView`
+  /// horizontal (carril de tarjetas compactas) — sin la clave, `tester.drag`
+  /// revienta con "too many elements" en cuanto esas secciones tienen
+  /// contenido.
   Future<void> bajar(WidgetTester tester) async {
-    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.drag(
+        find.byKey(const Key('mi-negocio-scroll')), const Offset(0, -600));
     await tester.pumpAndSettle();
   }
 
@@ -391,13 +398,16 @@ void main() {
         find.textContaining('Aún no tienes trabajos'), findsOneWidget);
   });
 
-  // Pedido PO 2026-08-09 (segunda vuelta, tras rechazar la fila horizontal
-  // con miniatura de 104x104 — «sigue viéndose en una ventana horizontal. La
-  // tarjeta debe verse vertical»): la tarjeta de un trabajo es vertical con
-  // la foto ARRIBA a todo el ancho (`width: double.infinity`) y alto fijo.
+  // Pedido PO 2026-08-09 (TERCERA vuelta, tras mostrar un ejemplo — grid de
+  // tarjetas tipo "match" de una app de citas — y pedir «los paquetes y
+  // trabajos deben hacer scroll HORIZONTAL, que la foto sea más pequeña»):
+  // la sección TRABAJOS es un carril con `scrollDirection: Axis.horizontal`
+  // y la tarjeta de un trabajo sigue con la foto ARRIBA a todo el ancho DE
+  // LA TARJETA (`width: double.infinity`), pero con la tarjeta angosta y la
+  // foto más chica que la iteración anterior (168 → 120).
   testWidgets(
-      'la tarjeta de un trabajo pinta la foto arriba, a todo el ancho',
-      (tester) async {
+      'TRABAJOS es un carril horizontal y la tarjeta pinta la foto arriba, '
+      'a todo el ancho de la tarjeta', (tester) async {
     await tester.pumpWidget(host(MyBusinessView(
       business: negocio,
       productos: const [],
@@ -414,12 +424,19 @@ void main() {
     )));
     await tester.pumpAndSettle();
     await bajar(tester);
-    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.drag(
+        find.byKey(const Key('mi-negocio-scroll')), const Offset(0, -600));
     await tester.pumpAndSettle();
+
+    // El carril de TRABAJOS es un `ListView` horizontal (el otro `ListView`
+    // en pantalla es el vertical de toda la vista, con la clave de arriba).
+    final carril = tester.widgetList<ListView>(find.byType(ListView)).firstWhere(
+        (lv) => lv.scrollDirection == Axis.horizontal);
+    expect(carril.scrollDirection, Axis.horizontal);
 
     final img = tester.widget<Image>(find.byType(Image).first);
     expect(img.width, double.infinity);
-    expect(img.height, 168);
+    expect(img.height, 120);
   });
 
   testWidgets(
@@ -437,7 +454,8 @@ void main() {
     )));
     await tester.pumpAndSettle();
     await bajar(tester);
-    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.drag(
+        find.byKey(const Key('mi-negocio-scroll')), const Offset(0, -600));
     await tester.pumpAndSettle();
 
     expect(find.text('Añadir trabajo'), findsOneWidget);

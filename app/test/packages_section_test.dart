@@ -45,8 +45,14 @@ void main() {
     /// mismo motivo que `bajar()` en `my_business_screen_test.dart`. La
     /// sección PAQUETES va después de SERVICIOS, así que hace falta bajar
     /// más que en ese archivo.
+    ///
+    /// Por clave (2026-08-09, tercera vuelta): `find.byType(ListView)` dejó
+    /// de bastar en cuanto PAQUETES tiene contenido — el carril horizontal
+    /// de tarjetas compactas monta su propio `ListView`, y `tester.drag`
+    /// exige un único match.
     Future<void> bajar(WidgetTester tester) async {
-      await tester.drag(find.byType(ListView), const Offset(0, -1200));
+      await tester.drag(
+          find.byKey(const Key('mi-negocio-scroll')), const Offset(0, -1200));
       await tester.pumpAndSettle();
     }
 
@@ -179,14 +185,16 @@ void main() {
       expect(edited, paquetes.first);
     });
 
-    // Pedido PO 2026-08-09 (segunda vuelta, tras rechazar la fila horizontal
-    // con miniatura de 104x104 — «sigue viéndose en una ventana horizontal.
-    // La tarjeta debe verse vertical»): la tarjeta de un paquete es vertical
-    // con la foto ARRIBA a todo el ancho (`width: double.infinity`) y alto
-    // fijo.
+    // Pedido PO 2026-08-09 (TERCERA vuelta, tras mostrar un ejemplo — grid de
+    // tarjetas tipo "match" de una app de citas — y pedir «los paquetes y
+    // trabajos deben hacer scroll HORIZONTAL, que la foto sea más pequeña»):
+    // PAQUETES es un carril con `scrollDirection: Axis.horizontal` y la
+    // tarjeta de un paquete sigue con la foto ARRIBA a todo el ancho DE LA
+    // TARJETA (`width: double.infinity`), pero angosta y con la foto más
+    // chica que la iteración anterior (168 → 120).
     testWidgets(
-        '(e) la tarjeta del paquete pinta la foto arriba, a todo el ancho',
-        (tester) async {
+        '(e) PAQUETES es un carril horizontal y la tarjeta pinta la foto '
+        'arriba, a todo el ancho de la tarjeta', (tester) async {
       final paquetes = [
         {
           'id': 'pk1',
@@ -208,9 +216,16 @@ void main() {
       await tester.pumpAndSettle();
       await bajar(tester);
 
+      // El carril de PAQUETES es un `ListView` horizontal (el otro
+      // `ListView` en pantalla es el vertical de toda la vista).
+      final carril =
+          tester.widgetList<ListView>(find.byType(ListView)).firstWhere(
+              (lv) => lv.scrollDirection == Axis.horizontal);
+      expect(carril.scrollDirection, Axis.horizontal);
+
       final img = tester.widget<Image>(find.byType(Image).first);
       expect(img.width, double.infinity);
-      expect(img.height, 168);
+      expect(img.height, 120);
     });
 
     testWidgets('sin onAddPackage la fila de alta no existe', (tester) async {

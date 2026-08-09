@@ -624,6 +624,11 @@ class _MyBusinessViewState extends State<MyBusinessView> {
     }
 
     return ListView(
+      // Clave para que los tests puedan pedir ESTE `ListView` sin ambigüedad
+      // (`find.byType(ListView)` deja de bastar desde que PAQUETES y
+      // TRABAJOS montan sus propios `ListView` horizontales — carril de
+      // tarjetas compactas, pedido PO 2026-08-09, tercera vuelta).
+      key: const Key('mi-negocio-scroll'),
       controller: _scroll,
       padding: EdgeInsets.only(bottom: 24 + navBarReservedSpace(context)),
       children: [
@@ -765,31 +770,39 @@ class _MyBusinessViewState extends State<MyBusinessView> {
     await widget.onDeleteItem?.call(item);
   }
 
-  /// Paquetes propios + la fila «+ Añadir paquete» al final, SIEMPRE que el
-  /// dueño pueda crear (Task 7). Mismo patrón que [_itemsOrEmpty]/
-  /// [_trabajosOrAdd] (I-2, revisión final) — paquetes no tiene aviso de
-  /// texto para su estado vacío porque nunca tuvo uno: siempre fue solo la
-  /// fila de alta.
+  /// Paquetes propios en un carril horizontal + la fila «+ Añadir paquete»
+  /// al final, SIEMPRE que el dueño pueda crear (Task 7; carril desde
+  /// 2026-08-09, tercera vuelta). Mismo patrón que [_itemsOrEmpty]/
+  /// [_trabajosOrAdd] (I-2, revisión final) para la fila de alta — paquetes
+  /// no tiene aviso de texto para su estado vacío porque nunca tuvo uno:
+  /// siempre fue solo la fila de alta. La fila de alta queda FUERA del
+  /// carril, a todo el ancho, debajo (pedido explícito del PO).
   List<Widget> _packagesOrAdd(List<Map<String, dynamic>> paquetes) => [
-        for (final p in paquetes)
-          _PackageTile(
-            item: p,
-            onTap: widget.onEditPackage == null
-                ? null
-                : () => widget.onEditPackage!(p),
-            onLongPress: widget.onDeletePackage == null
-                ? null
-                : () => _confirmDeletePackage(p),
+        if (paquetes.isNotEmpty)
+          _TileCarril(
+            items: paquetes,
+            height: _kPackageCarrilHeight,
+            tileBuilder: (p) => _PackageTile(
+              item: p,
+              onTap: widget.onEditPackage == null
+                  ? null
+                  : () => widget.onEditPackage!(p),
+              onLongPress: widget.onDeletePackage == null
+                  ? null
+                  : () => _confirmDeletePackage(p),
+            ),
           ),
         if (widget.onAddPackage != null)
           _AddLineTile(
               label: 'Añadir paquete', onTap: () => widget.onAddPackage!.call()),
       ];
 
-  /// Trabajos del portafolio propio + la fila «+ Añadir trabajo» al final,
-  /// cuando el dueño puede crear (I-2, revisión final) — mismo patrón que
+  /// Trabajos del portafolio propio en un carril horizontal + la fila «+
+  /// Añadir trabajo» al final, cuando el dueño puede crear (I-2, revisión
+  /// final; carril desde 2026-08-09, tercera vuelta) — mismo patrón que
   /// [_itemsOrEmpty]: sección vacía sin `onAddItem` sigue avisando con texto
-  /// plano; con `onAddItem`, la fila «+» sustituye el aviso.
+  /// plano; con `onAddItem`, la fila «+» sustituye el aviso. La fila de alta
+  /// queda FUERA del carril, a todo el ancho, debajo.
   List<Widget> _trabajosOrAdd(List<Map<String, dynamic>> trabajos) {
     final onAdd = widget.onAddItem;
     if (trabajos.isEmpty && onAdd == null) {
@@ -798,14 +811,19 @@ class _MyBusinessViewState extends State<MyBusinessView> {
       ];
     }
     return [
-      for (final t in trabajos)
-        _PortfolioTile(
-          item: t,
-          onTap:
-              widget.onEditTrabajo == null ? null : () => widget.onEditTrabajo!(t),
-          onLongPress: widget.onDeleteTrabajo == null
-              ? null
-              : () => _confirmDeleteTrabajo(t),
+      if (trabajos.isNotEmpty)
+        _TileCarril(
+          items: trabajos,
+          height: _kPortfolioCarrilHeight,
+          tileBuilder: (t) => _PortfolioTile(
+            item: t,
+            onTap: widget.onEditTrabajo == null
+                ? null
+                : () => widget.onEditTrabajo!(t),
+            onLongPress: widget.onDeleteTrabajo == null
+                ? null
+                : () => _confirmDeleteTrabajo(t),
+          ),
         ),
       if (onAdd != null)
         _AddLineTile(label: 'Añadir trabajo', onTap: () => onAdd('trabajo')),
@@ -956,21 +974,81 @@ class _ServicesCard extends StatelessWidget {
   }
 }
 
-/// Alto de la foto en las tarjetas VERTICALES de [_PortfolioTile] y
-/// [_PackageTile] (pedido PO 2026-08-09, tras rechazar la iteración anterior
-/// que puso una miniatura de 104x104 en fila horizontal: «sigue viéndose en
-/// una ventana horizontal. La tarjeta debe verse vertical» — ahora la foto va
-/// ARRIBA a todo el ancho de la tarjeta, con el texto debajo, "tipo resumen").
-const double _kTileImageHeight = 168;
+/// Alto de la foto en las tarjetas COMPACTAS de [_PortfolioTile] y
+/// [_PackageTile] (pedido PO 2026-08-09, TERCERA vuelta: mostró un ejemplo —
+/// grid de tarjetas tipo "match" de una app de citas — y pidió «los paquetes
+/// y trabajos deben hacer scroll HORIZONTAL, que la foto sea más pequeña».
+/// La foto sigue ARRIBA a todo el ancho de la tarjeta, con el texto debajo,
+/// pero la tarjeta entera ahora es angosta (ver [_kCarrilCardWidthFraction])
+/// y la foto bajó de 168 (segunda vuelta, vertical a ancho completo) a este
+/// valor, dentro del rango 110-130 que pidió el PO).
+const double _kTileImageHeight = 120;
 final BorderRadius _kTileImageRadius = BorderRadius.only(
   topLeft: Radius.circular(kCardRadius),
   topRight: Radius.circular(kCardRadius),
 );
 
-/// Trabajo del portafolio en el escaparate propio: foto arriba (a todo el
-/// ancho) + título debajo. Tocar abre el editor con la fila; mantener
-/// presionado pide confirmar el borrado (Task 8). Mismo molde visual que
-/// [_PackageTile].
+/// Fracción del ancho de pantalla que ocupa cada tarjeta del carril: ~44%
+/// deja ver dos tarjetas completas y el asomo de una tercera, calcado del
+/// ejemplo que mostró el PO (2026-08-09, tercera vuelta).
+const double _kCarrilCardWidthFraction = 0.44;
+
+/// Alto fijo del carril de TRABAJOS: foto + título (hasta 2 líneas). Con
+/// margen sobre el cálculo "a ojo" a propósito — en `flutter test` el texto
+/// mide bastante más que en el device real (fuente de respaldo del entorno
+/// de test, ver `request_requirement_badges_test.dart`), así que un alto
+/// ajustado revienta con `RenderFlex overflowed` solo en la suite.
+const double _kPortfolioCarrilHeight = 230;
+
+/// Alto fijo del carril de PAQUETES: igual que [_kPortfolioCarrilHeight] más
+/// la fila de precio.
+const double _kPackageCarrilHeight = 260;
+
+/// Carril horizontal de tarjetas compactas para PAQUETES y TRABAJOS (pedido
+/// PO 2026-08-09, tercera vuelta, tras mostrar un ejemplo de grid de
+/// tarjetas tipo "match"): `SizedBox(height: ...)` + `ListView` con
+/// `scrollDirection: Axis.horizontal`, padding lateral 16 y separación 12
+/// entre tarjetas — mismo patrón de carril que el visor de fotos de un
+/// trabajo en la tienda pública (`provider_store_screen.dart`). La fila «+
+/// Añadir…» de cada sección queda FUERA de este widget, a todo el ancho,
+/// debajo (se sigue dibujando en [_MyBusinessViewState._packagesOrAdd] /
+/// [_MyBusinessViewState._trabajosOrAdd]).
+class _TileCarril extends StatelessWidget {
+  const _TileCarril({
+    required this.items,
+    required this.tileBuilder,
+    required this.height,
+  });
+
+  final List<Map<String, dynamic>> items;
+  final Widget Function(Map<String, dynamic> item) tileBuilder;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final cardWidth =
+        MediaQuery.sizeOf(context).width * _kCarrilCardWidthFraction;
+    return SizedBox(
+      height: height,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: items.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (_, i) =>
+            SizedBox(width: cardWidth, child: tileBuilder(items[i])),
+      ),
+    );
+  }
+}
+
+/// Trabajo del portafolio en el escaparate propio: tarjeta compacta del
+/// carril de TRABAJOS, con la foto arriba (a todo el ancho DE LA TARJETA,
+/// que ahora es angosta) + título debajo. Tocar abre el editor con la fila;
+/// mantener presionado pide confirmar el borrado (Task 8). Mismo molde
+/// visual que [_PackageTile]. `margin: EdgeInsets.zero` porque el espaciado
+/// entre tarjetas lo pone [_TileCarril] (separador + padding del carril), no
+/// el margen individual de `JayaloCard`.
 class _PortfolioTile extends StatelessWidget {
   const _PortfolioTile({required this.item, this.onTap, this.onLongPress});
   final Map<String, dynamic> item;
@@ -984,6 +1062,7 @@ class _PortfolioTile extends StatelessWidget {
     final img = images.isEmpty ? null : images.first;
     return JayaloCard(
       padding: EdgeInsets.zero,
+      margin: EdgeInsets.zero,
       onTap: onTap,
       onLongPress: onLongPress,
       child: Column(
@@ -1016,10 +1095,11 @@ class _PortfolioTile extends StatelessWidget {
   }
 }
 
-/// Paquete/plan propio en el escaparate: foto arriba (a todo el ancho) +
+/// Paquete/plan propio en el escaparate: tarjeta compacta del carril de
+/// PAQUETES, con la foto arriba (a todo el ancho DE LA TARJETA, angosta) +
 /// nombre y precio debajo. Tocar abre el editor con la fila; mantener
 /// presionado pide confirmar el borrado (Task 7). Mismo molde visual que
-/// [_PortfolioTile], con precio.
+/// [_PortfolioTile], con precio; mismo motivo de `margin: EdgeInsets.zero`.
 class _PackageTile extends StatelessWidget {
   const _PackageTile({required this.item, this.onTap, this.onLongPress});
   final Map<String, dynamic> item;
@@ -1033,6 +1113,7 @@ class _PackageTile extends StatelessWidget {
     final price = item['price'] as num?;
     return JayaloCard(
       padding: EdgeInsets.zero,
+      margin: EdgeInsets.zero,
       onTap: onTap,
       onLongPress: onLongPress,
       child: Column(

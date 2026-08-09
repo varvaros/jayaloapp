@@ -234,8 +234,14 @@ void main() {
     // Mismo motivo que `bajar()` en `my_business_screen_test.dart`: la
     // portada editorial empuja TRABAJOS fuera del viewport 800x600 por
     // defecto.
+    //
+    // Por clave (2026-08-09, tercera vuelta): `find.byType(ListView)` dejó
+    // de bastar en cuanto TRABAJOS tiene contenido — el carril horizontal de
+    // tarjetas compactas monta su propio `ListView`, y `tester.drag` exige
+    // un único match.
     Future<void> bajar(WidgetTester tester) async {
-      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.drag(
+          find.byKey(const Key('mi-negocio-scroll')), const Offset(0, -600));
       await tester.pumpAndSettle();
     }
 
