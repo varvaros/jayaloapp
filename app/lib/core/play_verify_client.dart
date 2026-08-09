@@ -47,8 +47,15 @@ class PlayVerifyResult {
 /// Manda el `purchaseToken` al servidor, que es quien decide si acredita.
 /// Mismo patrón que `AccountDeletionClient`: Origin + Bearer del JWT.
 class PlayVerifyClient {
-  PlayVerifyClient({http.Client? inner}) : _http = inner ?? http.Client();
+  PlayVerifyClient({http.Client? inner, Duration? timeout})
+      : _http = inner ?? http.Client(),
+        _timeout = timeout ?? const Duration(seconds: 20);
   final http.Client _http;
+
+  /// Sin esto, una conexión colgada dejaba la verificación en vuelo para
+  /// siempre: el token quedaba retenido en el dedup del servicio sin emitir
+  /// evento, y la compra no se reintentaba hasta reiniciar la app.
+  final Duration _timeout;
 
   Future<PlayVerifyResult> verify({
     required String accessToken,
@@ -57,18 +64,21 @@ class PlayVerifyClient {
   }) async {
     final http.Response res;
     try {
-      res = await _http.post(
-        Uri.parse(AppConfig.playVerifyEndpoint),
-        headers: {
-          'Content-Type': 'application/json',
-          'Origin': AppConfig.siteUrl,
-          'Authorization': 'Bearer $accessToken',
-        },
-        body: jsonEncode({'purchaseToken': purchaseToken, 'productId': productId}),
-      );
+      res = await _http
+          .post(
+            Uri.parse(AppConfig.playVerifyEndpoint),
+            headers: {
+              'Content-Type': 'application/json',
+              'Origin': AppConfig.siteUrl,
+              'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode(
+                {'purchaseToken': purchaseToken, 'productId': productId}),
+          )
+          .timeout(_timeout);
     } catch (e) {
-      // Sin red: reintentable por definición. La petición nunca llegó, así que
-      // el purchaseToken sigue tan vivo como antes de intentarlo.
+      // Sin red o expirado: reintentable por definición. La respuesta nunca
+      // llegó, así que el purchaseToken sigue tan vivo como antes.
       throw PlayVerifyException(0, e.toString(), retryable: true);
     }
 
@@ -100,10 +110,17 @@ class PlayVerifyClient {
       );
     }
 
-    return PlayVerifyResult(
-      balance: (body['balance'] as num?)?.toInt() ?? 0,
-      points: (body['points'] as num?)?.toInt() ?? 0,
-      credited: body['credited'] == true,
-    );
+    try {
+      return PlayVerifyResult(
+        balance: (body['balance'] as num?)?.toInt() ?? 0,
+        points: (body['points'] as num?)?.toInt() ?? 0,
+        credited: body['credited'] == true,
+      );
+    } catch (_) {
+      // Un 200 que no cumple el contrato (balance como string…) es tan
+      // ilegible como un cuerpo roto: el contrato de esta clase es lanzar
+      // SOLO PlayVerifyException, y ante lo ilegible se CONSERVA el token.
+      throw PlayVerifyException(200, 'Respuesta inválida', retryable: true);
+    }
   }
 }

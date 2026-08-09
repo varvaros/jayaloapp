@@ -23,10 +23,22 @@ void main() {
       expect(tiers.every((t) => t.savingsPct >= 0), isTrue);
     });
 
-    test('a igualdad de \$/crédito, "mejor precio" es el paquete MÁS GRANDE', () {
-      // Pro (110/\$100) y Popular (55/\$50) empatan a \$0.909; gana Max.
+    test('en la escalera real gana Max, y solo hay UNA insignia', () {
       final tiers = buildShopTiers(packages);
       expect(tiers.firstWhere((t) => t.isBestValue).points, 200);
+      expect(tiers.where((t) => t.isBestValue).length, 1);
+    });
+
+    test('a igualdad de \$/crédito gana el paquete MÁS GRANDE', () {
+      // Empate REAL (1.00/cr los dos). La versión anterior de este test usaba
+      // la escalera de producción, donde Max gana por 0.90 ESTRICTO: el
+      // desempate nunca se ejercitaba (vacuo, confirmado por mutación en la
+      // 1ª revisión — borrar la regla dejaba los 10 tests en verde).
+      final tiers = buildShopTiers(const [
+        ShopPackage(id: 'chico', points: 10, priceUSD: 10),
+        ShopPackage(id: 'grande', points: 20, priceUSD: 20),
+      ]);
+      expect(tiers.firstWhere((t) => t.isBestValue).id, 'grande');
       expect(tiers.where((t) => t.isBestValue).length, 1);
     });
 

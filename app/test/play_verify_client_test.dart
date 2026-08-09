@@ -177,6 +177,43 @@ void main() {
     );
   });
 
+  // Important de la 1ª revisión: sin timeout, una conexión colgada dejaba la
+  // verificación en vuelo para siempre — el token quedaba en `_inFlight` sin
+  // evento y la compra no se reintentaba hasta reiniciar la app.
+  test('una conexión colgada expira y es reintentable', () async {
+    final client = PlayVerifyClient(
+      inner: MockClient((_) async {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        return http.Response('{}', 200);
+      }),
+      timeout: const Duration(milliseconds: 50),
+    );
+
+    await expectLater(
+      client.verify(
+          accessToken: 'J', purchaseToken: 'T', productId: 'creditos_10usd'),
+      throwsA(isA<PlayVerifyException>()
+          .having((e) => e.status, 'status', 0)
+          .having((e) => e.retryable, 'retryable', isTrue)),
+    );
+  });
+
+  // Important de la 1ª revisión: los casts del 200 vivían FUERA del try — un
+  // 200 que no cumpla el contrato (balance como string) lanzaba TypeError en
+  // vez de PlayVerifyException. El contrato del cliente es: solo
+  // PlayVerifyException, y ante lo ilegible se CONSERVA el token.
+  test('un 200 con tipos rotos no revienta: reintentable', () async {
+    final client = clientReturning(
+        jsonEncode({'balance': 'muchos', 'points': 55, 'credited': true}), 200);
+
+    await expectLater(
+      client.verify(
+          accessToken: 'J', purchaseToken: 'T', productId: 'creditos_10usd'),
+      throwsA(isA<PlayVerifyException>()
+          .having((e) => e.retryable, 'retryable', isTrue)),
+    );
+  });
+
   test('un fallo de red es reintentable y no trae status', () async {
     final client = PlayVerifyClient(
         inner: MockClient((_) async => throw http.ClientException('sin red')));
