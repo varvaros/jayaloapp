@@ -1020,6 +1020,23 @@ Expected: `{"error":"No autenticado"}` (401).
 
 Con una sesión válida y un token inventado, la respuesta debe ser `502` ("No se pudo confirmar el pago todavía") por el 404 de Google — **no** un 500 de "Backend mal configurado" ni un error de `PLAY_SERVICE_ACCOUNT_JSON`. Si sale lo segundo, falta el paso 4 del trabajo del PO.
 
+- [ ] **Step 5 (añadido 2026-08-08): antes de aplicar la migración, comprobar duplicados**
+
+Si alguien sembró `play_product_id` a mano con duplicados, el `CREATE UNIQUE INDEX` parcial
+aborta la migración entera. Verificar en `BEGIN; … ROLLBACK;` que
+`SELECT play_product_id, count(*) FROM credit_packages WHERE play_product_id IS NOT NULL GROUP BY 1 HAVING count(*) > 1`
+devuelve 0 filas. (Hoy la columna no existe en prod: la query solo aplica si la migración se
+reintenta tras un fallo parcial.)
+
+- [ ] **Step 6 (añadido 2026-08-08): regenerar `types.ts` desde la BD real TRAS la migración**
+
+MCP de Supabase `generate_typescript_types(project_id='mfaiklvobnvgusbcssbx')` → volcar a
+`src/integrations/supabase/types.ts` + prettier + `tsc`. Esto REEMPLAZA los añadidos a mano
+que se hicieron porque la migración no estaba aplicada (la RPC `credit_play_purchase` y la
+columna `credit_packages.play_product_id`) y captura lo que NO se añadió a mano a propósito:
+`payment_orders.play_purchase_token` y la nulabilidad nueva de `paypal_order_id` (regenerar
+puede destapar errores de `tsc` en código PayPal que asumía `string` — arreglarlos entonces).
+
 ---
 
 ## Task 6: Dependencia `in_app_purchase` en la app
