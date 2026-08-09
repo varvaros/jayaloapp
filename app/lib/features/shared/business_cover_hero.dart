@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../../core/brand.dart';
 import 'network_image.dart';
 
+/// Ancla estable de la tarjeta del logo — ver el comentario en `_logoCard`.
+const businessCoverHeroLogoKey = ValueKey('businessCoverHeroLogo');
+
 /// Portada editorial del negocio — la pieza del diseño web que nunca se portó
 /// a la app (`cover_url` no se leía en NINGÚN sitio de `lib/`).
 ///
@@ -183,6 +186,10 @@ class BusinessCoverHero extends StatelessWidget {
           child: Icon(Icons.storefront_outlined, size: 32, color: cs.primary),
         );
     Widget card = Container(
+      // Ancla estable para tests (`find.byKey`): tapear/mantener presionado
+      // sobre el logo sin ambigüedad con el resto del hero o de la pantalla
+      // que lo hospeda.
+      key: businessCoverHeroLogoKey,
       width: 76,
       height: 76,
       padding: const EdgeInsets.all(4),

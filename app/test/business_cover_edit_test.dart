@@ -125,15 +125,61 @@ void main() {
   });
 
   group('MyBusinessView — cableado portada/logo', () {
+    // Scaffold explícito: `_toast` usa `ScaffoldMessenger.of(context).
+    // showSnackBar`, que exige un Scaffold descendiente — sin él Flutter
+    // revienta con "no descendant Scaffolds to present to".
     Widget host(Widget child) => MaterialApp(
           theme: jayaloTheme(Brightness.light),
-          home: child,
+          home: Scaffold(body: child),
         );
 
     const negocio = (
       id: 'biz-1',
       name: 'Ferretería Pérez',
       logoUrl: null,
+      coverUrl: null,
+      verified: true,
+      categoryId: 'ferreteria',
+      city: 'Santiago',
+      wholesale: true,
+      description: 'Todo en herramientas',
+      seals: ['Negocio verificado'],
+      services: <String>[],
+      raw: {
+        'is_wholesale': true,
+        'experience_years': 12,
+        'service_area': 'ambos',
+        'warranty': '6 meses',
+      },
+    );
+
+    // Mismo negocio, YA con portada — para probar la rama "hay algo que
+    // quitar" del ternario de `onCoverLongPress` en `my_business_screen.dart`.
+    const negocioConPortada = (
+      id: 'biz-1',
+      name: 'Ferretería Pérez',
+      logoUrl: null,
+      coverUrl: 'https://x/portada.jpg',
+      verified: true,
+      categoryId: 'ferreteria',
+      city: 'Santiago',
+      wholesale: true,
+      description: 'Todo en herramientas',
+      seals: ['Negocio verificado'],
+      services: <String>[],
+      raw: {
+        'is_wholesale': true,
+        'experience_years': 12,
+        'service_area': 'ambos',
+        'warranty': '6 meses',
+      },
+    );
+
+    // Mismo negocio, YA con logo.
+    const negocioConLogo = (
+      id: 'biz-1',
+      name: 'Ferretería Pérez',
+      logoUrl: 'https://x/logo.jpg',
       coverUrl: null,
       verified: true,
       categoryId: 'ferreteria',
@@ -181,6 +227,219 @@ void main() {
 
       expect(calledBusinessId, 'biz-1');
       expect(calledPath, file.path);
+    });
+
+    // Fix round 1 (revisor, Important): el ternario de `onCoverLongPress`
+    // en `my_business_screen.dart` («solo ofrecer quitar si hay algo que
+    // quitar») no tenía cobertura a nivel de pantalla — una inversión
+    // pasaría en verde. Las dos siguientes prueban las DOS ramas.
+    testWidgets('sin portada: long-press no ofrece quitar (nada que quitar)',
+        (tester) async {
+      await tester.pumpWidget(host(MyBusinessView(
+        business: negocio, // coverUrl: null
+        productos: const [],
+        servicios: const [],
+        reviews: const [],
+        rating: null,
+      )));
+      await tester.pumpAndSettle();
+
+      // Se apunta al nombre (fuera del logo) para no depender de dónde cae
+      // el centro geométrico del hero completo.
+      await tester.longPress(find.text(negocio.name));
+      await tester.pumpAndSettle();
+
+      expect(find.text('¿Quitar la portada?'), findsNothing);
+    });
+
+    testWidgets('con portada: long-press SÍ ofrece el diálogo de confirmación',
+        (tester) async {
+      await tester.pumpWidget(host(MyBusinessView(
+        business: negocioConPortada, // coverUrl set
+        productos: const [],
+        servicios: const [],
+        reviews: const [],
+        rating: null,
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text(negocioConPortada.name));
+      await tester.pumpAndSettle();
+
+      expect(find.text('¿Quitar la portada?'), findsOneWidget);
+    });
+
+    // Mismo par de ramas para el logo — el ternario de `onLogoLongPress` es
+    // independiente del de portada y podría invertirse sin que lo anterior
+    // lo cazara.
+    testWidgets('sin logo: long-press no ofrece quitar (nada que quitar)',
+        (tester) async {
+      await tester.pumpWidget(host(MyBusinessView(
+        business: negocio, // logoUrl: null
+        productos: const [],
+        servicios: const [],
+        reviews: const [],
+        rating: null,
+      )));
+      await tester.pumpAndSettle();
+
+      // `businessCoverHeroLogoKey` ancla la tarjeta del logo sin ambigüedad:
+      // el ícono de tienda del placeholder también aparece (a otro tamaño)
+      // en `BusinessDetailsCard`, más abajo en el mismo ListView.
+      await tester.longPress(find.byKey(businessCoverHeroLogoKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('¿Quitar el logo?'), findsNothing);
+    });
+
+    testWidgets('con logo: long-press SÍ ofrece el diálogo de confirmación',
+        (tester) async {
+      await tester.pumpWidget(host(MyBusinessView(
+        business: negocioConLogo, // logoUrl set, coverUrl null
+        productos: const [],
+        servicios: const [],
+        reviews: const [],
+        rating: null,
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.byKey(businessCoverHeroLogoKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('¿Quitar el logo?'), findsOneWidget);
+    });
+
+    // Fix round 1 (revisor, Important): flujo COMPLETO de remoción —
+    // confirmar en el diálogo debe llamar al doble `clearCover`/`clearLogo`
+    // con el id del negocio y el estado local debe volver a `null` (la UI
+    // vuelve a mostrar "+ Añadir portada").
+    testWidgets(
+        'long-press con portada → confirmar → clearCover(id) y vuelve a mostrar + Añadir portada',
+        (tester) async {
+      String? clearedId;
+
+      await tester.pumpWidget(host(MyBusinessView(
+        business: negocioConPortada,
+        productos: const [],
+        servicios: const [],
+        reviews: const [],
+        rating: null,
+        clearCover: (businessId) async => clearedId = businessId,
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text(negocioConPortada.name));
+      await tester.pumpAndSettle();
+      expect(find.text('¿Quitar la portada?'), findsOneWidget);
+
+      await tester.tap(find.text('Quitar'));
+      await tester.pumpAndSettle();
+
+      expect(clearedId, 'biz-1');
+      // El estado local quedó en null: reaparece la píldora de vacío.
+      expect(find.text('Añadir portada'), findsOneWidget);
+    });
+
+    testWidgets(
+        'long-press con logo → confirmar → clearLogo(id) y vuelve a mostrar el badge +',
+        (tester) async {
+      String? clearedId;
+
+      await tester.pumpWidget(host(MyBusinessView(
+        business: negocioConLogo,
+        productos: const [],
+        servicios: const [],
+        reviews: const [],
+        rating: null,
+        clearLogo: (businessId) async => clearedId = businessId,
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.byKey(businessCoverHeroLogoKey));
+      await tester.pumpAndSettle();
+      expect(find.text('¿Quitar el logo?'), findsOneWidget);
+
+      await tester.tap(find.text('Quitar'));
+      await tester.pumpAndSettle();
+
+      expect(clearedId, 'biz-1');
+      // Con logoUrl null de nuevo, reaparece el placeholder + el badge + —
+      // ambos acotados a la tarjeta del logo (mismo motivo que arriba).
+      final logoCard = find.byKey(businessCoverHeroLogoKey);
+      expect(
+          find.descendant(
+              of: logoCard, matching: find.byIcon(Icons.storefront_outlined)),
+          findsOneWidget);
+      expect(find.descendant(of: logoCard, matching: find.byIcon(Icons.add)),
+          findsOneWidget);
+    });
+
+    // Fix round 1 (revisor, Important): el rechazo de `validateLocalImage`
+    // dentro de `_changeCover` debe mostrar el toast y NUNCA llamar a
+    // `updateCover` — sin esto, un fichero inválido subiría igual.
+    testWidgets(
+        '_changeCover: extensión inválida muestra el toast y NO llama a updateCover',
+        (tester) async {
+      final tmp = Directory.systemTemp.createTempSync('jayalo_cover_bad_test');
+      addTearDown(() => tmp.deleteSync(recursive: true));
+      final badFile = File(_join(tmp.path, 'archivo.pdf'))
+        ..writeAsBytesSync(List.filled(100, 0));
+
+      var updateCoverCalled = false;
+
+      await tester.pumpWidget(host(MyBusinessView(
+        business: negocio,
+        productos: const [],
+        servicios: const [],
+        reviews: const [],
+        rating: null,
+        pickImage: () async => XFile(badFile.path),
+        updateCover: (businessId, filePath) async {
+          updateCoverCalled = true;
+          return 'https://cdn/covers/biz-1.jpg';
+        },
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(BusinessCoverHero));
+      await tester.pumpAndSettle();
+
+      expect(updateCoverCalled, isFalse);
+      expect(find.text('Formato no soportado. Usa JPG, PNG o WEBP.'),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        '_changeCover: fichero > 5MB muestra el toast y NO llama a updateCover',
+        (tester) async {
+      final tmp =
+          Directory.systemTemp.createTempSync('jayalo_cover_toobig_test');
+      addTearDown(() => tmp.deleteSync(recursive: true));
+      final bigFile = File(_join(tmp.path, 'grande.jpg'))
+        ..writeAsBytesSync(List.filled(5 * 1024 * 1024 + 1, 0));
+
+      var updateCoverCalled = false;
+
+      await tester.pumpWidget(host(MyBusinessView(
+        business: negocio,
+        productos: const [],
+        servicios: const [],
+        reviews: const [],
+        rating: null,
+        pickImage: () async => XFile(bigFile.path),
+        updateCover: (businessId, filePath) async {
+          updateCoverCalled = true;
+          return 'https://cdn/covers/biz-1.jpg';
+        },
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(BusinessCoverHero));
+      await tester.pumpAndSettle();
+
+      expect(updateCoverCalled, isFalse);
+      expect(find.text('La imagen no puede pesar más de 5 MB.'),
+          findsOneWidget);
     });
   });
 }
