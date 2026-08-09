@@ -132,6 +132,32 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
     if (changed == true) _refetch();
   }
 
+  /// Abre el editor con `initial` (Task 6): tocar una tarjeta de
+  /// producto/servicio PROPIA en "Mi negocio". Misma ruta que el alta, con
+  /// la fila completa viajando por `extra` (no cabe en query params) — el
+  /// `kind` sigue yendo por query, así el `GoRoute` no cambia de forma.
+  Future<void> _openEdit(String businessId, Map<String, dynamic> item) async {
+    final kind = item['kind'] == 'servicio' ? 'servicio' : 'producto';
+    final changed = await context.push<bool>(
+      '/provider/business/add?kind=$kind&bid=$businessId',
+      extra: item,
+    );
+    if (changed == true) _refetch();
+  }
+
+  /// "Mantener presionada → Eliminar de tu tienda" (Task 6). Best-effort: un
+  /// fallo se avisa con un toast genérico, sin tumbar la pantalla.
+  Future<void> _deleteItem(Map<String, dynamic> item) async {
+    final id = item['id'] as String?;
+    if (id == null) return;
+    try {
+      await deleteStoreItem(id);
+      _refetch();
+    } catch (_) {
+      _toast('No se pudo eliminar. Intenta de nuevo.');
+    }
+  }
+
   // Bloque para que setState no devuelva un Future (leer inbox_screen.dart).
   void _refetch() => setState(() {
         _load = _fetch();
@@ -194,6 +220,10 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
                   onAddItem: data.business == null
                       ? null
                       : (kind) => _openAdd(data.business!.id, kind),
+                  onEditItem: data.business == null
+                      ? null
+                      : (item) => _openEdit(data.business!.id, item),
+                  onDeleteItem: data.business == null ? null : _deleteItem,
                 );
               },
             ),
@@ -216,6 +246,8 @@ class MyBusinessView extends StatefulWidget {
     required this.rating,
     this.onEditWeb,
     this.onAddItem,
+    this.onEditItem,
+    this.onDeleteItem,
     this.pickImage = _pickBusinessImage,
     this.updateCover = updateBusinessCover,
     this.updateLogo = updateBusinessLogo,
@@ -240,6 +272,15 @@ class MyBusinessView extends StatefulWidget {
   /// chooser ('producto' | 'servicio' | 'trabajo'). Nulo → la tarjeta no se
   /// dibuja. Inyectable para probar sin router.
   final Future<void> Function(String kind)? onAddItem;
+
+  /// Tocar una tarjeta de producto/servicio PROPIA abre el editor con esa
+  /// fila (Task 6, 2026-08-09). `null` → las tarjetas navegan como el
+  /// catálogo público (comportamiento previo a esta tarea).
+  final Future<void> Function(Map<String, dynamic> item)? onEditItem;
+
+  /// Mantener presionada una tarjeta propia → confirmar → borrar (Task 6).
+  /// `null` → sin gesto de long-press (mismo criterio que [onEditItem]).
+  final Future<void> Function(Map<String, dynamic> item)? onDeleteItem;
 
   /// Portada y logo editables desde "Mi negocio" (2026-08-09): elegir,
   /// subir y quitar. Inyectables (patrón `CreditShopScreen.loadPackages`)
@@ -572,7 +613,24 @@ class _MyBusinessViewState extends State<MyBusinessView> {
 
   List<Widget> _itemsOrEmpty(List<Map<String, dynamic>> items, String empty) {
     if (items.isEmpty) return [_EmptyLine(text: empty)];
-    return [for (final i in items) ProductListCard(item: i)];
+    return [
+      for (final i in items)
+        ProductListCard(
+          item: i,
+          onTap: widget.onEditItem == null ? null : () => widget.onEditItem!(i),
+          onLongPress:
+              widget.onDeleteItem == null ? null : () => _confirmDeleteItem(i),
+        ),
+    ];
+  }
+
+  /// «¿Eliminar de tu tienda?» — mismo diálogo de confirmación que
+  /// portada/logo ([_confirmRemove]), con la etiqueta que pide el brief.
+  Future<void> _confirmDeleteItem(Map<String, dynamic> item) async {
+    final ok = await _confirmRemove(
+        '¿Eliminar de tu tienda?', 'Esta acción no se puede deshacer.');
+    if (!ok || !mounted) return;
+    await widget.onDeleteItem?.call(item);
   }
 
   /// Categoría y ciudad en UNA línea bajo el nombre, como la web en móvil.

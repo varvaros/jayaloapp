@@ -59,4 +59,51 @@ void main() {
       );
     });
   });
+
+  group('isMissingOfferDefaultsColumnError (Task 6)', () {
+    test('código 42703 (undefined_column) cuenta como columna faltante', () {
+      expect(
+        isMissingOfferDefaultsColumnError(
+          PostgrestException(
+              message: 'column "offer_defaults" does not exist', code: '42703'),
+        ),
+        isTrue,
+      );
+    });
+    test('mensaje que nombra "column" y "offer_defaults" sin código cuenta igual', () {
+      expect(
+        isMissingOfferDefaultsColumnError(
+          PostgrestException(
+            message:
+                'Could not find the offer_defaults column of provider_products',
+          ),
+        ),
+        isTrue,
+      );
+    });
+    test('timeout de red NO cuenta — debe propagar', () {
+      expect(
+        isMissingOfferDefaultsColumnError(
+          PostgrestException(message: 'Connection timed out', code: '57014'),
+        ),
+        isFalse,
+      );
+    });
+    test('token vencido / 401 NO cuenta — debe propagar', () {
+      expect(
+        isMissingOfferDefaultsColumnError(
+          PostgrestException(message: 'JWT expired', code: '401'),
+        ),
+        isFalse,
+      );
+    });
+    test('mensaje que solo nombra "offer_defaults" sin "column" NO cuenta', () {
+      expect(
+        isMissingOfferDefaultsColumnError(
+          PostgrestException(message: 'offer_defaults temporarily unavailable'),
+        ),
+        isFalse,
+      );
+    });
+  });
 }

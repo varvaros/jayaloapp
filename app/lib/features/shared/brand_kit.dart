@@ -111,6 +111,7 @@ class JayaloCard extends StatefulWidget {
     super.key,
     required this.child,
     this.onTap,
+    this.onLongPress,
     this.tint,
     this.border,
     this.padding = const EdgeInsets.all(12),
@@ -119,6 +120,11 @@ class JayaloCard extends StatefulWidget {
 
   final Widget child;
   final VoidCallback? onTap;
+
+  /// Opcional (Task 6, "Mi negocio"): "mantener presionada → Eliminar de tu
+  /// tienda" en las tarjetas de producto/servicio propias. `null` en el resto
+  /// de usos — sin gesto de más, la tarjeta se comporta exactamente igual.
+  final VoidCallback? onLongPress;
   final Color? tint;
 
   /// Borde opcional. Por defecto la tarjeta va SIN borde (flota solo por la
@@ -153,6 +159,7 @@ class _JayaloCardState extends State<JayaloCard> {
           child: InkWell(
             borderRadius: BorderRadius.circular(kCardRadius),
             onTap: widget.onTap,
+            onLongPress: widget.onLongPress,
             // onHighlightChanged dispara al presionar/soltar/cancelar — es la
             // señal más temprana que da InkWell, sin retrasar el onTap.
             onHighlightChanged:

@@ -23,6 +23,7 @@ import '../shared/request_requirement_badges.dart';
 import '../shared/celebration.dart';
 import '../shared/collapsing_photo_panel.dart';
 import '../shared/customer_rep_card.dart';
+import '../shared/offer_field_options.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
 import '../shared/section_heading.dart';
@@ -50,15 +51,13 @@ const _colorPresets = <(String, Color)>[
   ('Marrón', Color(0xFF7C4A2A)),
   ('Rosa', Color(0xFFEC4899)),
 ];
-const _warrantyPresets = <String>[
-  'Sin garantía', '3 días', '7 días', '15 días', '1 mes',
-  '3 meses', '6 meses', '1 año', '2 años', '5 años', '10 años',
-];
+// Garantía y estado (Nuevo/Usado) viven en `offer_field_options.dart`
+// (`kWarrantyOptions`/`kConditionOptions`, Task 6): las comparte este
+// formulario con el editor de ítem de tienda.
 const _availabilityDays = <String>[
   'Hoy', 'Mañana', 'Esta semana', 'Fin de semana',
   'Próxima semana', 'A coordinar',
 ];
-const _conditionOptions = <String>['Nuevo', 'Usado'];
 
 class ProviderRequestDetailScreen extends StatefulWidget {
   const ProviderRequestDetailScreen({
@@ -1526,7 +1525,7 @@ class _ProviderRequestDetailScreenState
         const SizedBox(height: 14),
         _sectionLabel('Estado *'),
         const SizedBox(height: 8),
-        _chipSelect(_conditionOptions, _condition,
+        _chipSelect(kConditionOptions, _condition,
             (v) => setState(() => _condition = v)),
         const SizedBox(height: 14),
         _sectionLabel('Color'),
@@ -1535,7 +1534,7 @@ class _ProviderRequestDetailScreenState
         const SizedBox(height: 14),
         _sectionLabel('Garantía *'),
         const SizedBox(height: 8),
-        _chipSelect(_warrantyPresets, _warranty.text,
+        _chipSelect(kWarrantyOptions, _warranty.text,
             (v) => setState(() => _warranty.text = v)),
         const SizedBox(height: 14),
         _sectionLabel('Tiempo de entrega'),

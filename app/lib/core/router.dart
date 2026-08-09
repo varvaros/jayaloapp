@@ -216,13 +216,16 @@ GoRouter buildRouter() => GoRouter(
                     const BackGuard(child: MyBusinessScreen())),
             // Alta rápida del agregador de "Mi negocio" (PO 2026-08-05).
             // `kind` y `bid` viajan por query: la pantalla de origen ya tiene
-            // el negocio cargado y así no se repite el fetch.
+            // el negocio cargado y así no se repite el fetch. `extra` (Task 6,
+            // 2026-08-09) trae la fila completa cuando se abre para EDITAR
+            // (tocar una tarjeta propia) — no cabe en query params.
             GoRoute(
                 path: '/provider/business/add',
                 builder: (_, s) => BackGuard(
                     child: AddStoreItemScreen(
                         kind: s.uri.queryParameters['kind'] ?? 'producto',
-                        businessId: s.uri.queryParameters['bid'] ?? ''))),
+                        businessId: s.uri.queryParameters['bid'] ?? '',
+                        initial: s.extra as Map<String, dynamic>?))),
             // Tienda de créditos IN-APP. Sustituye al link-out al wallet web
             // (ADR-0031): Play prohíbe llevar al usuario a otro método de pago.
             GoRoute(

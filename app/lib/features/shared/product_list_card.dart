@@ -12,8 +12,18 @@ import 'brand_kit.dart';
 /// reusarse en "Mi tienda". La línea de reputación se oculta si el `item` no
 /// trae `avg_rating`/`reviews_count` (Mi tienda no la pasa).
 class ProductListCard extends StatelessWidget {
-  const ProductListCard({super.key, required this.item});
+  const ProductListCard({super.key, required this.item, this.onTap, this.onLongPress});
   final Map<String, dynamic> item;
+
+  /// Sustituye la navegación por defecto al detalle del producto — usado por
+  /// "Mi negocio" (Task 6) para que tocar una tarjeta PROPIA abra el editor
+  /// en vez del detalle público. `null` = comportamiento de siempre (navegar
+  /// a `/product/:id` o `/catalog/:id`).
+  final VoidCallback? onTap;
+
+  /// "Mantener presionada → Eliminar de tu tienda" (Task 6, "Mi negocio").
+  /// `null` en el catálogo público: ahí no hay nada que borrar.
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -29,13 +39,16 @@ class ProductListCard extends StatelessWidget {
       // RAÍZ) hay que usar la variante top-level `/product/:id`: empujar la
       // ruta del shell `/catalog/:id` desde ahí montaba el detalle DEBAJO de
       // la tienda y se veía vacío (QA PO 2026-07-21). En el catálogo (shell)
-      // se conserva `/catalog/:id`, con su navbar.
-      onTap: () {
-        final inStore =
-            GoRouterState.of(context).uri.path.startsWith('/store/');
-        context.push(
-            inStore ? '/product/${item['id']}' : '/catalog/${item['id']}');
-      },
+      // se conserva `/catalog/:id`, con su navbar. [onTap] la reemplaza
+      // entera cuando viene dada (tarjeta propia en "Mi negocio").
+      onTap: onTap ??
+          () {
+            final inStore =
+                GoRouterState.of(context).uri.path.startsWith('/store/');
+            context.push(
+                inStore ? '/product/${item['id']}' : '/catalog/${item['id']}');
+          },
+      onLongPress: onLongPress,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

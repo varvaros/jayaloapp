@@ -2595,10 +2595,42 @@ const storeProductCols =
     'category_id,rubro,kind,condition,offers_shipping,offers_installation,'
     'requires_evaluation';
 
+/// `true` si el error de Postgrest es "la columna `offer_defaults` no
+/// existe" (42703 = `undefined_column`, o el mensaje la nombra) — el ÚNICO
+/// caso que [myStoreProducts]/[saveProductToStore] deben tragar mientras la
+/// migración `20260809120001_products_offer_defaults.sql` (Task 6) no esté
+/// aplicada en prod. Mismo criterio que [isMissingServicesColumnError]:
+/// cualquier otro error (red, RLS, token) debe propagar.
+bool isMissingOfferDefaultsColumnError(PostgrestException e) {
+  if (e.code == '42703') return true;
+  final msg = e.message.toLowerCase();
+  return msg.contains('column') && msg.contains('offer_defaults');
+}
+
 /// Todos los productos y servicios del propio negocio, más recientes primero.
 /// Se separan por kind en la UI con [partitionStoreItems].
-Future<List<Map<String, dynamic>>> myStoreProducts(String businessId) async =>
-    List<Map<String, dynamic>>.from(
+///
+/// Pide `offer_defaults` (Task 6: molde de oferta que escribe el editor de
+/// ítem de tienda) además de [storeProductCols]. Tolerante: mientras la
+/// migración no esté en prod, ese primer `select` revienta 42703 y se
+/// reintenta SIN la columna — más simple que un select aparte por ids,
+/// porque la lista completa es la unidad natural de esta lectura (no hay
+/// "algunos productos sí la traen, otros no"). TODO(tarea-11): plegar
+/// `offer_defaults` a [storeProductCols] y borrar el catch una vez la
+/// migración esté aplicada en prod.
+Future<List<Map<String, dynamic>>> myStoreProducts(String businessId) async {
+  try {
+    return List<Map<String, dynamic>>.from(
+      await supa
+          .from('provider_products')
+          .select('$storeProductCols,offer_defaults')
+          .eq('business_id', businessId)
+          .order('created_at', ascending: false)
+          .limit(200),
+    );
+  } on PostgrestException catch (e) {
+    if (!isMissingOfferDefaultsColumnError(e)) rethrow;
+    return List<Map<String, dynamic>>.from(
       await supa
           .from('provider_products')
           .select(storeProductCols)
@@ -2606,6 +2638,8 @@ Future<List<Map<String, dynamic>>> myStoreProducts(String businessId) async =>
           .order('created_at', ascending: false)
           .limit(200),
     );
+  }
+}
 
 /// Trabajos anteriores (portafolio) del propio negocio — para "Cargar trabajos
 /// anteriores" en la oferta. Mismo modelo que la web (`provider_portfolio_items`).
@@ -2638,9 +2672,13 @@ Future<void> saveProductToStore({
   bool offersShipping = false,
   bool offersInstallation = false,
   bool requiresEvaluation = false,
+  // Molde de oferta del ítem (Task 6, jsonb): lo que el editor de "Mi
+  // negocio" guarda para prellenar futuras ofertas (lectura en la Task 9).
+  // `null`/`{}` no manda la columna.
+  Map<String, dynamic>? offerDefaults,
 }) async {
   final uid = supa.auth.currentUser!.id;
-  await supa.from('provider_products').insert({
+  final row = {
     'user_id': uid,
     'business_id': businessId,
     'name': name,
@@ -2658,8 +2696,38 @@ Future<void> saveProductToStore({
     'offers_shipping': offersShipping,
     'offers_installation': offersInstallation,
     'requires_evaluation': requiresEvaluation,
-  });
+  };
+  try {
+    await supa.from('provider_products').insert({
+      ...row,
+      if (offerDefaults != null && offerDefaults.isNotEmpty)
+        'offer_defaults': offerDefaults,
+    });
+  } on PostgrestException catch (e) {
+    // Mientras la migración de la Task 6 no esté en prod: mismo insert SIN
+    // `offer_defaults` — el molde de oferta se pierde para ESTE alta (el
+    // proveedor puede volver a editarlo cuando la columna exista), pero el
+    // producto/servicio sí queda guardado. Nunca se traga otro error.
+    if (offerDefaults == null ||
+        offerDefaults.isEmpty ||
+        !isMissingOfferDefaultsColumnError(e)) {
+      rethrow;
+    }
+    await supa.from('provider_products').insert(row);
+  }
 }
+
+/// Edita un producto/servicio propio (RLS: dueño) — editor de ítem de tienda
+/// (Task 6, "Mi negocio" → tocar una tarjeta propia). `payload` ya viene
+/// armado por quien llama (mismas columnas que [saveProductToStore], más
+/// `offer_defaults`); aquí no se interpreta ni se completa nada.
+Future<void> updateStoreItem(String id, Map<String, dynamic> payload) =>
+    supa.from('provider_products').update(payload).eq('id', id);
+
+/// Borra un producto/servicio propio (RLS: dueño) — "mantener presionada →
+/// Eliminar de tu tienda" (Task 6).
+Future<void> deleteStoreItem(String id) =>
+    supa.from('provider_products').delete().eq('id', id);
 
 /// Foto de un producto/servicio de la tienda → `{uid}/products/<ts>-<rand>`.
 Future<String> uploadStoreProductImage(String filePath) =>

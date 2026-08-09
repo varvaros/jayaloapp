@@ -102,6 +102,81 @@ void main() {
     expect(find.text('Instalación'), findsOneWidget);
   });
 
+  // Task 6 (2026-08-09): tocar una tarjeta PROPIA abre el editor; mantener
+  // presionada la borra tras confirmar. Sin los callbacks, las tarjetas
+  // siguen navegando como el catálogo público (cubierto por que el resto de
+  // los tests de este archivo, sin `onEditItem`/`onDeleteItem`, no revientan
+  // al no montar un GoRouter).
+  testWidgets('tocar una tarjeta propia llama a onEditItem con la fila',
+      (tester) async {
+    Map<String, dynamic>? edited;
+    await tester.pumpWidget(host(MyBusinessView(
+      business: negocio,
+      productos: unProducto,
+      servicios: const [],
+      reviews: const [],
+      rating: null,
+      onEditItem: (item) async => edited = item,
+    )));
+    await tester.pumpAndSettle();
+    await bajar(tester);
+
+    await tester.tap(find.text('Taladro'));
+    await tester.pumpAndSettle();
+
+    expect(edited, unProducto.first);
+  });
+
+  testWidgets(
+      'mantener presionada una tarjeta propia pide confirmar antes de '
+      'llamar a onDeleteItem', (tester) async {
+    String? deletedId;
+    await tester.pumpWidget(host(MyBusinessView(
+      business: negocio,
+      productos: unProducto,
+      servicios: const [],
+      reviews: const [],
+      rating: null,
+      onDeleteItem: (item) async => deletedId = item['id'] as String?,
+    )));
+    await tester.pumpAndSettle();
+    await bajar(tester);
+
+    await tester.longPress(find.text('Taladro'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('¿Eliminar de tu tienda?'), findsOneWidget);
+    expect(deletedId, isNull); // aún no confirmó
+
+    await tester.tap(find.text('Quitar'));
+    await tester.pumpAndSettle();
+
+    expect(deletedId, 'p1');
+  });
+
+  testWidgets(
+      'mantener presionada y CANCELAR no llama a onDeleteItem',
+      (tester) async {
+    var called = false;
+    await tester.pumpWidget(host(MyBusinessView(
+      business: negocio,
+      productos: unProducto,
+      servicios: const [],
+      reviews: const [],
+      rating: null,
+      onDeleteItem: (item) async => called = true,
+    )));
+    await tester.pumpAndSettle();
+    await bajar(tester);
+
+    await tester.longPress(find.text('Taladro'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
+
+    expect(called, isFalse);
+  });
+
   testWidgets('secciones vacías muestran aviso, no CTA de crear',
       (tester) async {
     await tester.pumpWidget(view());
