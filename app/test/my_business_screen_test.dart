@@ -32,6 +32,7 @@ void main() {
     wholesale: true,
     description: 'Todo en herramientas',
     seals: ['Negocio verificado'],
+    services: <String>[],
     raw: {
       'is_wholesale': true,
       'experience_years': 12,

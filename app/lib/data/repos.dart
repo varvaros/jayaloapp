@@ -1561,6 +1561,83 @@ Future<String?> uploadBusinessLogo(String filePath) async {
   return supa.storage.from('business-logos').getPublicUrl(path);
 }
 
+// ── Identidad del negocio editable desde la app (logo/portada/descripción/
+// chips de servicios) ───────────────────────────────────────────────────────
+
+/// Ruta de imagen de negocio. Espeja la web (`uploadCover` en
+/// `business.$id.tsx`): la RLS del bucket exige primera carpeta = auth.uid().
+String businessImagePath({
+  required String uid,
+  required String businessId,
+  required String kind,
+  required String ext,
+  required int ts,
+}) => '$uid/$kind/$businessId-$ts.$ext';
+
+Future<String> _uploadBusinessImage(
+  String businessId,
+  String filePath,
+  String kind,
+  String column,
+) async {
+  final uid = supa.auth.currentUser!.id;
+  final dot = filePath.lastIndexOf('.');
+  final ext = (dot == -1 ? 'jpg' : filePath.substring(dot + 1).toLowerCase());
+  final path = businessImagePath(
+    uid: uid,
+    businessId: businessId,
+    kind: kind,
+    ext: ext,
+    ts: DateTime.now().millisecondsSinceEpoch,
+  );
+  await supa.storage
+      .from('business-logos')
+      .upload(
+        path,
+        File(filePath),
+        fileOptions: FileOptions(
+          upsert: true,
+          contentType: _imageContentType(ext),
+        ),
+      );
+  final url = supa.storage.from('business-logos').getPublicUrl(path);
+  await supa
+      .from('provider_businesses')
+      .update({column: url})
+      .eq('id', businessId);
+  return url;
+}
+
+Future<String> updateBusinessLogo(String businessId, String filePath) =>
+    _uploadBusinessImage(businessId, filePath, 'logos', 'logo_url');
+Future<String> updateBusinessCover(String businessId, String filePath) =>
+    _uploadBusinessImage(businessId, filePath, 'covers', 'cover_url');
+
+Future<void> clearBusinessLogo(String businessId) async => supa
+    .from('provider_businesses')
+    .update({'logo_url': null})
+    .eq('id', businessId);
+Future<void> clearBusinessCover(String businessId) async => supa
+    .from('provider_businesses')
+    .update({'cover_url': null})
+    .eq('id', businessId);
+
+Future<void> updateBusinessDescription(
+  String businessId,
+  String description,
+) async => supa
+    .from('provider_businesses')
+    .update({'description': description.trim()})
+    .eq('id', businessId);
+
+Future<void> updateBusinessServices(
+  String businessId,
+  List<String> services,
+) async => supa
+    .from('provider_businesses')
+    .update({'services': services})
+    .eq('id', businessId);
+
 /// Sube la foto de perfil (bucket público `business-logos`, misma ruta que la
 /// web: `{uid}/avatar-{ts}.{ext}`) y actualiza `profiles.avatar_url`. Devuelve
 /// la URL pública (pedido PO 2026-07-22: foto editable en el menú lateral).
@@ -2226,6 +2303,7 @@ Future<
     bool wholesale,
     String? description,
     List<String> seals,
+    List<String> services,
     Map<String, dynamic> raw,
   })?
 >
@@ -2264,8 +2342,28 @@ myBusinessProfile() async {
     wholesale: biz['is_wholesale'] == true,
     description: (desc != null && desc.isNotEmpty) ? desc : null,
     seals: verificationSealsFrom(biz),
+    services: await _myBusinessServices(biz['id'] as String),
     raw: biz,
   );
+}
+
+// TODO(tarea-11): plegar `services` al select principal de arriba y borrar
+// esta función una vez la migración de Task 1 (`provider_businesses.services
+// text[]`) esté aplicada en prod. Hasta entonces, pedirla en el select
+// principal rompería `myBusinessProfile()` entero con un error de columna
+// inexistente — se aísla en un select aparte, tolerante.
+Future<List<String>> _myBusinessServices(String businessId) async {
+  try {
+    final row = await supa
+        .from('provider_businesses')
+        .select('services')
+        .eq('id', businessId)
+        .limit(1)
+        .maybeSingle();
+    return (row?['services'] as List?)?.cast<String>() ?? const [];
+  } catch (_) {
+    return const [];
+  }
 }
 
 /// Los tres sellos de verificación resueltos a ETIQUETA, en el orden de la web
