@@ -997,10 +997,15 @@ class _ProviderRequestDetailScreenState
     final color = isService ? '' : (_colors.isEmpty ? '' : _colors.first);
     // Anti-elusión (PO 2026-07-29): mismas columnas vigiladas por el trigger
     // `enforce_no_contact_info` para `provider_products` — name/description/
-    // color. Este es el ÚNICO camino de escritura a `provider_products` en la
-    // app (provider_packages no tiene ninguno), así que cerrarlo aquí cubre la
-    // app entera. Si agregas un campo de texto libre nuevo a este guardado que
-    // llegue a una columna vigilada, súmalo a esta lista también.
+    // color. Este chequeo corre al ENVIAR LA OFERTA (aguas abajo de
+    // `makeOffer`, en el sheet "¿Guardar en tu tienda?"), así que solo cubre
+    // ESTE camino de escritura. `add_store_item_screen.dart` (Task 6,
+    // 2026-08-09: alta/edición de ítem de tienda desde "Mi negocio") es OTRO
+    // camino de escritura a `provider_products` y NO pasa por este chequeo
+    // — lo cubre solo el trigger `enforce_no_contact_info` del lado del
+    // servidor (JY422), sin este aviso amigable antes de subir fotos. Si
+    // agregas un campo de texto libre nuevo a ESTE guardado que llegue a una
+    // columna vigilada, súmalo a esta lista también.
     //
     // La OFERTA ya se envió con éxito en este punto (este método se llama
     // después de `makeOffer`) — lo que se bloquea aquí es solo el guardado en

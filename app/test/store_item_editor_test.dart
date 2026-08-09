@@ -38,6 +38,8 @@ void main() {
     bool offersShipping = false,
     bool offersInstallation = false,
     bool requiresEvaluation = false,
+    String? brand,
+    String? warranty,
     Map<String, dynamic>? offerDefaults,
   }) async {}
 
@@ -91,7 +93,10 @@ void main() {
       expect(find.text('Usado'), findsOneWidget);
       expect(find.text('Negro'), findsOneWidget); // preset de color
       expect(find.text('Sin garantía'), findsOneWidget); // kWarrantyOptions
-      expect(find.text('A coordinar'), findsOneWidget); // kDeliveryOptions
+      // '5 días' (no '7 días': kWarrantyOptions y kDeliveryOptions comparten
+      // vocabulario a propósito desde el Fix round 1 — '7 días'/'15 días'
+      // están en las DOS listas y `find.text` sería ambiguo aquí).
+      expect(find.text('5 días'), findsOneWidget); // kDeliveryOptions
     });
 
     testWidgets('(c) guardar producto llama al doble con offerDefaults '
@@ -113,6 +118,8 @@ void main() {
         bool offersShipping = false,
         bool offersInstallation = false,
         bool requiresEvaluation = false,
+        String? brand,
+        String? warranty,
         Map<String, dynamic>? offerDefaults,
       }) async {
         captured = {
@@ -125,6 +132,8 @@ void main() {
           'price': price,
           'condition': condition,
           'offersShipping': offersShipping,
+          'brand': brand,
+          'warranty': warranty,
           'offerDefaults': offerDefaults,
         };
       }
@@ -150,7 +159,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('1 año')); // kWarrantyOptions
       await tester.pumpAndSettle();
-      await tester.tap(find.text('1 semana')); // kDeliveryOptions
+      // '5 días' (no '7 días'/'15 días': están en las DOS listas).
+      await tester.tap(find.text('5 días')); // kDeliveryOptions
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('switch-envio')));
       await tester.pumpAndSettle();
@@ -173,11 +183,15 @@ void main() {
       expect(captured!['price'], 2500.0);
       expect(captured!['condition'], 'nuevo');
       expect(captured!['offersShipping'], isTrue);
+      // Fix round 1 (Important 4): brand/warranty viajan TAMBIÉN como
+      // columnas reales, no solo dentro de offerDefaults.
+      expect(captured!['brand'], 'Bosch');
+      expect(captured!['warranty'], '1 año');
       expect(captured!['offerDefaults'], {
         'pricing_mode': 'fixed',
         'brand': 'Bosch',
         'warranty': '1 año',
-        'delivery': '1 semana',
+        'delivery': '5 días',
         'colors': ['Negro'],
         'shipping_price': 300.0,
       });
@@ -208,7 +222,63 @@ void main() {
       expect(find.text('Ofrezco envío'), findsNothing);
       expect(find.byKey(const Key('campo-marca')), findsNothing);
       expect(find.text('Sin garantía'), findsNothing);
-      expect(find.text('A coordinar'), findsNothing); // kDeliveryOptions
+      expect(find.text('7 días'), findsNothing); // kDeliveryOptions
+    });
+
+    // Fix round 1 (Critical 2): caso exacto de revisión — un servicio
+    // creado ANTES de la Task 6 (sin `offer_defaults`) pero con
+    // price_min/price_max ya guardados (modo rango). Sin la derivación desde
+    // los datos reales, `_svcMode` caía a 'fixed' y "Guardar" sin tocar nada
+    // mandaba price_min/price_max = null, borrando el rango en silencio.
+    testWidgets(
+        'servicio legacy sin offer_defaults con price_min/max: Guardar sin '
+        'tocar conserva el rango', (tester) async {
+      final legacyServicio = <String, dynamic>{
+        'id': 's1',
+        'name': 'Instalación eléctrica',
+        'description': '',
+        'color': '',
+        'price': null,
+        'price_min': 1000,
+        'price_max': 3000,
+        'image_urls': <String>[],
+        'category_id': 'ferreteria',
+        'rubro': 'Herramientas',
+        'kind': 'servicio',
+        'condition': null,
+        'offers_shipping': false,
+        'offers_installation': false,
+        'requires_evaluation': false,
+        // Sin 'offer_defaults': el caso legacy.
+      };
+      Map<String, dynamic>? updatedPayload;
+      Future<void> captureUpdate(
+          String id, Map<String, dynamic> payload) async {
+        updatedPayload = payload;
+      }
+
+      setTallPhoneSize(tester);
+      await tester.pumpWidget(host(AddStoreItemScreen(
+        kind: 'servicio',
+        businessId: 'biz-1',
+        initial: legacyServicio,
+        saveProduct: noopSave,
+        updateItem: captureUpdate,
+        savePortfolio: noopPortfolio,
+        fetchCatRubro: fakeCatRubro,
+      )));
+      await tester.pumpAndSettle();
+
+      // El molde detectó 'Rango' solo (sin tocar nada el usuario).
+      expect(find.text('Instalación eléctrica'), findsOneWidget);
+
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(updatedPayload, isNotNull);
+      expect(updatedPayload!['price'], isNull);
+      expect(updatedPayload!['price_min'], 1000.0);
+      expect(updatedPayload!['price_max'], 3000.0);
     });
   });
 
@@ -251,11 +321,15 @@ void main() {
       'offers_shipping': true,
       'offers_installation': false,
       'requires_evaluation': false,
+      // Columnas reales (Fix round 1, Important 4) — mismo valor que el
+      // jsonb: el caso normal, un ítem guardado ya con el fix.
+      'brand': 'Bosch',
+      'warranty': '1 año',
       'offer_defaults': {
         'pricing_mode': 'fixed',
         'brand': 'Bosch',
         'warranty': '1 año',
-        'delivery': '1 semana',
+        'delivery': '7 días',
         'colors': ['Negro', 'Rojo'],
         'shipping_price': 300,
       },
@@ -319,14 +393,82 @@ void main() {
       expect(updatedPayload, isNotNull);
       expect(updatedPayload!['name'], 'Taladro Bosch');
       expect(updatedPayload!['price'], 2500.0);
+      // Fix round 1 (Important 4): brand/warranty también en sus columnas.
+      expect(updatedPayload!['brand'], 'Bosch');
+      expect(updatedPayload!['warranty'], '1 año');
       expect(updatedPayload!['offer_defaults'], {
         'pricing_mode': 'fixed',
         'brand': 'Bosch',
         'warranty': '1 año',
-        'delivery': '1 semana',
+        'delivery': '7 días',
         'colors': ['Negro', 'Rojo'],
         'shipping_price': 300.0,
       });
+    });
+
+    // Fix round 1 (Important 4): al prellenar, la columna real gana sobre
+    // offer_defaults — un ítem cuya columna diverge del jsonb (dato viejo, o
+    // editado alguna vez desde la web) debe mostrar lo que pinta la ficha
+    // pública, no una copia stale del molde.
+    testWidgets('brand/warranty: la columna real gana sobre offer_defaults '
+        'al prellenar', (tester) async {
+      final item = <String, dynamic>{
+        ...itemProducto,
+        'brand': 'Marca de la columna',
+        'warranty': 'Garantía de la columna',
+        'offer_defaults': {
+          ...itemProducto['offer_defaults'] as Map<String, dynamic>,
+          'brand': 'Marca vieja del jsonb',
+          'warranty': 'Garantía vieja del jsonb',
+        },
+      };
+      setTallPhoneSize(tester);
+      await tester.pumpWidget(host(AddStoreItemScreen(
+        kind: 'producto',
+        businessId: 'biz-1',
+        initial: item,
+        saveProduct: noopSave,
+        updateItem: noopUpdate,
+        savePortfolio: noopPortfolio,
+        fetchCatRubro: fakeCatRubro,
+      )));
+      await tester.pumpAndSettle();
+
+      expect(
+          tester
+              .widget<TextField>(find.byKey(const Key('campo-marca')))
+              .controller!
+              .text,
+          'Marca de la columna');
+    });
+
+    // Y el fallback: sin columna (dato viejo escrito solo con la primera
+    // versión de esta tarea, antes del fix), el jsonb sigue sirviendo.
+    testWidgets('brand/warranty: sin columna, cae al valor de offer_defaults',
+        (tester) async {
+      final item = <String, dynamic>{
+        ...itemProducto,
+        'brand': null,
+        'warranty': null,
+      };
+      setTallPhoneSize(tester);
+      await tester.pumpWidget(host(AddStoreItemScreen(
+        kind: 'producto',
+        businessId: 'biz-1',
+        initial: item,
+        saveProduct: noopSave,
+        updateItem: noopUpdate,
+        savePortfolio: noopPortfolio,
+        fetchCatRubro: fakeCatRubro,
+      )));
+      await tester.pumpAndSettle();
+
+      expect(
+          tester
+              .widget<TextField>(find.byKey(const Key('campo-marca')))
+              .controller!
+              .text,
+          'Bosch'); // valor del jsonb en itemProducto
     });
   });
 }

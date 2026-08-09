@@ -104,6 +104,8 @@ class AddStoreItemScreen extends StatefulWidget {
     bool offersShipping,
     bool offersInstallation,
     bool requiresEvaluation,
+    String? brand,
+    String? warranty,
     Map<String, dynamic>? offerDefaults,
   })
   saveProduct;
@@ -239,7 +241,18 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
         const <String, dynamic>{};
     if (_isService) {
       final mode = defaults[OfferDefaults.pricingMode] as String?;
-      _svcMode = _svcModes.indexOf(mode ?? '').clamp(0, _svcModes.length - 1);
+      if (mode != null) {
+        final idx = _svcModes.indexOf(mode);
+        _svcMode = idx < 0 ? 0 : idx;
+      } else {
+        // Legacy (revisión Fix round 1, Critical 2): ítem de servicio
+        // creado antes de la Task 6, sin `offer_defaults`. El modo se
+        // perdió, pero min/max sobreviven en las columnas — derivarlo de
+        // ahí evita que "Guardar" sin tocar nada borre en silencio un rango
+        // ya guardado (asumir 'fixed' a ciegas mandaba
+        // price_min/price_max = null en el siguiente save).
+        _svcMode = (min != null || max != null) ? 1 : 0;
+      }
       if (price != null) _price.text = '$price';
       if (min != null) _min.text = '$min';
       if (max != null) _max.text = '$max';
@@ -271,8 +284,16 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
       if (inst != null) _installation.text = '$inst';
       final ev = defaults[OfferDefaults.evaluationPrice];
       if (ev != null) _evaluation.text = '$ev';
-      _brand.text = (defaults[OfferDefaults.brand] as String?) ?? '';
-      _warranty.text = (defaults[OfferDefaults.warranty] as String?) ?? '';
+      // Fix round 1 (Important 4): `brand`/`warranty` son columnas REALES de
+      // `provider_products` (las pinta `productDetail`) — se leen de ahí
+      // primero; el jsonb es solo un fallback para el caso raro de un dato
+      // que llegó a `offer_defaults` sin su columna gemela.
+      _brand.text = (item['brand'] as String?) ??
+          (defaults[OfferDefaults.brand] as String?) ??
+          '';
+      _warranty.text = (item['warranty'] as String?) ??
+          (defaults[OfferDefaults.warranty] as String?) ??
+          '';
       _delivery.text = (defaults[OfferDefaults.delivery] as String?) ?? '';
       final cols = (defaults[OfferDefaults.colors] as List?)?.cast<String>();
       if (cols != null && cols.isNotEmpty) {
@@ -406,6 +427,24 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
       ? null
       : (_condition == 'Nuevo' ? 'nuevo' : (_condition == 'Usado' ? 'usado' : null));
 
+  /// Columnas REALES `brand`/`warranty` (Fix round 1, Important 4): el mismo
+  /// dato que entra a `offer_defaults`, pero también en su columna propia —
+  /// para que "Marca"/"Garantía" muevan la ficha pública (`productDetail`)
+  /// y no solo el molde de oferta. Nunca pueden divergir: se calculan de la
+  /// MISMA fuente (`_brand.text`/`_warranty.text`) que usa
+  /// `_offerDefaultsForSave`.
+  String? get _brandColumn {
+    if (_isService) return null;
+    final t = _brand.text.trim();
+    return t.isEmpty ? null : t;
+  }
+
+  String? get _warrantyColumn {
+    if (_isService) return null;
+    final t = _warranty.text.trim();
+    return t.isEmpty ? null : t;
+  }
+
   /// Mismo criterio que `offerFields` en `data/repos.dart`: el costo solo
   /// cuenta si el interruptor está activo Y es > 0 (0 = gratis, pero no se
   /// guarda como "costo").
@@ -491,6 +530,8 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
           'offers_shipping': _isService ? false : _offersShipping,
           'offers_installation': _isService ? false : _offersInstallation,
           'requires_evaluation': _isService ? false : _requiresEvaluation,
+          'brand': _brandColumn,
+          'warranty': _warrantyColumn,
           if (defaults.isNotEmpty) 'offer_defaults': defaults,
         });
       } else {
@@ -511,6 +552,8 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
           offersShipping: _isService ? false : _offersShipping,
           offersInstallation: _isService ? false : _offersInstallation,
           requiresEvaluation: _isService ? false : _requiresEvaluation,
+          brand: _brandColumn,
+          warranty: _warrantyColumn,
           offerDefaults: defaults.isEmpty ? null : defaults,
         );
       }

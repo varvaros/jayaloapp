@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/data/repos.dart';
 import 'package:jayalo_app/domain/pricing.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 /// Blinda el hallazgo de revisión de Task 4: "Negocio verificado" debe salir
 /// SOLO de `provider_businesses.business_verified_at` (el RNC, revisado por
@@ -204,6 +205,82 @@ void main() {
       expect(fields['price'], 100.0);
       expect(fields['message'], 'hola');
       expect(fields.containsKey('offers_shipping'), isTrue);
+    });
+  });
+
+  group('withOfferDefaultsFallback (Task 6, revisión Fix round 1)', () {
+    // Hallazgo Critical 1: `updateStoreItem` no tenía este fallback y
+    // `offer_defaults` viaja SIEMPRE en su payload (`pricing_mode` nunca es
+    // vacío) — el 100% de las ediciones reventaban mientras la migración
+    // `20260809120001_products_offer_defaults.sql` no estuviera en prod.
+    // Estos tests ejercitan el helper compartido con un doble de `write`
+    // (nunca tocan Supabase), así que también cubren el mismo camino que usa
+    // ahora [saveProductToStore].
+    test('columna faltante (42703): reintenta UNA vez sin offer_defaults',
+        () async {
+      final attempts = <Map<String, dynamic>>[];
+      await withOfferDefaultsFallback(
+        {'name': 'Taladro', 'offer_defaults': {'pricing_mode': 'fixed'}},
+        (p) async {
+          attempts.add(p);
+          if (attempts.length == 1) {
+            throw PostgrestException(
+                message: 'column "offer_defaults" does not exist',
+                code: '42703');
+          }
+        },
+      );
+      expect(attempts, hasLength(2));
+      expect(attempts[0].containsKey('offer_defaults'), isTrue);
+      expect(attempts[1].containsKey('offer_defaults'), isFalse);
+      expect(attempts[1]['name'], 'Taladro'); // el resto del payload viaja igual
+    });
+
+    test('sin offer_defaults en el payload: un 42703 SIEMPRE propaga '
+        '(nada que reintentar sin la clave)', () async {
+      var calls = 0;
+      await expectLater(
+        () => withOfferDefaultsFallback(
+          {'name': 'Taladro'},
+          (p) async {
+            calls++;
+            throw PostgrestException(
+                message: 'column "offer_defaults" does not exist',
+                code: '42703');
+          },
+        ),
+        throwsA(isA<PostgrestException>()),
+      );
+      expect(calls, 1); // sin segundo intento
+    });
+
+    test('otro error (no columna faltante) propaga sin reintentar', () async {
+      var calls = 0;
+      await expectLater(
+        () => withOfferDefaultsFallback(
+          {'offer_defaults': {}},
+          (p) async {
+            calls++;
+            throw PostgrestException(message: 'JWT expired', code: '401');
+          },
+        ),
+        throwsA(isA<PostgrestException>()),
+      );
+      expect(calls, 1);
+    });
+
+    test('sin error: escribe una sola vez con el payload original', () async {
+      var calls = 0;
+      Map<String, dynamic>? seen;
+      await withOfferDefaultsFallback(
+        {'offer_defaults': {'pricing_mode': 'range'}},
+        (p) async {
+          calls++;
+          seen = p;
+        },
+      );
+      expect(calls, 1);
+      expect(seen!['offer_defaults'], {'pricing_mode': 'range'});
     });
   });
 }

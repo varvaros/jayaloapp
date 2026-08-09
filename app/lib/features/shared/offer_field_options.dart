@@ -36,15 +36,24 @@ const List<String> kConditionOptions = <String>['Nuevo', 'Usado'];
 /// El editor de ítem de tienda (Task 6) no puede reusar ese selector: es una
 /// PLANTILLA que se guarda una vez y se reusa en ofertas futuras, así que un
 /// plazo calculado contra la fecha de creación del ítem quedaría vencido de
-/// inmediato. Esta lista es una decisión propia de la Task 6 — se crea de
-/// cero, con el mismo estilo de plazo relativo que ya produce
-/// `_pickDelivery`. `request_detail_screen.dart` sigue con su
-/// `showDatePicker`, sin tocar: cero cambio de comportamiento ahí.
+/// inmediato.
+///
+/// Revisión Fix round 1 (Important 3): la primera versión de esta lista
+/// ('A coordinar', 'Mismo día', '2-3 días', '2 semanas'...) usaba vocabulario
+/// que `_pickDelivery` NO puede producir nunca (solo emite 'Hoy' o
+/// '$N días') — si el proveedor tocaba el calendario del formulario de
+/// oferta con uno de esos valores como default, el texto resultante no
+/// coincidía con ningún preset del editor y el molde quedaba
+/// "irrecuperable" (no seleccionable de nuevo). 'Mismo día' también
+/// duplicaba 'Hoy'. Se recorta EXACTAMENTE al vocabulario que sí emite
+/// `_pickDelivery` — con esto el molde es round-trippable con el formulario
+/// de oferta en los dos sentidos.
 const List<String> kDeliveryOptions = <String>[
-  'A coordinar',
-  'Mismo día',
+  'Hoy',
   '1 día',
-  '2-3 días',
-  '1 semana',
-  '2 semanas',
+  '2 días',
+  '3 días',
+  '5 días',
+  '7 días',
+  '15 días',
 ];

@@ -2590,21 +2590,52 @@ Future<Map<String, BusinessCardInfo>> businessesCardInfo(
 // ── Mi tienda: productos/servicios del propio negocio ──────────────────────
 // Incluye los campos que autocompletan una oferta al elegir un producto de la
 // tienda (color/logística/estado/rubro), no solo lo que pinta la lista.
+// `brand`/`warranty` (Task 6, revisión Fix round 1): columnas REALES que ya
+// pintaba la ficha pública (`productDetailCols`) — el editor de ítem de
+// tienda ahora también las escribe (antes solo iban al jsonb
+// `offer_defaults`, así que "Marca"/"Garantía" nunca movían la ficha
+// pública y aparecían vacías al reabrir el editor).
 const storeProductCols =
     'id,name,description,color,price,price_min,price_max,image_urls,'
     'category_id,rubro,kind,condition,offers_shipping,offers_installation,'
-    'requires_evaluation';
+    'requires_evaluation,brand,warranty';
 
 /// `true` si el error de Postgrest es "la columna `offer_defaults` no
 /// existe" (42703 = `undefined_column`, o el mensaje la nombra) — el ÚNICO
-/// caso que [myStoreProducts]/[saveProductToStore] deben tragar mientras la
-/// migración `20260809120001_products_offer_defaults.sql` (Task 6) no esté
-/// aplicada en prod. Mismo criterio que [isMissingServicesColumnError]:
-/// cualquier otro error (red, RLS, token) debe propagar.
+/// caso que [myStoreProducts]/[saveProductToStore]/[updateStoreItem] deben
+/// tragar mientras la migración `20260809120001_products_offer_defaults.sql`
+/// (Task 6) no esté aplicada en prod. Mismo criterio que
+/// [isMissingServicesColumnError]: cualquier otro error (red, RLS, token)
+/// debe propagar.
 bool isMissingOfferDefaultsColumnError(PostgrestException e) {
   if (e.code == '42703') return true;
   final msg = e.message.toLowerCase();
   return msg.contains('column') && msg.contains('offer_defaults');
+}
+
+/// Escribe `payload` con [write] y, si revienta por columna `offer_defaults`
+/// faltante, reintenta UNA vez sin esa clave — mismo molde de fallback para
+/// el INSERT de [saveProductToStore] y el UPDATE de [updateStoreItem]
+/// (hallazgo de revisión, Fix round 1: antes solo el insert tenía este
+/// fallback y el 100% de las ediciones con molde reventaban hasta aplicar la
+/// migración). Puro en el sentido de que no sabe nada de Supabase — [write]
+/// es lo único que toca la red, así que un doble que lance 42703 la primera
+/// vez basta para probarlo sin Supabase inicializado.
+@visibleForTesting
+Future<void> withOfferDefaultsFallback(
+  Map<String, dynamic> payload,
+  Future<void> Function(Map<String, dynamic> payload) write,
+) async {
+  try {
+    await write(payload);
+  } on PostgrestException catch (e) {
+    if (!payload.containsKey('offer_defaults') ||
+        !isMissingOfferDefaultsColumnError(e)) {
+      rethrow;
+    }
+    final retry = Map<String, dynamic>.from(payload)..remove('offer_defaults');
+    await write(retry);
+  }
 }
 
 /// Todos los productos y servicios del propio negocio, más recientes primero.
@@ -2672,6 +2703,11 @@ Future<void> saveProductToStore({
   bool offersShipping = false,
   bool offersInstallation = false,
   bool requiresEvaluation = false,
+  // Columnas REALES (Task 6, revisión Fix round 1) — las mismas que pinta la
+  // ficha pública (`productDetailCols`). Van SIEMPRE en el mismo save que
+  // `offerDefaults.brand`/`.warranty`, así que nunca pueden divergir.
+  String? brand,
+  String? warranty,
   // Molde de oferta del ítem (Task 6, jsonb): lo que el editor de "Mi
   // negocio" guarda para prellenar futuras ofertas (lectura en la Task 9).
   // `null`/`{}` no manda la columna.
@@ -2696,33 +2732,30 @@ Future<void> saveProductToStore({
     'offers_shipping': offersShipping,
     'offers_installation': offersInstallation,
     'requires_evaluation': requiresEvaluation,
+    'brand': brand,
+    'warranty': warranty,
+    if (offerDefaults != null && offerDefaults.isNotEmpty)
+      'offer_defaults': offerDefaults,
   };
-  try {
-    await supa.from('provider_products').insert({
-      ...row,
-      if (offerDefaults != null && offerDefaults.isNotEmpty)
-        'offer_defaults': offerDefaults,
-    });
-  } on PostgrestException catch (e) {
-    // Mientras la migración de la Task 6 no esté en prod: mismo insert SIN
-    // `offer_defaults` — el molde de oferta se pierde para ESTE alta (el
-    // proveedor puede volver a editarlo cuando la columna exista), pero el
-    // producto/servicio sí queda guardado. Nunca se traga otro error.
-    if (offerDefaults == null ||
-        offerDefaults.isEmpty ||
-        !isMissingOfferDefaultsColumnError(e)) {
-      rethrow;
-    }
-    await supa.from('provider_products').insert(row);
-  }
+  await withOfferDefaultsFallback(
+    row,
+    (p) => supa.from('provider_products').insert(p),
+  );
 }
 
 /// Edita un producto/servicio propio (RLS: dueño) — editor de ítem de tienda
 /// (Task 6, "Mi negocio" → tocar una tarjeta propia). `payload` ya viene
 /// armado por quien llama (mismas columnas que [saveProductToStore], más
-/// `offer_defaults`); aquí no se interpreta ni se completa nada.
+/// `offer_defaults`); aquí no se interpreta, salvo el mismo fallback
+/// tolerante que [saveProductToStore] (Fix round 1 de revisión: sin esto,
+/// CUALQUIER edición con `offer_defaults` en el payload — que es casi
+/// siempre, `pricing_mode` va siempre — reventaba entera mientras la
+/// migración de la Task 6 no estuviera en prod).
 Future<void> updateStoreItem(String id, Map<String, dynamic> payload) =>
-    supa.from('provider_products').update(payload).eq('id', id);
+    withOfferDefaultsFallback(
+      payload,
+      (p) => supa.from('provider_products').update(p).eq('id', id),
+    );
 
 /// Borra un producto/servicio propio (RLS: dueño) — "mantener presionada →
 /// Eliminar de tu tienda" (Task 6).
