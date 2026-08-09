@@ -52,11 +52,32 @@ const _colorPresets = <(String, Color)>[
   ('Rosa', Color(0xFFEC4899)),
 ];
 
-/// Convierte lo escrito en el campo de precio ("5,000", "RD$5000") a un
-/// número; null si está vacío. Solo dígitos — mismo criterio que el campo de
-/// presupuesto de crear solicitud.
+/// Convierte lo escrito en el campo de precio ("5,000", "RD$5000",
+/// "3000.50") a un número; null si está vacío.
+///
+/// BUG PO 08-09: la versión anterior descartaba TODO carácter no-dígito, así
+/// que "3000.0" (un usuario tipeando con separador decimal) se leía como
+/// "30000" — pasó en prod con un paquete real. Los precios RD$ son enteros,
+/// así que un punto o coma ÚNICO seguido de 1-2 dígitos AL FINAL del string
+/// se trata como separador DECIMAL y se redondea (`round()`, no se trunca:
+/// "3000.50" → 3001). Un punto/coma seguido de exactamente 3 dígitos sigue
+/// siendo separador de MILES, como ya hacía antes ("3.000"/"1,500" → 3000/
+/// 1500) — ese caso, y cualquier otro, cae al camino de solo-dígitos de
+/// siempre.
 num? parseStoreItemPrice(String s) {
-  final digits = s.replaceAll(RegExp(r'[^0-9]'), '');
+  final cleaned = s.replaceAll(RegExp(r'[^0-9.,]'), '');
+  if (cleaned.isEmpty) return null;
+
+  final decimal = RegExp(r'^(\d*)[.,](\d{1,2})$').firstMatch(cleaned);
+  if (decimal != null) {
+    final wholePart = decimal.group(1)!;
+    final fracPart = decimal.group(2)!.padRight(2, '0');
+    final whole = wholePart.isEmpty ? 0 : int.parse(wholePart);
+    final cents = int.parse(fracPart);
+    return ((whole * 100 + cents) / 100).round();
+  }
+
+  final digits = cleaned.replaceAll(RegExp(r'[^0-9]'), '');
   if (digits.isEmpty) return null;
   return int.tryParse(digits);
 }
