@@ -106,6 +106,10 @@ void main() {
       (tester) async {
     await tester.pumpWidget(view());
     await tester.pumpAndSettle();
+    // Task 4 (2026-08-09) sumó la sección "Sobre el negocio" bajo la
+    // portada: PRODUCTOS/SERVICIOS ya no nacen construidos en el viewport
+    // de 800x600 de los tests, mismo motivo que `bajar()` arriba.
+    await bajar(tester);
     expect(find.textContaining('Aún no tienes productos'), findsOneWidget);
     expect(find.textContaining('Aún no tienes servicios'), findsOneWidget);
     // Nunca ofrece crear (eso es V2/web).
@@ -154,6 +158,9 @@ void main() {
       onEditWeb: () async => called = true,
     )));
     await tester.pumpAndSettle();
+    // Task 4 (2026-08-09): "Sobre el negocio" empuja el botón fuera del
+    // viewport inicial de 800x600 — mismo motivo que `bajar()` arriba.
+    await bajar(tester);
     await tester.tap(find.text('Editar en la web'));
     await tester.pump();
     expect(called, isTrue);

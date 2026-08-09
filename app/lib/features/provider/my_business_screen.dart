@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/brand.dart';
 import '../../core/editor_link_client.dart';
 import '../../core/error_reporter.dart';
 import '../../core/safe_image_picker.dart';
@@ -17,6 +18,7 @@ import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
 import '../shared/local_image_guard.dart';
 import '../shared/product_list_card.dart';
+import '../shared/text_editor_sheet.dart';
 import '../shared/violet_header.dart';
 
 /// Elige una foto de la galería con la guarda global de `image_picker`
@@ -218,6 +220,7 @@ class MyBusinessView extends StatefulWidget {
     this.updateLogo = updateBusinessLogo,
     this.clearCover = clearBusinessCover,
     this.clearLogo = clearBusinessLogo,
+    this.updateDescription = updateBusinessDescription,
   });
 
   final StoreProfile? business;
@@ -246,6 +249,13 @@ class MyBusinessView extends StatefulWidget {
   final Future<void> Function(String businessId) clearCover;
   final Future<void> Function(String businessId) clearLogo;
 
+  /// Descripción editable desde "Mi negocio" (Task 4, 2026-08-09): la única
+  /// pieza de texto del escaparate que se edita desde la app; el resto de la
+  /// ficha sigue siendo solo lectura (V2 vive en la web). Inyectable para
+  /// probar sin red; el default es la implementación real de `repos.dart`.
+  final Future<void> Function(String businessId, String description)
+      updateDescription;
+
   @override
   State<MyBusinessView> createState() => _MyBusinessViewState();
 }
@@ -261,11 +271,16 @@ class _MyBusinessViewState extends State<MyBusinessView> {
   bool _coverBusy = false;
   bool _logoBusy = false;
 
+  /// Copia local de la descripción — mismo motivo que `_coverUrl`/`_logoUrl`.
+  String? _description;
+  bool _descriptionBusy = false;
+
   @override
   void initState() {
     super.initState();
     _coverUrl = widget.business?.coverUrl;
     _logoUrl = widget.business?.logoUrl;
+    _description = widget.business?.description;
   }
 
   @override
@@ -381,6 +396,29 @@ class _MyBusinessViewState extends State<MyBusinessView> {
     }
   }
 
+  /// Abre la hoja de "Sobre el negocio" y guarda solo si el texto CAMBIÓ —
+  /// evita una escritura (y un toast) de guardar sin haber tocado nada.
+  Future<void> _editDescription() async {
+    final b = widget.business;
+    if (b == null || _descriptionBusy) return;
+    final current = _description ?? '';
+    final text = await showTextEditorSheet(context,
+        title: 'Sobre el negocio', initial: current);
+    if (text == null || !mounted || text == current) return;
+    setState(() => _descriptionBusy = true);
+    try {
+      await widget.updateDescription(b.id, text);
+      if (mounted) setState(() => _description = text);
+    } catch (e, s) {
+      unawaited(reportError(e, s));
+      if (mounted) {
+        _toast('No se pudo guardar la descripción. Intenta de nuevo.');
+      }
+    } finally {
+      if (mounted) setState(() => _descriptionBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final b = widget.business;
@@ -417,7 +455,13 @@ class _MyBusinessViewState extends State<MyBusinessView> {
           coverBusy: _coverBusy,
           logoBusy: _logoBusy,
         ).cascadeIn(0),
-        BusinessDetailsCard(business: b.raw).cascadeIn(1),
+        const SectionHeader(text: 'SOBRE EL NEGOCIO'),
+        _AboutCard(
+          description: _description,
+          busy: _descriptionBusy,
+          onTap: _editDescription,
+        ).cascadeIn(1),
+        BusinessDetailsCard(business: b.raw).cascadeIn(2),
         if (widget.onEditWeb != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -432,7 +476,7 @@ class _MyBusinessViewState extends State<MyBusinessView> {
         // lectura" del spec 2026-07-20, decisión del PO: el alta mínima vive
         // en la app porque alimenta ofertas más rápidas.
         if (widget.onAddItem != null)
-          _AddToStoreCard(onChoose: _chooseKind).cascadeIn(2),
+          _AddToStoreCard(onChoose: _chooseKind).cascadeIn(3),
         const SectionHeader(text: 'PRODUCTOS'),
         ..._itemsOrEmpty(widget.productos, 'Aún no tienes productos.'),
         const SectionHeader(text: 'SERVICIOS'),
@@ -532,6 +576,44 @@ class _AddToStoreCard extends StatelessWidget {
         ),
         const SizedBox(height: 6),
       ]),
+    );
+  }
+}
+
+/// "Sobre el negocio" (Task 4, 2026-08-09): la descripción del negocio,
+/// tocable para editarla. Vacía → píldora "+ Añadir descripción" (mismo
+/// tratamiento que `_AddPill` de `BusinessCoverHero`, en tarjeta en vez de
+/// superpuesta a una foto); con texto → se muestra el texto y NO el "+".
+/// Esta pantalla es SIEMPRE la del dueño, así que no hay variante ajena.
+class _AboutCard extends StatelessWidget {
+  const _AboutCard(
+      {required this.description, required this.busy, required this.onTap});
+
+  final String? description;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = description;
+    final hasText = text != null && text.trim().isNotEmpty;
+    return JayaloCard(
+      onTap: busy ? null : onTap,
+      child: busy
+          ? const Center(child: JayaloSpinner(size: 18))
+          : hasText
+              ? Text(text,
+                  style: TextStyle(fontSize: 13.5, color: jayaloHead(context)))
+              : Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.add, size: 18, color: cs.primary),
+                  const SizedBox(width: 6),
+                  Text('Añadir descripción',
+                      style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: cs.primary)),
+                ]),
     );
   }
 }
