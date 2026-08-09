@@ -2683,11 +2683,15 @@ Future<List<Map<String, dynamic>>> myStoreProducts(String businessId) async {
 
 /// Trabajos anteriores (portafolio) del propio negocio — para "Cargar trabajos
 /// anteriores" en la oferta. Mismo modelo que la web (`provider_portfolio_items`).
+///
+/// Incluye `description` (Task 8, 2026-08-09): el editor de trabajo de "Mi
+/// negocio" la prellena — antes de esta tarea el select no la traía porque
+/// nada la leía todavía.
 Future<List<Map<String, dynamic>>> myPortfolioItems(String businessId) async =>
     List<Map<String, dynamic>>.from(
       await supa
           .from('provider_portfolio_items')
-          .select('id,title,image_urls,category_id,completed_at')
+          .select('id,title,description,image_urls,category_id,completed_at')
           .eq('business_id', businessId)
           .order('position', ascending: true)
           .limit(200),
@@ -2799,6 +2803,29 @@ Future<void> savePortfolioItem({
     'image_urls': imageUrls,
   });
 }
+
+/// Edita un trabajo propio del portafolio (RLS: dueño) — "Mi negocio" →
+/// tocar un `_PortfolioTile` propio (Task 8). Mismo criterio de
+/// `description` en blanco que [savePortfolioItem]: cadena vacía se guarda
+/// como `null`, no como `''`.
+Future<void> updatePortfolioItem(
+  String id, {
+  required String title,
+  String? description,
+  required List<String> imageUrls,
+}) =>
+    supa.from('provider_portfolio_items').update({
+      'title': title,
+      'description': (description == null || description.trim().isEmpty)
+          ? null
+          : description.trim(),
+      'image_urls': imageUrls,
+    }).eq('id', id);
+
+/// Borra un trabajo propio del portafolio (RLS: dueño) — "mantener presionado
+/// → Eliminar" (Task 8), mismo trato que [deleteStoreItem].
+Future<void> deletePortfolioItem(String id) =>
+    supa.from('provider_portfolio_items').delete().eq('id', id);
 
 // ── Mi tienda: paquetes (Task 7, 2026-08-09) ────────────────────────────────
 // Espejo de `provider_packages` / `PackageEditorDialog.tsx` de la web, sin

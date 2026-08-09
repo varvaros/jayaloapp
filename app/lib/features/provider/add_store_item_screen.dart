@@ -20,6 +20,13 @@ import '../shell/floating_nav_bar.dart';
 /// autocompletar ofertas, no tiene sentido que carguen más que ellas.
 const _maxItemPhotos = 5;
 
+/// Tope de fotos de un trabajo del portafolio (Task 8) — espejo de
+/// `MAX_PORTFOLIO_PHOTOS` en la web. Más alto que [_maxItemPhotos]: un
+/// trabajo terminado suele necesitar más fotos que un producto/servicio de
+/// catálogo (antes de esta tarea, `_pick` no distinguía kind y aplicaba el
+/// tope de 5 también a trabajo — nunca se imponía el tope correcto).
+const kMaxPortfolioPhotos = 8;
+
 /// Copiado TAL CUAL de `request_detail_screen.dart` (`_svcModes`, Task 6): el
 /// molde de oferta usa las MISMAS claves, en el MISMO orden — divergir aquí
 /// desalinearía el prellenado de la Task 9. No se extrajo a un archivo
@@ -52,11 +59,12 @@ num? parseStoreItemPrice(String s) {
 }
 
 /// Alta rápida O EDICIÓN desde la app de un artículo de la tienda (pedido PO
-/// 2026-08-05: el agregador de "Mi negocio"; edición Task 6, 2026-08-09).
-/// Tres variantes por [kind]: `producto` y `servicio` escriben en
-/// `provider_products` (alta: `saveProductToStore`; edición: `updateStoreItem`,
-/// vía [initial]); `trabajo` inserta en `provider_portfolio_items` y NUNCA se
-/// edita desde aquí (sin `initial`).
+/// 2026-08-05: el agregador de "Mi negocio"; edición producto/servicio Task
+/// 6, edición trabajo Task 8, ambas 2026-08-09). Tres variantes por [kind]:
+/// `producto` y `servicio` escriben en `provider_products` (alta:
+/// `saveProductToStore`; edición: `updateStoreItem`, vía [initial]);
+/// `trabajo` escribe en `provider_portfolio_items` (alta: `savePortfolio`;
+/// edición: `updatePortfolio`, vía [initial] — Task 8).
 ///
 /// Con [initial] la pantalla precarga TODOS los campos — incluido el molde de
 /// oferta (`offer_defaults`) — y "Guardar" hace un `UPDATE` en vez de un
@@ -71,6 +79,7 @@ class AddStoreItemScreen extends StatefulWidget {
     this.saveProduct = saveProductToStore,
     this.updateItem = updateStoreItem,
     this.savePortfolio = savePortfolioItem,
+    this.updatePortfolio = updatePortfolioItem,
     this.fetchCatRubro = myBusinessCategoryRubro,
   });
 
@@ -118,6 +127,16 @@ class AddStoreItemScreen extends StatefulWidget {
     List<String> imageUrls,
   })
   savePortfolio;
+
+  /// Edición de un trabajo propio (Task 8), vía [initial]. Mismo criterio
+  /// inyectable que [updateItem].
+  final Future<void> Function(
+    String id, {
+    required String title,
+    String? description,
+    required List<String> imageUrls,
+  })
+  updatePortfolio;
   final Future<({String? categoryId, String? rubro})> Function(
     String businessId,
   )
@@ -178,6 +197,10 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
   bool get _editing => widget.initial != null;
   int get _photoCount => _photos.length + _keptUrls.length;
 
+  /// Tope de fotos según [kind] — [kMaxPortfolioPhotos] para trabajo
+  /// (Task 8), [_maxItemPhotos] para producto/servicio.
+  int get _maxPhotos => _esTrabajo ? kMaxPortfolioPhotos : _maxItemPhotos;
+
   /// category_id + rubro del negocio: `provider_products` los exige NOT NULL
   /// y esta pantalla no los pide (el negocio ya los tiene). null mientras
   /// carga; (null, null) si el negocio no los tiene configurados. Solo hace
@@ -228,9 +251,20 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
     }
   }
 
-  /// Precarga TODO desde la fila de `provider_products` — columnas y
-  /// `offer_defaults` (Task 6, modo edición).
+  /// Precarga desde `initial` (Task 6 para producto/servicio, Task 8 para
+  /// trabajo). Trabajo tiene su propio camino, MÁS CORTO: `provider_portfolio_items`
+  /// no tiene molde de oferta ni ninguna de las columnas de producto —
+  /// mezclarlo con el resto del método leería columnas que ese registro
+  /// nunca tiene (no revienta, `item['x']` en un `Map` da `null`, pero es
+  /// semánticamente incorrecto y confunde a quien lea esto después).
   void _prefill(Map<String, dynamic> item) {
+    if (_esTrabajo) {
+      _name.text = (item['title'] as String?) ?? '';
+      _desc.text = (item['description'] as String?) ?? '';
+      final urls = (item['image_urls'] as List?)?.cast<String>() ?? const [];
+      _keptUrls.addAll(urls);
+      return;
+    }
     _name.text = (item['name'] as String?) ?? '';
     _desc.text = (item['description'] as String?) ?? '';
     final price = item['price'] as num?;
@@ -372,8 +406,8 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
   /// Cámara = una foto; Galería = varias — mismo patrón que las fotos de una
   /// oferta (`request_detail_screen._pickPhoto`).
   Future<void> _pick(ImageSource source) async {
-    if (_photoCount >= _maxItemPhotos) {
-      _toast('Ya tienes $_maxItemPhotos fotos');
+    if (_photoCount >= _maxPhotos) {
+      _toast('Máximo $_maxPhotos fotos');
       return;
     }
     final List<XFile> picked;
@@ -392,7 +426,7 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
           sizeBytes: await x.length(),
           path: x.path,
           currentCount: _photoCount,
-          maxCount: _maxItemPhotos);
+          maxCount: _maxPhotos);
       if (res is ImagePickError) {
         _toast(res.message);
         break;
@@ -509,7 +543,16 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
               ? uploadPortfolioImage(x.path)
               : uploadStoreProductImage(x.path))));
       final imageUrls = [..._keptUrls, ...newUrls];
-      if (_esTrabajo) {
+      if (_esTrabajo && _editing) {
+        // Task 8: editar un trabajo propio — mismas URLs conservadas +
+        // nuevas que el alta, pero UPDATE en vez de INSERT.
+        await widget.updatePortfolio(
+          widget.initial!['id'] as String,
+          title: nombre,
+          description: _desc.text,
+          imageUrls: imageUrls,
+        );
+      } else if (_esTrabajo) {
         await widget.savePortfolio(
           businessId: widget.businessId,
           title: nombre,
@@ -560,9 +603,9 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
       _saved = true;
       releaseUnsavedGuard(this);
       if (!mounted) return;
-      _toast(_esTrabajo
-          ? 'Trabajo agregado.'
-          : (_editing ? 'Cambios guardados.' : 'Agregado a tu tienda.'));
+      _toast(_editing
+          ? 'Cambios guardados.'
+          : (_esTrabajo ? 'Trabajo agregado.' : 'Agregado a tu tienda.'));
       // `true` = hubo cambio: "Mi negocio" refresca su listado al volver.
       context.pop(true);
     } catch (_) {
@@ -582,7 +625,7 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
 
   String get _titulo => switch (widget.kind) {
         'servicio' => _editing ? 'Editar servicio' : 'Agregar servicio',
-        'trabajo' => 'Agregar trabajo',
+        'trabajo' => _editing ? 'Editar trabajo' : 'Agregar trabajo',
         _ => _editing ? 'Editar producto' : 'Agregar producto',
       };
 
@@ -627,7 +670,7 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
                             i - _keptUrls.length),
                   ),
                 ),
-              if (_photoCount < _maxItemPhotos)
+              if (_photoCount < _maxPhotos)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(children: [

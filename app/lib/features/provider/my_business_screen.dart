@@ -164,6 +164,31 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
     }
   }
 
+  /// Abre el editor con `initial` para un trabajo propio (Task 8). Mismo
+  /// patrón que [_openEdit], con `kind=trabajo` fijo: el portafolio no tiene
+  /// columna `kind` de la que derivarlo.
+  Future<void> _openEditTrabajo(
+      String businessId, Map<String, dynamic> item) async {
+    final changed = await context.push<bool>(
+      '/provider/business/add?kind=trabajo&bid=$businessId',
+      extra: item,
+    );
+    if (changed == true) _refetch();
+  }
+
+  /// "Mantener presionado → Eliminar" un trabajo propio (Task 8). Mismo
+  /// criterio best-effort que [_deleteItem].
+  Future<void> _deleteTrabajo(Map<String, dynamic> item) async {
+    final id = item['id'] as String?;
+    if (id == null) return;
+    try {
+      await deletePortfolioItem(id);
+      _refetch();
+    } catch (_) {
+      _toast('No se pudo eliminar. Intenta de nuevo.');
+    }
+  }
+
   /// Abre el editor de paquetes vacío — "+ Añadir paquete" (Task 7). Mismo
   /// contrato de retorno que [_openAdd]: `true` = hubo alta, refrescar.
   Future<void> _openAddPackage(String businessId) async {
@@ -271,6 +296,11 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
                       : (item) => _openEditPackage(data.business!.id, item),
                   onDeletePackage:
                       data.business == null ? null : _deletePackage,
+                  onEditTrabajo: data.business == null
+                      ? null
+                      : (item) => _openEditTrabajo(data.business!.id, item),
+                  onDeleteTrabajo:
+                      data.business == null ? null : _deleteTrabajo,
                 );
               },
             ),
@@ -299,6 +329,8 @@ class MyBusinessView extends StatefulWidget {
     this.onAddPackage,
     this.onEditPackage,
     this.onDeletePackage,
+    this.onEditTrabajo,
+    this.onDeleteTrabajo,
     this.pickImage = _pickBusinessImage,
     this.updateCover = updateBusinessCover,
     this.updateLogo = updateBusinessLogo,
@@ -346,6 +378,15 @@ class MyBusinessView extends StatefulWidget {
   /// Mantener presionado un paquete propio → confirmar → borrar (Task 7).
   /// Mismo criterio que [onDeleteItem].
   final Future<void> Function(Map<String, dynamic> item)? onDeletePackage;
+
+  /// Tocar un trabajo propio del portafolio abre el editor con esa fila
+  /// (Task 8). Mismo criterio que [onEditItem]/[onEditPackage]: `null` → el
+  /// `_PortfolioTile` no recibe gesto de tap (sigue como estaba).
+  final Future<void> Function(Map<String, dynamic> item)? onEditTrabajo;
+
+  /// Mantener presionado un trabajo propio → confirmar → borrar (Task 8).
+  /// Mismo criterio que [onDeleteItem]/[onDeletePackage].
+  final Future<void> Function(Map<String, dynamic> item)? onDeleteTrabajo;
 
   /// Portada y logo editables desde "Mi negocio" (2026-08-09): elegir,
   /// subir y quitar. Inyectables (patrón `CreditShopScreen.loadPackages`)
@@ -648,7 +689,16 @@ class _MyBusinessViewState extends State<MyBusinessView> {
         if (widget.trabajos.isEmpty)
           const _EmptyLine(text: 'Aún no tienes trabajos en tu portafolio.')
         else
-          for (final t in widget.trabajos) _PortfolioTile(item: t),
+          for (final t in widget.trabajos)
+            _PortfolioTile(
+              item: t,
+              onTap: widget.onEditTrabajo == null
+                  ? null
+                  : () => widget.onEditTrabajo!(t),
+              onLongPress: widget.onDeleteTrabajo == null
+                  ? null
+                  : () => _confirmDeleteTrabajo(t),
+            ),
         const SectionHeader(text: 'OPINIONES'),
         _ReviewsBlock(reviews: widget.reviews, rating: widget.rating),
       ],
@@ -736,6 +786,16 @@ class _MyBusinessViewState extends State<MyBusinessView> {
         confirmLabel: 'Eliminar');
     if (!ok || !mounted) return;
     await widget.onDeletePackage?.call(item);
+  }
+
+  /// Borrado PERMANENTE de un trabajo — mismo criterio que
+  /// [_confirmDeletePackage] (Task 8): 'Eliminar', no 'Quitar'.
+  Future<void> _confirmDeleteTrabajo(Map<String, dynamic> item) async {
+    final ok = await _confirmRemove(
+        '¿Eliminar este trabajo?', 'Esta acción no se puede deshacer.',
+        confirmLabel: 'Eliminar');
+    if (!ok || !mounted) return;
+    await widget.onDeleteTrabajo?.call(item);
   }
 
   /// Categoría y ciudad en UNA línea bajo el nombre, como la web en móvil.
@@ -862,12 +922,14 @@ class _ServicesCard extends StatelessWidget {
   }
 }
 
-/// Trabajo del portafolio en el escaparate propio: miniatura + título. Más
-/// simple que el carrusel de la tienda pública — aquí solo confirma al dueño
-/// que su alta quedó.
+/// Trabajo del portafolio en el escaparate propio: miniatura + título. Tocar
+/// abre el editor con la fila; mantener presionado pide confirmar el borrado
+/// (Task 8). Mismo molde visual que [_PackageTile].
 class _PortfolioTile extends StatelessWidget {
-  const _PortfolioTile({required this.item});
+  const _PortfolioTile({required this.item, this.onTap, this.onLongPress});
   final Map<String, dynamic> item;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -876,6 +938,8 @@ class _PortfolioTile extends StatelessWidget {
     final img = images.isEmpty ? null : images.first;
     return JayaloCard(
       padding: const EdgeInsets.all(10),
+      onTap: onTap,
+      onLongPress: onLongPress,
       child: Row(children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
