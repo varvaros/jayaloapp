@@ -179,6 +179,38 @@ void main() {
       expect(edited, paquetes.first);
     });
 
+    // Pedido PO 2026-08-09: PAQUETES debe verse como lista vertical tipo
+    // resumen "como la sección PRODUCTOS" — que ya usa una miniatura de
+    // 104x104 (`ProductListCard`). Antes el paquete usaba 56x56.
+    testWidgets(
+        '(e) la miniatura del paquete usa el mismo tamaño que la de '
+        'PRODUCTOS (104x104)', (tester) async {
+      final paquetes = [
+        {
+          'id': 'pk1',
+          'name': 'Plan Básico',
+          'price': 1500,
+          'image_url': 'https://x/plan.jpg',
+          'items': <String>[],
+        },
+      ];
+      await tester.pumpWidget(host(MyBusinessView(
+        business: negocio,
+        productos: const [],
+        servicios: const [],
+        paquetes: paquetes,
+        reviews: const [],
+        rating: null,
+        onAddPackage: () async {},
+      )));
+      await tester.pumpAndSettle();
+      await bajar(tester);
+
+      final img = tester.widget<Image>(find.byType(Image).first);
+      expect(img.width, 104);
+      expect(img.height, 104);
+    });
+
     testWidgets('sin onAddPackage la fila de alta no existe', (tester) async {
       await tester.pumpWidget(host(MyBusinessView(
         business: negocio,

@@ -956,9 +956,17 @@ class _ServicesCard extends StatelessWidget {
   }
 }
 
+/// Tamaño de la miniatura de [_PortfolioTile]/[_PackageTile] — EL MISMO que
+/// [ProductListCard] (pedido PO 2026-08-09: PAQUETES y TRABAJOS deben verse
+/// como lista vertical tipo resumen, "como la sección PRODUCTOS", que ya usa
+/// este molde: foto grande a la izquierda, título/precio a la derecha).
+/// Antes eran 56px, visiblemente más chicas que las de PRODUCTOS al lado.
+const double _kTileThumbSize = 104;
+const double _kTileThumbRadius = kCardRadius - 6;
+
 /// Trabajo del portafolio en el escaparate propio: miniatura + título. Tocar
 /// abre el editor con la fila; mantener presionado pide confirmar el borrado
-/// (Task 8). Mismo molde visual que [_PackageTile].
+/// (Task 8). Mismo molde visual que [_PackageTile] y que [ProductListCard].
 class _PortfolioTile extends StatelessWidget {
   const _PortfolioTile({required this.item, this.onTap, this.onLongPress});
   final Map<String, dynamic> item;
@@ -974,35 +982,39 @@ class _PortfolioTile extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Row(children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: img == null || img.isEmpty
-              ? _tilePlaceholder(cs, Icons.photo_outlined)
-              : JayaloNetworkImage(
-                  img,
-                  width: 56,
-                  height: 56,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) =>
-                      _tilePlaceholder(cs, Icons.photo_outlined),
-                ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(item['title'] as String? ?? '',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600)),
-        ),
-      ]),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(_kTileThumbRadius),
+            child: img == null || img.isEmpty
+                ? _tilePlaceholder(cs, Icons.photo_outlined)
+                : JayaloNetworkImage(
+                    img,
+                    width: _kTileThumbSize,
+                    height: _kTileThumbSize,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) =>
+                        _tilePlaceholder(cs, Icons.photo_outlined),
+                  ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(item['title'] as String? ?? '',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
     );
   }
 }
 
 /// Paquete/plan propio en el escaparate: foto + nombre + precio. Tocar abre
 /// el editor con la fila; mantener presionado pide confirmar el borrado
-/// (Task 7). Mismo molde visual que [_PortfolioTile], con precio.
+/// (Task 7). Mismo molde visual que [_PortfolioTile] y que [ProductListCard],
+/// con precio.
 class _PackageTile extends StatelessWidget {
   const _PackageTile({required this.item, this.onTap, this.onLongPress});
   final Map<String, dynamic> item;
@@ -1018,45 +1030,51 @@ class _PackageTile extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Row(children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: img == null || img.isEmpty
-              ? _tilePlaceholder(cs, Icons.inventory_2_outlined)
-              : JayaloNetworkImage(
-                  img,
-                  width: 56,
-                  height: 56,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) =>
-                      _tilePlaceholder(cs, Icons.inventory_2_outlined),
-                ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(item['name'] as String? ?? '',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
-              // (price == null || price == 0): C-1 hace que un precio en
-              // blanco se guarde como 0 (la columna es NOT NULL DEFAULT 0),
-              // no como null — sin este OR, "Consultar precio" quedaba
-              // inalcanzable para un paquete guardado sin precio.
-              Text(
-                  (price == null || price == 0)
-                      ? 'Consultar precio'
-                      : fmtRD(price),
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700, color: cs.primary)),
-            ],
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(_kTileThumbRadius),
+            child: img == null || img.isEmpty
+                ? _tilePlaceholder(cs, Icons.inventory_2_outlined)
+                : JayaloNetworkImage(
+                    img,
+                    width: _kTileThumbSize,
+                    height: _kTileThumbSize,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) =>
+                        _tilePlaceholder(cs, Icons.inventory_2_outlined),
+                  ),
           ),
-        ),
-      ]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(item['name'] as String? ?? '',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                // (price == null || price == 0): C-1 hace que un precio en
+                // blanco se guarde como 0 (la columna es NOT NULL DEFAULT 0),
+                // no como null — sin este OR, "Consultar precio" quedaba
+                // inalcanzable para un paquete guardado sin precio.
+                Text(
+                    (price == null || price == 0)
+                        ? 'Consultar precio'
+                        : fmtRD(price),
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: cs.primary)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1065,10 +1083,11 @@ class _PackageTile extends StatelessWidget {
 /// contenedor gris con ícono en ambos, factorizado tras el hallazgo M-1
 /// (revisión final) al sumarles `errorBuilder`.
 Widget _tilePlaceholder(ColorScheme cs, IconData icon) => Container(
-      width: 56,
-      height: 56,
+      width: _kTileThumbSize,
+      height: _kTileThumbSize,
+      alignment: Alignment.center,
       color: cs.surfaceContainerHighest,
-      child: Icon(icon, color: cs.onSurfaceVariant, size: 22),
+      child: Icon(icon, color: cs.onSurfaceVariant, size: 34),
     );
 
 /// «+ Añadir …» — mismo tratamiento visual que `_AboutCard`/`_ServicesCard`
