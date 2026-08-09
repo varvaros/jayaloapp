@@ -1613,9 +1613,10 @@ Future<String> updateBusinessLogo(String businessId, String filePath) =>
 Future<String> updateBusinessCover(String businessId, String filePath) =>
     _uploadBusinessImage(businessId, filePath, 'covers', 'cover_url');
 
+// `logo_url` es NOT NULL en prod (un UPDATE con null revienta 23502); '' es el estado histórico "sin logo" y tanto `myBusinessProfile` como `BusinessCoverHero` ya lo tratan como ausente.
 Future<void> clearBusinessLogo(String businessId) async => supa
     .from('provider_businesses')
-    .update({'logo_url': null})
+    .update({'logo_url': ''})
     .eq('id', businessId);
 Future<void> clearBusinessCover(String businessId) async => supa
     .from('provider_businesses')
