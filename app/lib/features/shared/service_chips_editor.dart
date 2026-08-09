@@ -144,7 +144,18 @@ class _ServiceChipsEditorSheetState extends State<_ServiceChipsEditorSheet> {
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
-                  onPressed: () => Navigator.pop(context, _chips),
+                  onPressed: () {
+                    // BUG PO 08-09: el usuario escribe un servicio y toca
+                    // "Guardar" sin dar Enter — se perdía porque nunca pasaba
+                    // por `onSubmitted`. Se comitea el texto pendiente con
+                    // las MISMAS reglas que Enter (largo/tope/dedupe) antes
+                    // de cerrar. Si es inválido (>60 chars), `_add` ya avisó
+                    // con el toast de siempre y deja el campo intacto — no se
+                    // bloquea el guardado de los chips ya válidos por un
+                    // error de tipeo pendiente, se guarda el resto igual.
+                    _add(_controller.text);
+                    Navigator.pop(context, _chips);
+                  },
                   child: const Text('Guardar'),
                 ),
               ),

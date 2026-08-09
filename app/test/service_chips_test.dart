@@ -144,6 +144,79 @@ void main() {
       expect(result, ['Plomería']);
     });
 
+    testWidgets(
+        'el texto pendiente sin Enter se guarda al tocar Guardar (BUG PO '
+        '08-09)', (tester) async {
+      List<String>? result;
+      await tester.pumpWidget(host(Builder(builder: (context) {
+        return ElevatedButton(
+          onPressed: () async {
+            result = await showServiceChipsEditor(context, initial: const []);
+          },
+          child: const Text('abrir'),
+        );
+      })));
+      await tester.tap(find.text('abrir'));
+      await tester.pumpAndSettle();
+
+      // Escribe pero NO dispara onSubmitted (sin Enter) — reproduce el bug
+      // reportado por el PO: tocar Guardar directamente perdía el chip.
+      await tester.enterText(find.byType(TextField), 'Destapes');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(result, ['Destapes']);
+    });
+
+    testWidgets(
+        'texto pendiente + chips previos: Guardar devuelve ambos',
+        (tester) async {
+      List<String>? result;
+      await tester.pumpWidget(host(Builder(builder: (context) {
+        return ElevatedButton(
+          onPressed: () async {
+            result = await showServiceChipsEditor(context,
+                initial: const ['Plomería']);
+          },
+          child: const Text('abrir'),
+        );
+      })));
+      await tester.tap(find.text('abrir'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'Destapes');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(result, ['Plomería', 'Destapes']);
+    });
+
+    testWidgets(
+        'texto pendiente inválido (61+ chars): avisa y guarda solo los '
+        'chips ya válidos', (tester) async {
+      List<String>? result;
+      await tester.pumpWidget(host(Builder(builder: (context) {
+        return ElevatedButton(
+          onPressed: () async {
+            result = await showServiceChipsEditor(context,
+                initial: const ['Plomería']);
+          },
+          child: const Text('abrir'),
+        );
+      })));
+      await tester.tap(find.text('abrir'));
+      await tester.pumpAndSettle();
+
+      final texto61 = 'a' * (kMaxServiceChipLen + 1);
+      await tester.enterText(find.byType(TextField), texto61);
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      // Mismo aviso que hoy da _add — no bloquea el guardado de lo válido.
+      expect(find.textContaining('$kMaxServiceChipLen'), findsWidgets);
+      expect(result, ['Plomería']);
+    });
+
     testWidgets('Cancelar devuelve null y no conserva los cambios',
         (tester) async {
       List<String>? result = const ['sentinel'];
