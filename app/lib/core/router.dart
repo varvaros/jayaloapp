@@ -23,6 +23,7 @@ import '../features/provider/credit_shop_screen.dart';
 import '../features/provider/inbox_screen.dart';
 import '../features/provider/add_store_item_screen.dart';
 import '../features/provider/my_business_screen.dart';
+import '../features/provider/package_editor_screen.dart';
 import '../features/provider/my_offers_screen.dart';
 import '../features/provider/product_interest_detail_screen.dart';
 import '../features/provider/request_detail_screen.dart';
@@ -224,6 +225,15 @@ GoRouter buildRouter() => GoRouter(
                 builder: (_, s) => BackGuard(
                     child: AddStoreItemScreen(
                         kind: s.uri.queryParameters['kind'] ?? 'producto',
+                        businessId: s.uri.queryParameters['bid'] ?? '',
+                        initial: s.extra as Map<String, dynamic>?))),
+            // Editor de paquetes/planes de "Mi negocio" (Task 7, 2026-08-09).
+            // Mismo patrón que `/provider/business/add`: `bid` por query,
+            // `extra` con la fila completa al EDITAR un paquete propio.
+            GoRoute(
+                path: '/provider/business/package',
+                builder: (_, s) => BackGuard(
+                    child: PackageEditorScreen(
                         businessId: s.uri.queryParameters['bid'] ?? '',
                         initial: s.extra as Map<String, dynamic>?))),
             // Tienda de créditos IN-APP. Sustituye al link-out al wallet web

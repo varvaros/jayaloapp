@@ -12,6 +12,7 @@ import '../../core/safe_image_picker.dart';
 import '../../core/secure_web_launch.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
+import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/business_cover_hero.dart';
@@ -79,6 +80,7 @@ class _StoreData {
     required this.business,
     required this.productos,
     required this.servicios,
+    required this.paquetes,
     required this.trabajos,
     required this.reviews,
     required this.rating,
@@ -86,6 +88,7 @@ class _StoreData {
   final StoreProfile? business;
   final List<Map<String, dynamic>> productos;
   final List<Map<String, dynamic>> servicios;
+  final List<Map<String, dynamic>> paquetes;
   final List<Map<String, dynamic>> trabajos;
   final List<BusinessReview> reviews;
   final BusinessRating? rating;
@@ -101,6 +104,7 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
         business: null,
         productos: [],
         servicios: [],
+        paquetes: [],
         trabajos: [],
         reviews: [],
         rating: null,
@@ -111,6 +115,7 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
       myPortfolioItems(business.id),
       businessReviews(business.id),
       businessRatings([business.id]),
+      myPackages(business.id),
     ]);
     final (productos, servicios) =
         partitionStoreItems(results[0] as List<Map<String, dynamic>>);
@@ -119,6 +124,7 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
       business: business,
       productos: productos,
       servicios: servicios,
+      paquetes: results[4] as List<Map<String, dynamic>>,
       trabajos: results[1] as List<Map<String, dynamic>>,
       reviews: results[2] as List<BusinessReview>,
       rating: ratings[business.id],
@@ -152,6 +158,38 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
     if (id == null) return;
     try {
       await deleteStoreItem(id);
+      _refetch();
+    } catch (_) {
+      _toast('No se pudo eliminar. Intenta de nuevo.');
+    }
+  }
+
+  /// Abre el editor de paquetes vacío — "+ Añadir paquete" (Task 7). Mismo
+  /// contrato de retorno que [_openAdd]: `true` = hubo alta, refrescar.
+  Future<void> _openAddPackage(String businessId) async {
+    final changed =
+        await context.push<bool>('/provider/business/package?bid=$businessId');
+    if (changed == true) _refetch();
+  }
+
+  /// Tocar un paquete propio abre el editor con `initial` (Task 7). Mismo
+  /// patrón que [_openEdit]: la fila viaja por `extra`.
+  Future<void> _openEditPackage(
+      String businessId, Map<String, dynamic> item) async {
+    final changed = await context.push<bool>(
+      '/provider/business/package?bid=$businessId',
+      extra: item,
+    );
+    if (changed == true) _refetch();
+  }
+
+  /// "Mantener presionado → Eliminar" un paquete propio (Task 7). Mismo
+  /// criterio best-effort que [_deleteItem].
+  Future<void> _deletePackage(Map<String, dynamic> item) async {
+    final id = item['id'] as String?;
+    if (id == null) return;
+    try {
+      await deletePackage(id);
       _refetch();
     } catch (_) {
       _toast('No se pudo eliminar. Intenta de nuevo.');
@@ -211,6 +249,7 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
                   business: data.business,
                   productos: data.productos,
                   servicios: data.servicios,
+                  paquetes: data.paquetes,
                   trabajos: data.trabajos,
                   reviews: data.reviews,
                   rating: data.rating,
@@ -224,6 +263,14 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
                       ? null
                       : (item) => _openEdit(data.business!.id, item),
                   onDeleteItem: data.business == null ? null : _deleteItem,
+                  onAddPackage: data.business == null
+                      ? null
+                      : () => _openAddPackage(data.business!.id),
+                  onEditPackage: data.business == null
+                      ? null
+                      : (item) => _openEditPackage(data.business!.id, item),
+                  onDeletePackage:
+                      data.business == null ? null : _deletePackage,
                 );
               },
             ),
@@ -241,6 +288,7 @@ class MyBusinessView extends StatefulWidget {
     required this.business,
     required this.productos,
     required this.servicios,
+    this.paquetes = const [],
     this.trabajos = const [],
     required this.reviews,
     required this.rating,
@@ -248,6 +296,9 @@ class MyBusinessView extends StatefulWidget {
     this.onAddItem,
     this.onEditItem,
     this.onDeleteItem,
+    this.onAddPackage,
+    this.onEditPackage,
+    this.onDeletePackage,
     this.pickImage = _pickBusinessImage,
     this.updateCover = updateBusinessCover,
     this.updateLogo = updateBusinessLogo,
@@ -260,6 +311,7 @@ class MyBusinessView extends StatefulWidget {
   final StoreProfile? business;
   final List<Map<String, dynamic>> productos;
   final List<Map<String, dynamic>> servicios;
+  final List<Map<String, dynamic>> paquetes;
   final List<Map<String, dynamic>> trabajos;
   final List<BusinessReview> reviews;
   final BusinessRating? rating;
@@ -281,6 +333,19 @@ class MyBusinessView extends StatefulWidget {
   /// Mantener presionada una tarjeta propia → confirmar → borrar (Task 6).
   /// `null` → sin gesto de long-press (mismo criterio que [onEditItem]).
   final Future<void> Function(Map<String, dynamic> item)? onDeleteItem;
+
+  /// "+ Añadir paquete" al final de la sección PAQUETES (Task 7). Sin
+  /// chooser: los paquetes son un solo tipo, a diferencia del agregador de
+  /// producto/servicio/trabajo. `null` → la fila no se dibuja.
+  final Future<void> Function()? onAddPackage;
+
+  /// Tocar un paquete propio abre el editor con esa fila (Task 7). Mismo
+  /// criterio que [onEditItem].
+  final Future<void> Function(Map<String, dynamic> item)? onEditPackage;
+
+  /// Mantener presionado un paquete propio → confirmar → borrar (Task 7).
+  /// Mismo criterio que [onDeleteItem].
+  final Future<void> Function(Map<String, dynamic> item)? onDeletePackage;
 
   /// Portada y logo editables desde "Mi negocio" (2026-08-09): elegir,
   /// subir y quitar. Inyectables (patrón `CreditShopScreen.loadPackages`)
@@ -352,7 +417,16 @@ class _MyBusinessViewState extends State<MyBusinessView> {
   /// Diálogo «¿Quitar…?» — mismo patrón que `confirmDiscard`
   /// (`core/unsaved_guard.dart`): dos botones de texto, el destructivo en
   /// rojo (`cs.error`).
-  Future<bool> _confirmRemove(String title, String message) async {
+  ///
+  /// [confirmLabel] por defecto es 'Quitar' (portada/logo: reversible, basta
+  /// con subir otra foto). Un borrado PERMANENTE (paquete, Task 7) debe decir
+  /// 'Eliminar' — hallazgo del revisor de la Task 6, que dejó "Quitar" en el
+  /// borrado de producto/servicio de la tienda; no se retocó ESE call site
+  /// aquí (fuera del alcance de esta tarea, y ya tiene su propio test que
+  /// depende del texto actual), pero el parámetro queda disponible por si se
+  /// corrige en una tarea futura.
+  Future<bool> _confirmRemove(String title, String message,
+      {String confirmLabel = 'Quitar'}) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
@@ -365,7 +439,7 @@ class _MyBusinessViewState extends State<MyBusinessView> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(c, true),
-            child: Text('Quitar',
+            child: Text(confirmLabel,
                 style: TextStyle(color: Theme.of(c).colorScheme.error)),
           ),
         ],
@@ -568,6 +642,8 @@ class _MyBusinessViewState extends State<MyBusinessView> {
         ..._itemsOrEmpty(widget.productos, 'Aún no tienes productos.'),
         const SectionHeader(text: 'SERVICIOS'),
         ..._itemsOrEmpty(widget.servicios, 'Aún no tienes servicios.'),
+        const SectionHeader(text: 'PAQUETES'),
+        ..._packagesOrAdd(widget.paquetes),
         const SectionHeader(text: 'TRABAJOS'),
         if (widget.trabajos.isEmpty)
           const _EmptyLine(text: 'Aún no tienes trabajos en tu portafolio.')
@@ -631,6 +707,35 @@ class _MyBusinessViewState extends State<MyBusinessView> {
         '¿Eliminar de tu tienda?', 'Esta acción no se puede deshacer.');
     if (!ok || !mounted) return;
     await widget.onDeleteItem?.call(item);
+  }
+
+  /// Paquetes propios + la fila «+ Añadir paquete» al final, SIEMPRE (Task
+  /// 7) — a diferencia de PRODUCTOS/SERVICIOS (que solo muestran un aviso de
+  /// texto cuando están vacíos), la sección de paquetes ofrece la alta
+  /// directo ahí mismo porque no hay un chooser compartido que la cubra.
+  List<Widget> _packagesOrAdd(List<Map<String, dynamic>> paquetes) => [
+        for (final p in paquetes)
+          _PackageTile(
+            item: p,
+            onTap: widget.onEditPackage == null
+                ? null
+                : () => widget.onEditPackage!(p),
+            onLongPress: widget.onDeletePackage == null
+                ? null
+                : () => _confirmDeletePackage(p),
+          ),
+        if (widget.onAddPackage != null)
+          _AddPackageTile(onTap: () => widget.onAddPackage!.call()),
+      ];
+
+  /// Borrado PERMANENTE de un paquete — el botón dice 'Eliminar', no
+  /// 'Quitar' (constraint explícita de la Task 7).
+  Future<void> _confirmDeletePackage(Map<String, dynamic> item) async {
+    final ok = await _confirmRemove(
+        '¿Eliminar este paquete?', 'Esta acción no se puede deshacer.',
+        confirmLabel: 'Eliminar');
+    if (!ok || !mounted) return;
+    await widget.onDeletePackage?.call(item);
   }
 
   /// Categoría y ciudad en UNA línea bajo el nombre, como la web en móvil.
@@ -791,6 +896,84 @@ class _PortfolioTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w600)),
         ),
+      ]),
+    );
+  }
+}
+
+/// Paquete/plan propio en el escaparate: foto + nombre + precio. Tocar abre
+/// el editor con la fila; mantener presionado pide confirmar el borrado
+/// (Task 7). Mismo molde visual que [_PortfolioTile], con precio.
+class _PackageTile extends StatelessWidget {
+  const _PackageTile({required this.item, this.onTap, this.onLongPress});
+  final Map<String, dynamic> item;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final img = item['image_url'] as String?;
+    final price = item['price'] as num?;
+    return JayaloCard(
+      padding: const EdgeInsets.all(10),
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Row(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: img == null || img.isEmpty
+              ? Container(
+                  width: 56,
+                  height: 56,
+                  color: cs.surfaceContainerHighest,
+                  child: Icon(Icons.inventory_2_outlined,
+                      color: cs.onSurfaceVariant, size: 22),
+                )
+              : Image.network(img, width: 56, height: 56, fit: BoxFit.cover),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(item['name'] as String? ?? '',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Text(price == null ? 'Consultar precio' : fmtRD(price),
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700, color: cs.primary)),
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// «+ Añadir paquete» — mismo tratamiento visual que `_AboutCard`/
+/// `_ServicesCard` en su estado vacío: fila con ícono `+` y texto en el color
+/// primario. Va SIEMPRE al final de la sección PAQUETES, con o sin paquetes.
+class _AddPackageTile extends StatelessWidget {
+  const _AddPackageTile({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return JayaloCard(
+      onTap: onTap,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.add, size: 18, color: cs.primary),
+        const SizedBox(width: 6),
+        Text('Añadir paquete',
+            style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: cs.primary)),
       ]),
     );
   }

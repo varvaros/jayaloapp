@@ -1673,7 +1673,16 @@ Future<String> uploadOfferImage(String filePath) =>
 
 final _rand = Random();
 
-Future<String> _uploadMarketplaceImage(String filePath, String kind) async {
+Future<String> _uploadMarketplaceImage(
+  String filePath,
+  String kind, {
+  // Bucket destino. Todas las fotos del marketplace comparten el bucket
+  // público `business-logos` — [uploadPackageImage] (Task 7) es la primera
+  // excepción, porque la web ya sube los paquetes a `provider-products`
+  // (`PackageEditorDialog.tsx:123`) y no hay motivo para abrir un bucket
+  // nuevo cuando ese ya existe y es público.
+  String bucket = 'business-logos',
+}) async {
   final uid = supa.auth.currentUser!.id;
   final dot = filePath.lastIndexOf('.');
   final ext =
@@ -1683,13 +1692,13 @@ Future<String> _uploadMarketplaceImage(String filePath, String kind) async {
   final rand = _rand.nextInt(1 << 31).toRadixString(16);
   final path = '$uid/$kind/${DateTime.now().millisecondsSinceEpoch}-$rand.$ext';
   await supa.storage
-      .from('business-logos')
+      .from(bucket)
       .upload(
         path,
         File(filePath),
         fileOptions: FileOptions(contentType: _imageContentType(ext)),
       );
-  return supa.storage.from('business-logos').getPublicUrl(path);
+  return supa.storage.from(bucket).getPublicUrl(path);
 }
 
 String _imageContentType(String ext) => switch (ext) {
@@ -2790,6 +2799,69 @@ Future<void> savePortfolioItem({
     'image_urls': imageUrls,
   });
 }
+
+// ── Mi tienda: paquetes (Task 7, 2026-08-09) ────────────────────────────────
+// Espejo de `provider_packages` / `PackageEditorDialog.tsx` de la web, sin
+// `is_featured` ("Más popular"): el brief de esta tarea no pidió ese slot —
+// alta/edición/borrado básicos del paquete, mismo trato que el resto de "Mi
+// negocio" (edición limitada en la app, V2 completa en la web).
+
+const packageCols =
+    'id,business_id,name,description,price,items,image_url,created_at';
+
+/// Paquetes/planes del propio negocio, más recientes primero.
+Future<List<Map<String, dynamic>>> myPackages(String businessId) async =>
+    List<Map<String, dynamic>>.from(
+      await supa
+          .from('provider_packages')
+          .select(packageCols)
+          .eq('business_id', businessId)
+          .order('created_at', ascending: false)
+          .limit(100),
+    );
+
+/// Alta o edición de un paquete propio (RLS: dueño). `id` nulo → INSERT;
+/// con `id` → UPDATE. La tabla exige `user_id` NOT NULL en el insert — la web
+/// lo manda explícito (`PackageEditorDialog.tsx:147`), así que aquí también
+/// (mismo criterio que [savePortfolioItem]/[saveProductToStore], en vez de
+/// confiar en un default de columna que la tabla podría no tener).
+Future<void> savePackage({
+  String? id,
+  required String businessId,
+  required String name,
+  String description = '',
+  double? price,
+  required List<String> items,
+  String? imageUrl,
+}) async {
+  final payload = {
+    'business_id': businessId,
+    'name': name,
+    'description': description,
+    'price': price,
+    'items': items,
+    'image_url': imageUrl,
+  };
+  if (id == null) {
+    final uid = supa.auth.currentUser!.id;
+    await supa.from('provider_packages').insert({'user_id': uid, ...payload});
+  } else {
+    await supa.from('provider_packages').update(payload).eq('id', id);
+  }
+}
+
+/// Borra un paquete propio (RLS: dueño) — "mantener presionado → Eliminar"
+/// (Task 7, "Mi negocio").
+Future<void> deletePackage(String id) =>
+    supa.from('provider_packages').delete().eq('id', id);
+
+/// Foto de un paquete/plan → bucket `provider-products` (Task 7, espejo de
+/// `PackageEditorDialog.tsx:121`: `${user.id}/packages/${uuid}`). El
+/// rand-hex de [_uploadMarketplaceImage] cumple el mismo papel que el
+/// `crypto.randomUUID()` de la web — mismo objetivo (nombre único), otra
+/// fuente de aleatoriedad.
+Future<String> uploadPackageImage(String filePath) =>
+    _uploadMarketplaceImage(filePath, 'packages', bucket: 'provider-products');
 
 /// category_id (slug) + un rubro (NOMBRE) del negocio, para prefijar el
 /// guardado en tienda: `provider_products` exige ambos NOT NULL y la oferta no
