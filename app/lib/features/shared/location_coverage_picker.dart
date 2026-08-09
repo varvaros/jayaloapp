@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/locations.dart';
+import 'searchable_picker.dart';
 
 const kAllSectorsLabel = '🗺️ Todos los sectores';
 
@@ -158,6 +159,12 @@ class LocationCoveragePicker extends StatelessWidget {
 
   /// Desplegable que agrega (no que selecciona): al elegir, el valor pasa a
   /// los chips de abajo y sale de la lista.
+  ///
+  /// [SearchablePickerField] (pedido PO 2026-08-08): buscador + alfabético.
+  /// De paso murió el gotcha del `_DropdownButtonFormFieldState` retenido (la
+  /// key por opciones): la hoja no retiene selección, es un "adder" nativo.
+  /// «🗺️ Todos los sectores» viaja FIJADO arriba: es una acción, no una
+  /// opción más que ordenar por la T.
   Widget _adder(
     BuildContext context, {
     required String hint,
@@ -165,39 +172,28 @@ class LocationCoveragePicker extends StatelessWidget {
     required ValueChanged<String> onPick,
   }) {
     final cs = Theme.of(context).colorScheme;
-    return DropdownButtonFormField<String>(
-      // Sin key, Flutter reutiliza el mismo _DropdownButtonFormFieldState
-      // entre rebuilds (mismo tipo y posicion en el arbol) y ese estado
-      // retiene el ultimo valor elegido — pero el item elegido siempre sale
-      // de `options` en el siguiente build (es un "agregar", no un
-      // "seleccionar"), asi que el valor retenido deja de estar en `items`
-      // y DropdownButtonFormField lanza "exactly one item". La key cambia
-      // cada vez que `options` cambia, forzando a Flutter a descartar el
-      // estado viejo en vez de reusarlo, con lo que el valor retenido nunca
-      // sobrevive a un rebuild con opciones distintas.
-      //
-      // `hint` entra en la key ademas de `options`: los tres _adder (pais,
-      // provincia, sector) son hermanos en el mismo Column, y con listas de
-      // opciones vacias (p. ej. al montar, antes de elegir nada) `options`
-      // coincide entre mas de uno — `Object.hashAll(const [])` es el mismo
-      // valor siempre — lo que producia keys duplicadas entre hermanos.
-      key: ValueKey('$hint:${Object.hashAll(options)}'),
-      initialValue: null,
-      isExpanded: true,
+    return SearchablePickerField(
+      hint: hint,
+      items: [
+        for (final o in options)
+          if (o != kAllSectorsLabel) PickerItem(o, o),
+      ],
+      pinned: [
+        if (options.contains(kAllSectorsLabel))
+          const PickerItem(kAllSectorsLabel, kAllSectorsLabel),
+      ],
+      enabled: options.isNotEmpty,
+      onPick: onPick,
       decoration: InputDecoration(
         labelText: hint,
         filled: true,
         fillColor: cs.surfaceContainerHighest,
+        suffixIcon: const Icon(Icons.expand_more),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
         ),
       ),
-      items: [
-        for (final o in options)
-          DropdownMenuItem(value: o, child: Text(o, overflow: TextOverflow.ellipsis)),
-      ],
-      onChanged: options.isEmpty ? null : (v) => v == null ? null : onPick(v),
     );
   }
 

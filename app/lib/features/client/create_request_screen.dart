@@ -28,6 +28,7 @@ import '../shell/floating_nav_bar.dart';
 import '../verification/verify_banner.dart';
 import 'request_success_view.dart';
 import '../shared/brand_kit.dart';
+import '../shared/searchable_picker.dart';
 import '../shared/violet_header.dart';
 import '../shared/onboarding_guide.dart';
 import '../shared/onboarding_copy.dart';
@@ -1530,42 +1531,27 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// Desplegable que AGREGA (no que selecciona): al elegir, el rubro sube a las
   /// fichas de arriba ya marcado y sale de la lista.
   ///
-  /// ⚠️ La `key` DEBE cambiar con las opciones. Sin ella Flutter reutiliza el
-  /// `_DropdownButtonFormFieldState`, que retiene el último valor elegido — y
-  /// ese valor ya no está en `items` en el rebuild siguiente, con lo que
-  /// `DropdownButtonFormField` lanza "exactly one item". Mismo patrón y misma
-  /// razón que el `_adder` de `shared/location_coverage_picker.dart`.
+  /// [SearchablePickerField] (pedido PO 2026-08-08): buscador + alfabético.
+  /// De paso murió el gotcha de la `key` por opciones: la hoja no retiene
+  /// selección, así que no hay `_DropdownButtonFormFieldState` que purgar.
   Widget _rubroDropdown(
     ColorScheme cs,
     List<String> opciones,
     Map<String, String> names,
-  ) => DropdownButtonFormField<String>(
-    key: ValueKey('rubro-adder:${Object.hashAll(opciones)}'),
-    initialValue: null,
-    isExpanded: true,
+  ) => SearchablePickerField(
+    hint: 'Añadir otro rubro…',
+    items: [for (final id in opciones) PickerItem(id, _rubroLabel(id, names))],
+    onPick: (v) => setState(() => _selectedRubros.add(v)),
     decoration: InputDecoration(
       labelText: 'Añadir otro rubro…',
       filled: true,
       fillColor: cs.surfaceContainerHighest,
+      suffixIcon: const Icon(Icons.expand_more),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
       ),
     ),
-    items: [
-      for (final id in opciones)
-        DropdownMenuItem(
-          value: id,
-          child: Text(
-            _rubroLabel(id, names),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-    ],
-    onChanged: (v) {
-      if (v == null) return;
-      setState(() => _selectedRubros.add(v));
-    },
   );
 
   /// Salida de emergencia cuando la IA no dejó categorías: elegir una a mano

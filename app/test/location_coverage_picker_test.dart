@@ -201,32 +201,31 @@ void main() {
   });
 
   testWidgets(
-      'elegir provincias una por una, por nombre, no lanza la excepcion de '
-      'DropdownButtonFormField y sobrevive a picks repetidos', (tester) async {
-    // Regresion: `_adder` reutilizaba el mismo _DropdownButtonFormFieldState
-    // entre rebuilds (sin key) porque es el mismo tipo en la misma posicion
-    // del arbol. Ese estado retiene el value recien elegido, pero el item
-    // elegido SIEMPRE sale de `options` en el siguiente build (es un
-    // "agregar", no un "seleccionar"): el value retenido deja de estar en
-    // `items` y `DropdownButtonFormField` lanza "exactly one item". Esto
-    // pasaba con CUALQUIER provincia o sector individual — el gesto normal,
-    // no un caso raro — y ningun test anterior lo ejercitaba: todos preseteaban
-    // las listas sin tocar el desplegable, o usaban el atajo "Todos los
-    // sectores", que deja `options` vacio y evita el choque por otra via.
+      'elegir provincias una por una, buscando, sobrevive a picks repetidos',
+      (tester) async {
+    // Antes esto ejercitaba el gotcha del `_DropdownButtonFormFieldState`
+    // retenido ("exactly one item"); con la hoja de busqueda ese estado no
+    // existe, pero el COMPORTAMIENTO que fijaba sigue vigente: dos picks
+    // seguidos funcionan y el elegido sale de las opciones. Se busca en
+    // minusculas y sin la tilde a proposito: es la promesa del buscador.
+    // (Con el orden alfabetico, "Distrito Nacional" ya no esta arriba: sin
+    // buscador el tap caeria fuera del viewport de la hoja.)
     final ciudades = citiesFor(kCountries.first);
-    final a = ciudades[0];
-    final b = ciudades[1];
+    final a = ciudades[0]; // Distrito Nacional
+    final b = ciudades[1]; // Santo Domingo
     await montar(tester);
     await tester.tap(find.text('Provincia'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'distrito');
     await tester.pumpAndSettle();
     await tester.tap(find.text(a));
     await tester.pumpAndSettle();
     expect(provincias, [a]);
     expect(find.widgetWithText(Chip, a), findsOneWidget);
-    // Segunda provincia individual: si la key no cambiara con `options`, el
-    // desplegable seguiria cargando el _value_ retenido de `a` y esta
-    // segunda seleccion repetiria la misma excepcion.
+    // Segundo pick: la hoja se vuelve a abrir limpia, sin retener nada.
     await tester.tap(find.text('Provincia'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'santo domingo');
     await tester.pumpAndSettle();
     await tester.tap(find.text(b));
     await tester.pumpAndSettle();
@@ -234,14 +233,16 @@ void main() {
     expect(find.widgetWithText(Chip, b), findsOneWidget);
   });
 
-  testWidgets(
-      'elegir un sector individual (no "Todos"), por nombre, no lanza la '
-      'excepcion de DropdownButtonFormField', (tester) async {
+  testWidgets('elegir un sector individual (no "Todos") buscando funciona',
+      (tester) async {
     final una = citiesFor(kCountries.first).first;
-    final sectorElegido = sectorsFor(kCountries.first, una).first;
+    final sectorElegido = sectorsFor(kCountries.first, una).first; // Naco
     provincias = [una];
     await montar(tester);
     await tester.tap(find.text('Sector (opcional)'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byType(TextField), sectorElegido.toLowerCase());
     await tester.pumpAndSettle();
     await tester.tap(find.text(sectorElegido));
     await tester.pumpAndSettle();

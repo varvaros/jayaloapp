@@ -14,8 +14,10 @@ import '../../domain/catalog.dart';
 import '../../domain/locations.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
+import '../../domain/search_fold.dart';
 import '../shared/brand_kit.dart';
 import '../shared/location_coverage_picker.dart';
+import '../shared/searchable_picker.dart';
 import '../shared/violet_header.dart';
 
 /// Alta de proveedor (spec §7): pasos que SOLO recolectan; la única escritura
@@ -211,8 +213,11 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
               DropdownButtonFormField<String>(
                 initialValue: catId,
                 decoration: const InputDecoration(labelText: 'Categoría'),
+                // Máx. 2 categorías por negocio: dropdown plano (un buscador
+                // aquí sería ruido), pero en alfabético como todo lo demás.
                 items: [
-                  for (final id in _categories)
+                  for (final id in ([..._categories]
+                    ..sort((a, b) => compareFolded(_catName(a), _catName(b)))))
                     DropdownMenuItem(value: id, child: Text(_catName(id))),
                 ],
                 onChanged: (v) => setLocal(() => catId = v ?? catId),
@@ -677,6 +682,10 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       style: TextStyle(
           fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant));
 
+  // [SearchablePickerField] (pedido PO 2026-08-08): los rubros de una
+  // categoría pueden ser decenas — buscador + alfabético (el `.order('name')`
+  // del servidor depende de la collation; el orden final lo garantiza el
+  // picker). El contenedor conserva el look del DropdownButton anterior.
   Widget _dropdownAdder({
     required String hint,
     required List<({String id, String name})> options,
@@ -686,28 +695,22 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   }) {
     final cs = Theme.of(context).colorScheme;
     final available = options.where((o) => !selected.contains(o.id)).toList();
-    final off = !enabled || available.isEmpty;
     return Container(
       height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      alignment: Alignment.center,
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          isExpanded: true,
-          value: null,
-          hint: Text(hint,
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 15)),
-          icon: const Icon(Icons.expand_more),
-          items: [
-            for (final o in available)
-              DropdownMenuItem(
-                  value: o.id,
-                  child: Text(o.name, overflow: TextOverflow.ellipsis)),
-          ],
-          onChanged: off ? null : (v) => v == null ? null : onAdd(v),
+      child: SearchablePickerField(
+        hint: hint,
+        items: [for (final o in available) PickerItem(o.id, o.name)],
+        enabled: enabled,
+        onPick: onAdd,
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(horizontal: 14),
+          suffixIcon: Icon(Icons.expand_more),
         ),
       ),
     );
