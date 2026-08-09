@@ -51,9 +51,9 @@ typedef StoreProfile = ({
   /// verificado", "WhatsApp verificado") para la portada.
   List<String> seals,
 
-  /// Chips de servicios del negocio (Task 2, editable desde la app). Lista
-  /// vacía mientras la migración de `provider_businesses.services` no esté
-  /// aplicada en prod — ver `_businessServicesById` en `repos.dart`.
+  /// Chips de servicios del negocio (Task 2, editable desde la app) —
+  /// `provider_businesses.services`, leída en el select principal de
+  /// `myBusinessProfile` en `repos.dart`.
   List<String> services,
 
   /// La fila cruda de `provider_businesses`, para `BusinessDetailsCard`: las

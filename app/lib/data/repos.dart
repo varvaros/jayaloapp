@@ -2329,7 +2329,8 @@ myBusinessProfile() async {
         'id,name,logo_url,cover_url,business_verified_at,identity_verified_at,'
         'whatsapp_verified_at,category_id,city,is_wholesale,description,'
         'business_type,experience_years,founded_year,employees_count,'
-        'service_area,service_hours,languages,payment_methods,warranty',
+        'service_area,service_hours,languages,payment_methods,warranty,'
+        'services',
       )
       .eq('user_id', uid)
       .limit(1)
@@ -2351,45 +2352,9 @@ myBusinessProfile() async {
     wholesale: biz['is_wholesale'] == true,
     description: (desc != null && desc.isNotEmpty) ? desc : null,
     seals: verificationSealsFrom(biz),
-    services: await _businessServicesById(biz['id'] as String),
+    services: (biz['services'] as List?)?.cast<String>() ?? const [],
     raw: biz,
   );
-}
-
-/// `true` si el error de Postgrest es "la columna `services` no existe"
-/// (42703 = `undefined_column`, o el mensaje la nombra explícitamente) — el
-/// ÚNICO caso que [_businessServicesById] debe tragar mientras la migración
-/// de Task 1 no esté aplicada en prod. Pura y testeable a propósito:
-/// cualquier otro error (timeout de red, token vencido, RLS) debe propagar,
-/// no disfrazarse de "negocio sin chips".
-bool isMissingServicesColumnError(PostgrestException e) {
-  if (e.code == '42703') return true;
-  final msg = e.message.toLowerCase();
-  return msg.contains('column') && msg.contains('services');
-}
-
-// TODO(tarea-11): plegar `services` a los selects principales de arriba
-// (`myBusinessProfile` y `businessPublicIdentity`) y borrar esta función una
-// vez la migración de Task 1 (`provider_businesses.services text[]`) esté
-// aplicada en prod. Hasta entonces, pedirla en el select principal rompería
-// esos métodos enteros con un error de columna inexistente — se aísla en un
-// select aparte, tolerante SOLO a ese error. `services` es de lectura
-// pública (mismos grants por columna que el resto de la ficha), así que la
-// misma consulta sirve tanto para el negocio propio como para el ajeno
-// (Task 5, 2026-08-09) — no hizo falta duplicarla.
-Future<List<String>> _businessServicesById(String businessId) async {
-  try {
-    final row = await supa
-        .from('provider_businesses')
-        .select('services')
-        .eq('id', businessId)
-        .limit(1)
-        .maybeSingle();
-    return (row?['services'] as List?)?.cast<String>() ?? const [];
-  } on PostgrestException catch (e) {
-    if (isMissingServicesColumnError(e)) return const [];
-    rethrow;
-  }
 }
 
 /// Los tres sellos de verificación resueltos a ETIQUETA, en el orden de la web
@@ -2513,8 +2478,9 @@ Future<String?> providerBusinessType(String businessId) async {
 /// igual que la propia sin abrir ni un permiso nuevo.
 ///
 /// `services` (Task 5, 2026-08-09) sigue el mismo trato: chips de servicios
-/// del negocio, de lectura pública, con el fallback tolerante de
-/// [_businessServicesById] mientras la migración de Task 1 no esté en prod.
+/// del negocio, de lectura pública — viene en el mismo select principal
+/// (Task 1: `provider_businesses.services text[]` ya aplicada en prod), sin
+/// un segundo viaje a la red.
 typedef BusinessIdentity = ({
   String name,
   String? logoUrl,
@@ -2529,7 +2495,7 @@ Future<BusinessIdentity?> businessPublicIdentity(String businessId) async {
       .select(
         'name,logo_url,cover_url,is_wholesale,business_type,experience_years,'
         'founded_year,employees_count,service_area,service_hours,languages,'
-        'payment_methods,warranty,category_id,city',
+        'payment_methods,warranty,category_id,city,services',
       )
       .eq('id', businessId)
       .maybeSingle();
@@ -2542,7 +2508,7 @@ Future<BusinessIdentity?> businessPublicIdentity(String businessId) async {
         : 'Proveedor',
     logoUrl: (logo != null && logo.isNotEmpty) ? logo : null,
     coverUrl: (cover != null && cover.isNotEmpty) ? cover : null,
-    services: await _businessServicesById(businessId),
+    services: (row['services'] as List?)?.cast<String>() ?? const [],
     raw: row,
   );
 }
@@ -2607,70 +2573,17 @@ Future<Map<String, BusinessCardInfo>> businessesCardInfo(
 const storeProductCols =
     'id,name,description,color,price,price_min,price_max,image_urls,'
     'category_id,rubro,kind,condition,offers_shipping,offers_installation,'
-    'requires_evaluation,brand,warranty';
-
-/// `true` si el error de Postgrest es "la columna `offer_defaults` no
-/// existe" (42703 = `undefined_column`, o el mensaje la nombra) — el ÚNICO
-/// caso que [myStoreProducts]/[saveProductToStore]/[updateStoreItem] deben
-/// tragar mientras la migración `20260809120001_products_offer_defaults.sql`
-/// (Task 6) no esté aplicada en prod. Mismo criterio que
-/// [isMissingServicesColumnError]: cualquier otro error (red, RLS, token)
-/// debe propagar.
-bool isMissingOfferDefaultsColumnError(PostgrestException e) {
-  if (e.code == '42703') return true;
-  final msg = e.message.toLowerCase();
-  return msg.contains('column') && msg.contains('offer_defaults');
-}
-
-/// Escribe `payload` con [write] y, si revienta por columna `offer_defaults`
-/// faltante, reintenta UNA vez sin esa clave — mismo molde de fallback para
-/// el INSERT de [saveProductToStore] y el UPDATE de [updateStoreItem]
-/// (hallazgo de revisión, Fix round 1: antes solo el insert tenía este
-/// fallback y el 100% de las ediciones con molde reventaban hasta aplicar la
-/// migración). Puro en el sentido de que no sabe nada de Supabase — [write]
-/// es lo único que toca la red, así que un doble que lance 42703 la primera
-/// vez basta para probarlo sin Supabase inicializado.
-@visibleForTesting
-Future<void> withOfferDefaultsFallback(
-  Map<String, dynamic> payload,
-  Future<void> Function(Map<String, dynamic> payload) write,
-) async {
-  try {
-    await write(payload);
-  } on PostgrestException catch (e) {
-    if (!payload.containsKey('offer_defaults') ||
-        !isMissingOfferDefaultsColumnError(e)) {
-      rethrow;
-    }
-    final retry = Map<String, dynamic>.from(payload)..remove('offer_defaults');
-    await write(retry);
-  }
-}
+    'requires_evaluation,brand,warranty,offer_defaults';
 
 /// Todos los productos y servicios del propio negocio, más recientes primero.
 /// Se separan por kind en la UI con [partitionStoreItems].
 ///
-/// Pide `offer_defaults` (Task 6: molde de oferta que escribe el editor de
-/// ítem de tienda) además de [storeProductCols]. Tolerante: mientras la
-/// migración no esté en prod, ese primer `select` revienta 42703 y se
-/// reintenta SIN la columna — más simple que un select aparte por ids,
-/// porque la lista completa es la unidad natural de esta lectura (no hay
-/// "algunos productos sí la traen, otros no"). TODO(tarea-11): plegar
-/// `offer_defaults` a [storeProductCols] y borrar el catch una vez la
-/// migración esté aplicada en prod.
-Future<List<Map<String, dynamic>>> myStoreProducts(String businessId) async {
-  try {
-    return List<Map<String, dynamic>>.from(
-      await supa
-          .from('provider_products')
-          .select('$storeProductCols,offer_defaults')
-          .eq('business_id', businessId)
-          .order('created_at', ascending: false)
-          .limit(200),
-    );
-  } on PostgrestException catch (e) {
-    if (!isMissingOfferDefaultsColumnError(e)) rethrow;
-    return List<Map<String, dynamic>>.from(
+/// Incluye `offer_defaults` (Task 6: molde de oferta que escribe el editor de
+/// ítem de tienda) en [storeProductCols] — select directo, sin fallback:
+/// la migración `20260809120001_products_offer_defaults.sql` ya está
+/// aplicada en prod.
+Future<List<Map<String, dynamic>>> myStoreProducts(String businessId) async =>
+    List<Map<String, dynamic>>.from(
       await supa
           .from('provider_products')
           .select(storeProductCols)
@@ -2678,8 +2591,6 @@ Future<List<Map<String, dynamic>>> myStoreProducts(String businessId) async {
           .order('created_at', ascending: false)
           .limit(200),
     );
-  }
-}
 
 /// Trabajos anteriores (portafolio) del propio negocio — para "Cargar trabajos
 /// anteriores" en la oferta. Mismo modelo que la web (`provider_portfolio_items`).
@@ -2750,25 +2661,17 @@ Future<void> saveProductToStore({
     if (offerDefaults != null && offerDefaults.isNotEmpty)
       'offer_defaults': offerDefaults,
   };
-  await withOfferDefaultsFallback(
-    row,
-    (p) => supa.from('provider_products').insert(p),
-  );
+  await supa.from('provider_products').insert(row);
 }
 
 /// Edita un producto/servicio propio (RLS: dueño) — editor de ítem de tienda
 /// (Task 6, "Mi negocio" → tocar una tarjeta propia). `payload` ya viene
 /// armado por quien llama (mismas columnas que [saveProductToStore], más
-/// `offer_defaults`); aquí no se interpreta, salvo el mismo fallback
-/// tolerante que [saveProductToStore] (Fix round 1 de revisión: sin esto,
-/// CUALQUIER edición con `offer_defaults` en el payload — que es casi
-/// siempre, `pricing_mode` va siempre — reventaba entera mientras la
-/// migración de la Task 6 no estuviera en prod).
+/// `offer_defaults`); aquí no se interpreta. Escritura directa: la migración
+/// `20260809120001_products_offer_defaults.sql` (Task 6) ya está aplicada en
+/// prod.
 Future<void> updateStoreItem(String id, Map<String, dynamic> payload) =>
-    withOfferDefaultsFallback(
-      payload,
-      (p) => supa.from('provider_products').update(p).eq('id', id),
-    );
+    supa.from('provider_products').update(payload).eq('id', id);
 
 /// Borra un producto/servicio propio (RLS: dueño) — "mantener presionada →
 /// Eliminar de tu tienda" (Task 6).
