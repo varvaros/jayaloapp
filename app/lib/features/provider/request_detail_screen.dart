@@ -19,6 +19,7 @@ import '../../domain/offer_message.dart';
 import '../../domain/pricing.dart';
 import '../../domain/finalist_slots.dart';
 import '../../domain/request_requirements.dart';
+import '../../domain/store_product_prefill.dart';
 import '../shared/request_requirement_badges.dart';
 import '../shared/celebration.dart';
 import '../shared/collapsing_photo_panel.dart';
@@ -646,34 +647,62 @@ class _ProviderRequestDetailScreenState
     );
   }
 
-  /// Autocompleta el formulario con los datos de un producto de la tienda.
+  /// Autocompleta el formulario con los datos de un producto/servicio de la
+  /// tienda: precio/color/condición/booleanos de siempre, MÁS el molde
+  /// completo (Task 9: marca, garantía, entrega, colores, precios de
+  /// envío/instalación/evaluación y, si es servicio, modo de precio + tarifa
+  /// + horas + disponibilidad + duración) cuando el ítem trae
+  /// `offer_defaults` (Task 6). El cálculo es puro
+  /// ([computeStoreProductPrefill], `domain/store_product_prefill.dart`) para
+  /// poder probarlo sin montar esta pantalla (que exige una sesión de
+  /// Supabase real desde `initState`); aquí solo se vuelca el resultado a los
+  /// controllers.
   void _applyStoreProduct(Map<String, dynamic> p) {
+    final prefill = computeStoreProductPrefill(
+      p,
+      isService: _isService,
+      svcModes: _svcModes,
+      existingColors: _colors,
+    );
     setState(() {
-      final price = p['price'] as num?;
-      final min = p['price_min'] as num?;
-      final max = p['price_max'] as num?;
-      if (price != null) {
-        _fixed = true;
-        _svcMode = 0;
-        _price.text = '$price';
-      } else if (min != null && max != null) {
-        _fixed = false;
-        _svcMode = 1;
-        _min.text = '$min';
-        _max.text = '$max';
+      if (prefill.fixed != null) _fixed = prefill.fixed!;
+      if (prefill.svcMode != null) _svcMode = prefill.svcMode!;
+      if (prefill.price != null) _price.text = prefill.price!;
+      if (prefill.priceMin != null) _min.text = prefill.priceMin!;
+      if (prefill.priceMax != null) _max.text = prefill.priceMax!;
+      _colors.addAll(prefill.colorsToAdd);
+      if (prefill.condition != null) _condition = prefill.condition!;
+      _offersShipping = prefill.offersShipping;
+      _offersInstallation = prefill.offersInstallation;
+      _requiresEvaluation = prefill.requiresEvaluation;
+      if (prefill.hourlyRate != null) _hourly.text = prefill.hourlyRate!;
+      if (prefill.estimatedHours != null) {
+        _hours.text = prefill.estimatedHours!;
       }
-      final color = (p['color'] as String?)?.trim() ?? '';
-      if (color.isNotEmpty && !_colors.contains(color)) _colors.add(color);
-      final cond = (p['condition'] as String?)?.trim();
-      if (cond == 'nuevo') _condition = 'Nuevo';
-      if (cond == 'usado') _condition = 'Usado';
-      _offersShipping = p['offers_shipping'] == true;
-      _offersInstallation = p['offers_installation'] == true;
-      _requiresEvaluation = p['requires_evaluation'] == true;
+      if (prefill.availability != null) {
+        _availability.text = prefill.availability!;
+      }
+      if (prefill.duration != null) _duration.text = prefill.duration!;
+      if (prefill.shippingPrice != null) {
+        _shipping.text = prefill.shippingPrice!;
+      }
+      if (prefill.installationPrice != null) {
+        _installation.text = prefill.installationPrice!;
+      }
+      if (prefill.evaluationPrice != null) {
+        _evaluation.text = prefill.evaluationPrice!;
+      }
+      if (prefill.brand != null) _brand.text = prefill.brand!;
+      if (prefill.warranty != null) _warranty.text = prefill.warranty!;
+      if (prefill.delivery != null) _delivery.text = prefill.delivery!;
     });
     _addKeptUrls(
         ((p['image_urls'] as List?)?.cast<String>() ?? const <String>[]));
     _toast('Datos cargados de tu tienda — edítalos si quieres.');
+    // Elegir de la tienda NO marca el formulario como sucio (spec Task 9):
+    // se recaptura la instantánea DESPUÉS de aplicar el molde, fuera del
+    // setState (igual criterio que `_prefillFromOffer`).
+    _cleanSnapshot = _formSnapshot();
   }
 
   Future<void> _submit() async {
