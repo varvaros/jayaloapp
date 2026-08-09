@@ -2347,11 +2347,23 @@ myBusinessProfile() async {
   );
 }
 
+/// `true` si el error de Postgrest es "la columna `services` no existe"
+/// (42703 = `undefined_column`, o el mensaje la nombra explícitamente) — el
+/// ÚNICO caso que [_myBusinessServices] debe tragar mientras la migración de
+/// Task 1 no esté aplicada en prod. Pura y testeable a propósito: cualquier
+/// otro error (timeout de red, token vencido, RLS) debe propagar, no
+/// disfrazarse de "negocio sin chips".
+bool isMissingServicesColumnError(PostgrestException e) {
+  if (e.code == '42703') return true;
+  final msg = e.message.toLowerCase();
+  return msg.contains('column') && msg.contains('services');
+}
+
 // TODO(tarea-11): plegar `services` al select principal de arriba y borrar
 // esta función una vez la migración de Task 1 (`provider_businesses.services
 // text[]`) esté aplicada en prod. Hasta entonces, pedirla en el select
 // principal rompería `myBusinessProfile()` entero con un error de columna
-// inexistente — se aísla en un select aparte, tolerante.
+// inexistente — se aísla en un select aparte, tolerante SOLO a ese error.
 Future<List<String>> _myBusinessServices(String businessId) async {
   try {
     final row = await supa
@@ -2361,8 +2373,9 @@ Future<List<String>> _myBusinessServices(String businessId) async {
         .limit(1)
         .maybeSingle();
     return (row?['services'] as List?)?.cast<String>() ?? const [];
-  } catch (_) {
-    return const [];
+  } on PostgrestException catch (e) {
+    if (isMissingServicesColumnError(e)) return const [];
+    rethrow;
   }
 }
 
