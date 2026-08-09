@@ -956,17 +956,21 @@ class _ServicesCard extends StatelessWidget {
   }
 }
 
-/// Tamaño de la miniatura de [_PortfolioTile]/[_PackageTile] — EL MISMO que
-/// [ProductListCard] (pedido PO 2026-08-09: PAQUETES y TRABAJOS deben verse
-/// como lista vertical tipo resumen, "como la sección PRODUCTOS", que ya usa
-/// este molde: foto grande a la izquierda, título/precio a la derecha).
-/// Antes eran 56px, visiblemente más chicas que las de PRODUCTOS al lado.
-const double _kTileThumbSize = 104;
-const double _kTileThumbRadius = kCardRadius - 6;
+/// Alto de la foto en las tarjetas VERTICALES de [_PortfolioTile] y
+/// [_PackageTile] (pedido PO 2026-08-09, tras rechazar la iteración anterior
+/// que puso una miniatura de 104x104 en fila horizontal: «sigue viéndose en
+/// una ventana horizontal. La tarjeta debe verse vertical» — ahora la foto va
+/// ARRIBA a todo el ancho de la tarjeta, con el texto debajo, "tipo resumen").
+const double _kTileImageHeight = 168;
+final BorderRadius _kTileImageRadius = BorderRadius.only(
+  topLeft: Radius.circular(kCardRadius),
+  topRight: Radius.circular(kCardRadius),
+);
 
-/// Trabajo del portafolio en el escaparate propio: miniatura + título. Tocar
-/// abre el editor con la fila; mantener presionado pide confirmar el borrado
-/// (Task 8). Mismo molde visual que [_PackageTile] y que [ProductListCard].
+/// Trabajo del portafolio en el escaparate propio: foto arriba (a todo el
+/// ancho) + título debajo. Tocar abre el editor con la fila; mantener
+/// presionado pide confirmar el borrado (Task 8). Mismo molde visual que
+/// [_PackageTile].
 class _PortfolioTile extends StatelessWidget {
   const _PortfolioTile({required this.item, this.onTap, this.onLongPress});
   final Map<String, dynamic> item;
@@ -979,27 +983,28 @@ class _PortfolioTile extends StatelessWidget {
     final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
     final img = images.isEmpty ? null : images.first;
     return JayaloCard(
-      padding: const EdgeInsets.all(10),
+      padding: EdgeInsets.zero,
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(_kTileThumbRadius),
+            borderRadius: _kTileImageRadius,
             child: img == null || img.isEmpty
                 ? _tilePlaceholder(cs, Icons.photo_outlined)
                 : JayaloNetworkImage(
                     img,
-                    width: _kTileThumbSize,
-                    height: _kTileThumbSize,
+                    width: double.infinity,
+                    height: _kTileImageHeight,
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) =>
                         _tilePlaceholder(cs, Icons.photo_outlined),
                   ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
+          Padding(
+            padding: const EdgeInsets.all(12),
             child: Text(item['title'] as String? ?? '',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -1011,10 +1016,10 @@ class _PortfolioTile extends StatelessWidget {
   }
 }
 
-/// Paquete/plan propio en el escaparate: foto + nombre + precio. Tocar abre
-/// el editor con la fila; mantener presionado pide confirmar el borrado
-/// (Task 7). Mismo molde visual que [_PortfolioTile] y que [ProductListCard],
-/// con precio.
+/// Paquete/plan propio en el escaparate: foto arriba (a todo el ancho) +
+/// nombre y precio debajo. Tocar abre el editor con la fila; mantener
+/// presionado pide confirmar el borrado (Task 7). Mismo molde visual que
+/// [_PortfolioTile], con precio.
 class _PackageTile extends StatelessWidget {
   const _PackageTile({required this.item, this.onTap, this.onLongPress});
   final Map<String, dynamic> item;
@@ -1027,27 +1032,28 @@ class _PackageTile extends StatelessWidget {
     final img = item['image_url'] as String?;
     final price = item['price'] as num?;
     return JayaloCard(
-      padding: const EdgeInsets.all(10),
+      padding: EdgeInsets.zero,
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(_kTileThumbRadius),
+            borderRadius: _kTileImageRadius,
             child: img == null || img.isEmpty
                 ? _tilePlaceholder(cs, Icons.inventory_2_outlined)
                 : JayaloNetworkImage(
                     img,
-                    width: _kTileThumbSize,
-                    height: _kTileThumbSize,
+                    width: double.infinity,
+                    height: _kTileImageHeight,
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) =>
                         _tilePlaceholder(cs, Icons.inventory_2_outlined),
                   ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
+          Padding(
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -1079,12 +1085,12 @@ class _PackageTile extends StatelessWidget {
   }
 }
 
-/// Miniatura vacía/rota de un [_PortfolioTile]/[_PackageTile]: mismo
-/// contenedor gris con ícono en ambos, factorizado tras el hallazgo M-1
-/// (revisión final) al sumarles `errorBuilder`.
+/// Foto vacía/rota de un [_PortfolioTile]/[_PackageTile]: mismo contenedor
+/// gris con ícono en ambos, a todo el ancho de la tarjeta (patrón de
+/// placeholder existente desde el hallazgo M-1, ahora vertical).
 Widget _tilePlaceholder(ColorScheme cs, IconData icon) => Container(
-      width: _kTileThumbSize,
-      height: _kTileThumbSize,
+      width: double.infinity,
+      height: _kTileImageHeight,
       alignment: Alignment.center,
       color: cs.surfaceContainerHighest,
       child: Icon(icon, color: cs.onSurfaceVariant, size: 34),

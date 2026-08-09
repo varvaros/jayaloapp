@@ -179,12 +179,14 @@ void main() {
       expect(edited, paquetes.first);
     });
 
-    // Pedido PO 2026-08-09: PAQUETES debe verse como lista vertical tipo
-    // resumen "como la sección PRODUCTOS" — que ya usa una miniatura de
-    // 104x104 (`ProductListCard`). Antes el paquete usaba 56x56.
+    // Pedido PO 2026-08-09 (segunda vuelta, tras rechazar la fila horizontal
+    // con miniatura de 104x104 — «sigue viéndose en una ventana horizontal.
+    // La tarjeta debe verse vertical»): la tarjeta de un paquete es vertical
+    // con la foto ARRIBA a todo el ancho (`width: double.infinity`) y alto
+    // fijo.
     testWidgets(
-        '(e) la miniatura del paquete usa el mismo tamaño que la de '
-        'PRODUCTOS (104x104)', (tester) async {
+        '(e) la tarjeta del paquete pinta la foto arriba, a todo el ancho',
+        (tester) async {
       final paquetes = [
         {
           'id': 'pk1',
@@ -207,8 +209,8 @@ void main() {
       await bajar(tester);
 
       final img = tester.widget<Image>(find.byType(Image).first);
-      expect(img.width, 104);
-      expect(img.height, 104);
+      expect(img.width, double.infinity);
+      expect(img.height, 168);
     });
 
     testWidgets('sin onAddPackage la fila de alta no existe', (tester) async {

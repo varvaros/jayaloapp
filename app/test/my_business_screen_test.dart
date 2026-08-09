@@ -391,12 +391,12 @@ void main() {
         find.textContaining('Aún no tienes trabajos'), findsOneWidget);
   });
 
-  // Pedido PO 2026-08-09: PAQUETES y TRABAJOS deben verse como lista vertical
-  // tipo resumen, "como la sección PRODUCTOS" — que ya usa una miniatura de
-  // 104x104 (`ProductListCard`). Antes las tarjetas de trabajos/paquetes
-  // usaban 56x56, visiblemente más chicas.
+  // Pedido PO 2026-08-09 (segunda vuelta, tras rechazar la fila horizontal
+  // con miniatura de 104x104 — «sigue viéndose en una ventana horizontal. La
+  // tarjeta debe verse vertical»): la tarjeta de un trabajo es vertical con
+  // la foto ARRIBA a todo el ancho (`width: double.infinity`) y alto fijo.
   testWidgets(
-      'la miniatura de un trabajo usa el mismo tamaño que la de PRODUCTOS (104x104)',
+      'la tarjeta de un trabajo pinta la foto arriba, a todo el ancho',
       (tester) async {
     await tester.pumpWidget(host(MyBusinessView(
       business: negocio,
@@ -418,8 +418,8 @@ void main() {
     await tester.pumpAndSettle();
 
     final img = tester.widget<Image>(find.byType(Image).first);
-    expect(img.width, 104);
-    expect(img.height, 104);
+    expect(img.width, double.infinity);
+    expect(img.height, 168);
   });
 
   testWidgets(
