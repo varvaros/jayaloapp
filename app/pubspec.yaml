@@ -94,20 +94,19 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
 
-# Ícono de la app (isotipo TV de la marca — 2026-07-21): genera el mipmap
-# legacy Y el adaptativo de Android (`dart run flutter_launcher_icons`).
-# `icon_foreground.png` es el isotipo recortado (fondo lila quitado) y
-# reescalado a ~66.6% del lienzo — la "zona segura": el launcher aplica un
-# zoom ~1.5× al drawable adaptativo, así que a 66.6% la mascota se muestra
-# A SANGRE COMPLETA (cuerpo llenando lados y base, sin márgenes laterales)
-# con las antenas intactas, sobre el fondo lila. `icon.png` es la imagen
-# plana completa, usada en el mipmap sin máscara como fallback.
+# Ícono de la app (render 3D de Jayi, imagen EXACTA del PO 2026-08-10 —
+# photo_2026-08-07_10-46-39.png; sustituye al isotipo plano del 07-21):
+# genera el mipmap legacy Y el adaptativo (`dart run flutter_launcher_icons`).
+# `icon.png` es la imagen tal cual (mipmap sin máscara). `icon_foreground.png`
+# la lleva al 68% del lienzo centrada sobre sí misma difuminada — la "zona
+# segura": el launcher zoomea ~1.5× el drawable adaptativo, así el recorte
+# muestra la imagen COMPLETA y el margen difuminado solo asoma en el parallax.
 flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/icon/icon.png"
-  # Lila del fondo del isotipo — atenuado por el PO 2026-07-23 (#E0CFE5 → #E1D5F9).
-  adaptive_icon_background: "#E1D5F9"
+  # Lila del fondo de la imagen (promedio de esquinas).
+  adaptive_icon_background: "#9976E4"
   adaptive_icon_foreground: "assets/icon/icon_foreground.png"
 
 # For information on the generic Dart part of this file, see the

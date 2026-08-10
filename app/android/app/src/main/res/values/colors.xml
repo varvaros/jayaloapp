@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#E1D5F9</color>
+    <color name="ic_launcher_background">#9976E4</color>
     <!-- Tinte del ícono pequeño de notificación: Android repinta la silueta de
          ic_stat_jayalo con este color. Es el violeta primario de la marca
          (JayaloColors.primary en lib/core/brand.dart) — mantener en paridad. -->
