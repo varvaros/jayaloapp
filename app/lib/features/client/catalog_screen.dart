@@ -293,18 +293,26 @@ class _CatalogViewState extends State<CatalogView> {
                           : null,
                     );
                   }
-                  // Lista a todo el ancho (no rejilla): cada ítem es una
-                  // "tarjeta que respira" horizontal — foto a la izquierda,
-                  // categoría + nombre + descripción + precio a la derecha. Es
-                  // el idioma del resto de la app (Mis solicitudes, etc.) y deja
-                  // ver mucho más detalle por ítem que la rejilla de 2 columnas.
-                  return ListView.builder(
+                  // Rejilla de tienda a 2 columnas (mockup aprobado PO
+                  // 2026-08-10): la foto manda y se ve el doble de artículos
+                  // por pantalla — sustituye a la lista ancha de una columna.
+                  return GridView.builder(
                     controller: _scrollController,
                     padding: EdgeInsets.only(
-                        top: 8, bottom: 12 + navBarReservedSpace(context)),
+                        left: 16,
+                        right: 16,
+                        top: 10,
+                        bottom: 12 + navBarReservedSpace(context)),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 11,
+                      mainAxisSpacing: 11,
+                      mainAxisExtent: 238,
+                    ),
                     itemCount: items.length,
                     itemBuilder: (_, i) =>
-                        ProductListCard(item: items[i]).cascadeIn(i),
+                        ProductGridCard(item: items[i]).cascadeIn(i),
                   );
                 },
               ),

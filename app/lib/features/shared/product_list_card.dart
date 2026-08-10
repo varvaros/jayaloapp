@@ -210,3 +210,156 @@ class ProductListCard extends StatelessWidget {
         child: Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
       );
 }
+
+/// Tarjeta de REJILLA del catálogo (mockup aprobado PO 2026-08-10): la foto
+/// llena el ancho de la tarjeta arriba; abajo solo lo que decide un vistazo —
+/// categoría en eyebrow violeta, nombre a 2 líneas y precio. La descripción
+/// NO viaja aquí: vive en la ficha del producto. [ProductListCard] (fila
+/// ancha) sigue siendo la de "Mi negocio"/tienda del proveedor.
+class ProductGridCard extends StatelessWidget {
+  const ProductGridCard({super.key, required this.item});
+  final Map<String, dynamic> item;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final name = item['name'] as String? ?? '';
+    final catName = categoryNameById(item['category_id'] as String?);
+    final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
+    final img = images.isEmpty ? null : images.first;
+    final avg = (item['avg_rating'] as num?)?.toDouble() ?? 0;
+    final count = (item['reviews_count'] as num?)?.toInt() ?? 0;
+
+    Widget placeholder() => Container(
+          color: cs.surfaceContainerHighest,
+          alignment: Alignment.center,
+          child:
+              Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
+        );
+
+    return JayaloCard(
+      padding: EdgeInsets.zero,
+      margin: EdgeInsets.zero,
+      // Solo vive en el catálogo (shell): misma ruta que la fila ancha.
+      onTap: () => GoRouter.of(context).push('/catalog/${item['id']}'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(kCardRadius)),
+            child: SizedBox(
+              height: 118,
+              child: img == null
+                  ? placeholder()
+                  : JayaloNetworkImage(
+                      img,
+                      fit: BoxFit.cover,
+                      frameBuilder: (_, child, frame, wasSync) => wasSync
+                          ? child
+                          : AnimatedOpacity(
+                              opacity: frame == null ? 0 : 1,
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOut,
+                              child: child,
+                            ),
+                      errorBuilder: (_, _, _) => placeholder(),
+                    ),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (catName != null) ...[
+                    Text(catName.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.1,
+                            color: cs.primary)),
+                    const SizedBox(height: 3),
+                  ],
+                  Text(name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 13.5,
+                          height: 1.3,
+                          fontWeight: FontWeight.w600,
+                          color: jayaloHead(context))),
+                  if (avg > 0 && count > 0) ...[
+                    const SizedBox(height: 3),
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.star_rounded,
+                          size: 13, color: Color(0xFFF5A623)),
+                      const SizedBox(width: 3),
+                      Text('${avg.toStringAsFixed(1)} ($count)',
+                          style: TextStyle(
+                              fontSize: 11, color: cs.onSurfaceVariant)),
+                    ]),
+                  ],
+                  const Spacer(),
+                  _gridPrice(cs),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Precio compacto de la rejilla — misma semántica que [_priceLine] de la
+  /// fila ancha (fijo / rango / "desde" / "Consultar precio"), a 16px.
+  Widget _gridPrice(ColorScheme cs) {
+    final price = item['price'] as num?;
+    final min = item['price_min'] as num?;
+    final max = item['price_max'] as num?;
+    final big = TextStyle(
+      fontSize: 16,
+      height: 1,
+      fontWeight: FontWeight.w700,
+      color: cs.primary,
+      letterSpacing: -.2,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    if (price == null && min == null) {
+      return Text('Consultar precio',
+          maxLines: 1,
+          style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurfaceVariant));
+    }
+    final Widget line;
+    if (price != null) {
+      line = Text(fmtRD(price), maxLines: 1, style: big);
+    } else if (max != null) {
+      line = Text('${fmtRD(min)} - ${fmtRD(max)}', maxLines: 1, style: big);
+    } else {
+      line = Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Text('desde ',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurfaceVariant)),
+          Text(fmtRD(min), style: big),
+        ],
+      );
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: FittedBox(
+          fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: line),
+    );
+  }
+}

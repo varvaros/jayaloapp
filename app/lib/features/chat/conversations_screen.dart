@@ -575,36 +575,63 @@ class _ConversationRow extends StatelessWidget {
                     // siempre. Jerarquía: nombre > asunto > mensaje.
                     if (subject.isNotEmpty) ...[
                       const SizedBox(height: 2),
+                      // Asunto · precio EN VIOLETA (mockup aprobado PO
+                      // 2026-08-10): la segunda línea entera es "qué se
+                      // negocia", el precio solo sube el peso.
                       Text.rich(
                           TextSpan(children: [
                             TextSpan(text: subject),
                             if (price.isNotEmpty)
                               TextSpan(
                                   text: price,
-                                  style: TextStyle(
-                                      color: cs.primary,
-                                      fontWeight: FontWeight.w700)),
+                                  style:
+                                      const TextStyle(fontWeight: FontWeight.w700)),
                           ]),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                               fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: fg)),
+                              fontWeight: FontWeight.w500,
+                              color: cs.primary)),
                     ],
                     const SizedBox(height: 2),
-                    Text(
-                        c['last_kind'] == null
-                            ? 'Sin mensajes aún'
-                            : messagePreview(c['last_kind'] as String,
-                                c['last_body'] as String? ?? ''),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: muted,
-                            fontWeight:
-                                tinted ? FontWeight.w500 : FontWeight.normal)),
+                    // El aviso del cron de inactividad NO es un preview: va
+                    // como chip ámbar compacto y deja de comerse el último
+                    // mensaje real (mockup aprobado PO 2026-08-10).
+                    if (c['last_kind'] != null &&
+                        isInactivityWarning(c['last_body'] as String? ?? ''))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 9, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFB47A1D)
+                                .withValues(alpha: .16),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text('⏳ Se cierra pronto por inactividad',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFFB47A1D))),
+                        ),
+                      )
+                    else
+                      Text(
+                          c['last_kind'] == null
+                              ? 'Sin mensajes aún'
+                              : messagePreview(c['last_kind'] as String,
+                                  c['last_body'] as String? ?? ''),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: muted,
+                              fontWeight:
+                                  tinted ? FontWeight.w500 : FontWeight.normal)),
                   ],
                 ),
               ),

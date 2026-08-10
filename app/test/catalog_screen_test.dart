@@ -278,8 +278,9 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
-    expect(find.text('8.7'), findsOneWidget);
-    expect(find.text('(34)'), findsOneWidget);
+    // La rejilla (mockup aprobado 2026-08-10) une promedio y conteo en un
+    // solo texto compacto: "8.7 (34)".
+    expect(find.text('8.7 (34)'), findsOneWidget);
     expect(find.byIcon(Icons.star_rounded), findsOneWidget);
   });
 

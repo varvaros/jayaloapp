@@ -36,6 +36,17 @@ String formatListTime(DateTime d, {DateTime? now}) {
   return '${d.day} ${_months[d.month - 1]}';
 }
 
+/// ¿El último mensaje es el aviso del cron de inactividad (48 h)?
+///
+/// El cron escribe ese aviso como un MENSAJE más ("⏳ Este chat está por
+/// cerrarse por inactividad…"), así que en la lista se comía el preview del
+/// último mensaje real. La lista lo detecta con esto y lo pinta como chip
+/// ámbar compacto (mockup aprobado PO 2026-08-10). Conservador: exige la
+/// frase completa del cron, un usuario que la mencione de pasada no la
+/// escribiría igual con el prefijo del reloj.
+bool isInactivityWarning(String body) =>
+    body.contains('por cerrarse por inactividad');
+
 /// Preview del último mensaje según su tipo.
 String messagePreview(String kind, String body) {
   switch (kind) {
