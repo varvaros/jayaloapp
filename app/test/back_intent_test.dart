@@ -70,6 +70,43 @@ void main() {
       );
     });
 
+    test(
+        'dentro del detalle de producto abierto desde la TIENDA: ATRÁS hace '
+        'un pop real (cae en la tienda de la que se vino)', () {
+      // Pedido PO 2026-08-09: a diferencia de `/catalog/p1`, `/product/:id`
+      // no tiene un único destino fijo (la tienda se abre desde varios
+      // lugares) — por eso necesita `canPop` en vez de una ruta hardcodeada.
+      expect(
+        backActionFor(
+            location: '/product/p1',
+            homePath: '/client',
+            atTop: true,
+            canPop: true),
+        BackAction.popCurrent,
+      );
+      expect(
+        backActionFor(
+            location: '/product/p1',
+            homePath: '/provider',
+            atTop: false,
+            canPop: true),
+        BackAction.popCurrent,
+      );
+    });
+
+    test(
+        'detalle de producto SIN nada debajo (canPop=false): sigue la regla '
+        'general en vez de quedar atrapado', () {
+      expect(
+        backActionFor(
+            location: '/product/p1',
+            homePath: '/client',
+            atTop: true,
+            canPop: false),
+        BackAction.goHome,
+      );
+    });
+
     test('en el home con scroll: ATRÁS sube al tope', () {
       expect(
         backActionFor(location: '/client', homePath: '/client', atTop: false),

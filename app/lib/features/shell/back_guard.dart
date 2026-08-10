@@ -31,7 +31,8 @@ class BackGuard extends StatelessWidget {
     final home = homePathFor(provider: roleStore.value == RoleState.provider);
     final c = homeScrollController;
     final atTop = !c.hasClients || c.offset <= 8;
-    switch (backActionFor(location: loc, homePath: home, atTop: atTop)) {
+    switch (backActionFor(
+        location: loc, homePath: home, atTop: atTop, canPop: context.canPop())) {
       case BackAction.goHome:
         context.go(home);
       case BackAction.goMessages:
@@ -42,6 +43,11 @@ class BackGuard extends StatelessWidget {
         // Desde el detalle de un producto se vuelve al CATÁLOGO (pedido PO
         // 2026-08-03): sacaba a "Solicitudes", que no es de donde venías.
         context.go('/catalog');
+      case BackAction.popCurrent:
+        // `/product/:id` (detalle abierto desde la TIENDA de un proveedor):
+        // pop real, no un destino fijo — cae en la tienda de la que se vino
+        // (pedido PO 2026-08-09).
+        context.pop();
       case BackAction.scrollTop:
         c.animateTo(0,
             duration: const Duration(milliseconds: 350),
