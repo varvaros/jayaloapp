@@ -296,9 +296,10 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
   }
 
   /// Datos estructurados presentes en la oferta, como (ícono, etiqueta,
-  /// valor). El «Estado» (Nuevo/Usado) no tiene columna propia: viaja dentro
-  /// de `message` y se recupera con [conditionFromOfferMessage].
-  List<(IconData, String, String)> _detailRows() {
+  /// valor, esCapacidad). El «Estado» (Nuevo/Usado) no tiene columna propia:
+  /// viaja dentro de `message` y se recupera con [conditionFromOfferMessage].
+  /// Las capacidades (NCF, suplidor del Estado) llevan check verde.
+  List<(IconData, String, String, bool)> _detailRows() {
     final o = widget.offer;
     String? s(String k) {
       final v = o[k] as String?;
@@ -312,21 +313,23 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
     final condition =
         conditionFromOfferMessage(o['message'] as String? ?? '');
 
-    return <(IconData, String, String)>[
+    return <(IconData, String, String, bool)>[
       if (condition.isNotEmpty)
-        (Icons.inventory_2_outlined, 'Estado', condition),
+        (Icons.inventory_2_outlined, 'Estado', condition, false),
       if (s('product_brand') != null)
-        (Icons.sell_outlined, 'Marca', s('product_brand')!),
-      if (colors.isNotEmpty) (Icons.palette_outlined, 'Color', colors.join(', ')),
+        (Icons.sell_outlined, 'Marca', s('product_brand')!, false),
+      if (colors.isNotEmpty)
+        (Icons.palette_outlined, 'Color', colors.join(', '), false),
       if (s('product_warranty') != null)
-        (Icons.verified_outlined, 'Garantía', s('product_warranty')!),
+        (Icons.gpp_good_outlined, 'Garantía', s('product_warranty')!, false),
       if (s('delivery_time') != null)
-        (Icons.schedule_outlined, 'Entrega', s('delivery_time')!),
+        (Icons.schedule_outlined, 'Entrega', s('delivery_time')!, false),
       if (o['offers_shipping'] == true)
         (
           Icons.local_shipping_outlined,
           'Envío',
-          n('shipping_price') != null ? fmtRD(n('shipping_price')!) : 'Gratis'
+          n('shipping_price') != null ? fmtRD(n('shipping_price')!) : 'Gratis',
+          false
         ),
       if (o['offers_installation'] == true)
         (
@@ -334,94 +337,152 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
           'Instalación',
           n('installation_price') != null
               ? fmtRD(n('installation_price')!)
-              : 'Gratis'
+              : 'Incluida',
+          false
         ),
       if (o['requires_evaluation'] == true)
         (
           Icons.content_paste_search_outlined,
           'Evaluación',
-          n('evaluation_price') != null ? fmtRD(n('evaluation_price')!) : 'Gratis'
+          n('evaluation_price') != null
+              ? '${fmtRD(n('evaluation_price')!)} · en sitio'
+              : 'En sitio',
+          false
         ),
       if (s('availability_note') != null)
-        (Icons.event_available_outlined, 'Disponibilidad', s('availability_note')!),
+        (
+          Icons.event_available_outlined,
+          'Disponibilidad',
+          s('availability_note')!,
+          false
+        ),
       if (s('estimated_duration') != null)
-        (Icons.timelapse_outlined, 'Duración', s('estimated_duration')!),
+        (Icons.timelapse_outlined, 'Duración', s('estimated_duration')!, false),
+      // Capacidades declaradas al ofertar (mockup aprobado PO 2026-08-09):
+      // antes el cliente no las veía en la hoja aunque el select ya las trae.
+      if (o['has_fiscal_receipt'] == true)
+        (Icons.receipt_long_outlined, 'Comprobante fiscal', 'Emite NCF', true),
+      if (o['is_state_supplier'] == true)
+        (
+          Icons.account_balance_outlined,
+          'Suplidor del Estado',
+          'Registrado',
+          true
+        ),
     ];
   }
 
-  /// Bloque de detalle estructurado de la oferta (pedido PO 2026-07-21: los
-  /// detalles se veían diminutos → distribuirlos como opciones bien diagramadas
-  /// aprovechando el espacio del sheet). Cada dato = un tile con ícono en una
-  /// rejilla de 2 columnas; solo se muestran los que existen.
+  /// Bloque de detalle estructurado de la oferta (mockup aprobado PO
+  /// 2026-08-09): cada dato = una TARJETA HORIZONTAL a lo ancho con el ícono
+  /// en pastilla a la izquierda, etiqueta tenue arriba y valor debajo; las
+  /// capacidades llevan check verde a la derecha. Reemplaza la rejilla de 2
+  /// columnas. Solo se muestran los datos que existen.
   List<Widget> _detailBlock(
-      BuildContext context, List<(IconData, String, String)> rows) {
+      BuildContext context, List<(IconData, String, String, bool)> rows) {
     if (rows.isEmpty) return const [];
     final cs = Theme.of(context).colorScheme;
+    final ok = Theme.of(context).brightness == Brightness.dark
+        ? JayaloColors.dSuccess
+        : JayaloColors.success;
 
-    // Cada dato = un TILE (ícono arriba, etiqueta tenue, valor fuerte) en una
-    // rejilla de 2 columnas (pedido PO 2026-07-22: desglosar la info de forma
-    // estética aprovechando el espacio, no una fila corrida).
-    Widget tile(IconData icon, String label, String value) => Container(
-          padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
+    Widget card(IconData icon, String label, String value, bool check) =>
+        Container(
+          padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
           decoration: BoxDecoration(
             color: cs.surfaceContainerHighest.withValues(alpha: .55),
             borderRadius: BorderRadius.circular(16),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: cs.primary.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, size: 18, color: cs.primary),
+          child: Row(children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: cs.primary.withValues(alpha: .12),
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(height: 10),
-              Text(label.toUpperCase(),
-                  style: TextStyle(
-                      fontSize: 10.5,
-                      letterSpacing: .3,
-                      color: cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w600)),
-              const SizedBox(height: 2),
-              Text(value,
-                  style: TextStyle(
-                      fontSize: 15,
-                      height: 1.2,
-                      color: cs.onSurface,
-                      fontWeight: FontWeight.w700)),
+              child: Icon(icon, size: 19, color: cs.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label.toUpperCase(),
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          letterSpacing: .8,
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 1),
+                  Text(value,
+                      style: TextStyle(
+                          fontSize: 14.5,
+                          height: 1.25,
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            if (check) ...[
+              const SizedBox(width: 8),
+              Icon(Icons.check_circle_outline, size: 20, color: ok),
             ],
-          ),
+          ]),
         );
 
-    final tiles = [for (final r in rows) tile(r.$1, r.$2, r.$3)];
-    final grid = <Widget>[];
-    for (var i = 0; i < tiles.length; i += 2) {
-      final pad = EdgeInsets.only(bottom: i + 2 < tiles.length ? 10 : 0);
-      // Tile impar final a lo ANCHO: un hueco vacío en la rejilla se lee como
-      // que falta algo; a ancho completo se lee deliberado.
-      if (i + 1 == tiles.length) {
-        grid.add(Padding(padding: pad, child: tiles[i]));
-        break;
-      }
-      grid.add(Padding(
-        padding: pad,
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(child: tiles[i]),
-              const SizedBox(width: 10),
-              Expanded(child: tiles[i + 1]),
-            ],
-          ),
+    return [
+      Padding(
+        padding: const EdgeInsets.only(left: 2, bottom: 9),
+        child: Text('DETALLES DE LA OFERTA',
+            style: TextStyle(
+                fontSize: 10.5,
+                letterSpacing: 1.6,
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600)),
+      ),
+      for (var i = 0; i < rows.length; i++)
+        Padding(
+          padding: EdgeInsets.only(bottom: i + 1 < rows.length ? 9 : 0),
+          child: card(rows[i].$1, rows[i].$2, rows[i].$3, rows[i].$4),
         ),
-      ));
-    }
-    return [const SizedBox(height: 14), ...grid];
+    ];
+  }
+
+  /// Tarjeta lila del precio, DESPUÉS de los detalles (mockup aprobado PO
+  /// 2026-08-09): el único acento de color del bloque — el ojo termina en el
+  /// monto antes del CTA. Degradado sobre `primary` para que funcione igual
+  /// en claro y oscuro.
+  Widget _priceCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(17, 14, 17, 15),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(kCardRadius),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.primary.withValues(alpha: .10),
+            cs.primary.withValues(alpha: .20),
+          ],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('PRECIO',
+              style: TextStyle(
+                  fontSize: 10.5,
+                  letterSpacing: 1.6,
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 3),
+          Text(offerPriceLabel(widget.offer),
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w700, color: jayaloHead(context))),
+        ],
+      ),
+    );
   }
 
   @override
@@ -460,23 +521,11 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
                     _OfferPhotoMarquee(urls: photos),
                     const SizedBox(height: 16),
                   ],
-                  // Eyebrow sobre el monto: el número grande solo flotaba sin
-                  // decir qué era (misma receta tipográfica de los tiles).
-                  Text('PRECIO',
-                      style: TextStyle(
-                          fontSize: 10.5,
-                          letterSpacing: .3,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurfaceVariant)),
-                  const SizedBox(height: 2),
-                  Text(offerPriceLabel(o),
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineMedium
-                          ?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: jayaloHead(context))),
+                  // Orden del mockup aprobado (PO 2026-08-09): PRIMERO los
+                  // detalles, DESPUÉS el precio en su tarjeta lila.
                   ..._detailBlock(context, detailRows),
+                  if (detailRows.isNotEmpty) const SizedBox(height: 15),
+                  _priceCard(context),
                   if (freeText.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Text(freeText,
