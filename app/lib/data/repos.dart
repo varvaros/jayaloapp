@@ -2810,6 +2810,26 @@ Future<void> savePackage({
 Future<void> deletePackage(String id) =>
     supa.from('provider_packages').delete().eq('id', id);
 
+/// Paquetes/planes de un negocio AJENO — tienda pública que ve el cliente
+/// (`provider_store_screen.dart`, pedido PO 2026-08-09: "los paquetes... con
+/// todo lo que se ha hecho del lado del proveedor, pero debe verse del lado
+/// del cliente"). Mismas columnas ([packageCols]) y mismo orden que
+/// [myPackages]; distinta solo en el nombre, para no confundir "mis
+/// paquetes" con "los paquetes de otro negocio" en las pantallas que la
+/// llaman. Depende de la migración `20260809130000_packages_public_read.sql`
+/// (`provider_packages` solo tenía política de lectura del dueño) — mientras
+/// esa migración no esté aplicada, RLS filtra a lista vacía sin lanzar, así
+/// que la sección de paquetes de la tienda simplemente no se pinta.
+Future<List<Map<String, dynamic>>> storePackages(String businessId) async =>
+    List<Map<String, dynamic>>.from(
+      await supa
+          .from('provider_packages')
+          .select(packageCols)
+          .eq('business_id', businessId)
+          .order('created_at', ascending: false)
+          .limit(100),
+    );
+
 /// Foto de un paquete/plan → bucket `provider-products` (Task 7, espejo de
 /// `PackageEditorDialog.tsx:121`: `${user.id}/packages/${uuid}`). El
 /// rand-hex de [_uploadMarketplaceImage] cumple el mismo papel que el

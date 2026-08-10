@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../shared/network_image.dart';
 
 import '../../core/brand.dart';
 import '../../data/repos.dart';
@@ -9,15 +8,26 @@ import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
 import '../shared/product_list_card.dart';
 import '../shared/service_chips_editor.dart';
+import '../shared/tile_carril.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
 
 /// Tienda de un proveedor: al tocar el nombre del proveedor en una oferta o
-/// en el catálogo, el cliente ve los productos, servicios y trabajos
-/// anteriores del negocio, con su identidad real (PO 2026-07-28: nombre y
-/// logo sin desbloquear nada — el contacto sigue sin ser accesible).
-/// `provider_products` y `provider_portfolio_items` tienen lectura pública,
-/// así que se leen por `business_id` sin exponer datos de contacto.
+/// en el catálogo, el cliente ve los productos, servicios, paquetes y
+/// trabajos anteriores del negocio, con su identidad real (PO 2026-07-28:
+/// nombre y logo sin desbloquear nada — el contacto sigue sin ser
+/// accesible). `provider_products` y `provider_portfolio_items` tienen
+/// lectura pública, así que se leen por `business_id` sin exponer datos de
+/// contacto; `provider_packages` la obtuvo con la migración
+/// `20260809130000_packages_public_read.sql` (pedido PO 2026-08-09).
+///
+/// Pedido PO 2026-08-09: "Debería verse como una sola página, con todo, y
+/// los paquetes y trabajos con scroll horizontal, con todo lo que se ha
+/// hecho del lado del proveedor, pero debe verse del lado del cliente" — ya
+/// no hay pestañas (`HeaderSegmented`/`_Section`, retirados en esta tarea):
+/// TODAS las secciones se pintan una debajo de otra en el mismo scroll, en
+/// un orden fijo (antes se reordenaba según el tipo de negocio; el PO pidió
+/// un único orden para todos).
 class ProviderStoreScreen extends StatefulWidget {
   const ProviderStoreScreen({super.key, required this.businessId});
 
@@ -27,30 +37,18 @@ class ProviderStoreScreen extends StatefulWidget {
   State<ProviderStoreScreen> createState() => _ProviderStoreScreenState();
 }
 
-/// Secciones de la tienda. Su ORDEN depende del perfil del negocio (PO
-/// 2026-07-21): negocio de productos → productos primero; negocio de servicios
-/// (técnico) → servicios y trabajos primero.
-enum _Section { productos, servicios, trabajos }
-
 class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
-  int _tab = 0; // índice dentro de _sections
   bool _loading = true;
   List<Map<String, dynamic>> _productos = const [];
   List<Map<String, dynamic>> _servicios = const [];
   List<Map<String, dynamic>> _portfolio = const [];
+  List<Map<String, dynamic>> _paquetes = const [];
   // Bloque de confianza bajo el nombre (adorno, no bloquea la tienda si falla):
   // rating, trabajos completados, tiempo de respuesta, miembro-desde y sellos.
   BusinessStorefrontStats? _stats;
   // Identidad real del negocio (PO 2026-07-28). `null` mientras carga o si
   // falla — degrada a "Proveedor" sin logo, nunca rompe la pantalla.
   BusinessIdentity? _identity;
-  // Orden por defecto (productos primero); se recalcula tras cargar según el
-  // tipo de negocio.
-  List<_Section> _sections = const [
-    _Section.productos,
-    _Section.servicios,
-    _Section.trabajos,
-  ];
 
   @override
   void initState() {
@@ -60,10 +58,6 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
 
   Future<void> _load() async {
     try {
-      // El tipo de negocio se pide en paralelo; su fallo no rompe la tienda
-      // (sin él se cae al orden por defecto).
-      final typeF =
-          providerBusinessType(widget.businessId).catchError((_) => null);
       // Bloque de confianza: adorno bajo el nombre. Si la RPC falla, el bloque
       // simplemente no aparece — nunca se tira la tienda a la pantalla de error.
       final statsF = businessStorefrontStats(widget.businessId)
@@ -72,30 +66,28 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       // pantalla — mismo trato best-effort que el resto de este bloque).
       final identityF =
           businessPublicIdentity(widget.businessId).catchError((_) => null);
+      // Paquetes: mientras la migración `20260809130000_packages_public_read
+      // .sql` no esté aplicada, RLS filtra a lista vacía sin lanzar — igual
+      // trato best-effort, la sección de PAQUETES simplemente no se pinta.
+      final paquetesF = storePackages(widget.businessId)
+          .catchError((_) => <Map<String, dynamic>>[]);
       final results = await Future.wait([
         myStoreProducts(widget.businessId),
         myPortfolioItems(widget.businessId),
       ]);
       final (prod, serv) = partitionStoreItems(results[0]);
       final portfolio = results[1];
-      final type = await typeF;
       final stats = await statsF;
       final identity = await identityF;
-      // Perfil de servicios: técnico, o (heurística de respaldo) sin productos
-      // pero con servicios/trabajos publicados.
-      final servicesFirst = type == 'tecnico' ||
-          (prod.isEmpty && (serv.isNotEmpty || portfolio.isNotEmpty));
+      final paquetes = await paquetesF;
       if (!mounted) return;
       setState(() {
         _productos = prod;
         _servicios = serv;
         _portfolio = portfolio;
+        _paquetes = paquetes;
         _stats = stats;
         _identity = identity;
-        _sections = servicesFirst
-            ? const [_Section.servicios, _Section.trabajos, _Section.productos]
-            : const [_Section.productos, _Section.servicios, _Section.trabajos];
-        _tab = 0;
         _loading = false;
       });
     } catch (_) {
@@ -103,13 +95,60 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
     }
   }
 
-  String _sectionLabel(_Section s) => switch (s) {
-        _Section.productos => 'Productos',
-        _Section.servicios => 'Servicios',
-        _Section.trabajos => 'Trabajos',
-      };
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: Column(children: [
+          VioletHeader(
+            leading: HeaderCircleButton(
+              icon: Icons.arrow_back,
+              tooltip: 'Atrás',
+              onTap: () => Navigator.of(context).maybePop(),
+            ),
+            title: _identity?.name ?? 'Proveedor',
+            subtitle: 'Tienda del proveedor',
+          ),
+          Expanded(
+            child: _loading
+                ? const JayaloLoaderBlock()
+                : ProviderStoreView(
+                    identity: _identity,
+                    stats: _stats,
+                    productos: _productos,
+                    servicios: _servicios,
+                    paquetes: _paquetes,
+                    trabajos: _portfolio,
+                  ),
+          ),
+        ]),
+      );
+}
 
-  String _fmtResp(double minutes) {
+/// Solo dibuja, sin fetch propio — separada de [ProviderStoreScreen] (que
+/// carga por red) para poder probarla con datos ya en mano, mismo patrón que
+/// `MyBusinessView`/`MyBusinessScreen`. Pinta portada, chips de servicios,
+/// tarjeta de confianza y ficha SIEMPRE; PRODUCTOS/SERVICIOS/PAQUETES/
+/// TRABAJOS solo si tienen contenido — el cliente no necesita ver huecos de
+/// catálogo. Si las CUATRO secciones de catálogo están vacías, un único
+/// texto lo avisa (nada de un aviso por sección).
+class ProviderStoreView extends StatelessWidget {
+  const ProviderStoreView({
+    super.key,
+    required this.identity,
+    required this.stats,
+    required this.productos,
+    required this.servicios,
+    required this.paquetes,
+    required this.trabajos,
+  });
+
+  final BusinessIdentity? identity;
+  final BusinessStorefrontStats? stats;
+  final List<Map<String, dynamic>> productos;
+  final List<Map<String, dynamic>> servicios;
+  final List<Map<String, dynamic>> paquetes;
+  final List<Map<String, dynamic>> trabajos;
+
+  static String _fmtResp(double minutes) {
     final m = minutes.round();
     if (m < 60) return '~$m min';
     final h = (m / 60).round();
@@ -123,8 +162,8 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
   /// desbloquear nada) + grid de rating / trabajos completados / tiempo de
   /// respuesta / miembro-desde + sellos de verificación. `null` mientras
   /// carga o si no hay datos.
-  Widget? _repCard() {
-    final s = _stats;
+  Widget? _repCard(BuildContext context) {
+    final s = stats;
     if (s == null) return null;
     final cs = Theme.of(context).colorScheme;
     final hasRating = s.avgRating != null && s.reviewsCount > 0;
@@ -143,6 +182,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
         Row(children: [
           Expanded(
             child: _statCell(
+              context,
               hasRating ? s.avgRating!.toStringAsFixed(1) : 'Nuevo',
               hasRating
                   ? '${s.reviewsCount} reseña${s.reviewsCount == 1 ? '' : 's'}'
@@ -152,7 +192,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: _statCell('${s.completedJobs}',
+            child: _statCell(context, '${s.completedJobs}',
                 s.completedJobs == 1 ? 'trabajo completado' : 'trabajos completados'),
           ),
         ]),
@@ -160,6 +200,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
         Row(children: [
           Expanded(
             child: _statCell(
+              context,
               s.medianResponseMinutes != null
                   ? _fmtResp(s.medianResponseMinutes!)
                   : '—',
@@ -169,6 +210,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
           const SizedBox(width: 8),
           Expanded(
             child: _statCell(
+              context,
               s.memberSinceYear?.toString() ?? '—',
               'miembro desde',
             ),
@@ -202,7 +244,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
   /// Categoría y ciudad en una línea bajo el nombre de la portada, igual que
   /// en Mi negocio. Nulo si el negocio no declara ninguna de las dos.
   String? _subtitle() {
-    final raw = _identity?.raw;
+    final raw = identity?.raw;
     if (raw == null) return null;
     final cat = categoryNameById((raw['category_id'] as String?)?.trim());
     final city = (raw['city'] as String?)?.trim();
@@ -213,11 +255,11 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
     return partes.isEmpty ? null : partes.join(' · ');
   }
 
-  /// Sellos para la portada. Salen de `_stats` (la RPC de confianza), no de
-  /// `_identity`: las marcas de verificación NO están en los grants por
+  /// Sellos para la portada. Salen de `stats` (la RPC de confianza), no de
+  /// `identity`: las marcas de verificación NO están en los grants por
   /// columna de `provider_businesses` para un tercero.
   List<String> _sealLabels() {
-    final s = _stats;
+    final s = stats;
     if (s == null) return const [];
     return [
       if (s.identityVerified) 'Identidad verificada',
@@ -228,7 +270,8 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
 
   /// Celda de un indicador del grid: cifra grande (con estrella opcional) + una
   /// etiqueta corta debajo, sobre una píldora tenue.
-  Widget _statCell(String value, String label, {bool star = false}) {
+  Widget _statCell(BuildContext context, String value, String label,
+      {bool star = false}) {
     final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -268,7 +311,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
   /// pantalla no la pinta hoy en ningún sitio). Sin chips no dibuja nada:
   /// la tienda ajena nunca ofrece un "+" de edición.
   Widget? _servicesBlock() {
-    final services = _identity?.services ?? const [];
+    final services = identity?.services ?? const [];
     if (services.isEmpty) return null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -278,143 +321,75 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final section = _sections[_tab];
-    final repCard = _repCard();
+    final repCard = _repCard(context);
     final servicesBlock = _servicesBlock();
-    return Scaffold(
-      body: Column(children: [
-        VioletHeader(
-          leading: HeaderCircleButton(
-            icon: Icons.arrow_back,
-            tooltip: 'Atrás',
-            onTap: () => Navigator.of(context).maybePop(),
-          ),
-          title: _identity?.name ?? 'Proveedor',
-          subtitle: 'Tienda del proveedor',
-          below: HeaderSegmented(
-            options: [for (final s in _sections) _sectionLabel(s)],
-            index: _tab,
-            onChanged: (i) => setState(() => _tab = i),
+    final catalogEmpty =
+        productos.isEmpty && servicios.isEmpty && paquetes.isEmpty && trabajos.isEmpty;
+    return CustomScrollView(slivers: [
+      SliverToBoxAdapter(
+        child: BusinessCoverHero(
+          name: identity?.name ?? 'Proveedor',
+          coverUrl: identity?.coverUrl,
+          logoUrl: identity?.logoUrl,
+          subtitle: _subtitle(),
+          seals: _sealLabels(),
+        ),
+      ),
+      if (servicesBlock != null) SliverToBoxAdapter(child: servicesBlock),
+      if (repCard != null) SliverToBoxAdapter(child: repCard),
+      SliverToBoxAdapter(
+        child: BusinessDetailsCard(business: identity?.raw ?? const {}),
+      ),
+      if (productos.isNotEmpty) ..._itemsSection('PRODUCTOS', productos),
+      if (servicios.isNotEmpty) ..._itemsSection('SERVICIOS', servicios),
+      if (paquetes.isNotEmpty) ..._carrilSection('PAQUETES', paquetes,
+          height: kPackageCarrilHeight,
+          tileBuilder: (p) => PackageTile(item: p)),
+      if (trabajos.isNotEmpty) ..._carrilSection('TRABAJOS', trabajos,
+          height: kPortfolioCarrilHeight,
+          tileBuilder: (t) => PortfolioTile(item: t)),
+      if (catalogEmpty) _empty(context),
+      SliverToBoxAdapter(
+        child: SizedBox(height: 12 + navBarReservedSpace(context)),
+      ),
+    ]);
+  }
+
+  /// Encabezado + lista vertical de una sección de PRODUCTOS/SERVICIOS —
+  /// mismo `ProductListCard` de siempre, sin `onTap`/`onLongPress` (tienda
+  /// ajena: solo lectura, la tarjeta navega a su detalle público por
+  /// defecto).
+  List<Widget> _itemsSection(String title, List<Map<String, dynamic>> items) => [
+        SliverToBoxAdapter(child: SectionHeader(text: title)),
+        SliverPadding(
+          padding: const EdgeInsets.only(top: 4, bottom: 8),
+          sliver: SliverList.builder(
+            itemCount: items.length,
+            itemBuilder: (_, i) => ProductListCard(item: items[i]).cascadeIn(i),
           ),
         ),
-        Expanded(
-          child: _loading
-              ? const JayaloLoaderBlock()
-              // Portada + confianza + ficha comparten scroll con la lista: si
-              // fueran bloques fijos encima, en un teléfono no quedaría sitio
-              // para los productos.
-              : CustomScrollView(slivers: [
-                  SliverToBoxAdapter(
-                    child: BusinessCoverHero(
-                      name: _identity?.name ?? 'Proveedor',
-                      coverUrl: _identity?.coverUrl,
-                      logoUrl: _identity?.logoUrl,
-                      subtitle: _subtitle(),
-                      seals: _sealLabels(),
-                    ),
-                  ),
-                  if (servicesBlock != null)
-                    SliverToBoxAdapter(child: servicesBlock),
-                  if (repCard != null) SliverToBoxAdapter(child: repCard),
-                  SliverToBoxAdapter(
-                    child: BusinessDetailsCard(
-                        business: _identity?.raw ?? const {}),
-                  ),
-                  switch (section) {
-                    _Section.productos => _itemsList(_productos, section),
-                    _Section.servicios => _itemsList(_servicios, section),
-                    _Section.trabajos => _portfolioList(),
-                  },
-                ]),
+      ];
+
+  /// Encabezado + carril horizontal de tarjetas compactas (PAQUETES/
+  /// TRABAJOS) — [TileCarril] compartido con "Mi negocio"
+  /// (`shared/tile_carril.dart`); en la tienda pública las tarjetas van sin
+  /// `onTap`/`onLongPress`: solo lectura, sin editar ni borrar.
+  List<Widget> _carrilSection(
+    String title,
+    List<Map<String, dynamic>> items, {
+    required double height,
+    required Widget Function(Map<String, dynamic> item) tileBuilder,
+  }) => [
+        SliverToBoxAdapter(child: SectionHeader(text: title)),
+        SliverToBoxAdapter(
+          child: TileCarril(items: items, height: height, tileBuilder: tileBuilder),
         ),
-      ]),
-    );
-  }
+      ];
 
-  Widget _itemsList(List<Map<String, dynamic>> items, _Section section) {
-    if (items.isEmpty) {
-      return _empty(section == _Section.productos
-          ? 'Este proveedor aún no publica productos.'
-          : 'Este proveedor aún no publica servicios.');
-    }
-    return SliverPadding(
-      padding:
-          EdgeInsets.only(top: 8, bottom: 12 + navBarReservedSpace(context)),
-      sliver: SliverList.builder(
-      itemCount: items.length,
-      // La tarjeta no navega a un detalle propio: ya estás dentro de la
-      // tienda de este negocio.
-      itemBuilder: (_, i) => ProductListCard(item: items[i]).cascadeIn(i),
-    ),
-    );
-  }
-
-  Widget _portfolioList() {
-    if (_portfolio.isEmpty) {
-      return _empty('Este proveedor aún no muestra trabajos anteriores.');
-    }
-    final cs = Theme.of(context).colorScheme;
-    return SliverPadding(
-      padding:
-          EdgeInsets.only(top: 12, bottom: 12 + navBarReservedSpace(context)),
-      sliver: SliverList.builder(
-      itemCount: _portfolio.length,
-      itemBuilder: (_, i) {
-        final it = _portfolio[i];
-        final urls =
-            ((it['image_urls'] as List?)?.cast<String>() ?? const <String>[])
-                .where((u) => u.isNotEmpty)
-                .toList();
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: JayaloCard(
-            margin: EdgeInsets.zero,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(it['title'] as String? ?? 'Trabajo realizado',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: jayaloHead(context))),
-                if (urls.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 140,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: urls.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 8),
-                      itemBuilder: (_, j) => GestureDetector(
-                        onTap: () => showPhotoViewer(context, urls, initialIndex: j),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: JayaloNetworkImage(urls[j],
-                              width: 200,
-                              height: 140,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Container(
-                                  width: 200,
-                                  height: 140,
-                                  color: cs.surfaceContainerHighest)),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    ),
-    );
-  }
-
-  Widget _empty(String msg) => SliverToBoxAdapter(
+  Widget _empty(BuildContext context) => SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.all(28),
-          child: Text(msg,
+          child: Text('Este proveedor aún no publica nada en su tienda.',
               textAlign: TextAlign.center,
               style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant)),
