@@ -14,7 +14,9 @@ import '../shell/home_scroll.dart';
 import '../shared/brand_kit.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
+import '../shared/swipe_to_actions.dart';
 import '../shared/violet_header.dart';
+import 'hidden_requests_store.dart';
 
 /// Signature de las fuentes de datos del inbox: `providerInbox` (Para ti,
 /// filtra por rubro del proveedor) y `allOpenRequests` (Todas, cualquier
@@ -114,6 +116,30 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   Map<String, RequestRequirements> _requirements = {};
 
   late Future<List<Map<String, dynamic>>> _load = _runFetch();
+
+  /// Coordina "un solo row de swipe abierto a la vez" (mismo patrón que
+  /// Mis solicitudes y la lista de chats).
+  final ValueNotifier<Object?> _openRow = ValueNotifier<Object?>(null);
+
+  @override
+  void initState() {
+    super.initState();
+    // Ocultas por swipe: cargar el set persistido y repintar cuando cambie
+    // (el hide y el «Deshacer» del toast notifican al instante).
+    hiddenRequestsStore.ensureLoaded();
+    hiddenRequestsStore.addListener(_onHiddenChanged);
+  }
+
+  void _onHiddenChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    hiddenRequestsStore.removeListener(_onHiddenChanged);
+    _openRow.dispose();
+    super.dispose();
+  }
 
   /// Carga la bandeja en DOS OLEADAS concurrentes (antes eran 4 viajes a la red
   /// en serie). La orquestación y su porqué viven en `domain/inbox_load.dart`,
@@ -263,6 +289,13 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                     // el estado de la oferta de ESTE proveedor por solicitud.
                     final items = (snap.data!).where((r) {
                       if (r['source'] == 'store') return _status == 'todas';
+                      // Ocultas por swipe («no me interesa», PO 2026-08-10):
+                      // fuera de la bandeja en ambas pestañas. Solo aplica a
+                      // solicitudes del marketplace, no a los intereses de
+                      // producto (esos son compradores de TU tienda).
+                      if (hiddenRequestsStore.contains(r['id'] as String)) {
+                        return false;
+                      }
                       // null = no ofertó; 'pending' = ofertó; 'accepted' = le
                       // aceptaron; 'unlocked'/'completed' = desbloqueó contacto.
                       final st = _offeredStatuses[r['id']];
@@ -320,6 +353,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                             onAction: () => _onInterestAction(r),
                           ).cascadeIn(i);
                         }
+                        final id = r['id'] as String;
                         final card = _InboxCard(
                           title: r['title'] as String? ?? '',
                           kind: r['kind'] as String?,
@@ -334,6 +368,8 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           requirements:
                               _requirements[r['id']] ?? requirementsFromRow(r),
                           createdAt: DateTime.parse(r['created_at'] as String),
+                          // Sin margen propio: lo aplica el swipe.
+                          margin: EdgeInsets.zero,
                           // push (no go): apila el detalle para que el atrás
                           // vuelva a la bandeja (el go reemplazaba la pila y la
                           // flecha "no funcionaba"). Al volver se refresca por si
@@ -342,6 +378,31 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                             await context.push('/provider/request/${r['id']}');
                             if (context.mounted) _refetch();
                           },
+                        );
+                        // Deslizar → «Ocultar» (pedido PO 2026-08-10, «cuando
+                        // no interesa una solicitud»). Local al dispositivo,
+                        // con Deshacer en el toast.
+                        final row = SwipeToActions(
+                          id: id,
+                          group: _openRow,
+                          actions: [
+                            SwipeAction(
+                              icon: Icons.visibility_off_outlined,
+                              label: 'Ocultar',
+                              color: Theme.of(context).colorScheme.outline,
+                              onTap: () async {
+                                hiddenRequestsStore.hide(id);
+                                showJayaloToast(
+                                  context,
+                                  'Solicitud ocultada.',
+                                  actionLabel: 'Deshacer',
+                                  onAction: () =>
+                                      hiddenRequestsStore.unhide(id),
+                                );
+                              },
+                            ),
+                          ],
+                          child: card,
                         );
                         if (i == firstRegularIndex) {
                           // cascadeIn(i) va DENTRO del child (no envolviendo
@@ -356,10 +417,10 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           return OnboardingGuide(
                             guideKey: 'provider.requests_list.v1',
                             steps: onboardingCopy['provider.requests_list.v1']!,
-                            child: card.cascadeIn(i),
+                            child: row.cascadeIn(i),
                           );
                         }
-                        return card.cascadeIn(i);
+                        return row.cascadeIn(i);
                       },
                     );
                   },
@@ -392,6 +453,7 @@ class _InboxCard extends StatelessWidget {
     this.offerStatus,
     this.offerCount = 0,
     this.requirements = RequestRequirements.none,
+    this.margin,
   });
 
   final String title;
@@ -417,6 +479,10 @@ class _InboxCard extends StatelessWidget {
   /// del Estado, envío…). Se pintan como símbolos mudos junto a la hora; el
   /// texto completo vive en el detalle.
   final RequestRequirements requirements;
+
+  /// Null = margen estándar de lista; se pasa cero cuando la tarjeta vive
+  /// dentro de [SwipeToActions] (el swipe aplica el margen exterior).
+  final EdgeInsetsGeometry? margin;
 
   /// Lado de la miniatura: sin descripción en la tarjeta (pedido PO
   /// 2026-08-09) la foto pasa a ser la protagonista — 76 desde el mockup
@@ -463,6 +529,7 @@ class _InboxCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return JayaloCard(
       onTap: onTap,
+      margin: margin ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

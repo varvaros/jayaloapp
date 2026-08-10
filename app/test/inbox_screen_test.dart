@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jayalo_app/app.dart';
+import 'package:jayalo_app/features/provider/hidden_requests_store.dart';
 import 'package:jayalo_app/features/provider/inbox_screen.dart';
 import 'package:jayalo_app/features/shared/violet_header.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// El toggle "Para ti / Todas" del inbox del proveedor. `fetch` se inyecta
 /// (ver doc de [ProviderInboxView]) para poder probar el widget sin red.
@@ -78,6 +80,41 @@ void main() {
         of: find.byType(HeaderSegmented).first, matching: find.text('Todas')));
     await tester.pumpAndSettle();
     expect(calls, [false, true]);
+  });
+
+  // ── Swipe «Ocultar» (PO 2026-08-10) ───────────────────────────────────────
+
+  testWidgets('una solicitud ocultada no se pinta y unhide la revive',
+      (tester) async {
+    Map<String, dynamic> req(String id, String title) => {
+          'id': id,
+          'source': 'marketplace',
+          'title': title,
+          'kind': 'producto',
+          'created_at': DateTime.now().toIso8601String(),
+        };
+    Future<List<Map<String, dynamic>>> dos(
+            {String? kind, required bool todas}) async =>
+        todas ? [] : [req('req-a', 'Solicitud A'), req('req-b', 'Solicitud B')];
+
+    SharedPreferences.setMockInitialValues({});
+    hiddenRequestsStore.hide('req-b');
+    addTearDown(() => hiddenRequestsStore.unhide('req-b'));
+
+    await tester.pumpWidget(host(ProviderInboxView(
+        fetch: dos, leading: const SizedBox.shrink(), actions: const [])));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Solicitud A'), findsOneWidget);
+    expect(find.text('Solicitud B'), findsNothing);
+
+    // El «Deshacer» del toast llama a unhide: la tarjeta vuelve al instante.
+    hiddenRequestsStore.unhide('req-b');
+    await tester.pumpAndSettle();
+    expect(find.text('Solicitud B'), findsOneWidget);
+    // Drena los delays escalonados del cascadeIn de la fila revivida antes
+    // del chequeo de timers del framework.
+    await tester.pump(const Duration(seconds: 2));
   });
 
   // ── Task 9: intereses de producto en el inbox + desbloqueo ────────────────

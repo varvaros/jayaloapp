@@ -1,7 +1,11 @@
+import 'dart:io' show Platform;
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
+import '../../core/motion.dart';
 import '../../core/router.dart' show openCreditShop;
 import '../../data/repos.dart';
 import '../client/my_requests_screen.dart' show MyRequestsScreen, timeAgo;
@@ -550,32 +554,19 @@ class _WalletCard extends StatelessWidget {
   });
   final int? balance;
 
-  /// Ya no tiñe la TARJETA (mockup 08-10): colorea solo la tesela de la
-  /// billetera — verde con saldo, rojo con 0 (semántica del call-site).
+  /// Ya no tiñe la TARJETA (mockup 08-10): con saldo 0 el NÚMERO hereda el
+  /// tono de alerta del call-site (rojo); con saldo, la tinta de títulos.
   final StatusTone tone;
   final VoidCallback onRecharge;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final zero = (balance ?? 0) == 0;
     return JayaloCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(15, 14, 10, 14),
       child: Row(
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: tone.ink.withValues(alpha: .14),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(
-              Icons.account_balance_wallet_outlined,
-              size: 21,
-              color: tone.ink,
-            ),
-          ),
-          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -583,28 +574,241 @@ class _WalletCard extends StatelessWidget {
                 Text(
                   '${balance ?? '—'} crédito${balance == 1 ? '' : 's'}',
                   style: TextStyle(
-                    fontSize: 18,
+                    fontSize: 19,
                     fontWeight: FontWeight.w600,
-                    color: jayaloHead(context),
+                    color: zero ? tone.ink : jayaloHead(context),
                   ),
                 ),
+                const SizedBox(height: 1),
                 Text(
                   'Tu saldo para desbloquear contactos',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 11.5,
                     color: cs.onSurfaceVariant,
                   ),
+                ),
+                const SizedBox(height: 10),
+                FilledButton(
+                  onPressed: onRecharge,
+                  child: const Text('Recargar'),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: onRecharge,
-            child: const Text('Recargar'),
-          ),
+          const SizedBox(width: 4),
+          // Jayi con su moneda gigante (mockup aprobado 2026-08-10).
+          const _JayiCoin(),
         ],
       ),
     );
   }
+}
+
+/// Jayi sosteniendo su moneda gigante (mockup aprobado PO 2026-08-10, «ponlo
+/// que pestañe y listo»): painter propio, cero assets nuevos. Cuatro
+/// movimientos suaves en bucle — Jayi flota, la moneda respira brillo dorado,
+/// un destello la barre con chispas titilando, y el ojo PESTAÑEA. Con
+/// «reducir movimiento» del sistema queda un frame fijo.
+class _JayiCoin extends StatefulWidget {
+  const _JayiCoin();
+
+  @override
+  State<_JayiCoin> createState() => _JayiCoinState();
+}
+
+class _JayiCoinState extends State<_JayiCoin> with TickerProviderStateMixin {
+  late final AnimationController _bob = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 3200));
+  late final AnimationController _fx = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 2600));
+
+  /// En widget-tests el bucle infinito rompe TODO `pumpAndSettle` de las
+  /// pantallas que montan la tarjeta de saldo (nunca "asienta"): frame fijo.
+  /// `Platform.environment` (no `bool.fromEnvironment`: ese dart-define NO
+  /// está definido bajo `flutter test` y el gate no gateaba).
+  static final _enTest = Platform.environment.containsKey('FLUTTER_TEST');
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_enTest || JayaloMotion.reduced(context)) {
+      _bob.stop();
+      _fx.stop();
+    } else {
+      if (!_bob.isAnimating) _bob.repeat(reverse: true);
+      if (!_fx.isAnimating) _fx.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _bob.dispose();
+    _fx.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: Listenable.merge([_bob, _fx]),
+        builder: (_, _) => CustomPaint(
+          size: const Size(118, 112),
+          painter: _JayiCoinPainter(bob: _bob.value, fx: _fx.value),
+        ),
+      );
+}
+
+class _JayiCoinPainter extends CustomPainter {
+  _JayiCoinPainter({required this.bob, required this.fx});
+
+  /// 0..1 con repeat(reverse): el flote (0 = abajo, 1 = arriba).
+  final double bob;
+
+  /// 0..1 en bucle: brillo de la moneda, destello, chispas y pestañeo.
+  final double fx;
+
+  static const _violetaTubo = Color(0xFF6B40EE);
+  static const _cuerpoA = Color(0xFF7E56F5);
+  static const _cuerpoB = Color(0xFF6438E8);
+  static const _oro = Color(0xFFF2B705);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.translate(0, -5 * bob);
+    final tubo = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..color = _violetaTubo;
+
+    // Antenas.
+    tubo.strokeWidth = 5;
+    canvas.drawPath(
+        Path()
+          ..moveTo(47, 16)
+          ..cubicTo(43, 8, 35, 5, 30, 8),
+        tubo);
+    canvas.drawPath(
+        Path()
+          ..moveTo(65, 15)
+          ..cubicTo(69, 7, 77, 4, 82, 7),
+        tubo);
+
+    // Cuerpo "tele".
+    const bodyRect = Rect.fromLTWH(22, 14, 70, 66);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(bodyRect, const Radius.circular(22)),
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_cuerpoA, _cuerpoB],
+        ).createShader(bodyRect),
+    );
+
+    // Ojo con PESTAÑEO: el párpado baja y sube en el último tramo del ciclo
+    // (fx ∈ [.90, 1]) — un parpadeo de ~260 ms cada 2,6 s.
+    var eyeScale = 1.0;
+    if (fx >= .90) {
+      eyeScale = 1 - .88 * math.sin(math.pi * (fx - .90) / .10);
+    }
+    canvas.save();
+    canvas.translate(45, 38);
+    canvas.scale(1, eyeScale.clamp(.12, 1.0));
+    canvas.drawCircle(Offset.zero, 14, Paint()..color = Colors.white);
+    canvas.drawCircle(
+        const Offset(5, 3), 5.2, Paint()..color = _cuerpoB);
+    canvas.restore();
+
+    // Bracitos hacia la moneda.
+    tubo.strokeWidth = 7;
+    canvas.drawPath(
+        Path()
+          ..moveTo(27, 62)
+          ..cubicTo(18, 70, 18, 80, 26, 86),
+        tubo);
+    canvas.drawPath(
+        Path()
+          ..moveTo(88, 62)
+          ..cubicTo(97, 70, 97, 80, 89, 86),
+        tubo);
+
+    // Moneda: halo que respira + oro + anillo + J + destello que la barre.
+    const cCoin = Offset(58, 84);
+    final glow = .5 + .5 * math.sin(2 * math.pi * fx);
+    canvas.drawCircle(
+        cCoin,
+        26,
+        Paint()
+          ..color = _oro.withValues(alpha: .25 + .35 * glow)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8));
+    canvas.drawCircle(
+        cCoin,
+        26,
+        Paint()
+          ..shader = const RadialGradient(
+            center: Alignment(-.24, -.36),
+            colors: [Color(0xFFFFEDB0), _oro, Color(0xFFC98A00)],
+            stops: [0, .55, 1],
+          ).createShader(Rect.fromCircle(center: cCoin, radius: 26)));
+    canvas.drawCircle(
+        cCoin,
+        19.5,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.4
+          ..color = const Color(0xFFFFE9A8));
+    final j = TextPainter(
+      text: const TextSpan(
+          text: 'J',
+          style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF8A5E00))),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    j.paint(canvas, cCoin - Offset(j.width / 2, j.height / 2 + 1));
+    if (fx < .6) {
+      final t = fx / .6;
+      canvas.save();
+      canvas.clipPath(
+          Path()..addOval(Rect.fromCircle(center: cCoin, radius: 26)));
+      canvas.translate(32 + 52 * t, 84);
+      canvas.rotate(.31);
+      canvas.drawRect(
+          Rect.fromCenter(center: Offset.zero, width: 9, height: 64),
+          Paint()
+            ..color = const Color(0xFFFFF6DC)
+                .withValues(alpha: .85 * math.sin(math.pi * t)));
+      canvas.restore();
+    }
+
+    // Manitas por DELANTE de la moneda (la están sosteniendo).
+    final mano = Paint()..color = _cuerpoA;
+    canvas.drawCircle(const Offset(30, 86), 5.5, mano);
+    canvas.drawCircle(const Offset(86, 86), 5.5, mano);
+
+    // Chispas desfasadas alrededor.
+    _chispa(canvas, const Offset(97, 58), 7, 0);
+    _chispa(canvas, const Offset(20, 46), 5.5, .35);
+    _chispa(canvas, const Offset(99, 30), 4.8, .65);
+  }
+
+  void _chispa(Canvas canvas, Offset c, double r, double phase) {
+    final k = math.max(0.0, math.sin(2 * math.pi * (fx - phase)));
+    if (k <= .01) return;
+    final p = Path()
+      ..moveTo(c.dx, c.dy - r)
+      ..lineTo(c.dx + r * .28, c.dy - r * .28)
+      ..lineTo(c.dx + r, c.dy)
+      ..lineTo(c.dx + r * .28, c.dy + r * .28)
+      ..lineTo(c.dx, c.dy + r)
+      ..lineTo(c.dx - r * .28, c.dy + r * .28)
+      ..lineTo(c.dx - r, c.dy)
+      ..lineTo(c.dx - r * .28, c.dy - r * .28)
+      ..close();
+    canvas.drawPath(p, Paint()..color = _oro.withValues(alpha: k));
+  }
+
+  @override
+  bool shouldRepaint(_JayiCoinPainter old) =>
+      old.bob != bob || old.fx != fx;
 }

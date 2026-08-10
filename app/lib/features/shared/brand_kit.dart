@@ -1035,12 +1035,18 @@ class _PhotoViewerState extends State<_PhotoViewer> {
 /// El SnackBar estándar sale pegado al borde inferior y la navbar flotante lo
 /// tapa (bug PO 2026-07-19: "no veo aviso de que fue enviado"). Flotante con
 /// margen inferior = espacio reservado de la barra + respiro.
-void showJayaloToast(BuildContext context, String message) {
+void showJayaloToast(BuildContext context, String message,
+    {String? actionLabel, VoidCallback? onAction}) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
       content: Text(message),
       behavior: SnackBarBehavior.floating,
+      // Acción opcional («Deshacer» del Ocultar del inbox): misma receta de
+      // toast, sin duplicar el posicionamiento sobre la navbar.
+      action: actionLabel == null
+          ? null
+          : SnackBarAction(label: actionLabel, onPressed: onAction ?? () {}),
       margin:
           EdgeInsets.fromLTRB(16, 0, 16, navBarReservedSpace(context) + 12),
     ));
