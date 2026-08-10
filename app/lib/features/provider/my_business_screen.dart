@@ -12,16 +12,15 @@ import '../../core/safe_image_picker.dart';
 import '../../core/secure_web_launch.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
-import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
 import '../shared/local_image_guard.dart';
-import '../shared/network_image.dart';
 import '../shared/product_list_card.dart';
 import '../shared/service_chips_editor.dart';
 import '../shared/text_editor_sheet.dart';
+import '../shared/tile_carril.dart';
 import '../shared/violet_header.dart';
 
 /// Elige una foto de la galería con la guarda global de `image_picker`
@@ -779,10 +778,10 @@ class _MyBusinessViewState extends State<MyBusinessView> {
   /// carril, a todo el ancho, debajo (pedido explícito del PO).
   List<Widget> _packagesOrAdd(List<Map<String, dynamic>> paquetes) => [
         if (paquetes.isNotEmpty)
-          _TileCarril(
+          TileCarril(
             items: paquetes,
-            height: _kPackageCarrilHeight,
-            tileBuilder: (p) => _PackageTile(
+            height: kPackageCarrilHeight,
+            tileBuilder: (p) => PackageTile(
               item: p,
               onTap: widget.onEditPackage == null
                   ? null
@@ -812,10 +811,10 @@ class _MyBusinessViewState extends State<MyBusinessView> {
     }
     return [
       if (trabajos.isNotEmpty)
-        _TileCarril(
+        TileCarril(
           items: trabajos,
-          height: _kPortfolioCarrilHeight,
-          tileBuilder: (t) => _PortfolioTile(
+          height: kPortfolioCarrilHeight,
+          tileBuilder: (t) => PortfolioTile(
             item: t,
             onTap: widget.onEditTrabajo == null
                 ? null
@@ -973,209 +972,6 @@ class _ServicesCard extends StatelessWidget {
     );
   }
 }
-
-/// Alto de la foto en las tarjetas COMPACTAS de [_PortfolioTile] y
-/// [_PackageTile] (pedido PO 2026-08-09, TERCERA vuelta: mostró un ejemplo —
-/// grid de tarjetas tipo "match" de una app de citas — y pidió «los paquetes
-/// y trabajos deben hacer scroll HORIZONTAL, que la foto sea más pequeña».
-/// La foto sigue ARRIBA a todo el ancho de la tarjeta, con el texto debajo,
-/// pero la tarjeta entera ahora es angosta (ver [_kCarrilCardWidthFraction])
-/// y la foto bajó de 168 (segunda vuelta, vertical a ancho completo) a este
-/// valor, dentro del rango 110-130 que pidió el PO).
-const double _kTileImageHeight = 120;
-final BorderRadius _kTileImageRadius = BorderRadius.only(
-  topLeft: Radius.circular(kCardRadius),
-  topRight: Radius.circular(kCardRadius),
-);
-
-/// Fracción del ancho de pantalla que ocupa cada tarjeta del carril: ~44%
-/// deja ver dos tarjetas completas y el asomo de una tercera, calcado del
-/// ejemplo que mostró el PO (2026-08-09, tercera vuelta).
-const double _kCarrilCardWidthFraction = 0.44;
-
-/// Alto fijo del carril de TRABAJOS: foto + título (hasta 2 líneas). Con
-/// margen sobre el cálculo "a ojo" a propósito — en `flutter test` el texto
-/// mide bastante más que en el device real (fuente de respaldo del entorno
-/// de test, ver `request_requirement_badges_test.dart`), así que un alto
-/// ajustado revienta con `RenderFlex overflowed` solo en la suite.
-const double _kPortfolioCarrilHeight = 230;
-
-/// Alto fijo del carril de PAQUETES: igual que [_kPortfolioCarrilHeight] más
-/// la fila de precio.
-const double _kPackageCarrilHeight = 260;
-
-/// Carril horizontal de tarjetas compactas para PAQUETES y TRABAJOS (pedido
-/// PO 2026-08-09, tercera vuelta, tras mostrar un ejemplo de grid de
-/// tarjetas tipo "match"): `SizedBox(height: ...)` + `ListView` con
-/// `scrollDirection: Axis.horizontal`, padding lateral 16 y separación 12
-/// entre tarjetas — mismo patrón de carril que el visor de fotos de un
-/// trabajo en la tienda pública (`provider_store_screen.dart`). La fila «+
-/// Añadir…» de cada sección queda FUERA de este widget, a todo el ancho,
-/// debajo (se sigue dibujando en [_MyBusinessViewState._packagesOrAdd] /
-/// [_MyBusinessViewState._trabajosOrAdd]).
-class _TileCarril extends StatelessWidget {
-  const _TileCarril({
-    required this.items,
-    required this.tileBuilder,
-    required this.height,
-  });
-
-  final List<Map<String, dynamic>> items;
-  final Widget Function(Map<String, dynamic> item) tileBuilder;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    final cardWidth =
-        MediaQuery.sizeOf(context).width * _kCarrilCardWidthFraction;
-    return SizedBox(
-      height: height,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: items.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
-        itemBuilder: (_, i) =>
-            SizedBox(width: cardWidth, child: tileBuilder(items[i])),
-      ),
-    );
-  }
-}
-
-/// Trabajo del portafolio en el escaparate propio: tarjeta compacta del
-/// carril de TRABAJOS, con la foto arriba (a todo el ancho DE LA TARJETA,
-/// que ahora es angosta) + título debajo. Tocar abre el editor con la fila;
-/// mantener presionado pide confirmar el borrado (Task 8). Mismo molde
-/// visual que [_PackageTile]. `margin: EdgeInsets.zero` porque el espaciado
-/// entre tarjetas lo pone [_TileCarril] (separador + padding del carril), no
-/// el margen individual de `JayaloCard`.
-class _PortfolioTile extends StatelessWidget {
-  const _PortfolioTile({required this.item, this.onTap, this.onLongPress});
-  final Map<String, dynamic> item;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
-    final img = images.isEmpty ? null : images.first;
-    return JayaloCard(
-      padding: EdgeInsets.zero,
-      margin: EdgeInsets.zero,
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ClipRRect(
-            borderRadius: _kTileImageRadius,
-            child: img == null || img.isEmpty
-                ? _tilePlaceholder(cs, Icons.photo_outlined)
-                : JayaloNetworkImage(
-                    img,
-                    width: double.infinity,
-                    height: _kTileImageHeight,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        _tilePlaceholder(cs, Icons.photo_outlined),
-                  ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(item['title'] as String? ?? '',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Paquete/plan propio en el escaparate: tarjeta compacta del carril de
-/// PAQUETES, con la foto arriba (a todo el ancho DE LA TARJETA, angosta) +
-/// nombre y precio debajo. Tocar abre el editor con la fila; mantener
-/// presionado pide confirmar el borrado (Task 7). Mismo molde visual que
-/// [_PortfolioTile], con precio; mismo motivo de `margin: EdgeInsets.zero`.
-class _PackageTile extends StatelessWidget {
-  const _PackageTile({required this.item, this.onTap, this.onLongPress});
-  final Map<String, dynamic> item;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final img = item['image_url'] as String?;
-    final price = item['price'] as num?;
-    return JayaloCard(
-      padding: EdgeInsets.zero,
-      margin: EdgeInsets.zero,
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ClipRRect(
-            borderRadius: _kTileImageRadius,
-            child: img == null || img.isEmpty
-                ? _tilePlaceholder(cs, Icons.inventory_2_outlined)
-                : JayaloNetworkImage(
-                    img,
-                    width: double.infinity,
-                    height: _kTileImageHeight,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        _tilePlaceholder(cs, Icons.inventory_2_outlined),
-                  ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(item['name'] as String? ?? '',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 6),
-                // (price == null || price == 0): C-1 hace que un precio en
-                // blanco se guarde como 0 (la columna es NOT NULL DEFAULT 0),
-                // no como null — sin este OR, "Consultar precio" quedaba
-                // inalcanzable para un paquete guardado sin precio.
-                Text(
-                    (price == null || price == 0)
-                        ? 'Consultar precio'
-                        : fmtRD(price),
-                    style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: cs.primary)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Foto vacía/rota de un [_PortfolioTile]/[_PackageTile]: mismo contenedor
-/// gris con ícono en ambos, a todo el ancho de la tarjeta (patrón de
-/// placeholder existente desde el hallazgo M-1, ahora vertical).
-Widget _tilePlaceholder(ColorScheme cs, IconData icon) => Container(
-      width: double.infinity,
-      height: _kTileImageHeight,
-      alignment: Alignment.center,
-      color: cs.surfaceContainerHighest,
-      child: Icon(icon, color: cs.onSurfaceVariant, size: 34),
-    );
 
 /// «+ Añadir …» — mismo tratamiento visual que `_AboutCard`/`_ServicesCard`
 /// en su estado vacío: fila con ícono `+` y texto en el color primario. Va
