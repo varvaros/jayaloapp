@@ -51,7 +51,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Cambiar al segmento de solicitudes ajenas (etiqueta actual del filtro).
-    await tester.tap(find.text('Ver solicitudes de usuarios'));
+    await tester.tap(find.text('Todas las solicitudes'));
     await tester.pumpAndSettle();
 
     expect(find.text('Busco 50 sillas plegables'), findsOneWidget);
@@ -68,7 +68,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Ver solicitudes de usuarios'));
+    await tester.tap(find.text('Todas las solicitudes'));
     await tester.pumpAndSettle();
 
     expect(find.text('Busco 50 sillas plegables'), findsOneWidget);

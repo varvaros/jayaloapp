@@ -314,25 +314,26 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     return false;
   }
 
-  /// Botón de filtro (Mías / De otros): violeta con letra blanca. El activo va
-  /// en violeta pleno; el inactivo en violeta translúcido (pedido PO 2026-07-22:
-  /// botones violeta a la izquierda, letras blancas).
+  /// Botón de filtro (Mías / De otros): píldoras DISCRETAS (mockup aprobado PO
+  /// 2026-08-10, doctrina "las tarjetas son las protagonistas, no los
+  /// filtros"): la activa en violeta pleno, la inactiva en neutro tenue —
+  /// sustituye a los dos botones violeta del pedido 2026-07-22.
   Widget _filterButton(String label, bool selected, VoidCallback onTap) {
     final cs = Theme.of(context).colorScheme;
     return Material(
-      color: selected ? cs.primary : cs.primary.withValues(alpha: .42),
+      color: selected ? cs.primary : cs.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(999),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
           child: Text(
             label,
-            style: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              color: selected ? Colors.white : cs.onSurfaceVariant,
             ),
           ),
         ),
@@ -518,7 +519,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                   steps: onboardingCopy['client.others_requests.v1']!,
                   order: 3,
                   enabled: _myLoadSettled,
-                  child: _filterButton('Ver solicitudes de usuarios', _others, () {
+                  child: _filterButton('Todas las solicitudes', _others, () {
                     setState(() {
                       _others = true;
                       _othersLoad ??= _fetchOthers();
@@ -870,31 +871,39 @@ class _RequestCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final tone = toneFor(context, phase);
-    // Teñida en todas las fases MENOS `waiting`: una solicitud recién puesta,
-    // aún sin ofertas, es la más viva de todas y va sobre blanco.
-    // `completed` también se tiñe (pedido PO 2026-08-03), con su gris: antes
-    // caía en el mismo blanco que `waiting` y una solicitud ya cerrada se leía
-    // como activa.
-    final tinted = phase != RequestPhase.waiting;
+    // Mockup aprobado 2026-08-10: las fases VIVAS van sobre tarjeta blanca —
+    // el estado lo dicen el chip y el riel, no el fondo. Las TERMINALES
+    // (completada/cerrada) conservan su tinte gris + foto apagada (pedido PO
+    // 2026-08-03): una solicitud muerta no debe leerse como activa.
+    final tinted =
+        phase == RequestPhase.completed || phase == RequestPhase.closed;
     final bg = tinted ? tone.bg : cs.surfaceContainerLowest;
     final fg = tinted ? tone.ink : cs.onSurface;
-    final (_, label) = phaseChip(phase, offerCount, closedReason: closedReason);
+    var (_, label) = phaseChip(phase, offerCount, closedReason: closedReason);
+    // Con ofertas sin ver, el chip se vuelve VERDE y lo dice — sustituye a la
+    // etiqueta roja "Nuevas ofertas" de la esquina (mockup aprobado).
+    if (unseen && phase == RequestPhase.withOffers) {
+      label = offerCount == 1 ? '1 oferta nueva' : '$offerCount ofertas nuevas';
+    }
     return JayaloCard(
       onTap: onTap,
       tint: bg,
-      padding: const EdgeInsets.all(11),
+      // Sin padding propio: el cuerpo lo pone y el riel llega a los bordes.
+      padding: EdgeInsets.zero,
       margin: margin ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          Padding(
+            padding: const EdgeInsets.all(11),
+            child: Row(
             children: [
               Stack(
                 clipBehavior: Clip.none,
                 children: [
                   _thumb(context, tinted, tone),
-                  if (wholesale) const WholesaleRibbon(radius: 16),
+                  if (wholesale) const WholesaleRibbon(radius: 15),
                 ],
               ),
               const SizedBox(width: 13),
@@ -963,117 +972,166 @@ class _RequestCard extends StatelessWidget {
                           ),
                         ),
                       )
+                    else if (tinted)
+                      _pill(label, tone, tinted, dark)
                     else
-                      _pill(label, tone, tinted, dark),
+                      _liveChip(context, label),
                   ],
                 ),
               ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // "Nuevas ofertas" a la DERECHA (pedido PO 2026-07-23): la
-                  // izquierda ya está cargada (foto, título, fecha, chips). Rojo
-                  // PASTEL (mismo tono suave que "Negocio sin verificar"), no
-                  // chillón.
-                  if (unseen) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 9, vertical: 3),
-                      // Fondo BLANCO (pedido PO 2026-07-23): el rosado no jugaba
-                      // bien sobre el lila ni el verde de las tarjetas. Blanco +
-                      // texto rojo lee sobre cualquier tinte.
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        'Nuevas ofertas',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFFC0261C),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  Icon(
-                    Icons.chevron_right,
-                    size: 20,
-                    color: fg.withValues(alpha: .4),
-                  ),
-                ],
+              Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: fg.withValues(alpha: .4),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          _phaseTimeline(context, tone, tinted),
+          ),
+          _phaseRail(context, tone, tinted),
         ],
       ),
     );
   }
 
-  /// Timeline horizontal de 5 pasos (Esperando → Ofertas → Aceptada → Contacto
-  /// → Completa) bajo cada solicitud (pedido PO 2026-07-20). El tramo alcanzado
-  /// se colorea con la tinta de la FASE actual (ámbar/lila/naranja/verde/gris),
-  /// así "cambia de color según el estado"; lo pendiente queda tenue.
-  Widget _phaseTimeline(BuildContext context, StatusTone tone, bool tinted) {
+  /// Chip de estado de las fases VIVAS (mockup aprobado 2026-08-10): lila por
+  /// defecto y VERDE cuando hay ofertas nuevas sin ver — el color ES el aviso
+  /// (sustituye a la etiqueta roja de la esquina, pedido PO 2026-07-23).
+  Widget _liveChip(BuildContext context, String label) {
     final cs = Theme.of(context).colorScheme;
-    final active = tone.ink;
-    final muted = tinted
-        ? tone.ink.withValues(alpha: .28)
-        : cs.onSurfaceVariant.withValues(alpha: .35);
-    const labels = ['Esperando', 'Ofertas', 'Aceptada', 'Contacto', 'Completa'];
-    final current = phase.index;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final ink = unseen
+        ? (dark ? JayaloColors.dSuccess : JayaloColors.success)
+        : cs.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
+      decoration: BoxDecoration(
+        color: ink.withValues(alpha: dark ? .20 : .12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: ink,
+        ),
+      ),
+    );
+  }
 
-    Widget seg(bool show, bool done) => Expanded(
+  /// Riel de progreso (la firma del mockup aprobado 2026-08-10): franja tenue
+  /// al pie de la tarjeta con los 5 pasos (Esperando → Ofertas → Aceptada →
+  /// Contacto → Completa). Lo hecho en VERDE, el paso ACTUAL como píldora
+  /// violeta con su nombre, lo pendiente en aros tenues. En las fases
+  /// terminales (completada/cerrada) el riel se apaga al tono gris de la fase:
+  /// no se viste de verde un trato que ya terminó.
+  Widget _phaseRail(BuildContext context, StatusTone tone, bool tinted) {
+    final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final done =
+        tinted ? tone.ink : (dark ? JayaloColors.dSuccess : JayaloColors.success);
+    final pillBg = tinted ? tone.ink : cs.primary;
+    final pillInk = tinted && dark ? tone.bg : Colors.white;
+    final muted = tinted
+        ? tone.ink.withValues(alpha: .30)
+        : cs.onSurfaceVariant.withValues(alpha: .45);
+    final line = tinted
+        ? tone.ink.withValues(alpha: .20)
+        : cs.onSurfaceVariant.withValues(alpha: .22);
+    const labels = ['Esperando', 'Ofertas', 'Aceptada', 'Contacto', 'Completa'];
+    // `closed` (índice 5) no es un paso del riel: se pinta con el riel lleno
+    // en su gris, igual que antes hacía el timeline.
+    final current = phase.index.clamp(0, labels.length - 1);
+
+    Widget seg(bool show, bool hecho) => Expanded(
       child: show
-          ? Container(height: 2, color: done ? active : muted)
+          ? Container(height: 1.6, color: hecho ? done : line)
           : const SizedBox(),
     );
-    Widget dot(bool done, bool isCurrent) => Container(
-      width: isCurrent ? 13 : 10,
-      height: isCurrent ? 13 : 10,
+    Widget dot(bool hecho) => Container(
+      width: 9,
+      height: 9,
       decoration: BoxDecoration(
-        color: done ? active : Colors.transparent,
-        border: Border.all(color: done ? active : muted, width: 2),
+        color: hecho ? done : Colors.transparent,
+        border: hecho ? null : Border.all(color: muted, width: 1.6),
         shape: BoxShape.circle,
       ),
     );
+    Widget pill(String l) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: pillBg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        l,
+        maxLines: 1,
+        style: TextStyle(
+          fontSize: 9,
+          height: 1.2,
+          fontWeight: FontWeight.w600,
+          color: pillInk,
+        ),
+      ),
+    );
 
-    return Row(
-      children: [
-        for (var i = 0; i < labels.length; i++)
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    seg(i > 0, i <= current),
-                    dot(i <= current, i == current),
-                    seg(i < labels.length - 1, i < current),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  labels[i],
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 8.5,
-                    height: 1.1,
-                    color: i <= current ? active : muted,
-                    fontWeight: i == current
-                        ? FontWeight.w700
-                        : FontWeight.w500,
+    return Container(
+      decoration: BoxDecoration(
+        // Franja propia, tenue y cálida, con las esquinas de abajo de la
+        // tarjeta (el JayaloCard no recorta hijos).
+        color: tinted
+            ? tone.ink.withValues(alpha: .07)
+            : cs.surfaceContainerHighest.withValues(alpha: dark ? .5 : .45),
+        borderRadius:
+            const BorderRadius.vertical(bottom: Radius.circular(kCardRadius)),
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 7),
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: 20,
+                    child: Row(
+                      children: [
+                        seg(i > 0, i <= current),
+                        if (i == current)
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: pill(labels[i]),
+                            ),
+                          )
+                        else
+                          dot(i < current),
+                        seg(i < labels.length - 1, i < current),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  SizedBox(
+                    height: 12,
+                    child: i == current
+                        ? null
+                        : Text(
+                            labels[i],
+                            maxLines: 1,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 8.5,
+                              height: 1.2,
+                              color: i < current ? done : muted,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                  ),
+                ],
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1090,19 +1148,21 @@ class _RequestCard extends StatelessWidget {
         : cs.surfaceContainerHighest;
     final holderIcon =
         (tinted && dark ? tone.bg : tone.ink).withValues(alpha: .8);
+    // 80px (mockup aprobado 2026-08-10: "la foto llena su contenedor" — la
+    // miniatura de 54 se perdía al lado del título).
     Widget placeholder() => Container(
-      width: 54,
-      height: 54,
+      width: 80,
+      height: 80,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: holderBg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(15),
       ),
       child: Icon(
         kind == 'servicio'
             ? Icons.handyman_outlined
             : Icons.inventory_2_outlined,
-        size: 24,
+        size: 28,
         color: holderIcon,
       ),
     );
@@ -1120,11 +1180,11 @@ class _RequestCard extends StatelessWidget {
     final url = imageUrl;
     if (url == null) return muted(placeholder());
     return muted(ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(15),
       child: JayaloNetworkImage(
         url,
-        width: 54,
-        height: 54,
+        width: 80,
+        height: 80,
         fit: BoxFit.cover,
         errorBuilder: (_, _, _) => placeholder(),
         loadingBuilder: (_, child, p) => p == null ? child : placeholder(),
