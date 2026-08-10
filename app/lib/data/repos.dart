@@ -2910,7 +2910,13 @@ const productDetailCols =
     // Detalles que la tabla YA guardaba y el detalle no traía ni pintaba
     // (pedido PO 2026-08-03: coherencia visual con las ofertas). Ojo:
     // `provider_products` NO tiene `delivery_time` — eso es de las ofertas.
-    ',brand,warranty,requires_evaluation';
+    ',brand,warranty,requires_evaluation'
+    // Rediseño de la ficha en chips (pedido PO 2026-08-09): `offer_defaults`
+    // trae "tiempo de entrega" (`delivery`) y la lista completa de colores
+    // (`colors`) que `brand`/`warranty` — arriba — no cubren porque son
+    // columnas propias; esto es jsonb, mismo molde que escribe el editor de
+    // ítem de tienda (`OfferDefaults`, `add_store_item_screen.dart`).
+    ',offer_defaults';
 
 Future<Map<String, dynamic>?> productDetail(String id) async => await supa
     .from('provider_products')

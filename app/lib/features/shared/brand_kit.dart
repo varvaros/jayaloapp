@@ -212,11 +212,22 @@ class StatusChip extends StatelessWidget {
               Icon(icon, size: 14, color: tone.ink),
               const SizedBox(width: 4),
             ],
-            Text(label,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: tone.ink)),
+            // `Flexible` + `overflow: ellipsis` (antes el `Text` no tenía
+            // ninguno de los dos): un `Row` con `mainAxisSize: min` da ancho
+            // INFINITO a un hijo que no sea `Flexible`/`Expanded`, así que
+            // sin esto un contenedor angosto (p. ej. una fila con un ícono al
+            // lado) revienta en overflow en vez de truncar con "…". Nunca
+            // recorta en el uso normal — un chip con espacio de sobra se ve
+            // exactamente igual que antes.
+            Flexible(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: tone.ink)),
+            ),
           ],
         ),
       );

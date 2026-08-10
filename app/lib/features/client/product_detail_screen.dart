@@ -11,6 +11,7 @@ import '../../core/safe_image_picker.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/interest_message.dart';
 import '../../domain/money.dart';
+import '../../domain/offer_defaults.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/collapsing_photo_panel.dart';
@@ -211,7 +212,6 @@ class _ProductDetailViewState extends State<ProductDetailView> {
     final condition = p['condition'] as String?;
     final conditionLabel =
         condition == 'nuevo' ? 'Nuevo' : condition == 'usado' ? 'Usado' : null;
-    final color = p['color'] as String?;
     final brand = p['brand'] as String?;
     final warranty = p['warranty'] as String?;
     final requiresEvaluation = p['requires_evaluation'] == true;
@@ -219,6 +219,77 @@ class _ProductDetailViewState extends State<ProductDetailView> {
     final offersInstallation = p['offers_installation'] == true;
     final rubro = p['rubro'] as String?;
     final isServicio = (p['kind'] as String?) == 'servicio';
+    // Rediseño en chips (pedido PO 2026-08-09): "tiempo de entrega" y la
+    // lista completa de colores solo viven en el jsonb `offer_defaults` (ver
+    // `OfferDefaults`, `add_store_item_screen.dart`) — `color` (columna real,
+    // singular) es el PRIMERO de esa lista cuando el proveedor usó el
+    // selector múltiple, así que la lista gana cuando existe; `color` queda
+    // de fallback para productos guardados antes de que `offer_defaults`
+    // existiera.
+    final offerDefaults =
+        (p['offer_defaults'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final colorsList =
+        (offerDefaults[OfferDefaults.colors] as List?)?.cast<String>() ??
+            const [];
+    final colorsLabel = colorsList.isNotEmpty
+        ? colorsList.join(', ')
+        : (p['color'] as String?);
+    final delivery = offerDefaults[OfferDefaults.delivery] as String?;
+    final hasPrice = p['price'] != null ||
+        p['price_min'] != null ||
+        p['price_max'] != null;
+    // Grupo 1 "qué es" (condición/marca/color/garantía/entrega): tono suave
+    // de marca. Grupo 2 "qué pasa con ello" (envío/instalación/evaluación):
+    // el mismo teal "requisito" que usa `RequestRequirementBadges` en el
+    // detalle de solicitud — es el MISMO concepto (logística alrededor del
+    // producto/servicio), así que comparte color en toda la app. El rubro va
+    // en el tono de acento (el mismo par que la píldora activa de la navbar)
+    // porque es la etiqueta más "titular" del grupo.
+    final rubroTone =
+        (bg: cs.primaryContainer, ink: cs.onPrimaryContainer);
+    final attrTone =
+        (bg: cs.secondaryContainer, ink: cs.onSecondaryContainer);
+    final logisticsTone = Theme.of(context).brightness == Brightness.dark
+        ? JayaloStatus.requisitoDark
+        : JayaloStatus.requisitoLight;
+    final chips = <Widget>[
+      if (rubro != null && rubro.isNotEmpty)
+        StatusChip(
+            label: rubro, icon: Icons.category_outlined, tone: rubroTone),
+      if (conditionLabel != null)
+        StatusChip(
+            label: conditionLabel, icon: Icons.sell_outlined, tone: attrTone),
+      if (brand != null && brand.isNotEmpty)
+        StatusChip(label: brand, icon: Icons.verified_outlined, tone: attrTone),
+      if (colorsLabel != null && colorsLabel.isNotEmpty)
+        StatusChip(
+            label: colorsLabel, icon: Icons.palette_outlined, tone: attrTone),
+      if (warranty != null && warranty.isNotEmpty)
+        StatusChip(
+            label: 'Garantía: $warranty',
+            icon: Icons.shield_outlined,
+            tone: attrTone),
+      if (delivery != null && delivery.isNotEmpty)
+        StatusChip(
+            label: 'Entrega: $delivery',
+            icon: Icons.schedule_outlined,
+            tone: attrTone),
+      if (offersShipping)
+        StatusChip(
+            label: 'Envío disponible',
+            icon: Icons.local_shipping_outlined,
+            tone: logisticsTone),
+      if (offersInstallation)
+        StatusChip(
+            label: 'Instalación incluida',
+            icon: Icons.build_outlined,
+            tone: logisticsTone),
+      if (requiresEvaluation)
+        StatusChip(
+            label: 'Requiere evaluación',
+            icon: Icons.fact_check_outlined,
+            tone: logisticsTone),
+    ];
 
     // Misma anatomía que el detalle de solicitud: panel ámbar con la foto que
     // LLENA (cover) arriba y una hoja blanca redondeada abajo con los datos y
@@ -262,60 +333,47 @@ class _ProductDetailViewState extends State<ProductDetailView> {
                 ),
                 const SizedBox(height: 16),
               ],
-              if (rubro != null && rubro.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(children: [
-                    Icon(Icons.category_outlined, size: 14, color: cs.primary),
-                    const SizedBox(width: 4),
-                    Text(rubro,
-                        style: TextStyle(fontSize: 12, color: cs.primary)),
-                  ]),
-                ),
               Text(name,
                   style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w600,
                       color: jayaloHead(context))),
               const SizedBox(height: 6),
+              // Precio protagonista: bold + tabular figures + tamaño mayor
+              // que el nombre (pedido PO 2026-08-09: "jerarquía clara"). Sin
+              // precio fijo/rango, `catalogPriceLabel` ya cae en "Consultar
+              // precio" — ese caso NO es una cifra, así que va en un estilo
+              // discreto en vez del violeta grande (antes se pintaba IGUAL
+              // que un precio real).
               Text(priceLabel,
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: cs.primary)),
+                  style: hasPrice
+                      ? TextStyle(
+                          fontSize: 26,
+                          height: 1,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -.3,
+                          color: cs.primary,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        )
+                      : TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurfaceVariant)),
               if (description != null && description.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(description,
                     style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
               ],
-              const SizedBox(height: 12),
-              // Primero QUÉ es (estado, marca, color, garantía), después qué
-              // pasa con ello (envío, instalación, evaluación) — el mismo orden
-              // con el que se leen los detalles de una oferta.
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                if (conditionLabel != null)
-                  _Tag(icon: Icons.sell_outlined, label: conditionLabel),
-                if (brand != null && brand.isNotEmpty)
-                  _Tag(icon: Icons.verified_outlined, label: brand),
-                if (color != null && color.isNotEmpty)
-                  _Tag(icon: Icons.palette_outlined, label: color),
-                if (warranty != null && warranty.isNotEmpty)
-                  _Tag(
-                      icon: Icons.shield_outlined,
-                      label: 'Garantía: $warranty'),
-                if (offersShipping)
-                  const _Tag(
-                      icon: Icons.local_shipping_outlined,
-                      label: 'Envío disponible'),
-                if (offersInstallation)
-                  const _Tag(
-                      icon: Icons.build_outlined,
-                      label: 'Instalación incluida'),
-                if (requiresEvaluation)
-                  const _Tag(
-                      icon: Icons.fact_check_outlined,
-                      label: 'Requiere evaluación'),
-              ]),
+              // Atributos agrupados en CHIPS de colores (pedido PO
+              // 2026-08-09), no como texto suelto: primero QUÉ es (rubro,
+              // estado, marca, color, garantía, entrega), después qué pasa
+              // con ello (envío, instalación, evaluación) — mismo orden con
+              // el que se leen los detalles de una oferta. Sin ningún dato
+              // opcional, `chips` queda vacía y no se pinta ni el hueco.
+              if (chips.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Wrap(spacing: 8, runSpacing: 8, children: chips),
+              ],
               if (widget.data.business != null)
                 _BusinessCard(business: widget.data.business!).cascadeIn(0),
               const SizedBox(height: 20),
@@ -387,29 +445,6 @@ class _ThumbStrip extends StatelessWidget {
   }
 }
 
-class _Tag extends StatelessWidget {
-  const _Tag({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        border: Border.all(color: cs.outlineVariant),
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 14, color: cs.primary),
-        const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontSize: 12)),
-      ]),
-    );
-  }
-}
-
 /// "Ofrecido por" — nombre y logo reales SIEMPRE (PO 2026-07-28: el cliente
 /// ve la identidad del proveedor sin desbloquear nada; paridad
 /// `products.$productId.tsx`, Task 8 ya aplicada en la web). Tocarlo abre la
@@ -460,6 +495,16 @@ class _BusinessCard extends StatelessWidget {
             ],
           ),
         ),
+        // Chevron: la fila entera ya es tocable (`onTap` arriba, sin cambios
+        // — lleva al perfil del proveedor); el ícono es solo el AVISO visual
+        // de que lleva a algún lado (pedido PO 2026-08-09), mismo lenguaje
+        // que una fila de ajustes. `SizedBox` con tamaño fijo MENOR que el
+        // default (24) porque el nombre/badge de al lado ya viven al límite
+        // del ancho disponible en un teléfono angosto — visto en
+        // `product_detail_screen_test.dart` (el texto en `flutter test` mide
+        // ~2× lo real, así que ahí el margen se nota primero).
+        const SizedBox(width: 6),
+        Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
       ]),
     );
   }
@@ -483,33 +528,56 @@ class _CtaArea extends StatelessWidget {
           textAlign: TextAlign.center,
           style: TextStyle(color: cs.onSurfaceVariant));
     }
+    // El botón y su nota van dentro de la MISMA tarjeta (pedido PO
+    // 2026-08-09: "la nota se integra, no cuelga suelta") — `surfaceContainerHigh`
+    // ya está calibrado para las dos superficies del tema (claro/oscuro) por
+    // `jayaloScheme`, así que el ancla no pierde contraste en oscuro.
     if (data.hasInterest) {
-      return Column(children: [
-        FilledButton(
-          onPressed: null,
-          child: const Text('Solicitud enviada'),
+      return _anchor(
+        cs,
+        child: Column(children: [
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: null,
+              child: const Text('Solicitud enviada'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('Te avisaremos si el proveedor te escribe.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        ]),
+      );
+    }
+    return _anchor(
+      cs,
+      child: Column(children: [
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () => onOpenInterest(),
+            icon: const Icon(Icons.shopping_bag_outlined),
+            label: const Text('Solicitar'),
+          ),
         ),
         const SizedBox(height: 8),
-        Text('Te avisaremos si el proveedor te escribe.',
+        Text('Le avisaremos al proveedor por correo y desde la app.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-      ]);
-    }
-    return Column(children: [
-      SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          onPressed: () => onOpenInterest(),
-          icon: const Icon(Icons.shopping_bag_outlined),
-          label: const Text('Solicitar'),
-        ),
-      ),
-      const SizedBox(height: 8),
-      Text('Le avisaremos al proveedor por correo y desde la app.',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-    ]);
+      ]),
+    );
   }
+
+  Widget _anchor(ColorScheme cs, {required Widget child}) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: child,
+      );
 }
 
 // ── El formulario "Me interesa" ─────────────────────────────────────────────

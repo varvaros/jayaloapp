@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/data/repos.dart' show BusinessLite;
 import 'package:jayalo_app/features/client/product_detail_screen.dart';
@@ -14,8 +15,9 @@ import 'package:jayalo_app/features/client/product_detail_screen.dart';
 /// `sendInterest`/`loadAddress`/`uploadPhoto` se inyectan (mismo patrón que
 /// `CatalogFetch` en `catalog_screen_test.dart`) para probar sin tocar Supabase.
 void main() {
-  Widget host(Widget child) => MaterialApp(
-        theme: jayaloTheme(Brightness.light),
+  Widget host(Widget child, {Brightness brightness = Brightness.light}) =>
+      MaterialApp(
+        theme: jayaloTheme(brightness),
         home: Scaffold(body: child),
       );
 
@@ -216,8 +218,11 @@ void main() {
 
   // Pedido PO 2026-08-03: coherencia visual con las ofertas. `provider_products`
   // guarda `brand`, `warranty` y `requires_evaluation`, y el detalle no los
-  // pintaba — ni siquiera los traía en su `select`. No existe `delivery_time`
-  // en productos (eso es de ofertas), así que no se inventa.
+  // pintaba — ni siquiera los traía en su `select`. `provider_products` NO
+  // tiene una columna `delivery_time` propia (eso es de ofertas) — pero SÍ
+  // tiene el jsonb `offer_defaults`, que desde el rediseño en chips (pedido
+  // PO 2026-08-09) es de donde salen "tiempo de entrega" y la lista completa
+  // de colores (ver los tests de `offer_defaults` más abajo).
   testWidgets('pinta los detalles que el producto sí guarda', (tester) async {
     setPhoneSize(tester);
     await tester.pumpWidget(host(view(dataFor(
@@ -243,5 +248,137 @@ void main() {
 
     expect(find.text('Requiere evaluación'), findsNothing);
     expect(find.textContaining('Garantía'), findsNothing);
+    expect(find.textContaining('Entrega'), findsNothing);
+  });
+
+  // ── Rediseño en chips (pedido PO 2026-08-09) ────────────────────────────
+
+  testWidgets('el rubro se pinta como chip (ya no como texto suelto arriba '
+      'del nombre)', (tester) async {
+    setPhoneSize(tester);
+    await tester.pumpWidget(host(view(dataFor())));
+    await tester.pumpAndSettle();
+
+    // `producto` trae `rubro: 'Herramientas'`.
+    expect(find.text('Herramientas'), findsOneWidget);
+  });
+
+  testWidgets(
+      '"tiempo de entrega" y la lista de colores salen de offer_defaults',
+      (tester) async {
+    setPhoneSize(tester);
+    await tester.pumpWidget(host(view(dataFor(
+      product: {
+        ...producto,
+        'offer_defaults': {
+          'delivery': '3-5 días',
+          'colors': ['Azul', 'Rojo'],
+        },
+      },
+    ))));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Entrega: 3-5 días'), findsOneWidget);
+    expect(find.text('Azul, Rojo'), findsOneWidget);
+  });
+
+  testWidgets(
+      'sin offer_defaults.colors, cae al color legado de la columna `color`',
+      (tester) async {
+    setPhoneSize(tester);
+    await tester.pumpWidget(host(view(dataFor(
+      product: {...producto, 'color': 'Verde'},
+    ))));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Verde'), findsOneWidget);
+  });
+
+  testWidgets(
+      'con offer_defaults.colors presente, NO se duplica con el color legado '
+      '(la lista gana)', (tester) async {
+    setPhoneSize(tester);
+    await tester.pumpWidget(host(view(dataFor(
+      product: {
+        ...producto,
+        'color': 'Azul',
+        'offer_defaults': {
+          'colors': ['Azul', 'Rojo'],
+        },
+      },
+    ))));
+    await tester.pumpAndSettle();
+
+    // Un solo chip con la lista unida, no uno por "Azul" (legado) y otro por
+    // la lista.
+    expect(find.text('Azul, Rojo'), findsOneWidget);
+    expect(find.text('Azul'), findsNothing);
+  });
+
+  testWidgets('sin precio (ni fijo ni rango): "Consultar precio", no una '
+      'cifra inventada', (tester) async {
+    setPhoneSize(tester);
+    await tester.pumpWidget(host(view(dataFor(
+      product: {...producto, 'price': null, 'price_min': null, 'price_max': null},
+    ))));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Consultar precio'), findsOneWidget);
+  });
+
+  testWidgets(
+      'tocar "Ofrecido por" navega al perfil del proveedor (`/store/:id`)',
+      (tester) async {
+    setPhoneSize(tester);
+    late final GoRouter router;
+    router = GoRouter(
+      initialLocation: '/detalle',
+      routes: [
+        GoRoute(
+            path: '/detalle',
+            builder: (_, _) => Scaffold(body: view(dataFor()))),
+        GoRoute(
+            path: '/store/:bid',
+            builder: (_, s) =>
+                Text('tienda ${s.pathParameters['bid']}')),
+      ],
+    );
+    await tester.pumpWidget(MaterialApp.router(
+        theme: jayaloTheme(Brightness.light), routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ferretería Pérez'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('tienda biz-1'), findsOneWidget);
+  });
+
+  testWidgets(
+      'en oscuro pinta sin reventar: chips, precio y CTA respetan el tema '
+      '(pedido PO 2026-08-09)', (tester) async {
+    setPhoneSize(tester);
+    await tester.pumpWidget(host(
+      view(dataFor(
+        product: {
+          ...producto,
+          'brand': 'DeWalt',
+          'warranty': '1 año',
+          'offers_shipping': true,
+          'offer_defaults': {
+            'delivery': '3-5 días',
+            'colors': ['Azul', 'Rojo'],
+          },
+        },
+      )),
+      brightness: Brightness.dark,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Taladro inalámbrico'), findsOneWidget);
+    expect(find.text('DeWalt'), findsOneWidget);
+    expect(find.text('Entrega: 3-5 días'), findsOneWidget);
+    expect(find.text('Envío disponible'), findsOneWidget);
+    expect(find.text('Solicitar'), findsOneWidget);
   });
 }
