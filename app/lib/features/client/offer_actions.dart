@@ -8,6 +8,7 @@ import '../../core/motion.dart';
 import '../../data/repos.dart';
 import '../../domain/contact_info.dart';
 import '../../domain/money.dart';
+import '../../domain/offer_message.dart';
 import '../shared/brand_kit.dart';
 import '../shared/celebration.dart';
 import '../shared/onboarding_store.dart';
@@ -294,11 +295,10 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
     ]);
   }
 
-  /// Bloque de detalle estructurado de la oferta (pedido PO 2026-07-21: los
-  /// detalles se veían diminutos → distribuirlos como opciones bien diagramadas
-  /// aprovechando el espacio del sheet). Cada campo presente = una FILA ancha:
-  /// ícono en pastilla + etiqueta + valor. Solo se muestran los que existen.
-  List<Widget> _detailBlock(BuildContext context) {
+  /// Datos estructurados presentes en la oferta, como (ícono, etiqueta,
+  /// valor). El «Estado» (Nuevo/Usado) no tiene columna propia: viaja dentro
+  /// de `message` y se recupera con [conditionFromOfferMessage].
+  List<(IconData, String, String)> _detailRows() {
     final o = widget.offer;
     String? s(String k) {
       final v = o[k] as String?;
@@ -309,16 +309,19 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
     final colors = ((o['product_colors'] as List?)?.cast<String>() ?? const [])
         .where((c) => c.trim().isNotEmpty)
         .toList();
+    final condition =
+        conditionFromOfferMessage(o['message'] as String? ?? '');
 
-    // (ícono, etiqueta, valor)
-    final rows = <(IconData, String, String)>[
+    return <(IconData, String, String)>[
+      if (condition.isNotEmpty)
+        (Icons.inventory_2_outlined, 'Estado', condition),
       if (s('product_brand') != null)
         (Icons.sell_outlined, 'Marca', s('product_brand')!),
       if (colors.isNotEmpty) (Icons.palette_outlined, 'Color', colors.join(', ')),
       if (s('product_warranty') != null)
         (Icons.verified_outlined, 'Garantía', s('product_warranty')!),
       if (s('delivery_time') != null)
-        (Icons.local_shipping_outlined, 'Entrega', s('delivery_time')!),
+        (Icons.schedule_outlined, 'Entrega', s('delivery_time')!),
       if (o['offers_shipping'] == true)
         (
           Icons.local_shipping_outlined,
@@ -344,6 +347,14 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
       if (s('estimated_duration') != null)
         (Icons.timelapse_outlined, 'Duración', s('estimated_duration')!),
     ];
+  }
+
+  /// Bloque de detalle estructurado de la oferta (pedido PO 2026-07-21: los
+  /// detalles se veían diminutos → distribuirlos como opciones bien diagramadas
+  /// aprovechando el espacio del sheet). Cada dato = un tile con ícono en una
+  /// rejilla de 2 columnas; solo se muestran los que existen.
+  List<Widget> _detailBlock(
+      BuildContext context, List<(IconData, String, String)> rows) {
     if (rows.isEmpty) return const [];
     final cs = Theme.of(context).colorScheme;
 
@@ -389,23 +400,28 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
     final tiles = [for (final r in rows) tile(r.$1, r.$2, r.$3)];
     final grid = <Widget>[];
     for (var i = 0; i < tiles.length; i += 2) {
+      final pad = EdgeInsets.only(bottom: i + 2 < tiles.length ? 10 : 0);
+      // Tile impar final a lo ANCHO: un hueco vacío en la rejilla se lee como
+      // que falta algo; a ancho completo se lee deliberado.
+      if (i + 1 == tiles.length) {
+        grid.add(Padding(padding: pad, child: tiles[i]));
+        break;
+      }
       grid.add(Padding(
-        padding: EdgeInsets.only(bottom: i + 2 < tiles.length ? 10 : 0),
+        padding: pad,
         child: IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: tiles[i]),
               const SizedBox(width: 10),
-              Expanded(
-                  child:
-                      i + 1 < tiles.length ? tiles[i + 1] : const SizedBox()),
+              Expanded(child: tiles[i + 1]),
             ],
           ),
         ),
       ));
     }
-    return [const SizedBox(height: 18), ...grid];
+    return [const SizedBox(height: 14), ...grid];
   }
 
   @override
@@ -417,6 +433,11 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
     final photos = ((o['image_urls'] as List?)?.cast<String>() ?? const <String>[])
         .where((u) => u.isNotEmpty)
         .toList();
+    final detailRows = _detailRows();
+    // `message` repite las partes estructuradas que ya son tiles; aquí solo
+    // sobrevive el texto libre (web) o partes sin tile (ofertas viejas).
+    final freeText = freeTextFromOfferMessage(
+        o['message'] as String? ?? '', {for (final r in detailRows) r.$2});
     // ¿Se muestra el hold de aceptar? Si sí, se pinta la mascota que se infla
     // por encima (IgnorePointer: nunca roba el toque del botón).
     final showAccept = st == 'pending' && !widget.hasAcceptedElsewhere;
@@ -439,6 +460,15 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
                     _OfferPhotoMarquee(urls: photos),
                     const SizedBox(height: 16),
                   ],
+                  // Eyebrow sobre el monto: el número grande solo flotaba sin
+                  // decir qué era (misma receta tipográfica de los tiles).
+                  Text('PRECIO',
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          letterSpacing: .3,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurfaceVariant)),
+                  const SizedBox(height: 2),
                   Text(offerPriceLabel(o),
                       style: Theme.of(context)
                           .textTheme
@@ -446,10 +476,10 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
                           ?.copyWith(
                               fontWeight: FontWeight.w800,
                               color: jayaloHead(context))),
-                  ..._detailBlock(context),
-                  if ((o['message'] as String? ?? '').trim().isNotEmpty) ...[
+                  ..._detailBlock(context, detailRows),
+                  if (freeText.isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    Text(o['message'] as String,
+                    Text(freeText,
                         style: TextStyle(
                             fontSize: 14.5,
                             height: 1.4,

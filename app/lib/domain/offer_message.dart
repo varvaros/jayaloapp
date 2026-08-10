@@ -60,6 +60,38 @@ String composeOfferMessage({
   return parts.join(' · ');
 }
 
+/// Texto de `message` que NO está ya representado por un tile del detalle.
+///
+/// El detalle de la oferta pinta los datos estructurados como tarjetas con
+/// ícono; debajo, `message` repetía esas mismas partes (las escribe
+/// [composeOfferMessage] con los mismos datos) más el eventual texto libre que
+/// la web todavía permite. Esta función quita solo las partes cuya etiqueta
+/// coincide con un tile YA mostrado ([shownLabels], p. ej. {'Estado',
+/// 'Garantía', 'Envío'}) y conserva todo lo demás — una parte estructurada sin
+/// tile (oferta vieja sin columnas) sigue siendo la única fuente de ese dato y
+/// no se pierde.
+String freeTextFromOfferMessage(String message, Set<String> shownLabels) {
+  // Partes SIN ':' que emite composeOfferMessage, por etiqueta de su tile.
+  const literales = {
+    'Envío gratis': 'Envío',
+    'Instalación incluida': 'Instalación',
+    'Requiere evaluación en sitio': 'Evaluación',
+  };
+  bool cubierta(String parte) {
+    final porLiteral = literales[parte];
+    if (porLiteral != null) return shownLabels.contains(porLiteral);
+    final idx = parte.indexOf(': ');
+    if (idx <= 0) return false;
+    return shownLabels.contains(parte.substring(0, idx));
+  }
+
+  return message
+      .split(' · ')
+      .map((p) => p.trim())
+      .where((p) => p.isNotEmpty && !cubierta(p))
+      .join(' · ');
+}
+
 /// Inverso de la condicion que escribe [composeOfferMessage].
 ///
 /// La oferta NO guarda "Nuevo/Usado" en columna propia: viaja dentro de

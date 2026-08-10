@@ -69,6 +69,56 @@ void main() {
     });
   });
 
+  group('freeTextFromOfferMessage', () {
+    test('mensaje 100% estructurado con todos los tiles => vacío', () {
+      final m = composeOfferMessage(
+        isService: false,
+        condition: 'Nuevo',
+        warranty: '3 días',
+        offersShipping: true,
+      );
+      expect(m, 'Estado: Nuevo · Garantía: 3 días · Envío gratis');
+      expect(
+        freeTextFromOfferMessage(m, {'Estado', 'Garantía', 'Envío'}),
+        '',
+      );
+    });
+
+    test('el texto libre de la web se conserva', () {
+      expect(
+        freeTextFromOfferMessage(
+            'Garantía: 1 año · Trato directo, factura disponible',
+            {'Garantía'}),
+        'Trato directo, factura disponible',
+      );
+    });
+
+    test('parte estructurada SIN tile se conserva (oferta vieja sin columna)',
+        () {
+      expect(
+        freeTextFromOfferMessage('Marca: Bosch · Envío gratis', {'Envío'}),
+        'Marca: Bosch',
+      );
+    });
+
+    test('las partes sin dos puntos se cubren por su tile', () {
+      expect(freeTextFromOfferMessage('Instalación incluida', {'Instalación'}),
+          '');
+      expect(
+          freeTextFromOfferMessage(
+              'Requiere evaluación en sitio', {'Evaluación'}),
+          '');
+      expect(freeTextFromOfferMessage('Envío gratis', <String>{}),
+          'Envío gratis');
+    });
+
+    test('mensaje vacío y sin tiles', () {
+      expect(freeTextFromOfferMessage('', <String>{}), '');
+      expect(freeTextFromOfferMessage('Solo prosa de la web', <String>{}),
+          'Solo prosa de la web');
+    });
+  });
+
   group('conditionFromOfferMessage', () {
     test('ida y vuelta con Nuevo', () {
       final m = composeOfferMessage(isService: false, condition: 'Nuevo');
