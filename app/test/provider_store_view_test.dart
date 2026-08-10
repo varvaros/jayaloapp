@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/data/repos.dart';
 import 'package:jayalo_app/features/client/provider_store_screen.dart';
@@ -105,7 +106,7 @@ void main() {
 
     testWidgets(
         '(b) los carriles de PAQUETES/TRABAJOS son horizontales, sin «+ '
-        'Añadir…» y tocar/mantener presionado no dispara nada', (tester) async {
+        'Añadir…» y mantener presionado no dispara nada', (tester) async {
       setTallPhoneSize(tester);
       await tester.pumpWidget(host(ProviderStoreView(
         identity: identity,
@@ -130,10 +131,10 @@ void main() {
       expect(find.text('Añadir trabajo'), findsNothing);
       expect(find.byIcon(Icons.add), findsNothing);
 
-      // Tocar y mantener presionado un tile no revienta ni abre nada (no hay
-      // `onTap`/`onLongPress` cableados — comportamiento de solo lectura).
-      await tester.tap(find.text('Plan Básico'));
-      await tester.pumpAndSettle();
+      // Mantener presionado un tile no revienta ni ofrece borrar (no hay
+      // `onLongPress` cableado en la tienda pública — sin editar ni borrar).
+      // `onTap` SÍ está cableado desde el 2026-08-09 (ver los dos grupos de
+      // abajo: "PAQUETES: tocar abre..." / "TRABAJOS: tocar abre...").
       await tester.longPress(find.text('Instalación de verja'));
       await tester.pumpAndSettle();
 
@@ -215,6 +216,46 @@ void main() {
       // tarea): una vez como sello de la portada (`BusinessCoverHero`) y otra
       // en la fila de insignias de la tarjeta de confianza.
       expect(find.text('Identidad verificada'), findsNWidgets(2));
+    });
+  });
+
+  // Pedido PO 2026-08-09: "El paquete no abre nada" — la tarjeta de un
+  // paquete ahora sí tiene `onTap` cableado.
+  group('PAQUETES: tocar abre el detalle del paquete', () {
+    testWidgets('navega a /package/:id (mismo patrón que ProductListCard)',
+        (tester) async {
+      setTallPhoneSize(tester);
+      final router = GoRouter(
+        initialLocation: '/store',
+        routes: [
+          GoRoute(
+            path: '/store',
+            builder: (_, _) => ProviderStoreView(
+              identity: identity,
+              stats: null,
+              productos: const [],
+              servicios: const [],
+              paquetes: paquetes,
+              trabajos: const [],
+            ),
+          ),
+          GoRoute(
+            path: '/package/:id',
+            builder: (_, s) =>
+                Scaffold(body: Text('PKG:${s.pathParameters['id']}')),
+          ),
+        ],
+      );
+      await tester.pumpWidget(MaterialApp.router(
+        theme: jayaloTheme(Brightness.light),
+        routerConfig: router,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Plan Básico'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('PKG:pk1'), findsOneWidget);
     });
   });
 }

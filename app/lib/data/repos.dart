@@ -2838,6 +2838,20 @@ Future<List<Map<String, dynamic>>> storePackages(String businessId) async =>
 Future<String> uploadPackageImage(String filePath) =>
     _uploadMarketplaceImage(filePath, 'packages', bucket: 'provider-products');
 
+/// Columnas del DETALLE de un paquete (`package_detail_screen.dart`, pedido
+/// PO 2026-08-09: "El paquete no abre nada" en la tienda del cliente).
+/// [packageCols] + `user_id`: la lista (`myPackages`/`storePackages`) no lo
+/// necesita, pero el detalle sí — para el chequeo `isOwner`, mismo criterio
+/// que `productDetailCols` frente a las columnas de lista del catálogo.
+const packageDetailCols =
+    'id,user_id,business_id,name,description,price,items,image_url,created_at';
+
+Future<Map<String, dynamic>?> packageDetail(String id) async => await supa
+    .from('provider_packages')
+    .select(packageDetailCols)
+    .eq('id', id)
+    .maybeSingle();
+
 /// category_id (slug) + un rubro (NOMBRE) del negocio, para prefijar el
 /// guardado en tienda: `provider_products` exige ambos NOT NULL y la oferta no
 /// los trae. `provider_business_rubros` guarda `rubro_id` (uuid) → se resuelve

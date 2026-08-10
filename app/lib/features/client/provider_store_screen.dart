@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
 import '../../data/repos.dart';
@@ -344,7 +345,8 @@ class ProviderStoreView extends StatelessWidget {
       if (servicios.isNotEmpty) ..._itemsSection('SERVICIOS', servicios),
       if (paquetes.isNotEmpty) ..._carrilSection('PAQUETES', paquetes,
           height: kPackageCarrilHeight,
-          tileBuilder: (p) => PackageTile(item: p)),
+          tileBuilder: (p) => PackageTile(
+              item: p, onTap: () => context.push('/package/${p['id']}'))),
       if (trabajos.isNotEmpty) ..._carrilSection('TRABAJOS', trabajos,
           height: kPortfolioCarrilHeight,
           tileBuilder: (t) => PortfolioTile(item: t)),
@@ -373,7 +375,9 @@ class ProviderStoreView extends StatelessWidget {
   /// Encabezado + carril horizontal de tarjetas compactas (PAQUETES/
   /// TRABAJOS) — [TileCarril] compartido con "Mi negocio"
   /// (`shared/tile_carril.dart`); en la tienda pública las tarjetas van sin
-  /// `onTap`/`onLongPress`: solo lectura, sin editar ni borrar.
+  /// `onLongPress` (solo lectura, sin editar ni borrar). El paquete SÍ tiene
+  /// `onTap` (pedido PO 2026-08-09: "El paquete no abre nada") — abre su
+  /// detalle (`/package/:id`).
   List<Widget> _carrilSection(
     String title,
     List<Map<String, dynamic>> items, {

@@ -9,6 +9,7 @@ import '../features/client/catalog_screen.dart';
 import '../features/client/create_request_screen.dart';
 import '../features/client/my_requests_screen.dart';
 import '../features/client/other_request_screen.dart';
+import '../features/client/package_detail_screen.dart';
 import '../features/client/product_detail_screen.dart';
 import '../features/client/provider_store_screen.dart';
 import '../features/admin/quick_register_screen.dart';
@@ -362,6 +363,35 @@ GoRouter buildRouter() => GoRouter(
                   child: BackGuard(
                       child: ProductDetailScreen(
                           productId: s.pathParameters['id']!)),
+                )),
+        // Detalle de PAQUETE, abierto desde la tienda (`/store/:bid`) —
+        // pedido PO 2026-08-09: "El paquete no abre nada". Misma razón que
+        // `/product/:id`: la tienda vive en el navigator raíz, así que esta
+        // ruta también va top-level (nunca dentro del ShellRoute) para
+        // apilarse ENCIMA de ella en vez de quedar oculta debajo.
+        GoRoute(
+            path: '/package/:id',
+            pageBuilder: (context, s) => CustomTransitionPage(
+                  key: s.pageKey,
+                  transitionDuration: JayaloMotion.reduced(context)
+                      ? Duration.zero
+                      : JayaloMotion.page,
+                  reverseTransitionDuration: JayaloMotion.reduced(context)
+                      ? Duration.zero
+                      : JayaloMotion.page,
+                  transitionsBuilder: (context, animation, _, child) =>
+                      SlideTransition(
+                    position: Tween<Offset>(
+                            begin: const Offset(1, 0), end: Offset.zero)
+                        .animate(CurvedAnimation(
+                            parent: animation,
+                            curve: JayaloMotion.enter,
+                            reverseCurve: JayaloMotion.exit)),
+                    child: child,
+                  ),
+                  child: BackGuard(
+                      child: PackageDetailScreen(
+                          packageId: s.pathParameters['id']!)),
                 )),
         // Chat: Scaffold de PRIMER NIVEL para que el composer reciba el inset
         // real del sistema (anidado bajo el Scaffold del shell con su
