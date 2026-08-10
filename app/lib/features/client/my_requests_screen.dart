@@ -1020,11 +1020,12 @@ class _RequestCard extends StatelessWidget {
   }
 
   /// Riel de progreso (la firma del mockup aprobado 2026-08-10): franja tenue
-  /// al pie de la tarjeta con los 5 pasos (Esperando → Ofertas → Aceptada →
-  /// Contacto → Completa). Lo hecho en VERDE, el paso ACTUAL como píldora
-  /// violeta con su nombre, lo pendiente en aros tenues. En las fases
-  /// terminales (completada/cerrada) el riel se apaga al tono gris de la fase:
-  /// no se viste de verde un trato que ya terminó.
+  /// al pie de la tarjeta con 3 pasos — Esperando → Ofertas → Aceptada
+  /// (decisión PO 2026-08-10: «En contacto» ya lo dice el chip y «Completado»
+  /// tiene su propio chip en la tarjeta, el riel no los repite). Lo hecho en
+  /// VERDE, el paso ACTUAL como píldora violeta con su nombre, lo pendiente en
+  /// aros tenues. En las fases terminales (completada/cerrada) el riel se
+  /// apaga al tono gris de la fase: no se viste de verde un trato que terminó.
   Widget _phaseRail(BuildContext context, StatusTone tone, bool tinted) {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
@@ -1038,9 +1039,9 @@ class _RequestCard extends StatelessWidget {
     final line = tinted
         ? tone.ink.withValues(alpha: .20)
         : cs.onSurfaceVariant.withValues(alpha: .22);
-    const labels = ['Esperando', 'Ofertas', 'Aceptada', 'Contacto', 'Completa'];
-    // `closed` (índice 5) no es un paso del riel: se pinta con el riel lleno
-    // en su gris, igual que antes hacía el timeline.
+    const labels = ['Esperando', 'Ofertas', 'Aceptada'];
+    // Las fases más allá de `accepted` (en contacto, completada, cerrada) se
+    // clavan en el último paso: el chip de la tarjeta es quien las cuenta.
     final current = phase.index.clamp(0, labels.length - 1);
 
     Widget seg(bool show, bool hecho) => Expanded(
