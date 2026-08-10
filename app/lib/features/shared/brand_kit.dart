@@ -11,11 +11,13 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show TextInputFormatter;
 import 'network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/brand.dart';
 import '../../core/motion.dart';
+import '../../domain/money.dart' show fmtMiles, parseMiles;
 import '../../domain/phase.dart';
 import '../shell/floating_nav_bar.dart';
 import 'onboarding_store.dart';
@@ -181,6 +183,32 @@ class _JayaloCardState extends State<JayaloCard> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Formateador de campos de PRECIO: solo dígitos, agrupados en miles al
+/// escribir ("12000" → "12,000") — pedido PO 2026-08-10: "unidades de mil,
+/// sin .00". Sin punto posible en el campo, el bug ×10 del separador decimal
+/// (08-09) no puede reaparecer desde la app. El submit debe parsear con
+/// `parseMiles` (nunca `double.tryParse`, que con comas devuelve null).
+class MilesInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return const TextEditingValue(text: '');
+    // Tope defensivo: 12 dígitos ya es un precio absurdo; rechazar el cambio
+    // mantiene el int.parse lejos de cualquier límite.
+    if (digits.length > 12) return oldValue;
+    // Vía parseMiles (no solo-dígitos): un PEGADO con decimales ("3000.50")
+    // se normaliza redondeando (→ "3,001") en vez de leerse "300050".
+    final n = parseMiles(newValue.text);
+    if (n == null) return const TextEditingValue(text: '');
+    final text = fmtMiles(n);
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
     );
   }
 }

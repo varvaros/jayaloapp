@@ -12,6 +12,7 @@ import '../../core/unsaved_guard.dart';
 import '../../data/repos.dart';
 import '../../domain/contact_info.dart' show contactInfoMessage, isContactInfoError;
 import '../../domain/image_pick.dart';
+import '../../domain/money.dart' show parseMiles;
 import '../../domain/offer_defaults.dart';
 import '../shared/brand_kit.dart';
 import '../shared/network_image.dart';
@@ -64,23 +65,7 @@ const _colorPresets = <(String, Color)>[
 /// siendo separador de MILES, como ya hacía antes ("3.000"/"1,500" → 3000/
 /// 1500) — ese caso, y cualquier otro, cae al camino de solo-dígitos de
 /// siempre.
-num? parseStoreItemPrice(String s) {
-  final cleaned = s.replaceAll(RegExp(r'[^0-9.,]'), '');
-  if (cleaned.isEmpty) return null;
-
-  final decimal = RegExp(r'^(\d*)[.,](\d{1,2})$').firstMatch(cleaned);
-  if (decimal != null) {
-    final wholePart = decimal.group(1)!;
-    final fracPart = decimal.group(2)!.padRight(2, '0');
-    final whole = wholePart.isEmpty ? 0 : int.parse(wholePart);
-    final cents = int.parse(fracPart);
-    return ((whole * 100 + cents) / 100).round();
-  }
-
-  final digits = cleaned.replaceAll(RegExp(r'[^0-9]'), '');
-  if (digits.isEmpty) return null;
-  return int.tryParse(digits);
-}
+num? parseStoreItemPrice(String s) => parseMiles(s);
 
 /// Alta rápida O EDICIÓN desde la app de un artículo de la tienda (pedido PO
 /// 2026-08-05: el agregador de "Mi negocio"; edición producto/servicio Task

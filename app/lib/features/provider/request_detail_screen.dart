@@ -388,19 +388,22 @@ class _ProviderRequestDetailScreenState
     _svcMode = _svcModes.indexOf(mode).clamp(0, _svcModes.length - 1);
     _fixed = mode != 'range';
     String txt(Object? v) => v == null ? '' : '${(v as num)}';
-    _price.text = txt(o['price']);
-    _min.text = txt(o['price_min']);
-    _max.text = txt(o['price_max']);
-    _hourly.text = txt(o['hourly_rate']);
+    // Dinero: agrupado en miles, como lo deja el MilesInputFormatter al
+    // escribir — el prefill no debe verse distinto de lo tecleado.
+    String miles(Object? v) => v == null ? '' : fmtMiles(v as num);
+    _price.text = miles(o['price']);
+    _min.text = miles(o['price_min']);
+    _max.text = miles(o['price_max']);
+    _hourly.text = miles(o['hourly_rate']);
     _hours.text = txt(o['estimated_hours']);
     _availability.text = (o['availability_note'] as String?) ?? '';
     _duration.text = (o['estimated_duration'] as String?) ?? '';
     _offersShipping = o['offers_shipping'] == true;
-    _shipping.text = txt(o['shipping_price']);
+    _shipping.text = miles(o['shipping_price']);
     _offersInstallation = o['offers_installation'] == true;
-    _installation.text = txt(o['installation_price']);
+    _installation.text = miles(o['installation_price']);
     _requiresEvaluation = o['requires_evaluation'] == true;
-    _evaluation.text = txt(o['evaluation_price']);
+    _evaluation.text = miles(o['evaluation_price']);
     // Las dos capacidades salen de la oferta, no del negocio: son la foto de lo
     // que se declaró al enviarla y su UPDATE está denegado en la base.
     _hasFiscalReceipt = o['has_fiscal_receipt'] == true;
@@ -450,11 +453,12 @@ class _ProviderRequestDetailScreenState
   int get _estimatedCost {
     final mode = _pricingMode;
     return pointsForOffer(
-      price: mode == 'fixed' ? double.tryParse(_price.text) : null,
-      priceMin: mode == 'range' ? double.tryParse(_min.text) : null,
-      priceMax: mode == 'range' ? double.tryParse(_max.text) : null,
+      price: mode == 'fixed' ? parseMiles(_price.text)?.toDouble() : null,
+      priceMin: mode == 'range' ? parseMiles(_min.text)?.toDouble() : null,
+      priceMax: mode == 'range' ? parseMiles(_max.text)?.toDouble() : null,
       pricingMode: mode,
-      hourlyRate: mode == 'hourly' ? double.tryParse(_hourly.text) : null,
+      hourlyRate:
+          mode == 'hourly' ? parseMiles(_hourly.text)?.toDouble() : null,
       estimatedHours: mode == 'hourly' ? double.tryParse(_hours.text) : null,
     );
   }
@@ -664,18 +668,28 @@ class _ProviderRequestDetailScreenState
       svcModes: _svcModes,
       existingColors: _colors,
     );
+    // Dinero del molde → agrupado en miles, igual que si se hubiera tecleado
+    // con el MilesInputFormatter (y de paso "3000.0" se normaliza vía
+    // parseMiles en vez de caer crudo en el campo).
+    String miles(String s) {
+      final n = parseMiles(s);
+      return n == null ? '' : fmtMiles(n);
+    }
+
     setState(() {
       if (prefill.fixed != null) _fixed = prefill.fixed!;
       if (prefill.svcMode != null) _svcMode = prefill.svcMode!;
-      if (prefill.price != null) _price.text = prefill.price!;
-      if (prefill.priceMin != null) _min.text = prefill.priceMin!;
-      if (prefill.priceMax != null) _max.text = prefill.priceMax!;
+      if (prefill.price != null) _price.text = miles(prefill.price!);
+      if (prefill.priceMin != null) _min.text = miles(prefill.priceMin!);
+      if (prefill.priceMax != null) _max.text = miles(prefill.priceMax!);
       _colors.addAll(prefill.colorsToAdd);
       if (prefill.condition != null) _condition = prefill.condition!;
       _offersShipping = prefill.offersShipping;
       _offersInstallation = prefill.offersInstallation;
       _requiresEvaluation = prefill.requiresEvaluation;
-      if (prefill.hourlyRate != null) _hourly.text = prefill.hourlyRate!;
+      if (prefill.hourlyRate != null) {
+        _hourly.text = miles(prefill.hourlyRate!);
+      }
       if (prefill.estimatedHours != null) {
         _hours.text = prefill.estimatedHours!;
       }
@@ -684,13 +698,13 @@ class _ProviderRequestDetailScreenState
       }
       if (prefill.duration != null) _duration.text = prefill.duration!;
       if (prefill.shippingPrice != null) {
-        _shipping.text = prefill.shippingPrice!;
+        _shipping.text = miles(prefill.shippingPrice!);
       }
       if (prefill.installationPrice != null) {
-        _installation.text = prefill.installationPrice!;
+        _installation.text = miles(prefill.installationPrice!);
       }
       if (prefill.evaluationPrice != null) {
-        _evaluation.text = prefill.evaluationPrice!;
+        _evaluation.text = miles(prefill.evaluationPrice!);
       }
       if (prefill.brand != null) _brand.text = prefill.brand!;
       if (prefill.warranty != null) _warranty.text = prefill.warranty!;
@@ -719,16 +733,16 @@ class _ProviderRequestDetailScreenState
     double? p, mn, mx, hr, hrs;
     switch (mode) {
       case 'fixed':
-        p = double.tryParse(_price.text);
+        p = parseMiles(_price.text)?.toDouble();
         if (p == null || p <= 0) return _toast('Pon el precio en RD\$.');
       case 'range':
-        mn = double.tryParse(_min.text);
-        mx = double.tryParse(_max.text);
+        mn = parseMiles(_min.text)?.toDouble();
+        mx = parseMiles(_max.text)?.toDouble();
         if (mn == null || mx == null || mx < mn) {
           return _toast('Revisa el rango de precio.');
         }
       case 'hourly':
-        hr = double.tryParse(_hourly.text);
+        hr = parseMiles(_hourly.text)?.toDouble();
         hrs = double.tryParse(_hours.text);
         if (hr == null || hr <= 0) return _toast('Pon la tarifa por hora.');
         if (hrs == null || hrs <= 0) return _toast('Pon las horas estimadas.');
@@ -774,11 +788,11 @@ class _ProviderRequestDetailScreenState
     final message = composeOfferMessage(
       isService: isService,
       offersShipping: _offersShipping,
-      shippingPrice: double.tryParse(_shipping.text),
+      shippingPrice: parseMiles(_shipping.text)?.toDouble(),
       offersInstallation: _offersInstallation,
-      installationPrice: double.tryParse(_installation.text),
+      installationPrice: parseMiles(_installation.text)?.toDouble(),
       requiresEvaluation: evalOn,
-      evaluationPrice: double.tryParse(_evaluation.text),
+      evaluationPrice: parseMiles(_evaluation.text)?.toDouble(),
       availabilityNote: _availability.text,
       estimatedDuration: _duration.text,
       brand: isService ? '' : _brand.text,
@@ -835,11 +849,11 @@ class _ProviderRequestDetailScreenState
           imageUrls: imageUrls,
           pricingMode: mode,
           offersShipping: isService ? false : _offersShipping,
-          shippingPrice: double.tryParse(_shipping.text),
+          shippingPrice: parseMiles(_shipping.text)?.toDouble(),
           offersInstallation: isService ? false : _offersInstallation,
-          installationPrice: double.tryParse(_installation.text),
+          installationPrice: parseMiles(_installation.text)?.toDouble(),
           requiresEvaluation: evalOn,
-          evaluationPrice: double.tryParse(_evaluation.text),
+          evaluationPrice: parseMiles(_evaluation.text)?.toDouble(),
           hourlyRate: hr,
           estimatedHours: hrs,
           availabilityNote: isService ? _availability.text.trim() : '',
@@ -914,11 +928,11 @@ class _ProviderRequestDetailScreenState
         pricingMode: mode,
         // Los toggles de logística solo aplican a producto.
         offersShipping: isService ? false : _offersShipping,
-        shippingPrice: double.tryParse(_shipping.text),
+        shippingPrice: parseMiles(_shipping.text)?.toDouble(),
         offersInstallation: isService ? false : _offersInstallation,
-        installationPrice: double.tryParse(_installation.text),
+        installationPrice: parseMiles(_installation.text)?.toDouble(),
         requiresEvaluation: evalOn,
-        evaluationPrice: double.tryParse(_evaluation.text),
+        evaluationPrice: parseMiles(_evaluation.text)?.toDouble(),
         hourlyRate: hr,
         estimatedHours: hrs,
         availabilityNote: isService ? _availability.text.trim() : '',
@@ -1321,9 +1335,15 @@ class _ProviderRequestDetailScreenState
     );
   }
 
-  Widget _numField(TextEditingController c, String label) => TextField(
+  /// Campo numérico. Por defecto es de DINERO: agrupa miles al escribir
+  /// ("12,000", pedido PO 2026-08-10) — el submit parsea con `parseMiles`.
+  /// `miles: false` para cantidades que no son precio (horas estimadas).
+  Widget _numField(TextEditingController c, String label,
+          {bool miles = true}) =>
+      TextField(
         controller: c,
         keyboardType: TextInputType.number,
+        inputFormatters: miles ? [MilesInputFormatter()] : null,
         onChanged: (_) => setState(() {}),
         decoration: filledField(context, label),
       );
@@ -1403,7 +1423,7 @@ class _ProviderRequestDetailScreenState
           Row(children: [
             Expanded(child: _numField(_hourly, 'RD\$ por hora')),
             const SizedBox(width: 8),
-            Expanded(child: _numField(_hours, 'Horas est.')),
+            Expanded(child: _numField(_hours, 'Horas est.', miles: false)),
           ]),
         ];
       default: // needs_evaluation
@@ -1599,7 +1619,7 @@ class _ProviderRequestDetailScreenState
   }) {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final free = cost != null && (double.tryParse(cost.text) ?? 0) <= 0;
+    final free = cost != null && (parseMiles(cost.text) ?? 0) <= 0;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Column(children: [
