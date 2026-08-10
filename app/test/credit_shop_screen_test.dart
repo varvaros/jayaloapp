@@ -425,6 +425,16 @@ void main() {
     expect(find.textContaining('contactos'), findsNothing);
   });
 
+  // La banda dejó el `mascot.png` estático: ahora es el Jayi dibujado con la
+  // lluvia de monedas (mockup aprobado PO 08-10). Si el gate de FLUTTER_TEST
+  // no gateara el bucle infinito, TODOS los `pumpAndSettle` de este archivo
+  // colgarían — que este test pase ya prueba el frame fijo.
+  testWidgets('la banda pinta al Jayi con monedas, sin mascot.png', (t) async {
+    await montarTienda(t);
+    expect(find.byKey(const ValueKey('jayi_monedas')), findsOneWidget);
+    expect(find.byType(Image), findsNothing);
+  });
+
   // Minor de la revisión: el texto de la banda (Positioned sin top, en un
   // Stack con Clip.none) crecía hacia ARRIBA con fuente grande en pantallas
   // estrechas e invadía el AppBar. La banda empieza justo bajo el AppBar
