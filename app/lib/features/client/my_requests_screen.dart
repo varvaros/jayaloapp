@@ -1059,7 +1059,7 @@ class _RequestCard extends StatelessWidget {
       ),
     );
     Widget pill(String l) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
         color: pillBg,
         borderRadius: BorderRadius.circular(999),
@@ -1068,7 +1068,7 @@ class _RequestCard extends StatelessWidget {
         l,
         maxLines: 1,
         style: TextStyle(
-          fontSize: 10.5,
+          fontSize: 11.5,
           height: 1.2,
           fontWeight: FontWeight.w600,
           color: pillInk,
@@ -1099,19 +1099,16 @@ class _RequestCard extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   SizedBox(
-                    height: 24,
+                    height: 26,
                     child: Row(
                       children: [
                         seg(i > 0, i <= current),
-                        if (i == current)
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: pill(labels[i]),
-                            ),
-                          )
-                        else
-                          dot(i < current),
+                        // La píldora va SIN Flexible/FittedBox: como flexible
+                        // repartía el ancho a partes iguales con las líneas
+                        // (Expanded) y el FittedBox la encogía a ilegible
+                        // (bug PO 2026-08-10, "Aceptada" miniatura). Con
+                        // tamaño propio, las LÍNEAS son las que ceden.
+                        if (i == current) pill(labels[i]) else dot(i < current),
                         seg(i < labels.length - 1, i < current),
                       ],
                     ),
