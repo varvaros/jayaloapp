@@ -209,20 +209,36 @@ class BusinessCoverHero extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(18),
-            child: Container(
-              // Fondo propio de la tarjeta (mismo tono que el placeholder):
-              // con `contain` el logo puede no llenar el cuadrado, y el hueco
-              // que deja debe verse neutro, no transparente sobre la portada.
-              color: cs.surface,
-              child: hasLogo
-                  ? JayaloNetworkImage(
-                      logo,
-                      // COMPLETO, nunca recortado (pedido PO 2026-08-09: el PO
-                      // subió su logo y `cover` se lo comía por los bordes).
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, _, _) => placeholder(),
-                    )
-                  : placeholder(),
+            // `SizedBox.expand` (pedido PO 2026-08-09, segunda vuelta): este
+            // `ClipRRect` es un hijo NO posicionado del `Stack` de más abajo,
+            // que le pasa constraints SUELTAS (loosened) — sin esto, el
+            // `Container` de abajo se dimensionaba a su hijo (el `Image` a su
+            // tamaño INTRÍNSECO, el ícono del placeholder a 32×32), no al
+            // cuadro completo. Con un logo real vertical (960×1280) el
+            // resultado quedaba pequeño y pegado a una esquina en vez de
+            // llenar+centrarse. `expand` fuerza a tomar el máximo disponible
+            // (68×68 = 76 de la tarjeta − 4×2 de padding) SIEMPRE, con o sin
+            // foto — el fondo neutro pinta el cuadro completo y el `Image`
+            // recibe esas mismas constraints TIGHT (`BoxFit.contain` ya se
+            // encarga de escalar+centrar los píxeles reales adentro).
+            child: SizedBox.expand(
+              child: Container(
+                // Fondo propio de la tarjeta (mismo tono que el placeholder):
+                // con `contain` el logo puede no llenar el cuadrado, y el
+                // hueco que deja debe verse neutro, no transparente sobre la
+                // portada.
+                color: cs.surface,
+                child: hasLogo
+                    ? JayaloNetworkImage(
+                        logo,
+                        // COMPLETO, nunca recortado (pedido PO 2026-08-09: el
+                        // PO subió su logo y `cover` se lo comía por los
+                        // bordes).
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, _, _) => placeholder(),
+                      )
+                    : placeholder(),
+              ),
             ),
           ),
           // Badge circular "+" en la esquina: solo logo vacío y editable —

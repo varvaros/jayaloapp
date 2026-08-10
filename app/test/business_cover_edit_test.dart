@@ -73,6 +73,43 @@ void main() {
       expect(img.fit, BoxFit.contain);
     });
 
+    // Hallazgo PO 2026-08-09 (segunda vuelta): con `BoxFit.contain` el logo
+    // vertical real del PO (960×1280) no llenaba ni centraba el cuadro —
+    // `_logoCard` pintaba el `Container(color)` SIN tamaño dentro del
+    // `Stack`, que le pasa constraints SUELTAS (loosened) a un hijo no
+    // posicionado: sin ancho/alto propio, el `Image` se dimensionaba a su
+    // tamaño INTRÍNSECO (acotado al máximo, pero no forzado a llenar), así
+    // que un logo angosto quedaba pequeño y pegado a una esquina en vez de
+    // llenar+centrarse. El cuadro (76×76, padding 4 → 68×68 de contenido)
+    // debe pintar el fondo neutro a tamaño COMPLETO siempre — la imagen debe
+    // recibir esas mismas constraints TIGHT (68×68), no las suyas propias;
+    // `BoxFit.contain` ya se encarga de escalar+centrar los píxeles reales
+    // adentro sin recortar.
+    testWidgets(
+        'logo con imagen: el Image recibe el tamaño COMPLETO del cuadro '
+        '(constraints del cuadro, no las intrínsecas de la foto)', (t) async {
+      await t.pumpWidget(_wrap(const BusinessCoverHero(
+          name: 'N', logoUrl: 'https://x/logo.jpg')));
+      final size = t.getSize(find.descendant(
+        of: find.byKey(businessCoverHeroLogoKey),
+        matching: find.byType(Image),
+      ));
+      // 76 (tarjeta) - 4*2 (padding) = 68 de contenido.
+      expect(size, const Size(68, 68));
+    });
+
+    testWidgets(
+        'logo vacío: el fondo del placeholder también llena el cuadro '
+        'completo (mismo `ClipRRect`, misma caja, con o sin foto)', (t) async {
+      await t.pumpWidget(
+          _wrap(const BusinessCoverHero(name: 'N', logoUrl: null)));
+      final clip = t.getSize(find.descendant(
+        of: find.byKey(businessCoverHeroLogoKey),
+        matching: find.byType(ClipRRect),
+      ));
+      expect(clip, const Size(68, 68));
+    });
+
     testWidgets('coverBusy pinta un spinner superpuesto', (t) async {
       await t.pumpWidget(_wrap(const BusinessCoverHero(
           name: 'N', coverUrl: null, coverBusy: true)));
