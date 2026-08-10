@@ -308,7 +308,7 @@ void main() {
       expect(find.text('Fuga de agua en la cocina, urge'), findsNothing);
     });
 
-    testWidgets('la miniatura crece a 64x64 (antes 44x44)', (tester) async {
+    testWidgets('la miniatura crece a 76x76 (mockup 08-10; antes 64, antes 44)', (tester) async {
       await tester.pumpWidget(host(ProviderInboxView(
           fetch: conFotoYDescripcion,
           leading: const SizedBox.shrink(),
@@ -316,12 +316,12 @@ void main() {
       await tester.pumpAndSettle();
 
       final img = tester.widget<Image>(find.byType(Image).first);
-      expect(img.width, 64);
-      expect(img.height, 64);
+      expect(img.width, 76);
+      expect(img.height, 76);
     });
 
     testWidgets(
-        'sin foto: el placeholder también crece a 64x64 y sigue mostrando el ícono',
+        'sin foto: el placeholder también crece a 76x76 y sigue mostrando el ícono',
         (tester) async {
       Future<List<Map<String, dynamic>>> sinFoto(
               {String? kind, required bool todas}) async =>
@@ -347,8 +347,8 @@ void main() {
               of: find.byIcon(Icons.handyman_outlined),
               matching: find.byType(Container))
           .first);
-      expect(placeholder.constraints?.maxWidth, 64);
-      expect(placeholder.constraints?.maxHeight, 64);
+      expect(placeholder.constraints?.maxWidth, 76);
+      expect(placeholder.constraints?.maxHeight, 76);
     });
   });
 }
