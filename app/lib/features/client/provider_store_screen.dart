@@ -7,6 +7,7 @@ import '../../domain/catalog.dart';
 import '../shared/brand_kit.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
+import '../shared/portfolio_gallery_viewer.dart';
 import '../shared/product_list_card.dart';
 import '../shared/service_chips_editor.dart';
 import '../shared/tile_carril.dart';
@@ -349,7 +350,15 @@ class ProviderStoreView extends StatelessWidget {
               item: p, onTap: () => context.push('/package/${p['id']}'))),
       if (trabajos.isNotEmpty) ..._carrilSection('TRABAJOS', trabajos,
           height: kPortfolioCarrilHeight,
-          tileBuilder: (t) => PortfolioTile(item: t)),
+          tileBuilder: (t) => PortfolioTile(
+              item: t,
+              onTap: () => showPortfolioGallery(
+                    context,
+                    images:
+                        (t['image_urls'] as List?)?.cast<String>() ?? const [],
+                    title: t['title'] as String? ?? '',
+                    description: t['description'] as String?,
+                  ))),
       if (catalogEmpty) _empty(context),
       SliverToBoxAdapter(
         child: SizedBox(height: 12 + navBarReservedSpace(context)),
@@ -375,9 +384,10 @@ class ProviderStoreView extends StatelessWidget {
   /// Encabezado + carril horizontal de tarjetas compactas (PAQUETES/
   /// TRABAJOS) — [TileCarril] compartido con "Mi negocio"
   /// (`shared/tile_carril.dart`); en la tienda pública las tarjetas van sin
-  /// `onLongPress` (solo lectura, sin editar ni borrar). El paquete SÍ tiene
-  /// `onTap` (pedido PO 2026-08-09: "El paquete no abre nada") — abre su
-  /// detalle (`/package/:id`).
+  /// `onLongPress` (solo lectura, sin editar ni borrar). `onTap` sí va
+  /// cableado (pedido PO 2026-08-09: "El paquete no abre nada" /
+  /// "Trabajos no abre") — un paquete abre su detalle (`/package/:id`), un
+  /// trabajo abre la galería modal ([showPortfolioGallery]).
   List<Widget> _carrilSection(
     String title,
     List<Map<String, dynamic>> items, {

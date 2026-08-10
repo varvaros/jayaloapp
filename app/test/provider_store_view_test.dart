@@ -219,8 +219,8 @@ void main() {
     });
   });
 
-  // Pedido PO 2026-08-09: "El paquete no abre nada" — la tarjeta de un
-  // paquete ahora sí tiene `onTap` cableado.
+  // Pedido PO 2026-08-09: "El paquete no abre nada" / "Trabajos no abre" —
+  // las tarjetas de PAQUETES/TRABAJOS ahora sí tienen `onTap` cableado.
   group('PAQUETES: tocar abre el detalle del paquete', () {
     testWidgets('navega a /package/:id (mismo patrón que ProductListCard)',
         (tester) async {
@@ -256,6 +256,32 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('PKG:pk1'), findsOneWidget);
+    });
+  });
+
+  group('TRABAJOS: tocar abre la galería modal', () {
+    testWidgets('muestra las fotos, el título y no ofrece editar/borrar',
+        (tester) async {
+      setTallPhoneSize(tester);
+      await tester.pumpWidget(host(ProviderStoreView(
+        identity: identity,
+        stats: null,
+        productos: const [],
+        servicios: const [],
+        paquetes: const [],
+        trabajos: trabajos,
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Instalación de verja'));
+      await tester.pumpAndSettle();
+
+      // La galería reusa el mismo título (dentro de su propio panel) — dos
+      // apariciones: la tarjeta del carril, detrás, y el panel de la galería.
+      expect(find.text('Instalación de verja'), findsNWidgets(2));
+      expect(find.byIcon(Icons.close), findsOneWidget);
+      expect(find.text('Editar'), findsNothing);
+      expect(find.text('Eliminar'), findsNothing);
     });
   });
 }
