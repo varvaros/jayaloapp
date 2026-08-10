@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/search_fold.dart';
+import 'brand_kit.dart' show offerBadgeTone;
 
 /// Máximo de chips de servicios por negocio (Task 5, 2026-08-09). Un negocio
 /// no anuncia 40 servicios en una tarjeta; 20 ya es generoso.
@@ -180,10 +181,30 @@ class ServiceChipsWrap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (services.isEmpty) return const SizedBox.shrink();
+    // Píldoras VIOLETA con el tono de «Desbloqueada» (pedido PO 2026-08-10),
+    // en vez del Chip gris de Material que no hablaba el idioma de la marca.
+    final tone = offerBadgeTone(context, 'unlocked');
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: [for (final s in services) Chip(label: Text(s))],
+      children: [
+        for (final s in services)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+            decoration: BoxDecoration(
+              color: tone.bg,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              s,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: tone.ink,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

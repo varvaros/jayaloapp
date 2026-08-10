@@ -6,10 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/brand.dart';
-import '../../core/editor_link_client.dart';
 import '../../core/error_reporter.dart';
 import '../../core/safe_image_picker.dart';
-import '../../core/secure_web_launch.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../shell/floating_nav_bar.dart';
@@ -66,8 +64,8 @@ typedef StoreProfile = ({
 /// SOLO LECTURA salvo dos excepciones deliberadas: el agregador (PO
 /// 2026-08-05, alta rápida de producto/servicio/trabajo) y, desde 2026-08-09,
 /// la portada y el logo (tocar para cambiar, mantener presionado para
-/// quitar). El resto de la edición sigue sin vivir en la app (V2): el botón
-/// "Editar en la web" (Task 6) lleva a jayalo.com ya logueado.
+/// quitar). Desde la tanda tienda-editable (08-09) la edición completa vive
+/// en la app; el botón "Editar en la web" se quitó el 2026-08-10 (pedido PO).
 class MyBusinessScreen extends StatefulWidget {
   const MyBusinessScreen({super.key});
   @override
@@ -226,26 +224,9 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
         _load = _fetch();
       });
 
-  /// Pide el magic link a la web y lo abre en el navegador externo (ya
-  /// logueado, redirige a /provider/business/:id). NO usa WebView (el CAPTCHA
-  /// se quemó con MIUI, ADR-0032). La edición vive en la web (V2).
-  Future<void> _openEditor(String businessId) async {
-    final token = supa.auth.currentSession?.accessToken;
-    if (token == null) {
-      _toast('Inicia sesión de nuevo para editar.');
-      return;
-    }
-    try {
-      final url = await EditorLinkClient()
-          .fetchEditorUrl(businessId: businessId, accessToken: token);
-      // Custom Tabs, NO intent público: este URL también lleva un token de
-      // sesión de un solo uso (ver `core/secure_web_launch.dart`).
-      final ok = await launchAuthenticatedUrl(Uri.parse(url));
-      if (!ok) _toast('No pudimos abrir el navegador.');
-    } catch (_) {
-      _toast('No se pudo abrir el editor. Intenta de nuevo.');
-    }
-  }
+  // «Editar en la web» y su `_openEditor` (magic-link SSO, Task 6) se
+  // quitaron el 2026-08-10 (pedido PO): la tienda ya se edita completa desde
+  // la app. El endpoint del magic link sigue vivo en la web por si vuelve.
 
   void _toast(String m) {
     if (mounted) {
@@ -278,9 +259,6 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
                   trabajos: data.trabajos,
                   reviews: data.reviews,
                   rating: data.rating,
-                  onEditWeb: data.business == null
-                      ? null
-                      : () => _openEditor(data.business!.id),
                   onAddItem: data.business == null
                       ? null
                       : (kind) => _openAdd(data.business!.id, kind),
@@ -322,7 +300,6 @@ class MyBusinessView extends StatefulWidget {
     this.trabajos = const [],
     required this.reviews,
     required this.rating,
-    this.onEditWeb,
     this.onAddItem,
     this.onEditItem,
     this.onDeleteItem,
@@ -347,10 +324,6 @@ class MyBusinessView extends StatefulWidget {
   final List<Map<String, dynamic>> trabajos;
   final List<BusinessReview> reviews;
   final BusinessRating? rating;
-
-  /// Abre el editor en la web (magic-link SSO, Task 6). Nulo → el botón no se
-  /// dibuja (p. ej. sin negocio). Inyectable para probar sin red.
-  final Future<void> Function()? onEditWeb;
 
   /// Alta rápida del agregador (PO 2026-08-05): recibe el kind elegido en el
   /// chooser ('producto' | 'servicio' | 'trabajo'). Nulo → la tarjeta no se
@@ -668,15 +641,9 @@ class _MyBusinessViewState extends State<MyBusinessView> {
           onTap: _editServices,
         ).cascadeIn(2),
         BusinessDetailsCard(business: b.raw).cascadeIn(3),
-        if (widget.onEditWeb != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: FilledButton.icon(
-              onPressed: () => widget.onEditWeb!.call(),
-              icon: const Icon(Icons.open_in_new, size: 18),
-              label: const Text('Editar en la web'),
-            ),
-          ),
+        // «Editar en la web» se quitó (pedido PO 2026-08-10): la tienda ya se
+        // edita completa desde la app; el editor web sigue existiendo pero no
+        // se promociona desde aquí.
         // El agregador (PO 2026-08-05): tarjeta vacía con ＋ que abre el
         // chooser producto/servicio/trabajo. Rompe a propósito el "solo
         // lectura" del spec 2026-07-20, decisión del PO: el alta mínima vive

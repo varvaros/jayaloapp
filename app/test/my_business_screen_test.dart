@@ -231,23 +231,18 @@ void main() {
     expect(find.textContaining('No encontramos tu negocio'), findsOneWidget);
   });
 
-  testWidgets('el botón Editar en la web invoca el callback', (tester) async {
-    var called = false;
+  testWidgets('«Editar en la web» ya no existe (pedido PO 2026-08-10)',
+      (tester) async {
     await tester.pumpWidget(host(MyBusinessView(
       business: negocio,
       productos: const [],
       servicios: const [],
       reviews: const [],
       rating: null,
-      onEditWeb: () async => called = true,
     )));
     await tester.pumpAndSettle();
-    // Task 4 (2026-08-09): "Sobre el negocio" empuja el botón fuera del
-    // viewport inicial de 800x600 — mismo motivo que `bajar()` arriba.
     await bajar(tester);
-    await tester.tap(find.text('Editar en la web'));
-    await tester.pump();
-    expect(called, isTrue);
+    expect(find.text('Editar en la web'), findsNothing);
   });
 
   // El agregador (PO 2026-08-05): tarjeta vacía con ＋ que abre el chooser.
