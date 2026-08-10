@@ -419,10 +419,9 @@ class _InboxCard extends StatelessWidget {
   final RequestRequirements requirements;
 
   /// Lado de la miniatura: sin descripción en la tarjeta (pedido PO
-  /// 2026-08-09) la foto pasa a ser la protagonista — antes 44, mismo tamaño
-  /// que la miniatura de "Tus solicitudes" del cliente (54) queda chica al
-  /// lado de un título de hasta 2 líneas.
-  static const _thumbSize = 64.0;
+  /// 2026-08-09) la foto pasa a ser la protagonista — 76 desde el mockup
+  /// aprobado 2026-08-10 (antes 64, y antes 44).
+  static const _thumbSize = 76.0;
   static const _thumbRadius = 16.0;
 
   /// Miniatura de la foto del cliente (nunca ícono roto: cae al ícono si no
@@ -491,6 +490,9 @@ class _InboxCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
+                // Mockup aprobado 2026-08-10: la línea de META (hora +
+                // símbolos de requisitos) va aparte, y los CHIPS de estado en
+                // su propia fila debajo — antes todo compartía un solo Wrap.
                 Wrap(
                   spacing: 8,
                   runSpacing: 4,
@@ -503,63 +505,69 @@ class _InboxCard extends StatelessWidget {
                         color: cs.onSurfaceVariant,
                       ),
                     ),
-                    // Antes que los chips de estado a propósito: esto es lo que
-                    // pide el cliente; "Ya ofertaste" es lo que hiciste tú.
-                    //
                     // Guardado con `hasAnyRequirement`: un `SizedBox.shrink()`
-                    // dentro de este `Wrap` igual consume su `spacing` y corre
-                    // 8px a los chips de estado que van después.
+                    // dentro de este `Wrap` igual consume su `spacing`.
                     if (hasAnyRequirement(requirements))
                       RequestRequirementBadges(
                         req: requirements,
                         variant: RequirementBadgeVariant.symbols,
                       ),
-                    // FOMO (pedido PO 2026-07-21): cuántas ofertas ya recibió
-                    // esta solicitud — solo el número, no se pueden ver. Chip
-                    // ámbar con llama = competencia/urgencia. 0 → no se muestra.
-                    if (offerCount > 0)
-                      StatusChip(
-                        label: offerCount == 1
-                            ? '1 oferta'
-                            : '$offerCount ofertas',
-                        icon: Icons.local_fire_department,
-                        tone: Theme.of(context).brightness == Brightness.dark
-                            ? JayaloStatus.pendingDark
-                            : JayaloStatus.pendingLight,
-                      ),
-                    if (offerStatus != null && offerStatus != 'rejected')
-                      Builder(
-                        builder: (context) {
-                          // Colores del badge (pedido PO 2026-07-21/22): "Ya
-                          // ofertaste" = ÁMBAR (esperando); "Aceptada" = VERDE (te
-                          // eligieron); "Desbloqueado" = VIOLETA (ya pagaste el
-                          // contacto).
-                          final unlocked =
-                              offerStatus == 'unlocked' ||
-                              offerStatus == 'completed';
-                          final accepted = offerStatus == 'accepted';
-                          final (label, icon, state) = unlocked
-                              ? ('Desbloqueado', Icons.lock_open, 'unlocked')
-                              : accepted
-                              ? (
-                                  'Aceptada',
-                                  Icons.emoji_events_outlined,
-                                  'accepted',
-                                )
-                              : (
-                                  'Ya ofertaste',
-                                  Icons.check_circle_outline,
-                                  'pending',
-                                );
-                          return StatusChip(
-                            label: label,
-                            icon: icon,
-                            tone: offerBadgeTone(context, state),
-                          );
-                        },
-                      ),
                   ],
                 ),
+                if (offerCount > 0 ||
+                    (offerStatus != null && offerStatus != 'rejected')) ...[
+                  const SizedBox(height: 7),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      // FOMO (pedido PO 2026-07-21): cuántas ofertas ya
+                      // recibió la solicitud — solo el número, no se pueden
+                      // ver. Chip ámbar con llama = competencia/urgencia.
+                      if (offerCount > 0)
+                        StatusChip(
+                          label: offerCount == 1
+                              ? '1 oferta'
+                              : '$offerCount ofertas',
+                          icon: Icons.local_fire_department,
+                          tone: Theme.of(context).brightness == Brightness.dark
+                              ? JayaloStatus.pendingDark
+                              : JayaloStatus.pendingLight,
+                        ),
+                      if (offerStatus != null && offerStatus != 'rejected')
+                        Builder(
+                          builder: (context) {
+                            // Colores del badge (pedido PO 2026-07-21/22): "Ya
+                            // ofertaste" = ÁMBAR (esperando); "Aceptada" =
+                            // VERDE (te eligieron); "Desbloqueado" = VIOLETA
+                            // (ya pagaste el contacto).
+                            final unlocked =
+                                offerStatus == 'unlocked' ||
+                                offerStatus == 'completed';
+                            final accepted = offerStatus == 'accepted';
+                            final (label, icon, state) = unlocked
+                                ? ('Desbloqueado', Icons.lock_open, 'unlocked')
+                                : accepted
+                                ? (
+                                    'Aceptada',
+                                    Icons.emoji_events_outlined,
+                                    'accepted',
+                                  )
+                                : (
+                                    'Ya ofertaste',
+                                    Icons.check_circle_outline,
+                                    'pending',
+                                  );
+                            return StatusChip(
+                              label: label,
+                              icon: icon,
+                              tone: offerBadgeTone(context, state),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

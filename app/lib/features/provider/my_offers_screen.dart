@@ -402,11 +402,8 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     };
     final created = o['created_at'] as String?;
     final cs = Theme.of(context).colorScheme;
-    // La oferta pendiente se puede editar/borrar: se anuncia en el subtítulo.
+    // La oferta pendiente se puede editar/borrar.
     final pending = st == 'pending';
-    final base = created == null
-        ? offerPriceLabel(o)
-        : '${offerPriceLabel(o)} · ${timeAgo(DateTime.parse(created))}';
     return JayaloCard(
       onTap: () => _openOffer(o),
       child: Column(
@@ -416,26 +413,56 @@ class _MyOffersScreenState extends State<MyOffersScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      o['request_title'] as String? ?? '',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      pending ? '$base · Toca para editar' : base,
-                      style:
-                          TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-                    ),
-                  ],
+                child: Text(
+                  o['request_title'] as String? ?? '',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
               const SizedBox(width: 8),
               StatusChip(label: label, tone: tone),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Mockup aprobado 2026-08-10: el PRECIO en violeta (ya agrupado en
+          // miles por fmtRD) · antigüedad tenue, y en las pendientes un
+          // «Editar» explícito a la derecha — antes era prosa dentro del
+          // subtítulo ("Toca para editar").
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Flexible(
+                child: Text(
+                  offerPriceLabel(o),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: cs.primary,
+                  ),
+                ),
+              ),
+              if (created != null) ...[
+                const SizedBox(width: 8),
+                Text(
+                  timeAgo(DateTime.parse(created)),
+                  style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                ),
+              ],
+              if (pending) ...[
+                const Spacer(),
+                Text(
+                  'Editar',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: cs.primary,
+                  ),
+                ),
+              ],
             ],
           ),
           if (needsCustomerReview(o, _reviewed)) ...[
@@ -511,8 +538,10 @@ class _MyOffersScreenState extends State<MyOffersScreen>
   Future<void> _openWallet() => openCreditShop(context);
 }
 
-/// "W1 · Tarjeta ámbar" (elegida por el PO): el saldo en el tono del dinero,
-/// con el número grande y Recargar a mano.
+/// Tarjeta de saldo (mockup aprobado PO 2026-08-10, sustituye a la "W1
+/// ámbar" del 07): tarjeta BLANCA con la billetera en tesela verde y
+/// "Recargar" en violeta — el violeta es LA acción, el verde solo acento del
+/// dinero.
 class _WalletCard extends StatelessWidget {
   const _WalletCard({
     required this.balance,
@@ -520,26 +549,29 @@ class _WalletCard extends StatelessWidget {
     required this.onRecharge,
   });
   final int? balance;
+
+  /// Ya no tiñe la TARJETA (mockup 08-10): colorea solo la tesela de la
+  /// billetera — verde con saldo, rojo con 0 (semántica del call-site).
   final StatusTone tone;
   final VoidCallback onRecharge;
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return JayaloCard(
-      tint: tone.bg,
       padding: const EdgeInsets.all(14),
       child: Row(
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
               color: tone.ink.withValues(alpha: .14),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(
               Icons.account_balance_wallet_outlined,
-              size: 20,
+              size: 21,
               color: tone.ink,
             ),
           ),
@@ -553,14 +585,14 @@ class _WalletCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
-                    color: tone.ink,
+                    color: jayaloHead(context),
                   ),
                 ),
                 Text(
                   'Tu saldo para desbloquear contactos',
                   style: TextStyle(
                     fontSize: 11,
-                    color: tone.ink.withValues(alpha: .8),
+                    color: cs.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -569,10 +601,6 @@ class _WalletCard extends StatelessWidget {
           const SizedBox(width: 8),
           FilledButton(
             onPressed: onRecharge,
-            style: FilledButton.styleFrom(
-              backgroundColor: tone.ink,
-              foregroundColor: tone.bg,
-            ),
             child: const Text('Recargar'),
           ),
         ],
