@@ -1050,8 +1050,8 @@ class _RequestCard extends StatelessWidget {
           : const SizedBox(),
     );
     Widget dot(bool hecho) => Container(
-      width: 9,
-      height: 9,
+      width: 10,
+      height: 10,
       decoration: BoxDecoration(
         color: hecho ? done : Colors.transparent,
         border: hecho ? null : Border.all(color: muted, width: 1.6),
@@ -1059,7 +1059,7 @@ class _RequestCard extends StatelessWidget {
       ),
     );
     Widget pill(String l) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
       decoration: BoxDecoration(
         color: pillBg,
         borderRadius: BorderRadius.circular(999),
@@ -1068,7 +1068,7 @@ class _RequestCard extends StatelessWidget {
         l,
         maxLines: 1,
         style: TextStyle(
-          fontSize: 9,
+          fontSize: 10.5,
           height: 1.2,
           fontWeight: FontWeight.w600,
           color: pillInk,
@@ -1080,13 +1080,17 @@ class _RequestCard extends StatelessWidget {
       decoration: BoxDecoration(
         // Franja propia, tenue y cálida, con las esquinas de abajo de la
         // tarjeta (el JayaloCard no recorta hijos).
+        // En claro, la franja cálida del mockup (#FBF7EF) sobre tarjeta
+        // blanca y fondo arena; en oscuro, el neutro translúcido del tema.
         color: tinted
             ? tone.ink.withValues(alpha: .07)
-            : cs.surfaceContainerHighest.withValues(alpha: dark ? .5 : .45),
+            : dark
+                ? cs.surfaceContainerHighest.withValues(alpha: .5)
+                : const Color(0xFFFBF7EF),
         borderRadius:
             const BorderRadius.vertical(bottom: Radius.circular(kCardRadius)),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 7),
+      padding: const EdgeInsets.fromLTRB(14, 9, 14, 8),
       child: Row(
         children: [
           for (var i = 0; i < labels.length; i++)
@@ -1095,7 +1099,7 @@ class _RequestCard extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   SizedBox(
-                    height: 20,
+                    height: 24,
                     child: Row(
                       children: [
                         seg(i > 0, i <= current),
@@ -1113,7 +1117,7 @@ class _RequestCard extends StatelessWidget {
                     ),
                   ),
                   SizedBox(
-                    height: 12,
+                    height: 15,
                     child: i == current
                         ? null
                         : Text(
@@ -1121,8 +1125,8 @@ class _RequestCard extends StatelessWidget {
                             maxLines: 1,
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 8.5,
-                              height: 1.2,
+                              fontSize: 10.5,
+                              height: 1.25,
                               color: i < current ? done : muted,
                               fontWeight: FontWeight.w500,
                             ),

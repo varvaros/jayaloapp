@@ -20,11 +20,11 @@ import 'package:flutter/material.dart';
 
 abstract final class JayaloColors {
   // ── Claro · paleta cálida "arena" (mockups aprobados, tokens `.warm`) ──────
-  // Fondo y neutros: gris claro FRÍO (decisión PO 2026-07-20, REVIERTE la
-  // "arena" cálida del mockup 07-19 solo para estos neutros). El violeta de
-  // acción, las tarjetas blancas y las tintas violáceas de texto no cambian:
-  // la identidad la cargan el violeta + la tipografía, no el fondo.
-  static const background = Color(0xFFF1F3F6); // --bg gris claro frío
+  // Fondo: ARENA cálida (decisión PO 2026-08-10, «usa el mismo color de
+  // background del mockup» — deshace el gris frío del 07-20 y vuelve al
+  // mockup 07-19). El violeta de acción, las tarjetas blancas y las tintas
+  // violáceas de texto no cambian.
+  static const background = Color(0xFFF8F4EC); // --bg arena cálida
   static const foreground = Color(0xFF4A4458); // --fg gris violáceo (cuerpo)
   static const head = Color(0xFF3E3560); //       --head violeta oscuro (títulos)
   static const card = Color(0xFFFFFFFF); //       --card
