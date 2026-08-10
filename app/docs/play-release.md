@@ -3,8 +3,35 @@
 Complementa `docs/build-release.md`, que cubre la firma y el build. Esto es el
 orden en que hay que hacer las cosas y las trampas que ya nos mordieron.
 
-Estado al 2026-08-06: **no existe cuenta de Play Console**. Todo lo demás de
-esta lista está listo o es ejecutable.
+Estado al 2026-08-10: la cuenta de Play Console **existe** y la ficha se está
+creando. AAB listo en `Downloads/jayalo-1.0.3-32-playstore.aab`.
+
+## 0. Acceso del revisor de Google — número de prueba
+
+El registro exige verificar un WhatsApp por OTP y es **bloqueante**: un revisor
+de Google no tiene celular dominicano, no recibe el código y **no puede entrar
+a la app**. Como el único login es "Continuar con Google", tampoco se le puede
+dar usuario y contraseña. Solución (2026-08-10, ya en producción):
+
+| Dato | Valor |
+|---|---|
+| Teléfono de prueba | `+1 809 000 0000` (prefijo 809 + `0000000`) |
+| Código fijo | `246810` |
+
+Con ese número, `send-otp` **no llama a Twilio** y guarda el hash del código
+fijo; `verify-otp` queda intacto (compara hashes como siempre, con su
+expiración y sus 5 intentos). `is_whatsapp_taken` lo exceptúa para que cada
+revisión futura pueda registrarse con él (migración
+`whatsapp_prueba_revision_play_nunca_ocupado`).
+
+Es seguro porque en el plan de numeración norteamericano el central no puede
+empezar por 0 ni por 1: `809-000-0000` **nunca podrá asignarse a nadie real**.
+
+⚠️ Las funciones `send-otp`/`verify-otp` viven **solo en Supabase Cloud**, no en
+este repo: si alguien las redespliega desde otra copia, el número de prueba
+desaparece y la próxima revisión de Play se bloquea. Las constantes están en
+`_shared/otp.ts` (`REVIEW_TEST_PHONE` / `REVIEW_TEST_CODE`); para retirarlas,
+borrarlas y redeplegar `send-otp`.
 
 ## Datos de la app (no cambiar a la ligera)
 
