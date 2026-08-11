@@ -12,10 +12,11 @@ import 'brand_kit.dart';
 /// Vivía privado en `offer_actions.dart`; se extrae aquí porque el detalle del
 /// producto usa exactamente el mismo bloque (mismo motivo documentado en
 /// `collapsing_photo_panel.dart`). Solo se muestran los datos que existen:
-/// con `rows` vacía no se pinta ni el eyebrow.
+/// con `rows` vacía no se pinta ni el eyebrow. `eyebrow` nulo = solo las
+/// tarjetas (para pantallas que ya traen su propio encabezado de sección).
 List<Widget> detailTileBlock(
   BuildContext context, {
-  required String eyebrow,
+  String? eyebrow,
   required List<(IconData, String, String, bool)> rows,
 }) {
   if (rows.isEmpty) return const [];
@@ -70,15 +71,16 @@ List<Widget> detailTileBlock(
       );
 
   return [
-    Padding(
-      padding: const EdgeInsets.only(left: 2, bottom: 9),
-      child: Text(eyebrow,
-          style: TextStyle(
-              fontSize: 10.5,
-              letterSpacing: 1.6,
-              color: cs.onSurfaceVariant,
-              fontWeight: FontWeight.w600)),
-    ),
+    if (eyebrow != null)
+      Padding(
+        padding: const EdgeInsets.only(left: 2, bottom: 9),
+        child: Text(eyebrow,
+            style: TextStyle(
+                fontSize: 10.5,
+                letterSpacing: 1.6,
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600)),
+      ),
     for (var i = 0; i < rows.length; i++)
       Padding(
         padding: EdgeInsets.only(bottom: i + 1 < rows.length ? 9 : 0),

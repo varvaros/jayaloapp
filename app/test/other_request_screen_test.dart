@@ -31,7 +31,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('200 auriculares Bluetooth'), findsOneWidget);
-    expect(find.text('Al por mayor'), findsOneWidget); // chip mayoreo
+    // Chip titular de mayoreo, en mayúsculas (plantilla PO 2026-08-11).
+    expect(find.text('AL POR MAYOR'), findsOneWidget);
     expect(find.text('También busco esto'), findsOneWidget);
   });
 
@@ -54,8 +55,12 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('Requiere envío'), findsOneWidget);
-    expect(find.text('Requiere comprobante fiscal'), findsOneWidget);
-    expect(find.text('Requiere instalación'), findsNothing);
+    // Tarjetas teal de requisito (plantilla PO 2026-08-11): etiqueta arriba
+    // y «Requerido» debajo, ya no chips "Requiere …".
+    expect(find.text('REQUISITOS'), findsOneWidget);
+    expect(find.text('ENVÍO'), findsOneWidget);
+    expect(find.text('COMPROBANTE FISCAL'), findsOneWidget);
+    expect(find.text('Requerido (NCF)'), findsOneWidget);
+    expect(find.text('INSTALACIÓN'), findsNothing);
   });
 }

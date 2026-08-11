@@ -226,8 +226,10 @@ void main() {
     await tester.pumpAndSettle();
 
     // La evaluación SÍ sale: la web la excluye del detalle porque allí tiene su
-    // propio chip ámbar, y la app no lo tiene.
-    expect(find.text('Requiere evaluación previa'), findsOneWidget);
-    expect(find.text('Requiere suplidor del Estado'), findsOneWidget);
+    // propio chip ámbar, y la app no lo tiene. Como tarjetas teal (plantilla
+    // PO 2026-08-11): etiqueta arriba, «Requerido» debajo.
+    expect(find.text('EVALUACIÓN PREVIA'), findsOneWidget);
+    expect(find.text('SUPLIDOR DEL ESTADO'), findsOneWidget);
+    expect(find.text('Requerido'), findsNWidgets(2));
   });
 }

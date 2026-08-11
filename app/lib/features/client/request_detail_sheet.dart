@@ -7,8 +7,10 @@ import '../../domain/phase.dart';
 import '../../domain/request_requirements.dart';
 import '../chat/widgets/rating_form.dart';
 import '../shared/brand_kit.dart';
+import '../shared/detail_tiles.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
+import '../shared/request_bullet_tiles.dart';
 import '../shared/request_requirement_badges.dart';
 import '../shared/section_heading.dart';
 import '../shell/floating_nav_bar.dart';
@@ -171,11 +173,6 @@ class RequestDetailSheet extends StatelessWidget {
               ),
             ),
           ],
-          RequestRequirementBadges(
-            req: requirementsFromRow(request),
-            variant: RequirementBadgeVariant.chips,
-            padding: const EdgeInsets.only(top: 8),
-          ),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -260,62 +257,53 @@ class RequestDetailSheet extends StatelessWidget {
           // INFORMACIÓN encima quedarían dos etiquetas anidadas diciendo casi
           // lo mismo.
           if (hayInfo) sectionHeading(context, 'Información'),
-          if (bullets.isNotEmpty) ...[
+          if (hayInfo) ...[
             // Un solo separador: había DOS apilados (18 + 10), escombro de
-            // borrar el `Text('Detalles')` que vivía entre ambos. Dejaba el
-            // hueco bajo INFORMACIÓN en 38px contra los 20px bajo ESTADO —
-            // dos rótulos hermanos espaciados distinto, justo en la pantalla
-            // cuyo objetivo es verse ordenada.
+            // borrar el `Text('Detalles')` que vivía entre ambos.
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final b in bullets)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: cs.surface,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      b,
-                      style: TextStyle(fontSize: 12, color: cs.onSurface),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-          if (requestBudgetLabel(
+            // Plantilla aprobada PO 2026-08-11: los bullets «Etiqueta: valor»
+            // de la IA se leen como las tarjetas del detalle de oferta y del
+            // catálogo; el presupuesto es una tarjeta más del bloque. Sin
+            // eyebrow: INFORMACIÓN (arriba) ya titula la sección.
+            Builder(builder: (context) {
+              final parsed = requestBulletRows(bullets);
+              final budget = requestBudgetLabel(
                 request['budget_min'] as num?,
                 request['budget_max'] as num?,
-              ) !=
-              null) ...[
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Icon(
-                  Icons.payments_outlined,
-                  size: 16,
-                  color: cs.onSurfaceVariant,
-                ),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    'Presupuesto estimado: ${requestBudgetLabel(request['budget_min'] as num?, request['budget_max'] as num?)}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: jayaloHead(context),
+              );
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ...detailTileBlock(context, rows: [
+                    ...parsed.rows,
+                    if (budget != null)
+                      (
+                        Icons.payments_outlined,
+                        'Presupuesto estimado',
+                        budget,
+                        false
+                      ),
+                  ]),
+                  for (final b in parsed.freeText)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(b,
+                          style: TextStyle(
+                              fontSize: 12.5,
+                              height: 1.4,
+                              color: cs.onSurfaceVariant)),
                     ),
-                  ),
-                ),
-              ],
-            ),
+                ],
+              );
+            }),
           ],
+          // Requisitos en teal con su propio eyebrow, cerrando el bloque
+          // (plantilla PO 2026-08-11) — antes eran chips bajo el título.
+          RequestRequirementBadges(
+            req: requirementsFromRow(request),
+            variant: RequirementBadgeVariant.tiles,
+            padding: const EdgeInsets.only(top: 16),
+          ),
         ],
       ),
     );

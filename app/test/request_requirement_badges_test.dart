@@ -209,4 +209,41 @@ void main() {
           'por el spacing extra que mete el SizedBox.shrink() invisible',
     );
   });
+
+  // ── Variante tiles (plantilla PO 2026-08-11) ──────────────────────────────
+
+  testWidgets('tiles: eyebrow REQUISITOS + etiqueta arriba y Requerido debajo',
+      (tester) async {
+    const req = RequestRequirements(
+      withShipping: true,
+      requiresFiscalReceipt: true,
+    );
+    await tester.pumpWidget(host(
+      const RequestRequirementBadges(
+        req: req,
+        variant: RequirementBadgeVariant.tiles,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('REQUISITOS'), findsOneWidget);
+    expect(find.text('ENVÍO'), findsOneWidget);
+    expect(find.text('Requerido'), findsOneWidget);
+    // El fiscal lleva la sigla: es el único cuyo "qué es" no se entiende
+    // sin ella.
+    expect(find.text('COMPROBANTE FISCAL'), findsOneWidget);
+    expect(find.text('Requerido (NCF)'), findsOneWidget);
+  });
+
+  testWidgets('tiles: sin requisitos no pinta ni el eyebrow', (tester) async {
+    await tester.pumpWidget(host(
+      const RequestRequirementBadges(
+        req: RequestRequirements.none,
+        variant: RequirementBadgeVariant.tiles,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('REQUISITOS'), findsNothing);
+  });
 }

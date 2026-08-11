@@ -23,6 +23,8 @@ import '../../domain/store_product_prefill.dart';
 import '../shared/request_requirement_badges.dart';
 import '../shared/celebration.dart';
 import '../shared/collapsing_photo_panel.dart';
+import '../shared/detail_tiles.dart';
+import '../shared/request_bullet_tiles.dart';
 import '../shared/customer_rep_card.dart';
 import '../shared/offer_field_options.dart';
 import '../shared/onboarding_copy.dart';
@@ -1860,10 +1862,11 @@ class _ProviderRequestDetailScreenState
                   // mayoreo, no bajo "Información": es identidad de la
                   // solicitud, y es lo que decide si a este proveedor le
                   // conviene ofertar (orden pedido por el PO 2026-08-01).
+                  // Como TARJETAS teal, no chips (plantilla PO 2026-08-11).
                   RequestRequirementBadges(
                     req: requirementsFromRow(req),
-                    variant: RequirementBadgeVariant.chips,
-                    padding: const EdgeInsets.only(top: 8),
+                    variant: RequirementBadgeVariant.tiles,
+                    padding: const EdgeInsets.only(top: 12),
                   ),
                   // FOMO de cupos (modelo de hasta 3 finalistas): escalera de
                   // color + recencia + ofertas recibidas.
@@ -1910,43 +1913,43 @@ class _ProviderRequestDetailScreenState
                   // no tiene filas.
                   if (_hasInfo(req, bullets))
                     sectionHeading(context, 'Información'),
-                  if (bullets.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text('Detalles',
-                        style: TextStyle(
-                            fontSize: 12.5, color: cs.onSurfaceVariant)),
-                    const SizedBox(height: 10),
-                    Wrap(spacing: 8, runSpacing: 8, children: [
-                      for (final b in bullets)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                              color: cs.surface,
-                              borderRadius: BorderRadius.circular(999)),
-                          child: Text(b,
-                              style: TextStyle(
-                                  fontSize: 12, color: cs.onSurface)),
-                        ),
-                    ]),
-                  ],
-                  if (requestBudgetLabel(req['budget_min'] as num?,
-                          req['budget_max'] as num?) !=
-                      null) ...[
-                    const SizedBox(height: 16),
-                    Row(children: [
-                      Icon(Icons.payments_outlined,
-                          size: 16, color: cs.onSurfaceVariant),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                            'Presupuesto estimado: ${requestBudgetLabel(req['budget_min'] as num?, req['budget_max'] as num?)}',
-                            style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: jayaloHead(context))),
-                      ),
-                    ]),
+                  if (_hasInfo(req, bullets)) ...[
+                    const SizedBox(height: 12),
+                    // Plantilla aprobada PO 2026-08-11: bullets «Etiqueta:
+                    // valor» y presupuesto como tarjetas de detalle (mismo
+                    // molde que la hoja de oferta), texto libre debajo. Sin
+                    // eyebrow: INFORMACIÓN ya titula la sección — el
+                    // mini-rótulo «Detalles» que había aquí se retiró.
+                    Builder(builder: (context) {
+                      final parsed = requestBulletRows(bullets);
+                      final budget = requestBudgetLabel(
+                          req['budget_min'] as num?,
+                          req['budget_max'] as num?);
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ...detailTileBlock(context, rows: [
+                            ...parsed.rows,
+                            if (budget != null)
+                              (
+                                Icons.payments_outlined,
+                                'Presupuesto estimado',
+                                budget,
+                                false
+                              ),
+                          ]),
+                          for (final b in parsed.freeText)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(b,
+                                  style: TextStyle(
+                                      fontSize: 12.5,
+                                      height: 1.4,
+                                      color: cs.onSurfaceVariant)),
+                            ),
+                        ],
+                      );
+                    }),
                   ],
                   // ── 3) DESBLOQUEO O ENVIAR OFERTA ──
                   const Divider(height: 32),
