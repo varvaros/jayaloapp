@@ -139,6 +139,17 @@ void main() {
     expect(find.textContaining('Archivados'), findsNothing);
   });
 
+  // El vacío de Mensajes trae al Jayi con su celular (mockup aprobado PO
+  // 08-10, burbujas verdes), no la mascota genérica de EmptyState. El gate
+  // de FLUTTER_TEST deja el painter en frame fijo — sin él, el bucle
+  // infinito colgaría cualquier pumpAndSettle de esta pantalla.
+  testWidgets('el vacío pinta al Jayi con celular, no la mascota genérica',
+      (tester) async {
+    await mount(tester, []);
+    expect(find.textContaining('Sin conversaciones abiertas'), findsOneWidget);
+    expect(find.byKey(const ValueKey('jayi_celular')), findsOneWidget);
+  });
+
   testWidgets('la píldora Archivados aparece con al menos una', (tester) async {
     await mount(tester, [conv('a'), conv('b', archived: true)]);
     expect(find.textContaining('Archivados'), findsOneWidget);

@@ -1,6 +1,10 @@
+import 'dart:io' show Platform;
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
+import '../../core/motion.dart';
 import '../../data/repos.dart';
 import '../../domain/chat_time.dart';
 import '../../domain/money.dart';
@@ -257,6 +261,10 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       Expanded(
         child: filtered.isEmpty
             ? EmptyState(
+                // Jayi con su celular recibiendo mensajes (mockup aprobado
+                // PO 08-10, burbujas verdes): SOLO en el vacío de Mensajes,
+                // los demás EmptyState de la app siguen con la mascota.
+                illustration: const Center(child: _JayiCelular()),
                 message: effectiveTab == 'archivados'
                     ? 'Sin conversaciones archivadas.'
                     : effectiveTab == 'abierto'
@@ -670,4 +678,325 @@ class _ConversationRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Jayi con su celular recibiendo mensajes (mockup aprobado PO 2026-08-10,
+/// «burbujas verdes y un poco más lentas»): painter propio, cero assets
+/// nuevos. Cada ~1,9 s entra un mensaje — el celular zumba y su pantallita
+/// destella, una burbujita VERDE hace pop y sube flotando hasta apagarse
+/// alternando el lado, y Jayi pestañea. Mismo patrón que los Jayi de
+/// Mis ofertas y Recargar créditos: frame fijo en tests y con «reducir
+/// movimiento».
+class _JayiCelular extends StatefulWidget {
+  const _JayiCelular();
+
+  @override
+  State<_JayiCelular> createState() => _JayiCelularState();
+}
+
+class _JayiCelularState extends State<_JayiCelular>
+    with TickerProviderStateMixin {
+  late final AnimationController _bob = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 3200));
+
+  /// La línea de tiempo de los mensajes: zumbido, destello, burbuja y
+  /// pestañeo comparten controller (impactos en .15/.45/.75) y quedan
+  /// sincronizados gratis, como en el mockup CSS.
+  late final AnimationController _fx = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 5600));
+
+  /// En widget-tests el bucle infinito rompe TODO `pumpAndSettle` de la
+  /// pantalla (nunca "asienta"): frame fijo. `Platform.environment` y no
+  /// `bool.fromEnvironment` (ese dart-define NO está definido bajo
+  /// `flutter test` y el gate no gateaba).
+  static final _enTest = Platform.environment.containsKey('FLUTTER_TEST');
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_enTest || JayaloMotion.reduced(context)) {
+      _bob.stop();
+      _fx.stop();
+    } else {
+      if (!_bob.isAnimating) _bob.repeat(reverse: true);
+      if (!_fx.isAnimating) _fx.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _bob.dispose();
+    _fx.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final estatico = _enTest || JayaloMotion.reduced(context);
+    return AnimatedBuilder(
+      animation: Listenable.merge([_bob, _fx]),
+      builder: (_, _) => CustomPaint(
+        key: const ValueKey('jayi_celular'),
+        size: const Size(190, 190),
+        painter: _JayiCelularPainter(
+            bob: _bob.value, fx: _fx.value, estatico: estatico),
+      ),
+    );
+  }
+}
+
+class _JayiCelularPainter extends CustomPainter {
+  _JayiCelularPainter(
+      {required this.bob, required this.fx, required this.estatico});
+
+  /// 0..1 con repeat(reverse): el flote de toda la escena.
+  final double bob;
+
+  /// 0..1 en bucle de 5,6 s: mensajes en .15, .45 y .75.
+  final double fx;
+
+  /// Frame fijo (tests / «reducir movimiento»): Jayi quieto con una burbuja
+  /// visible a media subida.
+  final bool estatico;
+
+  static const _violetaTubo = Color(0xFF6B40EE);
+  static const _cuerpoA = Color(0xFF7E56F5);
+  static const _cuerpoB = Color(0xFF6438E8);
+  static const _verde = Color(0xFF2E9E6B);
+  static const _lila = Color(0xFFF1ECFE);
+
+  /// Origen del sistema local de Jayi (118×112) dentro del lienzo 190×190.
+  static const _jayiX = 36.0;
+  static const _jayiY = 78.0;
+
+  /// De dónde nacen las burbujas: justo sobre el celular.
+  static const _nido = Offset(_jayiX + 58, _jayiY + 62);
+
+  /// Instantes de mensaje y hacia qué lado sube cada burbuja.
+  static const _impactos = [.15, .45, .75];
+  static const _lados = [1.0, -1.0, 1.0];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.translate(0, -5 * bob);
+    _jayi(canvas);
+    if (estatico) {
+      _globo(canvas, _nido + const Offset(10, -30), 1, 1, puntos: true);
+      return;
+    }
+    for (var i = 0; i < _impactos.length; i++) {
+      _globoEnVuelo(canvas, i);
+    }
+  }
+
+  /// Zumbido del celular: giro amortiguado de ~280 ms tras cada mensaje.
+  double get _zumbido {
+    if (estatico) return 0;
+    for (final ti in _impactos) {
+      final u = (fx - ti) / .05;
+      if (u >= 0 && u <= 1) {
+        return -.09 * math.sin(3 * math.pi * u) * (1 - u);
+      }
+    }
+    return 0;
+  }
+
+  /// Destello de la pantallita (0..1) al recibir.
+  double get _destello {
+    if (estatico) return 0;
+    for (final ti in _impactos) {
+      final u = (fx - ti - .01) / .07;
+      if (u >= 0 && u <= 1) return math.sin(math.pi * u);
+    }
+    return 0;
+  }
+
+  /// Párpado (1 = ojo abierto): pestañeo con cada mensaje.
+  double get _ojo {
+    if (estatico) return 1;
+    for (final ti in _impactos) {
+      final u = (fx - ti) / .05;
+      if (u >= 0 && u <= 1) return 1 - .88 * math.sin(math.pi * u);
+    }
+    return 1;
+  }
+
+  void _jayi(Canvas canvas) {
+    canvas.save();
+    canvas.translate(_jayiX, _jayiY);
+
+    final tubo = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..color = _violetaTubo;
+
+    // Antenas.
+    tubo.strokeWidth = 5;
+    canvas.drawPath(
+        Path()
+          ..moveTo(47, 16)
+          ..cubicTo(43, 8, 35, 5, 30, 8),
+        tubo);
+    canvas.drawPath(
+        Path()
+          ..moveTo(65, 15)
+          ..cubicTo(69, 7, 77, 4, 82, 7),
+        tubo);
+
+    // Cuerpo "tele".
+    const bodyRect = Rect.fromLTWH(22, 14, 70, 66);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(bodyRect, const Radius.circular(22)),
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_cuerpoA, _cuerpoB],
+        ).createShader(bodyRect),
+    );
+
+    // Ojo mirando al celular (pupila abajo), con pestañeo por mensaje.
+    canvas.save();
+    canvas.translate(45, 40);
+    canvas.scale(1, _ojo.clamp(.12, 1.0));
+    canvas.drawCircle(Offset.zero, 14, Paint()..color = Colors.white);
+    canvas.drawCircle(const Offset(2, 6), 5.2, Paint()..color = _cuerpoB);
+    canvas.restore();
+
+    // Bracitos sujetando el celular.
+    tubo.strokeWidth = 7;
+    canvas.drawPath(
+        Path()
+          ..moveTo(27, 62)
+          ..cubicTo(18, 70, 22, 82, 34, 86),
+        tubo);
+    canvas.drawPath(
+        Path()
+          ..moveTo(88, 62)
+          ..cubicTo(97, 70, 93, 82, 81, 86),
+        tubo);
+
+    // Celular, con zumbido alrededor de su centro.
+    canvas.save();
+    const centroCelu = Offset(58, 81);
+    canvas.translate(centroCelu.dx, centroCelu.dy);
+    canvas.rotate(_zumbido);
+    canvas.translate(-centroCelu.dx, -centroCelu.dy);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            const Rect.fromLTWH(43, 58, 30, 46), const Radius.circular(7)),
+        Paint()..color = const Color(0xFF3E3560));
+    const pantallita = Rect.fromLTWH(46.5, 63, 23, 36);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(pantallita, const Radius.circular(4)),
+        Paint()..color = _lila);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            const Rect.fromLTWH(53, 60, 10, 2.4), const Radius.circular(1.2)),
+        Paint()..color = const Color(0xFF6B5F82));
+    // Mini-conversación en la pantallita.
+    final burbujita = Paint()..color = const Color(0xFFC9BCF5);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            const Rect.fromLTWH(49.5, 68, 13, 4), const Radius.circular(2)),
+        burbujita);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            const Rect.fromLTWH(53.5, 75, 13, 4), const Radius.circular(2)),
+        Paint()..color = _verde);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            const Rect.fromLTWH(49.5, 82, 10, 4), const Radius.circular(2)),
+        burbujita);
+    final flash = _destello;
+    if (flash > .01) {
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(pantallita, const Radius.circular(4)),
+          Paint()..color = Colors.white.withValues(alpha: .8 * flash));
+    }
+    canvas.restore();
+
+    // Manitas por delante del celular.
+    final mano = Paint()..color = _cuerpoA;
+    canvas.drawCircle(const Offset(38, 87), 5.5, mano);
+    canvas.drawCircle(const Offset(78, 87), 5.5, mano);
+
+    canvas.restore();
+  }
+
+  /// Una burbuja: pop con rebasito, sube en diagonal y se apaga.
+  void _globoEnVuelo(Canvas canvas, int i) {
+    final ti = _impactos[i];
+    // La tercera ventana se recorta al final del ciclo (.75 + .25 = 1.0).
+    final ventana = i == 2 ? .25 : .30;
+    final u = (fx - ti) / ventana;
+    if (u < 0 || u > 1) return;
+
+    double s;
+    if (u < .1) {
+      final e = u / .1;
+      s = .3 + .78 * (1 - (1 - e) * (1 - e)); // ease-out hasta 1.08
+    } else if (u < .2) {
+      s = 1.08 - .08 * (u - .1) / .1;
+    } else {
+      s = 1;
+    }
+    final alpha = u < .08
+        ? u / .08
+        : u > .85
+            ? (1 - u) / .15
+            : 1.0;
+    final pos = _nido + Offset(_lados[i] * 19 * u, -64 * u);
+    _globo(canvas, pos, s, alpha.clamp(0.0, 1.0), puntos: i != 1);
+  }
+
+  /// Burbuja verde de chat (46×24 + rabito) centrada en [c]. Con [puntos],
+  /// los tres puntitos de «escribiendo...» titilando; si no, renglones.
+  void _globo(Canvas canvas, Offset c, double s, double alpha,
+      {required bool puntos}) {
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.scale(s);
+
+    final cuerpo = Paint()..color = _verde.withValues(alpha: alpha);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset.zero, width: 46, height: 24),
+            const Radius.circular(7)),
+        cuerpo);
+    // Rabito hacia el celular.
+    canvas.drawPath(
+        Path()
+          ..moveTo(-14, 10)
+          ..lineTo(-20, 18)
+          ..lineTo(-8, 11)
+          ..close(),
+        cuerpo);
+
+    if (puntos) {
+      for (var d = 0; d < 3; d++) {
+        // Titileo desfasado de los puntitos «escribiendo...».
+        final k = estatico
+            ? (d == 1 ? 1.0 : .55)
+            : .45 +
+                .55 * (.5 + .5 * math.sin(2 * math.pi * (fx * 5.3 - d * .17)));
+        canvas.drawCircle(Offset(-9 + 9.0 * d, 0), 3,
+            Paint()..color = Colors.white.withValues(alpha: alpha * k));
+      }
+    } else {
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(const Rect.fromLTWH(-11, -5, 22, 3.2),
+              const Radius.circular(1.6)),
+          Paint()..color = Colors.white.withValues(alpha: alpha * .9));
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              const Rect.fromLTWH(-11, 2, 14, 3.2), const Radius.circular(1.6)),
+          Paint()..color = Colors.white.withValues(alpha: alpha * .55));
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_JayiCelularPainter old) =>
+      old.bob != bob || old.fx != fx || old.estatico != estatico;
 }

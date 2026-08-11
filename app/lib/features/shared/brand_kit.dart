@@ -338,12 +338,17 @@ class EmptyState extends StatelessWidget {
     this.ctaLabel,
     this.onCta,
     this.controller,
+    this.illustration,
   });
 
   final String message;
   final String? ctaLabel;
   final VoidCallback? onCta;
   final ScrollController? controller;
+
+  /// Ilustración sobre el mensaje. Por defecto, la mascota "buscando"; una
+  /// pantalla puede traer la suya (Mensajes pone su Jayi con celular).
+  final Widget? illustration;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -355,7 +360,7 @@ class EmptyState extends StatelessWidget {
         padding: EdgeInsets.only(bottom: navBarReservedSpace(context)),
         children: [
           const SizedBox(height: 100),
-          const Center(child: JayaloMascot(size: 76)),
+          illustration ?? const Center(child: JayaloMascot(size: 76)),
           Padding(
             padding: const EdgeInsets.all(24),
             child: Text(message, textAlign: TextAlign.center),
