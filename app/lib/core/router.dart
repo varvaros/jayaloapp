@@ -204,14 +204,6 @@ GoRouter buildRouter() => GoRouter(
                     child: ProductInterestDetailScreen(
                         interestId: s.pathParameters['id']!,
                         initial: s.extra as Map<String, dynamic>?))),
-            // Perfil del cliente visto por el proveedor (mockup aprobado
-            // 2026-08-11): anónimo hasta el desbloqueo, identidad real
-            // después — quién está desbloqueado lo decide la RPC, no la ruta.
-            GoRoute(
-                path: '/provider/customer/:id',
-                builder: (_, s) => BackGuard(
-                    child: CustomerProfileScreen(
-                        customerId: s.pathParameters['id']!))),
             GoRoute(
                 path: '/provider/offers',
                 builder: (_, _) => const BackGuard(child: MyOffersScreen())),
@@ -316,6 +308,37 @@ GoRouter buildRouter() => GoRouter(
         // (incluida la barra flotante) al apilarse con push. Ver el gotcha
         // documentado junto a `_rootNavigatorKey`.
         //
+        // Perfil del cliente visto por el proveedor (mockup aprobado
+        // 2026-08-11): anónimo hasta el desbloqueo, identidad real después —
+        // quién está desbloqueado lo decide la RPC, no la ruta. TOP-LEVEL a
+        // propósito: se abre también desde el CHAT (`/messages/:id`, navigator
+        // raíz), y empujar una ruta del shell desde ahí monta la pantalla
+        // DEBAJO y se ve vacía (mismo gotcha que `/product/:id`, smoke
+        // 2026-08-10). Misma ventana deslizante que la tienda del proveedor.
+        GoRoute(
+            path: '/provider/customer/:id',
+            pageBuilder: (context, s) => CustomTransitionPage(
+                  key: s.pageKey,
+                  transitionDuration: JayaloMotion.reduced(context)
+                      ? Duration.zero
+                      : JayaloMotion.page,
+                  reverseTransitionDuration: JayaloMotion.reduced(context)
+                      ? Duration.zero
+                      : JayaloMotion.page,
+                  transitionsBuilder: (context, animation, _, child) =>
+                      SlideTransition(
+                    position: Tween<Offset>(
+                            begin: const Offset(1, 0), end: Offset.zero)
+                        .animate(CurvedAnimation(
+                            parent: animation,
+                            curve: JayaloMotion.enter,
+                            reverseCurve: JayaloMotion.exit)),
+                    child: child,
+                  ),
+                  child: BackGuard(
+                      child: CustomerProfileScreen(
+                          customerId: s.pathParameters['id']!)),
+                )),
         // Tienda de un proveedor (desde una oferta o el catálogo): identidad
         // real (PO 2026-07-28). Entra como VENTANA deslizando DESDE LA
         // DERECHA (pedido PO 2026-07-22).
