@@ -9,6 +9,7 @@ import '../../core/motion.dart';
 import '../../core/session_state.dart';
 import '../../core/unsaved_guard.dart';
 import '../../data/repos.dart' show solicitudesBadge, messagesBadge, AppCaches;
+import '../shared/new_offers_popup.dart';
 import '../shared/onboarding_guide.dart';
 import '../shared/onboarding_copy.dart';
 import 'floating_nav_bar.dart';
@@ -35,6 +36,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // Badge de mensajes: recuento al montar el shell (mismo patrón sin-socket
     // que la campana de notificaciones).
     messagesBadge.refresh();
+    // Ventana "¡Tienes ofertas!" (pedido PO 2026-08-11): tras el primer frame,
+    // para no competir con el build inicial. Ella misma decide si hay algo
+    // nuevo que celebrar y no repite el mismo lote dos veces.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(maybeShowNewOffersPopup(context));
+    });
   }
 
   @override
