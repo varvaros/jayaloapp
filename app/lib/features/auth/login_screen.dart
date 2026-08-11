@@ -6,7 +6,7 @@ import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/turnstile.dart';
 import '../shared/jayalo_loader.dart';
-import 'drifting_iso_pattern.dart';
+import 'portada_animada.dart';
 
 /// El usuario cerró el selector de cuenta de Google. No es un fallo: no hay que
 /// enseñarle ningún error.
@@ -81,12 +81,10 @@ String passwordLoginError(Object e) {
   return 'No pudimos entrar. Revisa tu conexión e inténtalo de nuevo.';
 }
 
-// Lavanda del hero y tinta oscura del titular. El texto va en la tipografía de
-// la app, sin negritas (w500, como una app a mitad de rediseño cálido). El
-// acento es el violeta FIJO de marca (no `cs.primary`, que en modo oscuro se
-// iría al azul) — la bienvenida es siempre este hero claro.
-const _welcomeBg = Color(0xFFEDE9FA);
-const _welcomeInk = Color(0xFF2A2350);
+// Fondo de la bienvenida: el cielo/mar de la portada animada. Los textos van
+// en blanco sobre el agua; el CTA mantiene el violeta FIJO de marca (no
+// `cs.primary`, que en modo oscuro se iría al azul).
+const _welcomeSea = Color(0xFF1B7ECB);
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -135,90 +133,19 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _welcomeBg,
+      backgroundColor: _welcomeSea,
       body: Stack(
         children: [
-          // Patrón animado de isotipos tenues que deriva despacio.
-          const Positioned.fill(child: DriftingIsoPattern(bg: _welcomeBg)),
+          // El loop de la isla de Jayi a pantalla completa. El mar bajo la
+          // isla viene limpio del mockup a propósito: es la zona de botones.
+          const Positioned.fill(child: PortadaAnimada()),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(28, 14, 28, 22),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Wordmark.
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const JayaloMascot(size: 24),
-                      const SizedBox(width: 8),
-                      const Text('Jayalo',
-                          style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              color: _welcomeInk)),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  // Titular — tipografía de la app, peso medio (nunca bold),
-                  // "idea" en el violeta fijo de marca.
-                  Text.rich(
-                    TextSpan(children: const [
-                      TextSpan(text: 'Todo empieza\ncon una '),
-                      TextSpan(
-                          text: 'idea',
-                          style: TextStyle(color: JayaloColors.primary)),
-                      TextSpan(text: '.'),
-                    ]),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 33,
-                        height: 1.12,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: -.2,
-                        color: _welcomeInk),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Describe lo que necesitas y deja que los mejores '
-                    'proveedores encuentren la solución.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 15,
-                        height: 1.5,
-                        fontWeight: FontWeight.w400,
-                        color: _welcomeInk.withValues(alpha: .64)),
-                  ),
-                  // La mascota 3D (recorte transparente) flotando en el centro.
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: FittedBox(
-                        fit: BoxFit.contain,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Image.asset('assets/images/mascot.png', width: 230),
-                            const SizedBox(height: 12),
-                            Container(
-                              width: 150,
-                              height: 16,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(999),
-                                boxShadow: [
-                                  BoxShadow(
-                                      color: JayaloColors.primary
-                                          .withValues(alpha: .16),
-                                      blurRadius: 34,
-                                      spreadRadius: 2),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                  const Spacer(),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
@@ -248,7 +175,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontSize: 12,
                         height: 1.4,
                         fontWeight: FontWeight.w400,
-                        color: _welcomeInk.withValues(alpha: .55)),
+                        color: Colors.white.withValues(alpha: .8)),
                   ),
                   // Puerta para las cuentas creadas en jayalo.com con correo y
                   // contraseña: sin esto quedaban fuera de la app si su correo
@@ -260,7 +187,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
-                          color: _welcomeInk.withValues(alpha: .78)),
+                          color: Colors.white.withValues(alpha: .95)),
                     ),
                   ),
                 ],
