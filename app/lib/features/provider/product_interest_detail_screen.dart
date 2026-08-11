@@ -92,8 +92,9 @@ class _ProductInterestDetailScreenState
     peerVerificationBadges([id])
         .then((m) => mounted ? setState(() => _badges = m[id]) : null)
         .catchError((_) => null);
-    // Identidad real, gateada server-side por desbloqueo (PO 2026-08-11).
-    customerPublicProfile(id)
+    // Identidad real, gateada server-side por desbloqueo DE ESTE interés
+    // (PO 2026-08-11: por solicitud, no por cliente).
+    customerPublicProfile(id, interestId: widget.interestId)
         .then((p) => mounted ? setState(() => _custProfile = p) : null)
         .catchError((_) => null);
 
@@ -137,7 +138,8 @@ class _ProductInterestDetailScreenState
           _custProfile?.unlocked == true ? _custProfile?.avatarUrl : null,
       onOpenCustomerProfile: _customerId == null
           ? null
-          : () => context.push('/provider/customer/$_customerId'),
+          : () => context.push('/provider/customer/$_customerId'
+              '?interest=${widget.interestId}'),
       contactName: _contactName,
       contactPhone: _contactPhone,
       onBack: () => context.pop(),
@@ -174,7 +176,7 @@ class _ProductInterestDetailScreenState
     // La ficha pasa de anónima a identidad real sin salir de la pantalla.
     final cid = _customerId;
     if (cid != null) {
-      customerPublicProfile(cid)
+      customerPublicProfile(cid, interestId: widget.interestId)
           .then((p) => mounted ? setState(() => _custProfile = p) : null)
           .catchError((_) => null);
     }

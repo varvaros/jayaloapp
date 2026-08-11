@@ -302,7 +302,7 @@ class _ProviderRequestDetailScreenState
         peerVerificationBadges([cid])
             .then((m) => mounted ? setState(() => _custBadges = m[cid]) : null)
             .catchError((_) => null);
-        customerPublicProfile(cid)
+        customerPublicProfile(cid, requestId: widget.requestId)
             .then((p) => mounted ? setState(() => _custProfile = p) : null)
             .catchError((_) => null);
       }
@@ -1206,7 +1206,7 @@ class _ProviderRequestDetailScreenState
     // real sin salir de la pantalla (PO 2026-08-11). Best-effort.
     final cid = _req?['user_id'] as String?;
     if (cid != null) {
-      customerPublicProfile(cid)
+      customerPublicProfile(cid, requestId: widget.requestId)
           .then((p) => mounted ? setState(() => _custProfile = p) : null)
           .catchError((_) => null);
     }
@@ -1893,8 +1893,12 @@ class _ProviderRequestDetailScreenState
                         ? _custProfile?.avatarUrl
                         : null,
                     // La ficha es la PUERTA al perfil (mockup 2026-08-11).
-                    onTap: () => context
-                        .push('/provider/customer/${req['user_id']}'),
+                    // `?req=`: el gate de identidad es POR SOLICITUD
+                    // (decisión PO 2026-08-11) — el perfil necesita saber
+                    // desde cuál se llega.
+                    onTap: () => context.push(
+                        '/provider/customer/${req['user_id']}'
+                        '?req=${widget.requestId}'),
                   ),
                   // ── 2) INFORMACIÓN ──
                   // El encabezado SOLO si hay algo debajo: una solicitud sin

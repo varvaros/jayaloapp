@@ -121,6 +121,17 @@ abstract final class JayaloMotion {
         toleranceVelocity: toleranceVelocity,
       );
 
+  /// Entrada de las VENTANAS que se deslizan desde la derecha (el chat).
+  /// Mismo carácter que [sheetRise]: 1.5s con la curva [brake] — el recorrido
+  /// se hace casi todo al principio y el resto es la frenada larga llegando
+  /// al tope (pedido PO 2026-08-11: "no se ve la animación del chat" — a
+  /// 300ms el deslizado no se percibía junto a las hojas frenadas).
+  static const windowRise = Duration(milliseconds: 1500);
+
+  /// La salida de esas ventanas se queda corta a propósito, igual que en
+  /// [sheetRise]: cerrar es "quítate".
+  static const windowExit = Duration(milliseconds: 260);
+
   /// Subida del modal: arranque suave y frenada MUY marcada al llegar al
   /// tope (la variante enfatizada de Material de easeInOutCubic).
   static const rise = Curves.easeInOutCubicEmphasized;

@@ -337,7 +337,11 @@ GoRouter buildRouter() => GoRouter(
                   ),
                   child: BackGuard(
                       child: CustomerProfileScreen(
-                          customerId: s.pathParameters['id']!)),
+                          customerId: s.pathParameters['id']!,
+                          // Contexto del gate POR SOLICITUD (PO 2026-08-11).
+                          requestId: s.uri.queryParameters['req'],
+                          offerId: s.uri.queryParameters['offer'],
+                          interestId: s.uri.queryParameters['interest'])),
                 )),
         // Tienda de un proveedor (desde una oferta o el catálogo): identidad
         // real (PO 2026-07-28). Entra como VENTANA deslizando DESDE LA
@@ -440,19 +444,23 @@ GoRouter buildRouter() => GoRouter(
               final m = x is Map ? x : null;
               return CustomTransitionPage(
                 key: s.pageKey,
+                // Entrada FRENADA de 1.5s (pedido PO 2026-08-11: a 300ms "no
+                // se ve la animación del chat"): misma familia que las hojas
+                // — casi todo el recorrido al principio y una frenada larga
+                // llegando al tope. La salida corta: cerrar es "quítate".
                 transitionDuration: JayaloMotion.reduced(context)
                     ? Duration.zero
-                    : JayaloMotion.page,
+                    : JayaloMotion.windowRise,
                 reverseTransitionDuration: JayaloMotion.reduced(context)
                     ? Duration.zero
-                    : JayaloMotion.page,
+                    : JayaloMotion.windowExit,
                 transitionsBuilder: (context, animation, _, child) =>
                     SlideTransition(
                   position: Tween<Offset>(
                           begin: const Offset(1, 0), end: Offset.zero)
                       .animate(CurvedAnimation(
                           parent: animation,
-                          curve: JayaloMotion.enter,
+                          curve: JayaloMotion.brake,
                           reverseCurve: JayaloMotion.exit)),
                   child: child,
                 ),

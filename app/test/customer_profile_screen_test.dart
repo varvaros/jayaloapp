@@ -30,7 +30,9 @@ void main() {
       MaterialApp(
         home: CustomerProfileScreen(
           customerId: cid,
-          fetchProfile: (_) async => (
+          fetchProfile: (_,
+                  {String? requestId, String? offerId, String? interestId}) async =>
+              (
             unlocked: unlocked,
             firstName: firstName,
             lastName: lastName,

@@ -28,6 +28,9 @@ class CustomerProfileScreen extends StatefulWidget {
   const CustomerProfileScreen({
     super.key,
     required this.customerId,
+    this.requestId,
+    this.offerId,
+    this.interestId,
     this.fetchProfile = customerPublicProfile,
     this.fetchReputation = customerReputation,
     this.fetchReviews = customerReviews,
@@ -36,12 +39,20 @@ class CustomerProfileScreen extends StatefulWidget {
 
   final String customerId;
 
+  /// Contexto desde el que se llega (gate POR SOLICITUD, PO 2026-08-11): la
+  /// RPC solo revela identidad si ESTE contexto está pagado por el llamador.
+  /// Todos null = perfil siempre anónimo (default seguro).
+  final String? requestId;
+  final String? offerId;
+  final String? interestId;
+
   /// Inyectables (mismo patrón que `MyOffersScreen.fetchOffers`): el default
   /// es la implementación real de `repos.dart`; los tests pasan dobles para
   /// no tocar Supabase.
   final Future<
-      ({bool unlocked, String? firstName, String? lastName, String? avatarUrl})>
-      Function(String) fetchProfile;
+          ({bool unlocked, String? firstName, String? lastName, String? avatarUrl})>
+      Function(String,
+          {String? requestId, String? offerId, String? interestId}) fetchProfile;
   final Future<Map<String, dynamic>?> Function([String?]) fetchReputation;
   final Future<List<Map<String, dynamic>>> Function(String, {int limit})
       fetchReviews;
@@ -71,7 +82,13 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   Future<void> _load() async {
     final cid = widget.customerId;
     final results = await Future.wait<Object?>([
-      widget.fetchProfile(cid).then<Object?>((v) => v).catchError((_) => null),
+      widget
+          .fetchProfile(cid,
+              requestId: widget.requestId,
+              offerId: widget.offerId,
+              interestId: widget.interestId)
+          .then<Object?>((v) => v)
+          .catchError((_) => null),
       widget.fetchReputation(cid).catchError((_) => null),
       widget
           .fetchReviews(cid)

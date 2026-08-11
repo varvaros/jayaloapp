@@ -2224,18 +2224,29 @@ Future<Map<String, dynamic>?> customerReputation([String? customerId]) async {
   return rows.isEmpty ? null : rows.first;
 }
 
-/// Identidad del cliente, GATEADA por desbloqueo server-side (migración
-/// `20260811120000_customer_profile_rpcs`, decisión PO 2026-08-11): la RPC
-/// devuelve nombre/apellido/avatar SOLO si el proveedor que llama ya pagó un
-/// desbloqueo con ese cliente (oferta o interés de producto); si no,
-/// `unlocked: false` y todo null — el perfil se pinta anónimo. El cliente
+/// Identidad del cliente, GATEADA por desbloqueo server-side y POR SOLICITUD
+/// (migración `20260811140000`, decisión PO 2026-08-11): la RPC devuelve
+/// nombre/apellido/avatar SOLO si el llamador pagó el desbloqueo de ESE
+/// contexto — la solicitud ([requestId]), la oferta ([offerId]) o el interés
+/// ([interestId]) — y ese contexto es de ese cliente. Sin contexto o sin pago
+/// → `unlocked: false` y todo null: el perfil se pinta anónimo. El cliente
 /// NUNCA decide esto: el gate vive en la RPC, no aquí.
 Future<({bool unlocked, String? firstName, String? lastName, String? avatarUrl})>
-    customerPublicProfile(String customerId) async {
+    customerPublicProfile(
+  String customerId, {
+  String? requestId,
+  String? offerId,
+  String? interestId,
+}) async {
   final rows = List<Map<String, dynamic>>.from(
     await supa.rpc(
       'get_customer_public_profile',
-      params: {'_customer_id': customerId},
+      params: {
+        '_customer_id': customerId,
+        '_request_id': requestId,
+        '_offer_id': offerId,
+        '_interest_id': interestId,
+      },
     ),
   );
   final r = rows.isEmpty ? const <String, dynamic>{} : rows.first;

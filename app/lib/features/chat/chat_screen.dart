@@ -1123,7 +1123,18 @@ class _ChatScreenState extends State<ChatScreen> {
             switch (v) {
               case 'profile':
                 final cid = _conv?['customer_id'] as String?;
-                if (cid != null) context.push('/provider/customer/$cid');
+                if (cid != null) {
+                  // El gate de identidad es POR SOLICITUD (PO 2026-08-11):
+                  // se pasa el contexto de ESTE chat — la oferta o el
+                  // interés del que nació la conversación.
+                  final src = _conv?['source_id'] as String?;
+                  final ctx = src == null
+                      ? ''
+                      : _conv?['kind'] == 'product_interest'
+                          ? '?interest=$src'
+                          : '?offer=$src';
+                  context.push('/provider/customer/$cid$ctx');
+                }
               case 'complete':
                 if (await showCompleteDialog(context)) {
                   if (!mounted) return;
