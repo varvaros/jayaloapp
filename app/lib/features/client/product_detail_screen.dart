@@ -728,6 +728,128 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    // Mockup aprobado PO 2026-08-11 ("estilo hoja de oferta"): banda violeta,
+    // resumen del producto CON foto, eyebrow y una tarjeta horizontal por
+    // campo con su pastilla de ícono — el mismo molde de `detailTileBlock`.
+    // El pie (aviso + Cancelar/Enviar) queda FIJO fuera del scroll, como las
+    // acciones de la hoja de oferta.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _header(cs),
+                const SizedBox(height: 14),
+                _summaryCard(cs),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.only(left: 2, bottom: 9),
+                  child: Text('DETALLES DE TU SOLICITUD',
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          letterSpacing: 1.6,
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600)),
+                ),
+                if (_isServicio) ...[
+                  _needTile(),
+                  _urgencyTile(),
+                  _brandTile(),
+                  _serviceLocationTile(),
+                  _photoTile(),
+                ] else ...[
+                  _quantityTile(),
+                  _urgencyTile(),
+                  _colorTile(),
+                  _brandTile(),
+                  _addressTile(),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text('Le avisaremos al proveedor por correo y desde la app.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        const SizedBox(height: 9),
+        Row(children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _busy ? null : () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: FilledButton(
+              onPressed: _canSubmit ? _onSubmitPressed : null,
+              child: _busy
+                  ? const JayaloSpinner(size: 16)
+                  : Text(_photoUploading ? 'Subiendo foto…' : 'Enviar'),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  /// Banda violeta con ícono en círculo translúcido (pedido PO 2026-07-22:
+  /// "Confirmar solicitud" debe tener el diseño de la app). Intacta.
+  Widget _header(ColorScheme cs) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cs.primary,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: .20),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+                _isServicio
+                    ? Icons.handyman_outlined
+                    : Icons.shopping_bag_outlined,
+                color: Colors.white),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_isServicio ? 'Solicitar servicio' : 'Confirmar solicitud',
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white)),
+                const SizedBox(height: 2),
+                Text(
+                  _isServicio
+                      ? 'Cuéntale al proveedor qué necesitas.'
+                      : 'Da detalles claros para una mejor respuesta.',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.white.withValues(alpha: .85)),
+                ),
+              ],
+            ),
+          ),
+        ]),
+      );
+
+  /// Resumen del producto con su FOTO y el precio en violeta (mockup
+  /// aprobado): la misma tarjeta que encabeza la hoja de oferta.
+  Widget _summaryCard(ColorScheme cs) {
     final p = widget.data.product;
     final priceLabel = catalogPriceLabel(
       price: p['price'] as num?,
@@ -738,168 +860,201 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
     final conditionLabel =
         condition == 'nuevo' ? 'Nuevo' : condition == 'usado' ? 'Usado' : null;
     final businessName = widget.data.business?.name;
-
-    final cs = Theme.of(context).colorScheme;
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Encabezado con la LÍNEA GRÁFICA de la app: banda violeta + ícono en
-          // círculo blanco translúcido + título/subtítulo blancos, igual que el
-          // VioletHeader del resto de pantallas (pedido PO 2026-07-22:
-          // "Confirmar solicitud" debe tener el diseño de la app).
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: cs.primary,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Row(children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: .20),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                    _isServicio
-                        ? Icons.handyman_outlined
-                        : Icons.shopping_bag_outlined,
-                    color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                        _isServicio
-                            ? 'Solicitar servicio'
-                            : 'Confirmar solicitud',
-                        style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white)),
-                    const SizedBox(height: 2),
-                    Text(
-                      _isServicio
-                          ? 'Cuéntale al proveedor qué necesitas.'
-                          : 'Da detalles claros para una mejor respuesta.',
+    final img = ((p['image_urls'] as List?)?.cast<String>() ?? const [])
+        .where((u) => u.isNotEmpty)
+        .firstOrNull;
+    return JayaloCard(
+      margin: EdgeInsets.zero,
+      child: Row(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: img != null
+                ? JayaloNetworkImage(img,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => _summaryFallback(cs))
+                : _summaryFallback(cs),
+          ),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(p['name'] as String? ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text.rich(
+                TextSpan(children: [
+                  TextSpan(
+                      text: priceLabel,
                       style: TextStyle(
-                          fontSize: 12.5,
-                          color: Colors.white.withValues(alpha: .85)),
-                    ),
-                  ],
-                ),
+                          fontWeight: FontWeight.w600, color: cs.primary)),
+                  TextSpan(text: [
+                    '',
+                    ?conditionLabel,
+                    if (businessName != null && businessName.isNotEmpty)
+                      businessName,
+                  ].join(' · ')),
+                ]),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
               ),
-            ]),
+            ],
           ),
-          const SizedBox(height: 16),
-          JayaloCard(
-            margin: EdgeInsets.zero,
-            child: Row(children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(p['name'] as String? ?? '',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    Text([
-                      priceLabel,
-                      ?conditionLabel,
-                      if (businessName != null && businessName.isNotEmpty)
-                        businessName,
-                    ].join(' · '), style: const TextStyle(fontSize: 12)),
-                  ],
-                ),
-              ),
-            ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _summaryFallback(ColorScheme cs) => Container(
+        color: cs.surfaceContainerHighest,
+        child: Icon(
+            _isServicio ? Icons.handyman_outlined : Icons.inventory_2_outlined,
+            size: 22,
+            color: cs.onSurfaceVariant),
+      );
+
+  /// La tarjeta de campo: el molde de `detailTileBlock` (pastilla de ícono a
+  /// la izquierda, etiqueta tenue arriba) con el CONTROL donde iría el valor.
+  /// `value` pinta una línea de valor; `child` mete el control debajo de la
+  /// etiqueta; `trailing` va a la derecha (stepper, check).
+  Widget _tile({
+    required IconData icon,
+    required String label,
+    bool optional = false,
+    String? value,
+    Widget? child,
+    Widget? trailing,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 9),
+      padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: .55),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment:
+            child == null ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 19, color: cs.primary),
           ),
-          const SizedBox(height: 12),
-          if (_isServicio) _serviceNeedField(),
-          const SizedBox(height: 12),
-          if (!_isServicio) ...[
-            _quantityField(),
-            const SizedBox(height: 12),
-          ],
-          _brandField(),
-          const SizedBox(height: 12),
-          _urgencyField(),
-          const SizedBox(height: 12),
-          if (!_isServicio) ...[_colorField(), const SizedBox(height: 12)],
-          if (_isServicio) ...[_serviceLocationField(), const SizedBox(height: 12)]
-          else
-            _addressField(),
-          if (_isServicio) ...[const SizedBox(height: 12), _photoField()],
-          const SizedBox(height: 16),
-          Row(children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: _busy ? null : () => Navigator.pop(context),
-                child: const Text('Cancelar'),
-              ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: label.toUpperCase()),
+                    if (optional)
+                      const TextSpan(
+                          text: ' · opcional',
+                          style: TextStyle(letterSpacing: 0)),
+                  ]),
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      letterSpacing: .8,
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w500),
+                ),
+                if (value != null) ...[
+                  const SizedBox(height: 1),
+                  Text(value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 14.5,
+                          height: 1.25,
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w600)),
+                ],
+                if (child != null) ...[
+                  const SizedBox(height: 7),
+                  child,
+                ],
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton(
-                onPressed: _canSubmit ? _onSubmitPressed : null,
-                child: _busy
-                    ? const JayaloSpinner(size: 16)
-                    : Text(_photoUploading ? 'Subiendo foto…' : 'Enviar'),
-              ),
-            ),
-          ]),
-          const SizedBox(height: 8),
+          ),
+          if (trailing != null) ...[const SizedBox(width: 8), trailing],
         ],
       ),
     );
   }
 
-  Widget _quantityField() => _section(
+  Widget _quantityTile() => _tile(
+        icon: Icons.layers_outlined,
         label: 'Cantidad',
-        child: Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            IconButton(
-              onPressed: _quantity > 1
-                  ? () => setState(() => _quantity--)
-                  : null,
-              icon: const Icon(Icons.remove),
-            ),
-            Text('$_quantity',
+        value: '$_quantity ${_quantity == 1 ? 'unidad' : 'unidades'}',
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          _stepBtn(Icons.remove,
+              _quantity > 1 ? () => setState(() => _quantity--) : null),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text('$_quantity',
                 style: const TextStyle(fontWeight: FontWeight.w600)),
-            IconButton(
-              onPressed: _quantity < 999
-                  ? () => setState(() => _quantity++)
-                  : null,
-              icon: const Icon(Icons.add),
-            ),
-          ]),
+          ),
+          _stepBtn(Icons.add,
+              _quantity < 999 ? () => setState(() => _quantity++) : null),
+        ]),
+      );
+
+  Widget _stepBtn(IconData icon, VoidCallback? onTap) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: cs.primary.withValues(alpha: onTap == null ? .06 : .12),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon,
+            size: 17,
+            color: onTap == null
+                ? cs.onSurfaceVariant.withValues(alpha: .5)
+                : cs.primary),
+      ),
+    );
+  }
+
+  Widget _brandTile() => _tile(
+        icon: Icons.sell_outlined,
+        label: _isServicio ? 'Preferencias' : 'Marca / preferencia',
+        optional: true,
+        child: TextField(
+          controller: _brandCtrl,
+          maxLength: 120,
+          decoration: InputDecoration.collapsed(
+            hintText: _isServicio
+                ? 'Ej. horario de tarde, marca específica, presupuesto…'
+                : 'Ej. Samsung, LG…',
+          ).copyWith(counterText: ''),
+          style: const TextStyle(fontSize: 13.5),
         ),
       );
 
-  Widget _brandField() => TextField(
-        controller: _brandCtrl,
-        maxLength: 120,
-        decoration: filledField(
-          context,
-          _isServicio ? 'Preferencias (opcional)' : 'Marca / preferencia',
-          hint: _isServicio
-              ? 'Ej. horario de tarde, marca específica, presupuesto…'
-              : 'Ej. Samsung, LG…',
-        ).copyWith(counterText: ''),
-      );
-
-  Widget _urgencyField() => _section(
-        label: _isServicio ? '¿Cuándo lo necesitas?' : '¿Cuándo quieres comprar?',
-        child: Wrap(spacing: 8, runSpacing: 8, children: [
+  Widget _urgencyTile() => _tile(
+        icon: Icons.schedule_outlined,
+        label:
+            _isServicio ? '¿Cuándo lo necesitas?' : '¿Cuándo quieres comprar?',
+        child: Wrap(spacing: 7, runSpacing: 7, children: [
           for (final u in InterestUrgency.values)
             _pillChip(
               label: u.chipLabel,
@@ -909,9 +1064,10 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
         ]),
       );
 
-  Widget _colorField() => _section(
+  Widget _colorTile() => _tile(
+        icon: Icons.palette_outlined,
         label: 'Color',
-        child: Wrap(spacing: 8, runSpacing: 8, children: [
+        child: Wrap(spacing: 7, runSpacing: 7, children: [
           for (final c in interestColors)
             _pillChip(
               label: c.label,
@@ -922,14 +1078,38 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
         ]),
       );
 
-  Widget _addressField() => _section(
-        label: 'Dirección de entrega',
-        child: _addressPicker(),
-      );
+  Widget _needTile() {
+    final len = _needCtrl.text.trim().length;
+    return _tile(
+      icon: Icons.handyman_outlined,
+      label: '¿Qué necesitas?',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextField(
+          controller: _needCtrl,
+          maxLength: 400,
+          maxLines: 3,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration.collapsed(
+                  hintText:
+                      'Ej. Mi aire de 24k no enfría, hace ruido al encender. Vivo en un 3er piso.')
+              .copyWith(counterText: ''),
+          style: const TextStyle(fontSize: 13.5),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          len < 15 ? 'Mínimo 15 caracteres ($len/15)' : 'Listo',
+          style: TextStyle(
+              fontSize: 11, color: len < 15 ? Colors.amber.shade800 : null),
+        ),
+      ]),
+    );
+  }
 
-  Widget _serviceLocationField() => _section(
+  Widget _serviceLocationTile() => _tile(
+        icon: Icons.place_outlined,
         label: 'Lugar del servicio',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(
               child: _pillChip(
@@ -954,6 +1134,110 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
             _addressPicker(),
           ],
         ]),
+      );
+
+  /// Dirección como tarjeta de la plantilla (mockup aprobado): pin, dirección
+  /// del perfil truncada con su CHECK violeta, y «Usar otra dirección» para
+  /// escribir una distinta. Sin dirección en el perfil, el campo va directo.
+  Widget _addressTile() {
+    final cs = Theme.of(context).colorScheme;
+    if (_loadingAddress) {
+      return _tile(
+        icon: Icons.place_outlined,
+        label: 'Dirección de entrega',
+        child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 4),
+            child: JayaloSpinner(size: 16)),
+      );
+    }
+    if (_profileAddress == null) {
+      return _tile(
+        icon: Icons.place_outlined,
+        label: 'Dirección de entrega',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('No tienes dirección en tu perfil.',
+              style: TextStyle(fontSize: 12)),
+          const SizedBox(height: 4),
+          TextField(
+            controller: _addressCtrl,
+            maxLength: 160,
+            decoration: const InputDecoration.collapsed(
+                    hintText: 'Calle, número, sector, ciudad…')
+                .copyWith(counterText: ''),
+            style: const TextStyle(fontSize: 13.5),
+          ),
+        ]),
+      );
+    }
+    final link = GestureDetector(
+      onTap: () =>
+          setState(() => _useProfileAddress = !_useProfileAddress),
+      child: Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text(
+            _useProfileAddress ? 'Usar otra dirección' : 'Usar mi dirección',
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: cs.primary)),
+      ),
+    );
+    return _tile(
+      icon: Icons.place_outlined,
+      label: 'Dirección de entrega',
+      value: _useProfileAddress ? _profileAddress : null,
+      trailing: _useProfileAddress
+          ? Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: cs.primary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.check, size: 15, color: Colors.white),
+            )
+          : null,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (!_useProfileAddress)
+          TextField(
+            controller: _addressCtrl,
+            maxLength: 160,
+            decoration: const InputDecoration.collapsed(
+                    hintText: 'Calle, número, sector, ciudad…')
+                .copyWith(counterText: ''),
+            style: const TextStyle(fontSize: 13.5),
+          ),
+        link,
+      ]),
+    );
+  }
+
+  Widget _photoTile() => _tile(
+        icon: Icons.add_photo_alternate_outlined,
+        label: 'Foto de referencia',
+        optional: true,
+        child: _photo == null
+            ? Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: _pickPhoto,
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: const Text('Agregar foto'),
+                ),
+              )
+            : Row(children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.file(File(_photo!.path),
+                      width: 64, height: 64, fit: BoxFit.cover),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () => setState(() => _photo = null),
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Quitar',
+                ),
+              ]),
       );
 
   Widget _addressPicker() {
@@ -999,73 +1283,6 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
     ]);
   }
 
-  Widget _serviceNeedField() {
-    final len = _needCtrl.text.trim().length;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      TextField(
-        controller: _needCtrl,
-        maxLength: 400,
-        maxLines: 3,
-        onChanged: (_) => setState(() {}),
-        decoration: filledField(context, '¿Qué necesitas? *',
-                hint:
-                    'Ej. Mi aire de 24k no enfría, hace ruido al encender. Vivo en un 3er piso.')
-            .copyWith(counterText: ''),
-      ),
-      const SizedBox(height: 4),
-      Text(
-        len < 15 ? 'Mínimo 15 caracteres ($len/15)' : 'Listo',
-        style: TextStyle(
-            fontSize: 11,
-            color: len < 15 ? Colors.amber.shade800 : null),
-      ),
-    ]);
-  }
-
-  Widget _photoField() => _section(
-        label: 'Foto de referencia (opcional)',
-        child: _photo == null
-            ? Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: _pickPhoto,
-                  icon: const Icon(Icons.add_photo_alternate_outlined),
-                  label: const Text('Agregar foto'),
-                ),
-              )
-            : Row(children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.file(File(_photo!.path),
-                      width: 64, height: 64, fit: BoxFit.cover),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: () => setState(() => _photo = null),
-                  icon: const Icon(Icons.close),
-                  tooltip: 'Quitar',
-                ),
-              ]),
-      );
-
-  /// Línea gráfica del form de "hacer oferta" (pedido PO 2026-07-21): etiqueta
-  /// de sección (13/w600 en el tono de encabezado) + contenido debajo, y los
-  /// TextField con `filledField` — se retiró la tarjeta blanca con micro-label
-  /// en mayúsculas que usaba esta hoja.
-  Widget _section({required String label, required Widget child}) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: jayaloHead(context))),
-          const SizedBox(height: 8),
-          child,
-        ],
-      );
-
-  /// Chip pastilla como las del form de oferta (violeta lleno al elegir).
   Widget _pillChip(
       {required String label,
       required bool selected,

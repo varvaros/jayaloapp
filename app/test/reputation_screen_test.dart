@@ -69,8 +69,15 @@ void main() {
       'response_samples': 5,
     })));
     await tester.pumpAndSettle();
-    expect(find.text('4.5'), findsOneWidget);
+    // La calificación va en un Text.rich con la reseña pegada
+    // («4.5 · 3 reseñas»), así que se busca por contenido.
+    expect(find.textContaining('4.5'), findsOneWidget);
     expect(find.text('3'), findsWidgets);
     expect(find.text('7'), findsOneWidget);
+    // Plantilla PO 2026-08-11: etiquetas de tarjeta y la escena de Jayi.
+    expect(find.text('CALIFICACIÓN'), findsOneWidget);
+    expect(find.text('SOLICITUDES HECHAS'), findsOneWidget);
+    expect(find.text('Ver'), findsOneWidget);
+    expect(find.byKey(const ValueKey('jayi_estrella')), findsOneWidget);
   });
 }
