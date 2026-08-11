@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -908,13 +909,13 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // La mascota respirando — misma cara "buscando" de la web. OJO: va
-          // dentro de un Center porque la columna es `stretch` y su
-          // CustomPaint ADOPTA las constraints del padre (a ancho completo se
-          // pintaba GIGANTE detrás del buscador — QA PO 2026-07-21); el
-          // Center la suelta a su tamaño propio. 112 = "100% más grande"
-          // que la pasada de 56 (pedido PO).
-          const Center(child: JayaloMascotFace(size: 112)),
+          // Jayi DETECTIVE con su lupa al ojo (mockup aprobado PO 08-10):
+          // sustituye a la cara respirando. OJO: va dentro de un Center
+          // porque la columna es `stretch` y su CustomPaint ADOPTA las
+          // constraints del padre (a ancho completo se pintaba GIGANTE
+          // detrás del buscador — QA PO 2026-07-21); el Center lo suelta a
+          // su tamaño propio.
+          const Center(child: _JayiDetective(pensando: false)),
           const SizedBox(height: 12),
           Text(
             '¿Qué quieres jayar hoy?',
@@ -1123,15 +1124,25 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       ),
       children: [
         Center(
-          child: JayaloMascotFace(
-            size: 68,
-            reactKey: _pop,
-            // Duda mientras piensa, sonrisa cuando la solicitud está lista.
-            mood: _busy
-                ? MascotMood.thinking
-                : _ready != null
-                ? MascotMood.happy
-                : MascotMood.idle,
+          // Mientras la IA piensa, el Jayi con la mano en la barbilla y sus
+          // puntitos (mockup aprobado PO 08-10) sustituye a la cara de duda.
+          // La cara expresiva queda MONTADA en Offstage para no perder su
+          // estado: al volver, el `reactKey` nuevo dispara el pop de
+          // "¡nueva pregunta!" como siempre.
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Offstage(
+                offstage: _busy,
+                child: JayaloMascotFace(
+                  size: 68,
+                  reactKey: _pop,
+                  // Sonrisa cuando la solicitud está lista.
+                  mood: _ready != null ? MascotMood.happy : MascotMood.idle,
+                ),
+              ),
+              if (_busy) const _JayiDetective(pensando: true, ancho: 140),
+            ],
           ),
         ),
         const SizedBox(height: 14),
@@ -2018,4 +2029,363 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   Widget _successView() =>
       RequestPublishedView(onSeeRequests: () => context.go('/client'));
+}
+
+/// Jayi de crear-solicitud (mockup aprobado PO 2026-08-10, v4 con codos):
+/// dos modos en un solo painter.
+///
+/// - [pensando] = false → JAYI DETECTIVE: la lupa al ojo con el ojo GIGANTE
+///   aumentado a través del cristal; el conjunto brazo+lupa pasea en
+///   circulito (se acerca, se aleja, se inclina), el cuerpo se ladea
+///   escaneando, la pupila barre, un destello cruza el cristal y pestañea.
+/// - [pensando] = true → mano en la BARBILLA dando golpecitos, ojo mirando
+///   arriba a tres puntitos violeta que laten en escalera, ladeo suave y
+///   antenas temblando alternadas.
+///
+/// Mismo patrón que los Jayi de Mis ofertas / Recargar créditos / Mensajes:
+/// painter propio, cero assets, frame fijo en tests y con «reducir
+/// movimiento». Todos los ritmos son conmensurables con el ciclo de 5,2 s
+/// para que el bucle reinicie sin salto (patrón del JayaloLoader).
+class _JayiDetective extends StatefulWidget {
+  const _JayiDetective({required this.pensando, this.ancho = 190});
+
+  final bool pensando;
+
+  /// Ancho del lienzo; el alto sale de la proporción 190×130 del mockup.
+  final double ancho;
+
+  @override
+  State<_JayiDetective> createState() => _JayiDetectiveState();
+}
+
+class _JayiDetectiveState extends State<_JayiDetective>
+    with TickerProviderStateMixin {
+  late final AnimationController _bob = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 3200));
+  late final AnimationController _fx = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 5200));
+
+  /// En widget-tests el bucle infinito rompe TODO `pumpAndSettle` de la
+  /// pantalla (nunca "asienta"): frame fijo. `Platform.environment` y no
+  /// `bool.fromEnvironment` (ese dart-define NO está definido bajo
+  /// `flutter test` y el gate no gateaba).
+  static final _enTest = Platform.environment.containsKey('FLUTTER_TEST');
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_enTest || JayaloMotion.reduced(context)) {
+      _bob.stop();
+      _fx.stop();
+    } else {
+      if (!_bob.isAnimating) _bob.repeat(reverse: true);
+      if (!_fx.isAnimating) _fx.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _bob.dispose();
+    _fx.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final estatico = _enTest || JayaloMotion.reduced(context);
+    return AnimatedBuilder(
+      animation: Listenable.merge([_bob, _fx]),
+      builder: (_, _) => CustomPaint(
+        key: ValueKey(widget.pensando ? 'jayi_pensando' : 'jayi_lupa'),
+        size: Size(widget.ancho, widget.ancho * 130 / 190),
+        painter: _JayiDetectivePainter(
+          pensando: widget.pensando,
+          t: _fx.value,
+          bob: _bob.value,
+          estatico: estatico,
+        ),
+      ),
+    );
+  }
+}
+
+class _JayiDetectivePainter extends CustomPainter {
+  _JayiDetectivePainter({
+    required this.pensando,
+    required this.t,
+    required this.bob,
+    required this.estatico,
+  });
+
+  final bool pensando;
+
+  /// 0..1 del ciclo maestro de 5,2 s.
+  final double t;
+
+  /// 0..1 con repeat(reverse): el flote.
+  final double bob;
+
+  final bool estatico;
+
+  static const _violetaTubo = Color(0xFF6B40EE);
+  static const _cuerpoA = Color(0xFF7E56F5);
+  static const _cuerpoB = Color(0xFF6438E8);
+  static const _oroLupa = Color(0xFFB47A1D);
+  static const _violeta = Color(0xFF7147F2);
+
+  /// Vaivén 0→1→0 suavizado; [ciclos] = cuántas idas-y-vueltas por ciclo
+  /// maestro (2 → periodo de 2,6 s).
+  double _ping(double ciclos, [double desfase = 0]) {
+    final p = (t * ciclos + desfase) % 1;
+    return Curves.easeInOut.transform(p < .5 ? p * 2 : (1 - p) * 2);
+  }
+
+  /// Interpola keyframes `(fase 0-1, valor)` con easeInOut entre tramos
+  /// (mismo truco que el JayaloLoader para calcar @keyframes del CSS).
+  static double _kf(double fase, List<(double, double)> frames) {
+    for (var i = 0; i < frames.length - 1; i++) {
+      final (p0, v0) = frames[i];
+      final (p1, v1) = frames[i + 1];
+      if (fase >= p0 && fase <= p1) {
+        if (p1 == p0) return v1;
+        final local = Curves.easeInOut.transform((fase - p0) / (p1 - p0));
+        return v0 + (v1 - v0) * local;
+      }
+    }
+    return frames.last.$2;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.scale(size.width / 190);
+    canvas.translate(0, -4 * bob);
+    if (pensando) {
+      _modoPensando(canvas);
+    } else {
+      _modoLupa(canvas);
+    }
+  }
+
+  /// Pestañeo una vez por ciclo, al final (fase .88–.94).
+  double get _ojoAbierto {
+    if (estatico) return 1;
+    if (t < .88 || t > .94) return 1;
+    return 1 - .9 * math.sin(math.pi * (t - .88) / .06);
+  }
+
+  void _antenas(Canvas canvas, Paint tubo,
+      {double rotIzq = 0, double rotDer = 0}) {
+    tubo.strokeWidth = 5;
+    canvas.save();
+    canvas.translate(83, 26);
+    canvas.rotate(rotIzq * math.pi / 180);
+    canvas.translate(-83, -26);
+    canvas.drawPath(
+        Path()
+          ..moveTo(83, 26)
+          ..cubicTo(79, 18, 71, 15, 66, 18),
+        tubo);
+    canvas.restore();
+    canvas.save();
+    canvas.translate(101, 25);
+    canvas.rotate(rotDer * math.pi / 180);
+    canvas.translate(-101, -25);
+    canvas.drawPath(
+        Path()
+          ..moveTo(101, 25)
+          ..cubicTo(105, 17, 113, 14, 118, 17),
+        tubo);
+    canvas.restore();
+  }
+
+  void _cuerpo(Canvas canvas) {
+    const bodyRect = Rect.fromLTWH(58, 24, 70, 66);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(bodyRect, const Radius.circular(22)),
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_cuerpoA, _cuerpoB],
+        ).createShader(bodyRect),
+    );
+  }
+
+  void _bracitoIzquierdo(Canvas canvas, Paint tubo) {
+    tubo.strokeWidth = 7;
+    canvas.drawPath(
+        Path()
+          ..moveTo(60, 68)
+          ..cubicTo(48, 74, 46, 86, 56, 90),
+        tubo);
+    canvas.drawCircle(const Offset(57, 90), 5.5, Paint()..color = _cuerpoA);
+  }
+
+  // ── Modo detective: la lupa al ojo ─────────────────────────────────────
+
+  void _modoLupa(Canvas canvas) {
+    // Escaneo del cuerpo: ladeo + vaivén lateral, ida y vuelta cada 2,6 s.
+    final v = estatico ? .5 : _ping(2);
+    canvas.save();
+    canvas.translate(95, 110);
+    canvas.rotate((-2.4 + 4.8 * v) * math.pi / 180);
+    canvas.translate(-95 + (-3 + 6 * v), -110);
+
+    final tubo = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..color = _violetaTubo;
+
+    _antenas(canvas, tubo);
+    _cuerpo(canvas);
+    _bracitoIzquierdo(canvas, tubo);
+
+    // El conjunto brazo+lupa+ojo aumentado PASEA en circulito (que no
+    // parezca un monóculo fijo — corrección PO sobre la v2 del mockup).
+    final px = estatico
+        ? 0.0
+        : _kf(t, const [(0, 0), (.22, -4), (.45, 2), (.68, 5), (.86, -2), (1, 0)]);
+    final py = estatico
+        ? 0.0
+        : _kf(t,
+            const [(0, 0), (.22, -3), (.45, 2.5), (.68, -2), (.86, 1.5), (1, 0)]);
+    final pr = estatico
+        ? 0.0
+        : _kf(t,
+            const [(0, 0), (.22, -4), (.45, 2), (.68, 4.5), (.86, -2), (1, 0)]);
+    canvas.save();
+    canvas.translate(100 + px, 71 + py);
+    canvas.rotate(pr * math.pi / 180);
+    canvas.translate(-100, -71);
+
+    // Brazo con el CODO asomando por la derecha del cuerpo.
+    tubo.strokeWidth = 7;
+    canvas.drawPath(
+        Path()
+          ..moveTo(124, 62)
+          ..cubicTo(142, 66, 146, 84, 130, 89)
+          ..cubicTo(118, 93, 104, 84, 100, 72),
+        tubo);
+    // Mango.
+    canvas.drawLine(
+        const Offset(92, 61),
+        const Offset(100, 71),
+        Paint()
+          ..color = _oroLupa
+          ..strokeWidth = 6
+          ..strokeCap = StrokeCap.round);
+
+    // OJO GIGANTE visto a través del cristal (pestañea).
+    const ojo = Offset(81, 50);
+    canvas.save();
+    canvas.translate(ojo.dx, ojo.dy);
+    canvas.scale(1, _ojoAbierto.clamp(.1, 1.0));
+    canvas.drawCircle(Offset.zero, 15.5, Paint()..color = Colors.white);
+    // La pupila agrandada barre con el escaneo del cuerpo.
+    canvas.drawCircle(
+        Offset(-4 + 8.5 * v, 2), 7.5, Paint()..color = _cuerpoB);
+    canvas.restore();
+
+    // Cristal + aro dorado.
+    canvas.drawCircle(
+        ojo, 16.5, Paint()..color = Colors.white.withValues(alpha: .22));
+    canvas.drawCircle(
+        ojo,
+        16.5,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 4.5
+          ..color = _oroLupa);
+
+    // Destello que cruza el cristal (dos pasadas por ciclo).
+    if (!estatico) {
+      final g = (t * 2) % 1;
+      if (g >= .55 && g <= .85) {
+        final gg = (g - .55) / .3;
+        canvas.save();
+        canvas.clipPath(Path()..addOval(Rect.fromCircle(center: ojo, radius: 15)));
+        canvas.translate(81 + (-8 + 17 * gg), 50 + (6 - 13 * gg));
+        canvas.rotate(-38 * math.pi / 180);
+        canvas.drawRect(
+            Rect.fromCenter(center: Offset.zero, width: 5, height: 40),
+            Paint()
+              ..color = Colors.white
+                  .withValues(alpha: .85 * math.sin(math.pi * gg)));
+        canvas.restore();
+      }
+    }
+
+    // Manita agarrando el mango.
+    canvas.drawCircle(const Offset(100, 71), 5.5, Paint()..color = _cuerpoA);
+
+    canvas.restore(); // paseo de la lupa
+    canvas.restore(); // escaneo del cuerpo
+  }
+
+  // ── Modo pensando: mano en la barbilla + puntitos ──────────────────────
+
+  void _modoPensando(Canvas canvas) {
+    final v = estatico ? .5 : _ping(2);
+    canvas.save();
+    canvas.translate(95, 100);
+    canvas.rotate((-2.4 + 4.4 * v) * math.pi / 180);
+    canvas.translate(-95, -100);
+
+    final tubo = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..color = _violetaTubo;
+
+    // Antenas temblando alternadas (piensa con las antenas).
+    _antenas(canvas, tubo,
+        rotIzq: estatico ? 0 : -4 + 9 * _ping(2),
+        rotDer: estatico ? 0 : 5 - 9 * _ping(2, .3));
+    _cuerpo(canvas);
+
+    // Ojo mirando ARRIBA a sus puntitos (y pestañea).
+    canvas.save();
+    canvas.translate(81, 50);
+    canvas.scale(1, _ojoAbierto.clamp(.1, 1.0));
+    canvas.drawCircle(Offset.zero, 14, Paint()..color = Colors.white);
+    canvas.drawCircle(const Offset(4, -6), 5.2, Paint()..color = _cuerpoB);
+    canvas.restore();
+
+    _bracitoIzquierdo(canvas, tubo);
+
+    // Brazo derecho a la barbilla, con el codo afuera y golpecitos.
+    final tap =
+        estatico ? 0.0 : -2.2 * math.sin(math.pi * ((t * 8) % 2)).abs();
+    canvas.save();
+    canvas.translate(0, tap);
+    tubo.strokeWidth = 7;
+    canvas.drawPath(
+        Path()
+          ..moveTo(124, 68)
+          ..cubicTo(141, 74, 143, 90, 128, 93)
+          ..cubicTo(116, 95, 104, 92, 99, 87),
+        tubo);
+    canvas.drawCircle(const Offset(99, 86), 6, Paint()..color = _cuerpoA);
+    canvas.restore();
+
+    canvas.restore(); // ladeo
+
+    // Puntitos de pensar en escalera (fuera del ladeo, como en el mockup).
+    const puntos = [(Offset(134, 34), 4.0), (Offset(146, 24), 5.5), (Offset(161, 13), 7.0)];
+    for (var d = 0; d < puntos.length; d++) {
+      final (c, r) = puntos[d];
+      final fase = estatico ? .35 : ((t * 4) - d * .15) % 1;
+      final k = _kf(fase, const [(0, 0), (.35, 1), (.7, 0), (1, 0)]);
+      canvas.drawCircle(
+          c,
+          r * (.8 + .35 * k),
+          Paint()..color = _violeta.withValues(alpha: .35 + .65 * k));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_JayiDetectivePainter old) =>
+      old.pensando != pensando ||
+      old.t != t ||
+      old.bob != bob ||
+      old.estatico != estatico;
 }
