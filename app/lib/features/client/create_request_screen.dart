@@ -371,8 +371,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   }
 
   /// Elige y valida una foto; la agrega a `_photos` (con su base64 cacheado).
-  /// Devuelve true si se agregó.
-  Future<bool> _pickPhoto(ImageSource source) async {
+  /// Devuelve true si se agregó. Con [replaceLast], la nueva foto sustituye a
+  /// la última SOLO si el pick termina bien — cancelar conserva la actual.
+  Future<bool> _pickPhoto(ImageSource source, {bool replaceLast = false}) async {
     final picked = await guardedPick((p) => p.pickImage(
           source: source,
           maxWidth: 1200,
@@ -387,7 +388,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     final res = validatePickedImage(
       sizeBytes: bytes.length,
       path: cropped.path,
-      currentCount: _photos.length,
+      currentCount: replaceLast ? _photos.length - 1 : _photos.length,
       maxCount: _maxRequestPhotos,
     );
     if (res is ImagePickError) {
@@ -396,7 +397,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     }
     final dataUrl =
         'data:${_imageMime(cropped.path)};base64,${base64Encode(bytes)}';
-    if (mounted) setState(() => _photos.add(_PendingPhoto(cropped, dataUrl)));
+    if (mounted) {
+      setState(() {
+        if (replaceLast && _photos.isNotEmpty) _photos.removeLast();
+        _photos.add(_PendingPhoto(cropped, dataUrl));
+      });
+    }
     return true;
   }
 
@@ -424,9 +430,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   /// Responde al turno `image_request`: adjunta y manda un turno para que la IA
   /// prosiga (la foto viaja en imageDataUrl de este mismo POST).
+  ///
+  /// Si la IA pide foto con el cupo LLENO es que alguna no le sirvió: el
+  /// cargador se ofrece igual y la nueva foto reemplaza a la última (pedido PO
+  /// 2026-08-11 — antes los botones de cámara/galería desaparecían y al
+  /// usuario solo le quedaba "Seguir sin foto", con la foto equivocada puesta).
   Future<void> _pickForRequest(ImageSource source) async {
-    if (await _pickPhoto(source)) {
-      await _send('Aquí tienes una foto para más contexto.');
+    final replacing = _photos.length >= _maxRequestPhotos;
+    if (await _pickPhoto(source, replaceLast: replacing)) {
+      await _send(replacing
+          ? 'Cambié la foto, mira esta.'
+          : 'Aquí tienes una foto para más contexto.');
     }
   }
 
@@ -933,7 +947,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             enabled: !_busy,
             onSubmitted: _startSend,
             decoration: InputDecoration(
-              hintText: '¿Qué estás buscando?',
+              hintText: 'Describe lo que quieres encontrar.',
               filled: true,
               fillColor: cs.surface,
               enabledBorder: OutlineInputBorder(
@@ -954,15 +968,30 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                   onPressed: _busy ? null : _showPickSheet,
                 ),
               ),
+              // Botón con TEXTO "Buscar" en vez del avioncito (pedido PO
+              // 2026-08-11): dice lo que hace.
               suffixIcon: OnboardingGuide(
                 guideKey: 'client.create_request.v2',
                 steps: onboardingCopy['client.create_request.v2']!,
                 order: 3,
-                child: IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: () => _startSend(_input.text),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 40),
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(22)),
+                      textStyle: const TextStyle(
+                          fontSize: 14.5, fontWeight: FontWeight.w600),
+                    ),
+                    onPressed: _busy ? null : () => _startSend(_input.text),
+                    child: const Text('Buscar'),
+                  ),
                 ),
               ),
+              suffixIconConstraints:
+                  const BoxConstraints(minWidth: 0, minHeight: 0),
             ),
           ),
           const SizedBox(height: 12),
@@ -1106,6 +1135,21 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _toast('Elige Producto, Servicio o Al por mayor para continuar.');
       return;
     }
+    // En PRODUCTO la descripción es opcional si hay foto (pedido PO
+    // 2026-08-11): la foto habla por el usuario — viaja en el dataUrl de este
+    // mismo POST y el servidor ya usa este mismo texto por defecto para los
+    // mensajes que solo traen imagen. Antes `_send` ignoraba el toque en
+    // silencio y el botón parecía muerto.
+    if (text.trim().isEmpty) {
+      if (_kind == 'producto' && _photos.isNotEmpty) {
+        _send('Esto es lo que busco.');
+      } else if (_kind == 'producto') {
+        _toast('Escribe qué buscas o sube una foto.');
+      } else {
+        _toast('Describe el servicio que necesitas.');
+      }
+      return;
+    }
     _send(text);
   }
 
@@ -1243,19 +1287,22 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           ];
         case AiImageRequest ir:
           question = ir.hint.isEmpty ? ir.message : '${ir.message}\n${ir.hint}';
+          // El cargador se ofrece SIEMPRE: con el cupo lleno la nueva foto
+          // reemplaza a la última (ver `_pickForRequest`). Antes desaparecía
+          // y la foto equivocada quedaba clavada.
           actions = [
-            if (_photos.length < _maxRequestPhotos) ...[
-              _optionButton(
-                'Tomar foto',
-                icon: Icons.photo_camera_outlined,
-                () => _pickForRequest(ImageSource.camera),
-              ),
-              _optionButton(
-                'Elegir de la galería',
-                icon: Icons.photo_library_outlined,
-                () => _pickForRequest(ImageSource.gallery),
-              ),
-            ],
+            _optionButton(
+              _photos.length >= _maxRequestPhotos
+                  ? 'Tomar otra foto'
+                  : 'Tomar foto',
+              icon: Icons.photo_camera_outlined,
+              () => _pickForRequest(ImageSource.camera),
+            ),
+            _optionButton(
+              'Elegir de la galería',
+              icon: Icons.photo_library_outlined,
+              () => _pickForRequest(ImageSource.gallery),
+            ),
             _optionButton('Seguir sin foto', () => _send('Sigamos sin foto.')),
           ];
         default:
