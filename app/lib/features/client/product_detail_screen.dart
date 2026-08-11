@@ -15,6 +15,7 @@ import '../../domain/offer_defaults.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/collapsing_photo_panel.dart';
+import '../shared/detail_tiles.dart';
 import '../../core/motion.dart';
 
 /// `/catalog/:id` (Task 7): detalle del producto/servicio + "Me interesa".
@@ -238,57 +239,30 @@ class _ProductDetailViewState extends State<ProductDetailView> {
     final hasPrice = p['price'] != null ||
         p['price_min'] != null ||
         p['price_max'] != null;
-    // Grupo 1 "qué es" (condición/marca/color/garantía/entrega): tono suave
-    // de marca. Grupo 2 "qué pasa con ello" (envío/instalación/evaluación):
-    // el mismo teal "requisito" que usa `RequestRequirementBadges` en el
-    // detalle de solicitud — es el MISMO concepto (logística alrededor del
-    // producto/servicio), así que comparte color en toda la app. El rubro va
-    // en el tono de acento (el mismo par que la píldora activa de la navbar)
-    // porque es la etiqueta más "titular" del grupo.
-    final rubroTone =
-        (bg: cs.primaryContainer, ink: cs.onPrimaryContainer);
-    final attrTone =
-        (bg: cs.secondaryContainer, ink: cs.onSecondaryContainer);
-    final logisticsTone = Theme.of(context).brightness == Brightness.dark
-        ? JayaloStatus.requisitoDark
-        : JayaloStatus.requisitoLight;
-    final chips = <Widget>[
-      if (rubro != null && rubro.isNotEmpty)
-        StatusChip(
-            label: rubro, icon: Icons.category_outlined, tone: rubroTone),
+    // Variante B aprobada (PO 2026-08-11): los atributos dejan los chips y
+    // pasan a las MISMAS tarjetas horizontales de la hoja de oferta
+    // (`detailTileBlock`) — catálogo y oferta se leen igual. Mismos íconos y
+    // mismo orden que `_detailRows()` de `offer_actions.dart`; envío e
+    // instalación son capacidades (check verde), la evaluación es una
+    // condición y va sin check. El rubro sale de aquí: es la etiqueta más
+    // "titular" y sube como chip encima del nombre.
+    final detailRows = <(IconData, String, String, bool)>[
       if (conditionLabel != null)
-        StatusChip(
-            label: conditionLabel, icon: Icons.sell_outlined, tone: attrTone),
+        (Icons.inventory_2_outlined, 'Estado', conditionLabel, false),
       if (brand != null && brand.isNotEmpty)
-        StatusChip(label: brand, icon: Icons.verified_outlined, tone: attrTone),
+        (Icons.sell_outlined, 'Marca', brand, false),
       if (colorsLabel != null && colorsLabel.isNotEmpty)
-        StatusChip(
-            label: colorsLabel, icon: Icons.palette_outlined, tone: attrTone),
+        (Icons.palette_outlined, 'Color', colorsLabel, false),
       if (warranty != null && warranty.isNotEmpty)
-        StatusChip(
-            label: 'Garantía: $warranty',
-            icon: Icons.shield_outlined,
-            tone: attrTone),
+        (Icons.gpp_good_outlined, 'Garantía', warranty, false),
       if (delivery != null && delivery.isNotEmpty)
-        StatusChip(
-            label: 'Entrega: $delivery',
-            icon: Icons.schedule_outlined,
-            tone: attrTone),
+        (Icons.schedule_outlined, 'Entrega', delivery, false),
       if (offersShipping)
-        StatusChip(
-            label: 'Envío disponible',
-            icon: Icons.local_shipping_outlined,
-            tone: logisticsTone),
+        (Icons.local_shipping_outlined, 'Envío', 'Disponible', true),
       if (offersInstallation)
-        StatusChip(
-            label: 'Instalación incluida',
-            icon: Icons.build_outlined,
-            tone: logisticsTone),
+        (Icons.build_outlined, 'Instalación', 'Incluida', true),
       if (requiresEvaluation)
-        StatusChip(
-            label: 'Requiere evaluación',
-            icon: Icons.fact_check_outlined,
-            tone: logisticsTone),
+        (Icons.fact_check_outlined, 'Evaluación', 'Requerida', false),
     ];
 
     // Misma anatomía que el detalle de solicitud: panel ámbar con la foto que
@@ -309,6 +283,16 @@ class _ProductDetailViewState extends State<ProductDetailView> {
         leading: productBackButton(context),
         onOpenViewer: (i) =>
             showPhotoViewer(context, images, initialIndex: i),
+        // Variante B: las miniaturas se MONTAN sobre la foto (abajo a la
+        // izquierda) con el contador arriba a la derecha — desaparece la fila
+        // aparte que vivía en la hoja.
+        overlay: images.length > 1
+            ? _PhotoOverlay(
+                images: images,
+                activeIndex: _activeImg,
+                onSelect: (i) => setState(() => _activeImg = i),
+              )
+            : null,
       ),
       SliverFillRemaining(
         // El contenido decide su alto y, si sobra pantalla, la hoja la rellena
@@ -325,54 +309,46 @@ class _ProductDetailViewState extends State<ProductDetailView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (images.length > 1) ...[
-                _ThumbStrip(
-                  images: images,
-                  activeIndex: _activeImg,
-                  onSelect: (i) => setState(() => _activeImg = i),
+              // El rubro como chip pequeño ENCIMA del nombre (Variante B): es
+              // la etiqueta más "titular", no un atributo más de la lista.
+              if (rubro != null && rubro.isNotEmpty) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Text(rubro.toUpperCase(),
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          letterSpacing: 1.2,
+                          fontWeight: FontWeight.w600,
+                          color: cs.primary)),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
               ],
               Text(name,
                   style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w600,
                       color: jayaloHead(context))),
-              const SizedBox(height: 6),
-              // Precio protagonista: bold + tabular figures + tamaño mayor
-              // que el nombre (pedido PO 2026-08-09: "jerarquía clara"). Sin
-              // precio fijo/rango, `catalogPriceLabel` ya cae en "Consultar
-              // precio" — ese caso NO es una cifra, así que va en un estilo
-              // discreto en vez del violeta grande (antes se pintaba IGUAL
-              // que un precio real).
-              Text(priceLabel,
-                  style: hasPrice
-                      ? TextStyle(
-                          fontSize: 26,
-                          height: 1,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -.3,
-                          color: cs.primary,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        )
-                      : TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurfaceVariant)),
+              const SizedBox(height: 16),
+              // Orden de la hoja de oferta (Variante B): PRIMERO los detalles
+              // en tarjetas, DESPUÉS el precio en su tarjeta lila cerrando el
+              // bloque — catálogo y oferta se leen igual. Sin precio fijo ni
+              // rango, `catalogPriceLabel` cae en "Consultar precio" — no es
+              // una cifra, así que la tarjeta lo pinta discreto.
+              ...detailTileBlock(context,
+                  eyebrow: 'DETALLES DEL PRODUCTO', rows: detailRows),
+              if (detailRows.isNotEmpty) const SizedBox(height: 15),
+              detailPriceCard(context,
+                  value: priceLabel, emphasized: hasPrice),
               if (description != null && description.isNotEmpty) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 Text(description,
-                    style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
-              ],
-              // Atributos agrupados en CHIPS de colores (pedido PO
-              // 2026-08-09), no como texto suelto: primero QUÉ es (rubro,
-              // estado, marca, color, garantía, entrega), después qué pasa
-              // con ello (envío, instalación, evaluación) — mismo orden con
-              // el que se leen los detalles de una oferta. Sin ningún dato
-              // opcional, `chips` queda vacía y no se pinta ni el hueco.
-              if (chips.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Wrap(spacing: 8, runSpacing: 8, children: chips),
+                    style: TextStyle(
+                        fontSize: 14, height: 1.4, color: cs.onSurfaceVariant)),
               ],
               if (widget.data.business != null)
                 _BusinessCard(business: widget.data.business!).cascadeIn(0),
@@ -398,10 +374,12 @@ class _ProductDetailViewState extends State<ProductDetailView> {
 }
 
 
-/// Tira de miniaturas para cambiar la foto que llena el panel ámbar (solo
-/// aparece con 2+ fotos).
-class _ThumbStrip extends StatelessWidget {
-  const _ThumbStrip(
+/// Miniaturas MONTADAS sobre la foto del panel (abajo a la izquierda) más el
+/// contador «n / total» (arriba a la derecha) — Variante B aprobada PO
+/// 2026-08-11. Solo se usa con 2+ fotos; la activa lleva borde blanco. Va en
+/// el `overlay` de [CollapsingPhotoPanel], así que se pliega con la foto.
+class _PhotoOverlay extends StatelessWidget {
+  const _PhotoOverlay(
       {required this.images,
       required this.activeIndex,
       required this.onSelect});
@@ -414,34 +392,67 @@ class _ThumbStrip extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     Widget placeholder() => Container(
         color: cs.surfaceContainerHighest,
-        child: Icon(Icons.image_outlined, color: cs.onSurfaceVariant));
-    return SizedBox(
-      height: 56,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: images.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (_, i) => GestureDetector(
-          onTap: () => onSelect(i),
-          child: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: i == activeIndex ? cs.primary : cs.outlineVariant,
-                  width: 2),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: JayaloNetworkImage(images[i],
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => placeholder()),
+        child: Icon(Icons.image_outlined,
+            size: 20, color: cs.onSurfaceVariant));
+    return Stack(children: [
+      // Contador bajo la barra de estado, a la derecha (donde vivía el peek).
+      Positioned(
+        top: 30,
+        right: 16,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: .45),
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Text('${activeIndex + 1} / ${images.length}',
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white)),
+        ),
+      ),
+      Positioned(
+        left: 16,
+        right: 16,
+        bottom: 18,
+        child: SizedBox(
+          height: 46,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: images.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (_, i) => GestureDetector(
+              onTap: () => onSelect(i),
+              child: Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(
+                      color: i == activeIndex
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: .35),
+                      width: i == activeIndex ? 2.5 : 1),
+                  boxShadow: const [
+                    BoxShadow(
+                        color: Color(0x40000000),
+                        blurRadius: 12,
+                        offset: Offset(0, 4)),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: JayaloNetworkImage(images[i],
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => placeholder()),
+                ),
+              ),
             ),
           ),
         ),
       ),
-    );
+    ]);
   }
 }
 
@@ -478,8 +489,14 @@ class _BusinessCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Ofrecido por',
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              // Micro-etiqueta en mayúsculas: mismo trato que las etiquetas de
+              // las tarjetas de detalle (Variante B).
+              Text('OFRECIDO POR',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      letterSpacing: .8,
+                      fontWeight: FontWeight.w500,
+                      color: cs.onSurfaceVariant)),
               Text(business.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -495,16 +512,22 @@ class _BusinessCard extends StatelessWidget {
             ],
           ),
         ),
-        // Chevron: la fila entera ya es tocable (`onTap` arriba, sin cambios
-        // — lleva al perfil del proveedor); el ícono es solo el AVISO visual
-        // de que lleva a algún lado (pedido PO 2026-08-09), mismo lenguaje
-        // que una fila de ajustes. `SizedBox` con tamaño fijo MENOR que el
-        // default (24) porque el nombre/badge de al lado ya viven al límite
-        // del ancho disponible en un teléfono angosto — visto en
-        // `product_detail_screen_test.dart` (el texto en `flutter test` mide
-        // ~2× lo real, así que ahí el margen se nota primero).
+        // Píldora "Ver tienda" en vez del chevron mudo (Variante B aprobada
+        // PO 2026-08-11): dice A DÓNDE lleva el toque. La fila entera sigue
+        // tocable (`onTap` arriba, sin cambios); la píldora es solo el aviso.
         const SizedBox(width: 6),
-        Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: .12),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Text('Ver tienda',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: cs.primary)),
+        ),
       ]),
     );
   }

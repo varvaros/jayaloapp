@@ -25,6 +25,7 @@ class CollapsingPhotoPanel extends StatelessWidget {
     this.activeIndex = 0,
     this.leading,
     this.onOpenViewer,
+    this.overlay,
   });
 
   /// URLs ya filtradas (sin vacías). Lista vacía = panel lila con el ícono.
@@ -49,6 +50,14 @@ class CollapsingPhotoPanel extends StatelessWidget {
   /// Abre el visor a pantalla completa en la foto `index`. Nulo = las fotos no
   /// son tocables.
   final void Function(int index)? onOpenViewer;
+
+  /// Capa montada SOBRE la foto (Variante B aprobada PO 2026-08-11: la tira de
+  /// miniaturas del catálogo vive encima del panel, no en una fila aparte de
+  /// la hoja). Llena el panel (`Positioned.fill`) y se pliega con él. Cuando
+  /// existe, la miniatura "peek" del borde derecho NO se pinta: el overlay
+  /// asume su trabajo (avisar que hay más fotos). Nulo = panel idéntico al de
+  /// siempre (detalle de solicitud/estado no cambian).
+  final Widget? overlay;
 
   @override
   Widget build(BuildContext context) {
@@ -115,7 +124,7 @@ class CollapsingPhotoPanel extends StatelessWidget {
               // Miniatura de la 2ª foto pegada al borde derecho (máx. 2
               // visibles). Se va con el panel al plegarse, por eso vive en el
               // `background` y no en las `actions`.
-              if (images.length > 1)
+              if (images.length > 1 && overlay == null)
                 Positioned(
                   top: 30,
                   right: 0,
@@ -141,6 +150,7 @@ class CollapsingPhotoPanel extends StatelessWidget {
                     ),
                   ),
                 ),
+              if (overlay != null) Positioned.fill(child: overlay!),
             ],
           ),
         ),

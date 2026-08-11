@@ -138,6 +138,10 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
+    // Variante B: con las tarjetas de detalle el CTA queda bajo el pliegue
+    // en el viewport del test — hay que traerlo a la vista antes del tap.
+    await tester.ensureVisible(find.text('Solicitar'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Solicitar'));
     await tester.pumpAndSettle();
 
@@ -170,6 +174,8 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Solicitar'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Solicitar'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Enviar'));
@@ -199,6 +205,8 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Solicitar'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Solicitar'));
     await tester.pumpAndSettle();
 
@@ -235,32 +243,36 @@ void main() {
     ))));
     await tester.pumpAndSettle();
 
+    // Variante B (PO 2026-08-11): tarjetas horizontales con etiqueta tenue en
+    // mayúsculas arriba y el valor debajo — ya no chips "Etiqueta: valor".
     expect(find.text('DeWalt'), findsOneWidget);
-    expect(find.text('Garantía: 1 año'), findsOneWidget);
-    expect(find.text('Requiere evaluación'), findsOneWidget);
+    expect(find.text('GARANTÍA'), findsOneWidget);
+    expect(find.text('1 año'), findsOneWidget);
+    expect(find.text('EVALUACIÓN'), findsOneWidget);
+    expect(find.text('Requerida'), findsOneWidget);
   });
 
-  testWidgets('sin esos datos no aparecen chips vacíos', (tester) async {
+  testWidgets('sin esos datos no aparecen tarjetas vacías', (tester) async {
     setPhoneSize(tester);
     // `producto` no trae brand/warranty y no requiere evaluación.
     await tester.pumpWidget(host(view(dataFor())));
     await tester.pumpAndSettle();
 
-    expect(find.text('Requiere evaluación'), findsNothing);
-    expect(find.textContaining('Garantía'), findsNothing);
-    expect(find.textContaining('Entrega'), findsNothing);
+    expect(find.text('EVALUACIÓN'), findsNothing);
+    expect(find.text('GARANTÍA'), findsNothing);
+    expect(find.text('ENTREGA'), findsNothing);
   });
 
-  // ── Rediseño en chips (pedido PO 2026-08-09) ────────────────────────────
+  // ── Variante B aprobada (PO 2026-08-11) ─────────────────────────────────
 
-  testWidgets('el rubro se pinta como chip (ya no como texto suelto arriba '
-      'del nombre)', (tester) async {
+  testWidgets('el rubro se pinta como chip encima del nombre, en mayúsculas',
+      (tester) async {
     setPhoneSize(tester);
     await tester.pumpWidget(host(view(dataFor())));
     await tester.pumpAndSettle();
 
     // `producto` trae `rubro: 'Herramientas'`.
-    expect(find.text('Herramientas'), findsOneWidget);
+    expect(find.text('HERRAMIENTAS'), findsOneWidget);
   });
 
   testWidgets(
@@ -278,7 +290,8 @@ void main() {
     ))));
     await tester.pumpAndSettle();
 
-    expect(find.text('Entrega: 3-5 días'), findsOneWidget);
+    expect(find.text('ENTREGA'), findsOneWidget);
+    expect(find.text('3-5 días'), findsOneWidget);
     expect(find.text('Azul, Rojo'), findsOneWidget);
   });
 
@@ -377,8 +390,9 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Taladro inalámbrico'), findsOneWidget);
     expect(find.text('DeWalt'), findsOneWidget);
-    expect(find.text('Entrega: 3-5 días'), findsOneWidget);
-    expect(find.text('Envío disponible'), findsOneWidget);
+    expect(find.text('3-5 días'), findsOneWidget);
+    expect(find.text('ENVÍO'), findsOneWidget);
+    expect(find.text('Disponible'), findsOneWidget);
     expect(find.text('Solicitar'), findsOneWidget);
   });
 }

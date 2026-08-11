@@ -11,6 +11,7 @@ import '../../domain/money.dart';
 import '../../domain/offer_message.dart';
 import '../shared/brand_kit.dart';
 import '../shared/celebration.dart';
+import '../shared/detail_tiles.dart';
 import '../shared/onboarding_store.dart';
 import 'request_status_screen.dart' show offerPriceLabel;
 
@@ -372,119 +373,6 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
     ];
   }
 
-  /// Bloque de detalle estructurado de la oferta (mockup aprobado PO
-  /// 2026-08-09): cada dato = una TARJETA HORIZONTAL a lo ancho con el ícono
-  /// en pastilla a la izquierda, etiqueta tenue arriba y valor debajo; las
-  /// capacidades llevan check verde a la derecha. Reemplaza la rejilla de 2
-  /// columnas. Solo se muestran los datos que existen.
-  List<Widget> _detailBlock(
-      BuildContext context, List<(IconData, String, String, bool)> rows) {
-    if (rows.isEmpty) return const [];
-    final cs = Theme.of(context).colorScheme;
-    final ok = Theme.of(context).brightness == Brightness.dark
-        ? JayaloColors.dSuccess
-        : JayaloColors.success;
-
-    Widget card(IconData icon, String label, String value, bool check) =>
-        Container(
-          padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest.withValues(alpha: .55),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: .12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, size: 19, color: cs.primary),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label.toUpperCase(),
-                      style: TextStyle(
-                          fontSize: 10.5,
-                          letterSpacing: .8,
-                          color: cs.onSurfaceVariant,
-                          fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 1),
-                  Text(value,
-                      style: TextStyle(
-                          fontSize: 14.5,
-                          height: 1.25,
-                          color: cs.onSurface,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-            if (check) ...[
-              const SizedBox(width: 8),
-              Icon(Icons.check_circle_outline, size: 20, color: ok),
-            ],
-          ]),
-        );
-
-    return [
-      Padding(
-        padding: const EdgeInsets.only(left: 2, bottom: 9),
-        child: Text('DETALLES DE LA OFERTA',
-            style: TextStyle(
-                fontSize: 10.5,
-                letterSpacing: 1.6,
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w600)),
-      ),
-      for (var i = 0; i < rows.length; i++)
-        Padding(
-          padding: EdgeInsets.only(bottom: i + 1 < rows.length ? 9 : 0),
-          child: card(rows[i].$1, rows[i].$2, rows[i].$3, rows[i].$4),
-        ),
-    ];
-  }
-
-  /// Tarjeta lila del precio, DESPUÉS de los detalles (mockup aprobado PO
-  /// 2026-08-09): el único acento de color del bloque — el ojo termina en el
-  /// monto antes del CTA. Degradado sobre `primary` para que funcione igual
-  /// en claro y oscuro.
-  Widget _priceCard(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(17, 14, 17, 15),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(kCardRadius),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            cs.primary.withValues(alpha: .10),
-            cs.primary.withValues(alpha: .20),
-          ],
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('PRECIO',
-              style: TextStyle(
-                  fontSize: 10.5,
-                  letterSpacing: 1.6,
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(height: 3),
-          Text(offerPriceLabel(widget.offer),
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w700, color: jayaloHead(context))),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final o = widget.offer;
@@ -523,9 +411,11 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
                   ],
                   // Orden del mockup aprobado (PO 2026-08-09): PRIMERO los
                   // detalles, DESPUÉS el precio en su tarjeta lila.
-                  ..._detailBlock(context, detailRows),
+                  ...detailTileBlock(context,
+                      eyebrow: 'DETALLES DE LA OFERTA', rows: detailRows),
                   if (detailRows.isNotEmpty) const SizedBox(height: 15),
-                  _priceCard(context),
+                  detailPriceCard(context,
+                      value: offerPriceLabel(widget.offer)),
                   if (freeText.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Text(freeText,
