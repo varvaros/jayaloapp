@@ -2444,9 +2444,12 @@ Future<List<Map<String, dynamic>>> allOpenRequests({String? kind}) async {
 
 // ── Catálogo (Task 6): listado de productos/servicios publicados ───────────
 
+// `condition`/`offers_shipping`/`color`/`offer_defaults`: la fila de
+// atributos de la tarjeta de rejilla (mockup Variante A, PO 2026-08-11).
 const catalogProductCols =
     'id,user_id,business_id,name,description,price,'
-    'price_min,price_max,image_urls,category_id,rubro,kind';
+    'price_min,price_max,image_urls,category_id,rubro,kind,'
+    'condition,offers_shipping,color,offer_defaults';
 
 /// Quita `%`/`,` de un término de búsqueda antes de meterlo en un patrón
 /// `ilike`/`or` de PostgREST — mismo saneo que `requests/index.tsx` de la web

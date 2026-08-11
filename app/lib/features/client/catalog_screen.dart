@@ -308,7 +308,9 @@ class _CatalogViewState extends State<CatalogView> {
                       crossAxisCount: 2,
                       crossAxisSpacing: 11,
                       mainAxisSpacing: 11,
-                      mainAxisExtent: 238,
+                      // 238 → 256: hueco para la fila de atributos
+                      // (envío/estado/color) de la Variante A (PO 2026-08-11).
+                      mainAxisExtent: 256,
                     ),
                     itemCount: items.length,
                     itemBuilder: (_, i) =>

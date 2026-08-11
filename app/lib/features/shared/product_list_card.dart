@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../domain/catalog.dart';
 import '../../domain/money.dart';
+import '../../domain/offer_defaults.dart';
 import 'brand_kit.dart';
 
 /// Fila del catálogo (foto + categoría + nombre + reputación + descripción +
@@ -303,6 +304,7 @@ class ProductGridCard extends StatelessWidget {
                               fontSize: 11, color: cs.onSurfaceVariant)),
                     ]),
                   ],
+                  ?_attrsRow(cs),
                   const Spacer(),
                   _gridPrice(cs),
                 ],
@@ -311,6 +313,55 @@ class ProductGridCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  /// Fila de atributos (Variante A del mockup, PO 2026-08-11): iconitos con
+  /// texto micro entre el nombre y el precio — envío, estado y color, en ese
+  /// orden. Solo pinta lo que el producto declara; sin nada, ni el hueco.
+  /// El color sigue la regla de la ficha: la lista de `offer_defaults.colors`
+  /// gana sobre la columna legada `color`. Texto en `onSurface` (no el muted):
+  /// mismo motivo de contraste documentado en la descripción de la fila ancha.
+  Widget? _attrsRow(ColorScheme cs) {
+    final condition = item['condition'] as String?;
+    final conditionLabel =
+        condition == 'nuevo' ? 'Nuevo' : condition == 'usado' ? 'Usado' : null;
+    final colorsList = (((item['offer_defaults'] as Map?)
+                ?.cast<String, dynamic>())?[OfferDefaults.colors] as List?)
+            ?.cast<String>() ??
+        const [];
+    final colorLabel = colorsList.isNotEmpty
+        ? colorsList.join(', ')
+        : (item['color'] as String?);
+    final attrs = <(IconData, String)>[
+      if (item['offers_shipping'] == true)
+        (Icons.local_shipping_outlined, 'Envío'),
+      if (conditionLabel != null) (Icons.inventory_2_outlined, conditionLabel),
+      if (colorLabel != null && colorLabel.trim().isNotEmpty)
+        (Icons.palette_outlined, colorLabel.trim()),
+    ];
+    if (attrs.isEmpty) return null;
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Wrap(spacing: 10, runSpacing: 3, children: [
+        for (final (icon, label) in attrs)
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 12, color: cs.onSurfaceVariant),
+            const SizedBox(width: 3.5),
+            ConstrainedBox(
+              // Una lista larga de colores se corta con puntos suspensivos en
+              // vez de reventar el ancho de la media tarjeta.
+              constraints: const BoxConstraints(maxWidth: 96),
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: cs.onSurface)),
+            ),
+          ]),
+      ]),
     );
   }
 
