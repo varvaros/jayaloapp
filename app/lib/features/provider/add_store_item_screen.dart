@@ -546,8 +546,10 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
         return;
       }
       if (_catRubro!.categoryId == null || _catRubro!.rubro == null) {
+        // Sin el botón «Editar en la web» (quitado 2026-08-10) el copy apunta
+        // directo al sitio: categoría/rubro aún no se editan en la app.
         _toast(
-            'Tu negocio aún no tiene categoría y rubro. Complétalos desde "Editar en la web".');
+            'Tu negocio aún no tiene categoría y rubro. Complétalos entrando a jayalo.com.');
         return;
       }
     }
