@@ -333,6 +333,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
         verified: verified,
         identities: identities,
         acceptedCount: acceptedCount,
+        closedReasons: _closedOfferReasons,
         initialUnread: _unreadOfferIds,
         onSeen: _markOfferSeen,
       ),
@@ -449,6 +450,7 @@ class _OffersSheet extends StatefulWidget {
     required this.verified,
     required this.identities,
     required this.acceptedCount,
+    this.closedReasons = const {},
     required this.initialUnread,
     required this.onSeen,
   });
@@ -457,6 +459,12 @@ class _OffersSheet extends StatefulWidget {
   final List<Map<String, dynamic>> offers;
   final String? cheapestId;
   final Map<String, bool> verified;
+
+  /// Razón de cierre por id de oferta (chat muerto), cargada best-effort por
+  /// la pantalla (`_closedOfferReasons`): el chip de esa oferta dice "Chat
+  /// cerrado"/"No concretada" en vez de un "En contacto" que ya no es verdad
+  /// (pedido PO 2026-08-10). Ausente del mapa = conversación viva.
+  final Map<String, ClosedReason> closedReasons;
 
   /// Avatar/nombre/sellos por `business_id`, cargados en un solo viaje por
   /// `_showOffers` (PO 2026-07-29). Un negocio ausente del mapa = tarjeta sin
@@ -545,7 +553,9 @@ class _OffersSheetState extends State<_OffersSheet> {
                         providerInfo: widget.identities[o['business_id']],
                         unread: _unread.contains(o['id']),
                         statusChip: offerStatusChip(
-                            context, o, isClosedToOffers(widget.acceptedCount)),
+                            context, o, isClosedToOffers(widget.acceptedCount),
+                            closedReason:
+                                widget.closedReasons[o['id'] as String]),
                         coverage: requirementCoverage(
                           reqs,
                           OfferCapabilities(
@@ -599,11 +609,23 @@ String? cheapestOfferId(List<Map<String, dynamic>> offers) {
 Widget offerStatusChip(
   BuildContext context,
   Map<String, dynamic> o,
-  bool noSlotsLeft,
-) {
+  bool noSlotsLeft, {
+  ClosedReason? closedReason,
+}) {
   final dark = Theme.of(context).brightness == Brightness.dark;
   final st = o['status'] as String;
   final (txt, tone) = switch (st) {
+    // La conversación de esta oferta murió (pedido PO 2026-08-10): decir "En
+    // contacto" sobre un chat cerrado es mentira — la solicitud ahora sigue
+    // viva con las demás ofertas y este chip cuenta qué pasó con ESTA.
+    'accepted' when closedReason == ClosedReason.notAgreed => (
+      'No concretada',
+      dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
+    ),
+    'accepted' when closedReason != null => (
+      'Chat cerrado',
+      dark ? JayaloStatus.completedDark : JayaloStatus.completedLight,
+    ),
     // "En contacto", no "Desbloqueada" (pedido PO 2026-07-23): vista del
     // CLIENTE — él nunca desbloquea, el proveedor ya lo contactó.
     'accepted' when o['unlocked_at'] != null => (

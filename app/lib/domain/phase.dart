@@ -68,6 +68,15 @@ RequestPhase phaseForRequest({
   // "Eliminar" para una solicitud que la RPC luego rechazaría.
   if (acceptedOffers.isNotEmpty &&
       acceptedOffers.every((o) => o.closedReason != null)) {
+    // El cierre por inactividad es del CHAT, no de la solicitud (pedido PO
+    // 2026-08-10): si todos los chats de finalistas murieron pero quedan
+    // ofertas PENDIENTES (o llegaron nuevas después), el cliente todavía
+    // tiene con quién negociar — la solicitud vuelve a "Con ofertas" en vez
+    // de pintarse "Cerrada" escondiendo ofertas aceptables. Una rechazada no
+    // cuenta: ya no es aceptable.
+    if (offers.any((o) => o.status == 'pending')) {
+      return RequestPhase.withOffers;
+    }
     return RequestPhase.closed;
   }
 

@@ -105,6 +105,34 @@ void main() {
         RequestPhase.accepted);
   });
 
+  test('una oferta pendiente mantiene viva la solicitud aunque el chat muera', () {
+    // Pedido PO 2026-08-10: el cierre por inactividad es del CHAT, no de la
+    // solicitud. Si el único chat murió pero hay ofertas pendientes (o llegan
+    // nuevas), la solicitud sigue "Con ofertas" — decirle "Cerrada" al cliente
+    // le esconde ofertas que todavía puede aceptar.
+    expect(
+        phaseForRequest(requestStatus: 'open', offers: [
+          o('accepted', closed: ClosedReason.inactivity),
+          o('pending'),
+        ]),
+        RequestPhase.withOffers);
+    // También con el desbloqueo hecho: "En contacto" tampoco es verdad (ese
+    // chat está muerto) — manda la oferta pendiente que sigue viva.
+    expect(
+        phaseForRequest(requestStatus: 'open', offers: [
+          o('accepted', u: DateTime(2026), closed: ClosedReason.inactivity),
+          o('pending'),
+        ]),
+        RequestPhase.withOffers);
+    // Una rechazada NO revive nada: sin pendientes, el trato muerto manda.
+    expect(
+        phaseForRequest(requestStatus: 'open', offers: [
+          o('accepted', closed: ClosedReason.notAgreed),
+          o('rejected'),
+        ]),
+        RequestPhase.closed);
+  });
+
   test('la razón del cierre sale cuando todas las aceptadas coinciden', () {
     expect(
         closedReasonFor([o('accepted', closed: ClosedReason.inactivity)]),
