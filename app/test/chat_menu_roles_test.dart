@@ -41,4 +41,15 @@ void main() {
     expect(chatMenuValues(isProvider: false, isOpen: true),
         isNot(contains('funnel')));
   });
+
+  test('ver perfil del cliente es solo del proveedor, abierto o cerrado', () {
+    // Mockup aprobado 2026-08-11: el perfil (anónimo o revelado) es de
+    // CLIENTES; el cliente ya tiene su vía para ver la tienda del proveedor.
+    for (final isOpen in [true, false]) {
+      expect(chatMenuValues(isProvider: true, isOpen: isOpen),
+          contains('profile'));
+      expect(chatMenuValues(isProvider: false, isOpen: isOpen),
+          isNot(contains('profile')));
+    }
+  });
 }

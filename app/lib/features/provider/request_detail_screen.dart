@@ -155,6 +155,12 @@ class _ProviderRequestDetailScreenState
   /// Sellos de verificación del cliente (PO 2026-07-29).
   PeerBadges? _custBadges;
 
+  /// Identidad real del cliente, GATEADA server-side por desbloqueo (decisión
+  /// PO 2026-08-11): `unlocked: false` = la ficha se pinta anónima. Se pide
+  /// siempre (best-effort) y es la RPC quien decide si revela.
+  ({bool unlocked, String? firstName, String? lastName, String? avatarUrl})?
+      _custProfile;
+
   /// Cuántas ofertas ha recibido esta solicitud (FOMO, pedido PO 2026-07-21):
   /// solo el número, no se pueden ver. 0 = no se muestra.
   int _offerCount = 0;
@@ -295,6 +301,9 @@ class _ProviderRequestDetailScreenState
             .catchError((_) => null);
         peerVerificationBadges([cid])
             .then((m) => mounted ? setState(() => _custBadges = m[cid]) : null)
+            .catchError((_) => null);
+        customerPublicProfile(cid)
+            .then((p) => mounted ? setState(() => _custProfile = p) : null)
             .catchError((_) => null);
       }
     });
@@ -1193,6 +1202,14 @@ class _ProviderRequestDetailScreenState
       final o = await offerForEdit(id);
       if (mounted && o != null) setState(() => _existingOffer = o);
     } catch (_) {}
+    // Tras un desbloqueo, la ficha del cliente pasa de anónima a identidad
+    // real sin salir de la pantalla (PO 2026-08-11). Best-effort.
+    final cid = _req?['user_id'] as String?;
+    if (cid != null) {
+      customerPublicProfile(cid)
+          .then((p) => mounted ? setState(() => _custProfile = p) : null)
+          .catchError((_) => null);
+    }
   }
 
   /// Entra en modo edición SOBRE ESTA MISMA PANTALLA (pedido PO 2026-08-03).
@@ -1243,13 +1260,7 @@ class _ProviderRequestDetailScreenState
     final st = o['status'] as String? ?? 'pending';
     final unlocked = o['unlocked_at'] != null;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final label = o['price'] != null
-        ? fmtRD(o['price'] as num)
-        : (o['price_min'] != null && o['price_max'] != null)
-            ? '${fmtRD(o['price_min'] as num)} – ${fmtRD(o['price_max'] as num)}'
-            : (o['pricing_mode'] == 'hourly' && o['hourly_rate'] != null)
-                ? '${fmtRD(o['hourly_rate'] as num)}/hora'
-                : 'A evaluar';
+    final label = _offerLabel(o);
 
     // Pura y evaluada dos veces en el brazo comodín de abajo (copy y acción
     // del CTA tienen que ir emparejados); una sola lectura deja obvio que van
@@ -1732,23 +1743,33 @@ class _ProviderRequestDetailScreenState
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
         color: base.withValues(alpha: dark ? .18 : .10),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: base.withValues(alpha: .40)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      // Mockup aprobado 2026-08-11: los 3 cupos se VEN como asientos (llenos
+      // vs libres) y el texto de la escalera los acompaña al lado.
+      child: Row(
         children: [
-          Text(signal.text,
-              style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w700, color: title)),
-          const SizedBox(height: 2),
-          Text(
-            '${ago.isEmpty ? '' : '⏱️ Publicada $ago · '}'
-            '$offers oferta${offers == 1 ? '' : 's'} recibida${offers == 1 ? '' : 's'}',
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          FinalistSeats(accepted: _acceptedCount, color: base),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(signal.text,
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700, color: title)),
+                const SizedBox(height: 2),
+                Text(
+                  '${ago.isEmpty ? '' : '⏱️ Publicada $ago · '}'
+                  '$offers oferta${offers == 1 ? '' : 's'} recibida${offers == 1 ? '' : 's'}',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1781,8 +1802,12 @@ class _ProviderRequestDetailScreenState
         ((req['image_urls'] as List?)?.cast<String>() ?? const <String>[])
             .where((u) => u.isNotEmpty)
             .toList();
-    return Scaffold(
-      body: CustomScrollView(slivers: [
+    // Con la oferta desbloqueada/completada, el estado + "Ver contacto" viven
+    // en un pie ANCLADO fuera del scroll (mockup aprobado 2026-08-11), como el
+    // CTA del detalle del cliente: es lo que el proveedor ya pagó y no debe
+    // irse de pantalla. El pie carga el hueco de la navbar; el scroll ya no.
+    final footer = _offerUnlockedOrDone && !_editing;
+    final scroll = CustomScrollView(slivers: [
         // La foto se PLIEGA al bajar (pedido PO 2026-08-01: "que se desplace
         // hacia arriba y casi se oculte, para que la ventana se vea
         // completa"). Antes era un panel de alto fijo con la lista debajo en
@@ -1809,8 +1834,8 @@ class _ProviderRequestDetailScreenState
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(28)),
             ),
-            padding: EdgeInsets.fromLTRB(
-                22, 22, 22, 16 + navBarReservedSpace(context)),
+            padding: EdgeInsets.fromLTRB(22, 22, 22,
+                footer ? 16 : 16 + navBarReservedSpace(context)),
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1856,6 +1881,20 @@ class _ProviderRequestDetailScreenState
                     customerId: req['user_id'] as String?,
                     reputation: _custRep,
                     badges: _custBadges,
+                    // Identidad real SOLO si la RPC dice desbloqueado
+                    // (decisión PO 2026-08-11); null = ficha anónima.
+                    realName: _custProfile?.unlocked == true
+                        ? [_custProfile?.firstName, _custProfile?.lastName]
+                            .whereType<String>()
+                            .where((s) => s.trim().isNotEmpty)
+                            .join(' ')
+                        : null,
+                    realAvatarUrl: _custProfile?.unlocked == true
+                        ? _custProfile?.avatarUrl
+                        : null,
+                    // La ficha es la PUERTA al perfil (mockup 2026-08-11).
+                    onTap: () => context
+                        .push('/provider/customer/${req['user_id']}'),
                   ),
                   // ── 2) INFORMACIÓN ──
                   // El encabezado SOLO si hay algo debajo: una solicitud sin
@@ -1930,7 +1969,11 @@ class _ProviderRequestDetailScreenState
         // vuelve a quedar muerto.
         else if (_existingOffer != null &&
             (!_editing || _existingOffer!['status'] != 'pending'))
-          _alreadyOfferedCard(context)
+          // Desbloqueada/completada: el estado vive en el pie anclado
+          // (`_unlockedFooter`), no en una tarjeta que scrollea.
+          (_offerUnlockedOrDone && !_editing
+              ? const SizedBox.shrink()
+              : _alreadyOfferedCard(context))
         else if (_offerFormVisible) ...[
           Text('Tu oferta', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
@@ -2095,9 +2138,84 @@ class _ProviderRequestDetailScreenState
               ]),
             ),
           ),
-        ]),
-      );
+        ]);
+    return Scaffold(
+      body: footer
+          ? Column(children: [
+              Expanded(child: scroll),
+              _unlockedFooter(context),
+            ])
+          : scroll,
+    );
   }
+
+  /// ¿La oferta propia ya tiene el contacto pagado (o el trato completado)?
+  /// Decide el pie anclado y silencia la tarjeta equivalente del scroll.
+  bool get _offerUnlockedOrDone {
+    final o = _existingOffer;
+    return o != null &&
+        (o['unlocked_at'] != null || o['status'] == 'completed');
+  }
+
+  /// Pie anclado del estado desbloqueado (mockup 2026-08-11): línea verde con
+  /// el precio de la oferta + CTA violeta "Ver contacto" — el violeta es el
+  /// color de acción de toda la app; el verde queda como estado.
+  Widget _unlockedFooter(BuildContext context) {
+    final o = _existingOffer!;
+    final cs = Theme.of(context).colorScheme;
+    final green = Theme.of(context).brightness == Brightness.dark
+        ? JayaloColors.dSuccess
+        : JayaloColors.success;
+    return ColoredBox(
+      color: cs.surfaceContainerLowest,
+      child: Padding(
+        padding:
+            EdgeInsets.fromLTRB(16, 10, 16, 12 + navBarReservedSpace(context)),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.check_circle, size: 15, color: green),
+            const SizedBox(width: 6),
+            Text('Contacto desbloqueado',
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: green)),
+            Flexible(
+              child: Text(' · Tu oferta: ${_offerLabel(o)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12.5, color: cs.onSurfaceVariant)),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999)),
+              ),
+              onPressed: () =>
+                  showOfferContactSheet(context, o, onChanged: _reloadOffer),
+              child: const Text('Ver contacto'),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// Etiqueta de precio de la oferta propia (compartida por la tarjeta del
+  /// scroll y el pie anclado — dos copias divergirían solas).
+  static String _offerLabel(Map<String, dynamic> o) => o['price'] != null
+      ? fmtRD(o['price'] as num)
+      : (o['price_min'] != null && o['price_max'] != null)
+          ? '${fmtRD(o['price_min'] as num)} – ${fmtRD(o['price_max'] as num)}'
+          : (o['pricing_mode'] == 'hourly' && o['hourly_rate'] != null)
+              ? '${fmtRD(o['hourly_rate'] as num)}/hora'
+              : 'A evaluar';
 
   /// Atrás flotante sobre el panel (mismo gesto que el detalle del cliente: en
   /// el detalle no hay header violeta, solo el atrás).
@@ -2131,4 +2249,45 @@ class _ProviderRequestDetailScreenState
           ),
         ),
       );
+}
+
+/// Los 3 cupos de finalista como ASIENTOS (mockup aprobado 2026-08-11): los
+/// tomados se llenan del color de la escalera FOMO, los libres quedan como
+/// aros tenues. Complementa el texto de `providerSlotSignal`, no lo sustituye.
+/// Público para poder probarlo sin montar la pantalla (que exige Supabase).
+class FinalistSeats extends StatelessWidget {
+  const FinalistSeats({super.key, required this.accepted, required this.color});
+
+  /// Finalistas ya seleccionados; se recorta a `[0, kMaxFinalists]` porque
+  /// viene de una columna materializada que podría traer cualquier cosa.
+  final int accepted;
+
+  /// El color base de la escalera (verde → amarillo → naranja → rojo).
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final filled = accepted.clamp(0, kMaxFinalists);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      for (var i = 0; i < kMaxFinalists; i++)
+        Padding(
+          padding: EdgeInsets.only(left: i == 0 ? 0 : 5),
+          child: Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: i < filled ? color : Colors.transparent,
+              border: i < filled
+                  ? null
+                  : Border.all(
+                      color: color.withValues(alpha: .45), width: 1.6),
+            ),
+            child: i < filled
+                ? const Icon(Icons.check, size: 13, color: Colors.white)
+                : null,
+          ),
+        ),
+    ]);
+  }
 }

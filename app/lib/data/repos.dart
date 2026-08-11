@@ -2224,6 +2224,45 @@ Future<Map<String, dynamic>?> customerReputation([String? customerId]) async {
   return rows.isEmpty ? null : rows.first;
 }
 
+/// Identidad del cliente, GATEADA por desbloqueo server-side (migración
+/// `20260811120000_customer_profile_rpcs`, decisión PO 2026-08-11): la RPC
+/// devuelve nombre/apellido/avatar SOLO si el proveedor que llama ya pagó un
+/// desbloqueo con ese cliente (oferta o interés de producto); si no,
+/// `unlocked: false` y todo null — el perfil se pinta anónimo. El cliente
+/// NUNCA decide esto: el gate vive en la RPC, no aquí.
+Future<({bool unlocked, String? firstName, String? lastName, String? avatarUrl})>
+    customerPublicProfile(String customerId) async {
+  final rows = List<Map<String, dynamic>>.from(
+    await supa.rpc(
+      'get_customer_public_profile',
+      params: {'_customer_id': customerId},
+    ),
+  );
+  final r = rows.isEmpty ? const <String, dynamic>{} : rows.first;
+  return (
+    unlocked: r['unlocked'] == true,
+    firstName: r['first_name'] as String?,
+    lastName: r['last_name'] as String?,
+    avatarUrl: r['avatar_url'] as String?,
+  );
+}
+
+/// Reseñas que OTROS proveedores dejaron sobre un cliente (rating + comentario
+/// + negocio + fecha), para el perfil del cliente. La RPC EXCLUYE las reseñas
+/// de los negocios del que llama (regla PO 2026-08-11: reconocer tu propio
+/// comentario desanonimiza al cliente). Campos por fila: rating, comment,
+/// business_name, created_at.
+Future<List<Map<String, dynamic>>> customerReviews(
+  String customerId, {
+  int limit = 5,
+}) async =>
+    List<Map<String, dynamic>>.from(
+      await supa.rpc(
+        'get_customer_reviews',
+        params: {'_customer_id': customerId, '_limit': limit},
+      ),
+    );
+
 /// Estadísticas del usuario actual como PROVEEDOR: fusiona las dos RPCs en un
 /// solo mapa porque la pantalla las muestra juntas y ninguna tiene sentido
 /// sola. Las claves ausentes quedan en 0 (proveedor sin actividad todavía).

@@ -42,6 +42,10 @@ const _pageSize = 50;
 /// sigue siendo del proveedor — cierra el trato y dispara la calificación.
 List<String> chatMenuValues({required bool isProvider, required bool isOpen}) =>
     [
+      // Perfil del cliente (mockup aprobado 2026-08-11): solo el PROVEEDOR —
+      // el perfil anónimo/revelado es de clientes; el cliente ya ve la tienda
+      // del proveedor por su propia vía.
+      if (isProvider) 'profile',
       if (isProvider && isOpen) 'complete',
       if (isOpen) 'lost',
       if (isProvider) 'funnel',
@@ -1117,6 +1121,9 @@ class _ChatScreenState extends State<ChatScreen> {
           icon: const Icon(Icons.more_vert, color: Colors.white),
           onSelected: (v) async {
             switch (v) {
+              case 'profile':
+                final cid = _conv?['customer_id'] as String?;
+                if (cid != null) context.push('/provider/customer/$cid');
               case 'complete':
                 if (await showCompleteDialog(context)) {
                   if (!mounted) return;
@@ -1173,6 +1180,7 @@ class _ChatScreenState extends State<ChatScreen> {
               PopupMenuItem(
                 value: v,
                 child: Text(switch (v) {
+                  'profile' => 'Ver perfil del cliente',
                   'complete' => 'Marcar como completado',
                   'lost' => 'Marcar como no concretado',
                   'funnel' => 'Estado del cliente',

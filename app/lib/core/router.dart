@@ -21,6 +21,7 @@ import '../features/onboarding/consumer_onboarding_screen.dart';
 import '../features/onboarding/gate_screen.dart';
 import '../features/onboarding/provider_onboarding_screen.dart';
 import '../features/provider/credit_shop_screen.dart';
+import '../features/provider/customer_profile_screen.dart';
 import '../features/provider/inbox_screen.dart';
 import '../features/provider/add_store_item_screen.dart';
 import '../features/provider/my_business_screen.dart';
@@ -203,6 +204,14 @@ GoRouter buildRouter() => GoRouter(
                     child: ProductInterestDetailScreen(
                         interestId: s.pathParameters['id']!,
                         initial: s.extra as Map<String, dynamic>?))),
+            // Perfil del cliente visto por el proveedor (mockup aprobado
+            // 2026-08-11): anónimo hasta el desbloqueo, identidad real
+            // después — quién está desbloqueado lo decide la RPC, no la ruta.
+            GoRoute(
+                path: '/provider/customer/:id',
+                builder: (_, s) => BackGuard(
+                    child: CustomerProfileScreen(
+                        customerId: s.pathParameters['id']!))),
             GoRoute(
                 path: '/provider/offers',
                 builder: (_, _) => const BackGuard(child: MyOffersScreen())),

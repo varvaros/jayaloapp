@@ -57,6 +57,10 @@ class _ProductInterestDetailScreenState
   String? _contactName;
   String? _contactPhone;
 
+  /// Identidad real del cliente, gateada server-side (PO 2026-08-11).
+  ({bool unlocked, String? firstName, String? lastName, String? avatarUrl})?
+      _custProfile;
+
   @override
   void initState() {
     super.initState();
@@ -87,6 +91,10 @@ class _ProductInterestDetailScreenState
         .catchError((_) => null);
     peerVerificationBadges([id])
         .then((m) => mounted ? setState(() => _badges = m[id]) : null)
+        .catchError((_) => null);
+    // Identidad real, gateada server-side por desbloqueo (PO 2026-08-11).
+    customerPublicProfile(id)
+        .then((p) => mounted ? setState(() => _custProfile = p) : null)
         .catchError((_) => null);
 
     if (_unlocked) await _loadContact();
@@ -119,6 +127,17 @@ class _ProductInterestDetailScreenState
       customerId: _customerId,
       reputation: _rep,
       badges: _badges,
+      customerRealName: _custProfile?.unlocked == true
+          ? [_custProfile?.firstName, _custProfile?.lastName]
+              .whereType<String>()
+              .where((s) => s.trim().isNotEmpty)
+              .join(' ')
+          : null,
+      customerRealAvatarUrl:
+          _custProfile?.unlocked == true ? _custProfile?.avatarUrl : null,
+      onOpenCustomerProfile: _customerId == null
+          ? null
+          : () => context.push('/provider/customer/$_customerId'),
       contactName: _contactName,
       contactPhone: _contactPhone,
       onBack: () => context.pop(),
@@ -152,6 +171,13 @@ class _ProductInterestDetailScreenState
       _unlocked = true;
       if (res.newBalance != null) _balance = res.newBalance;
     });
+    // La ficha pasa de anónima a identidad real sin salir de la pantalla.
+    final cid = _customerId;
+    if (cid != null) {
+      customerPublicProfile(cid)
+          .then((p) => mounted ? setState(() => _custProfile = p) : null)
+          .catchError((_) => null);
+    }
     await _loadContact();
     if (!mounted) return;
     await showUnlockCelebration(
@@ -203,6 +229,9 @@ class ProductInterestDetailView extends StatefulWidget {
     this.customerId,
     this.reputation,
     this.badges,
+    this.customerRealName,
+    this.customerRealAvatarUrl,
+    this.onOpenCustomerProfile,
     this.contactName,
     this.contactPhone,
     this.onUnlock,
@@ -225,6 +254,15 @@ class ProductInterestDetailView extends StatefulWidget {
   final String? customerId;
   final Map<String, dynamic>? reputation;
   final PeerBadges? badges;
+
+  /// Identidad real del cliente cuando el contacto ya se pagó (gateada por la
+  /// RPC `get_customer_public_profile`, decisión PO 2026-08-11). `null` =
+  /// ficha anónima.
+  final String? customerRealName;
+  final String? customerRealAvatarUrl;
+
+  /// Abre el perfil del cliente (la ficha es una puerta, mockup 2026-08-11).
+  final VoidCallback? onOpenCustomerProfile;
 
   /// Solo tras desbloquear. El teléfono NUNCA se escribe en pantalla: alimenta
   /// el [WhatsappReveal], que exige un hold y avisa de que por WhatsApp no hay
@@ -348,6 +386,9 @@ class _ProductInterestDetailViewState extends State<ProductInterestDetailView> {
                     customerId: widget.customerId,
                     reputation: widget.reputation,
                     badges: widget.badges,
+                    realName: widget.customerRealName,
+                    realAvatarUrl: widget.customerRealAvatarUrl,
+                    onTap: widget.onOpenCustomerProfile,
                   ),
 
                   // ── 2) INFORMACIÓN ──
