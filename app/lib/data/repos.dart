@@ -1369,11 +1369,15 @@ Future<void> completeConsumerProfile({
     'sector': sector.isEmpty ? null : sector,
     'street': street.isEmpty ? null : street,
     'street_number': streetNumber.isEmpty ? null : streetNumber,
-    'lat': lat,
-    'lng': lng,
-    'location_captured_at': (lat != null && lng != null)
-        ? DateTime.now().toIso8601String()
-        : null,
+    // '?lat'/'?lng' (patrón de updateMyAddress, más abajo en este fichero):
+    // si el usuario no dio permiso de GPS, lat/lng llegan null y la clave se
+    // omite del upsert — sin esto se machacaba con NULL cualquier coordenada
+    // que el perfil ya tuviera. location_captured_at solo se sella si AMBAS
+    // coordenadas llegaron.
+    'lat': ?lat,
+    'lng': ?lng,
+    if (lat != null && lng != null)
+      'location_captured_at': DateTime.now().toIso8601String(),
     'account_type': 'consumer',
     'terms_accepted_at': DateTime.now().toIso8601String(),
     'terms_version': termsVersion,
