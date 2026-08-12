@@ -2619,6 +2619,7 @@ typedef BusinessCardInfo = ({
   bool whatsappVerified,
   bool identityVerified,
   bool businessVerified,
+  bool hasPhysicalLocation,
 });
 
 /// Versión POR LOTE de [businessPublicIdentity]: una sola consulta con
@@ -2639,6 +2640,11 @@ Future<Map<String, BusinessCardInfo>> businessesCardInfo(
             'identity_verified_at,business_verified_at')
         .inFilter('id', ids),
   );
+  // Consulta separada y con su propio try/catch (ver doc de
+  // [businessesPhysicalLocation]): si la columna nueva aún no existe, este
+  // select falla solo y el resto de la cabecera (nombre/logo/sellos de
+  // verificación) sigue intacto.
+  final physical = await businessesPhysicalLocation(ids);
   return {
     for (final r in rows)
       r['id'] as String: (
@@ -2651,8 +2657,46 @@ Future<Map<String, BusinessCardInfo>> businessesCardInfo(
         whatsappVerified: r['whatsapp_verified_at'] != null,
         identityVerified: r['identity_verified_at'] != null,
         businessVerified: r['business_verified_at'] != null,
+        hasPhysicalLocation: physical[r['id'] as String] ?? false,
       ),
   };
+}
+
+/// Sello "Tienda física" (pedido PO 2026-08-12, paridad con la web — commit
+/// `3d4cacb`). Es AUTODECLARADO: el proveedor dice que atiende en un local
+/// abierto al público, nadie lo comprueba. A diferencia de [businessesVerified]
+/// (que sí necesita la RPC porque esas columnas NO están en los grants para un
+/// tercero), `has_physical_location` SÍ tiene `GRANT SELECT` para
+/// `anon`/`authenticated` — verificado en producción — así que un select
+/// directo por columna basta, sin RPC nueva.
+///
+/// La migración que crea la columna (`20260812130000_has_physical_location
+/// .sql`, repo web) puede no estar aplicada todavía en este momento. Por eso
+/// vive en su PROPIA consulta con su PROPIO try/catch, nunca mezclada en el
+/// mismo `.select(...)` que nombre/logo/sellos: si la columna no existe,
+/// Postgres responde con error y esta función degrada a mapa vacío (el sello
+/// simplemente no se pinta) sin tumbar el resto de la pantalla — mismo trato
+/// best-effort que el resto de este archivo (ver `paquetesF` en
+/// `provider_store_screen.dart`).
+Future<Map<String, bool>> businessesPhysicalLocation(
+  List<String> businessIds,
+) async {
+  final ids = businessIds.toSet().toList();
+  if (ids.isEmpty) return const {};
+  try {
+    final rows = List<Map<String, dynamic>>.from(
+      await supa
+          .from('provider_businesses')
+          .select('id,has_physical_location')
+          .inFilter('id', ids),
+    );
+    return {
+      for (final r in rows)
+        r['id'] as String: r['has_physical_location'] == true,
+    };
+  } catch (_) {
+    return const {};
+  }
 }
 
 // ── Mi tienda: productos/servicios del propio negocio ──────────────────────

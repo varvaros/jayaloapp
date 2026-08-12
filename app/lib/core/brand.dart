@@ -133,6 +133,14 @@ abstract final class JayaloStatus {
   /// dinero o espera ("Ya ofertaste", el costo del desbloqueo, la wallet), y
   /// confundir las dos cosas sería peor que no pintar nada.
   ///
+  /// Reutilizado también (PO 2026-08-12, sello "Tienda física") para atributos
+  /// AUTODECLARADOS por el PROVEEDOR — misma familia semántica que arriba: "lo
+  /// dice alguien, nadie lo comprueba". La web usa el MISMO token `--requisito`
+  /// para ambos casos (`DeclaredPill`), así que reusarlo aquí es paridad, no
+  /// una improvisación. Sigue estando terminantemente prohibido pintar esto
+  /// con `JayaloColors.success`/`Icons.verified`: ese verde es EXCLUSIVO de lo
+  /// que Jayalo sí verifica.
+  ///
   /// Portado del token `--requisito` de la web: `oklch(0.94 0.06 200)` /
   /// `oklch(0.4 0.12 200)` en claro, `oklch(0.3 0.07 200)` /
   /// `oklch(0.87 0.11 200)` en oscuro. La conversión oklch→sRGB se calibró

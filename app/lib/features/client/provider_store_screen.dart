@@ -52,6 +52,13 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
   // falla — degrada a "Proveedor" sin logo, nunca rompe la pantalla.
   BusinessIdentity? _identity;
 
+  /// Sello "Tienda física" (PO 2026-08-12), AUTODECLARADO — ver doc de
+  /// `businessesPhysicalLocation`. Vive fuera de `_identity` a propósito: esa
+  /// consulta no pide la columna nueva, así que aunque la migración que la
+  /// crea todavía no esté aplicada, el nombre/logo/servicios del negocio
+  /// siguen cargando con normalidad.
+  bool _hasPhysicalLocation = false;
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +80,9 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       // trato best-effort, la sección de PAQUETES simplemente no se pinta.
       final paquetesF = storePackages(widget.businessId)
           .catchError((_) => <Map<String, dynamic>>[]);
+      // `businessesPhysicalLocation` ya degrada a `{}` internamente si la
+      // columna aún no existe — no hace falta `.catchError` aquí.
+      final physicalF = businessesPhysicalLocation([widget.businessId]);
       final results = await Future.wait([
         myStoreProducts(widget.businessId),
         myPortfolioItems(widget.businessId),
@@ -82,6 +92,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       final stats = await statsF;
       final identity = await identityF;
       final paquetes = await paquetesF;
+      final physical = await physicalF;
       if (!mounted) return;
       setState(() {
         _productos = prod;
@@ -90,6 +101,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
         _paquetes = paquetes;
         _stats = stats;
         _identity = identity;
+        _hasPhysicalLocation = physical[widget.businessId] ?? false;
         _loading = false;
       });
     } catch (_) {
@@ -115,6 +127,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
                 : ProviderStoreView(
                     identity: _identity,
                     stats: _stats,
+                    hasPhysicalLocation: _hasPhysicalLocation,
                     productos: _productos,
                     servicios: _servicios,
                     paquetes: _paquetes,
@@ -137,6 +150,7 @@ class ProviderStoreView extends StatelessWidget {
     super.key,
     required this.identity,
     required this.stats,
+    required this.hasPhysicalLocation,
     required this.productos,
     required this.servicios,
     required this.paquetes,
@@ -145,6 +159,12 @@ class ProviderStoreView extends StatelessWidget {
 
   final BusinessIdentity? identity;
   final BusinessStorefrontStats? stats;
+
+  /// Sello "Tienda física" (PO 2026-08-12) — AUTODECLARADO, ver doc de
+  /// `businessesPhysicalLocation`. Independiente de `stats`: un negocio sin
+  /// ningún sello de verificación puede igual tener este marcado.
+  final bool hasPhysicalLocation;
+
   final List<Map<String, dynamic>> productos;
   final List<Map<String, dynamic>> servicios;
   final List<Map<String, dynamic>> paquetes;
@@ -243,6 +263,30 @@ class ProviderStoreView extends StatelessWidget {
     );
   }
 
+  /// Sello "Tienda física" (PO 2026-08-12), AUTODECLARADO — píldora teal
+  /// `requisito`, NUNCA junto al ✓ verde de `_repCard` (aquello sí lo
+  /// comprueba Jayalo, esto lo dice el proveedor). Deliberadamente
+  /// independiente de `_repCard`/`stats`: la RPC de confianza y la consulta
+  /// de esta columna son dos llamadas distintas con degradación best-effort
+  /// propia cada una — si `businessStorefrontStats` falla, `_repCard` entero
+  /// desaparece, pero este sello (que viene de `businessesPhysicalLocation`,
+  /// ya blindado) debe seguir visible igual.
+  Widget? _physicalLocationBadge(BuildContext context) {
+    if (!hasPhysicalLocation) return null;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: StatusChip(
+          label: 'Tienda física',
+          icon: Icons.storefront_outlined,
+          tone: dark ? JayaloStatus.requisitoDark : JayaloStatus.requisitoLight,
+        ),
+      ),
+    );
+  }
+
   /// Categoría y ciudad en una línea bajo el nombre de la portada, igual que
   /// en Mi negocio. Nulo si el negocio no declara ninguna de las dos.
   String? _subtitle() {
@@ -324,6 +368,7 @@ class ProviderStoreView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repCard = _repCard(context);
+    final physicalBadge = _physicalLocationBadge(context);
     final servicesBlock = _servicesBlock();
     final catalogEmpty =
         productos.isEmpty && servicios.isEmpty && paquetes.isEmpty && trabajos.isEmpty;
@@ -339,6 +384,7 @@ class ProviderStoreView extends StatelessWidget {
       ),
       if (servicesBlock != null) SliverToBoxAdapter(child: servicesBlock),
       if (repCard != null) SliverToBoxAdapter(child: repCard),
+      if (physicalBadge != null) SliverToBoxAdapter(child: physicalBadge),
       SliverToBoxAdapter(
         child: BusinessDetailsCard(business: identity?.raw ?? const {}),
       ),

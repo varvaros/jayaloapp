@@ -81,6 +81,7 @@ void main() {
       await tester.pumpWidget(host(ProviderStoreView(
         identity: identity,
         stats: null,
+        hasPhysicalLocation: false,
         productos: productos,
         servicios: servicios,
         paquetes: paquetes,
@@ -111,6 +112,7 @@ void main() {
       await tester.pumpWidget(host(ProviderStoreView(
         identity: identity,
         stats: null,
+        hasPhysicalLocation: false,
         productos: const [],
         servicios: const [],
         paquetes: paquetes,
@@ -150,6 +152,7 @@ void main() {
       await tester.pumpWidget(host(ProviderStoreView(
         identity: identity,
         stats: null,
+        hasPhysicalLocation: false,
         productos: productos,
         servicios: servicios,
         paquetes: const [],
@@ -171,6 +174,7 @@ void main() {
       await tester.pumpWidget(host(ProviderStoreView(
         identity: identity,
         stats: null,
+        hasPhysicalLocation: false,
         productos: const [],
         servicios: const [],
         paquetes: const [],
@@ -203,6 +207,7 @@ void main() {
       await tester.pumpWidget(host(ProviderStoreView(
         identity: identity,
         stats: stats,
+        hasPhysicalLocation: false,
         productos: const [],
         servicios: const [],
         paquetes: const [],
@@ -216,6 +221,50 @@ void main() {
       // tarea): una vez como sello de la portada (`BusinessCoverHero`) y otra
       // en la fila de insignias de la tarjeta de confianza.
       expect(find.text('Identidad verificada'), findsNWidgets(2));
+    });
+  });
+
+  // Sello "Tienda física" (PO 2026-08-12) — AUTODECLARADO: el proveedor lo
+  // dice, Jayalo no lo comprueba. Debe pintarse en teal, nunca en el verde
+  // de `Icons.verified`/verificación, y debe ser independiente de `stats`
+  // (si la RPC de confianza falla, el sello igual se ve).
+  group('ProviderStoreView — sello "Tienda física" (autodeclarado)', () {
+    testWidgets('con hasPhysicalLocation, se pinta aunque stats sea null',
+        (tester) async {
+      setTallPhoneSize(tester);
+      await tester.pumpWidget(host(ProviderStoreView(
+        identity: identity,
+        stats: null,
+        hasPhysicalLocation: true,
+        productos: const [],
+        servicios: const [],
+        paquetes: const [],
+        trabajos: const [],
+      )));
+      await tester.pumpAndSettle();
+
+      // No se comprueba `Icons.storefront_outlined` aquí: sin logo, el
+      // avatar por defecto de `BusinessCoverHero` usa el MISMO ícono, así
+      // que habría dos en pantalla — el texto de la píldora ya identifica
+      // sin ambigüedad que el sello se pintó.
+      expect(find.text('Tienda física'), findsOneWidget);
+    });
+
+    testWidgets('sin hasPhysicalLocation, no aparece el sello',
+        (tester) async {
+      setTallPhoneSize(tester);
+      await tester.pumpWidget(host(ProviderStoreView(
+        identity: identity,
+        stats: null,
+        hasPhysicalLocation: false,
+        productos: const [],
+        servicios: const [],
+        paquetes: const [],
+        trabajos: const [],
+      )));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tienda física'), findsNothing);
     });
   });
 
@@ -233,6 +282,7 @@ void main() {
             builder: (_, _) => ProviderStoreView(
               identity: identity,
               stats: null,
+              hasPhysicalLocation: false,
               productos: const [],
               servicios: const [],
               paquetes: paquetes,
@@ -266,6 +316,7 @@ void main() {
       await tester.pumpWidget(host(ProviderStoreView(
         identity: identity,
         stats: null,
+        hasPhysicalLocation: false,
         productos: const [],
         servicios: const [],
         paquetes: const [],

@@ -18,6 +18,7 @@ void main() {
     bool whatsappVerified = false,
     bool identityVerified = false,
     bool businessVerified = false,
+    bool hasPhysicalLocation = false,
   }) =>
       (
         name: name,
@@ -25,6 +26,7 @@ void main() {
         whatsappVerified: whatsappVerified,
         identityVerified: identityVerified,
         businessVerified: businessVerified,
+        hasPhysicalLocation: hasPhysicalLocation,
       );
 
   testWidgets(
@@ -61,5 +63,33 @@ void main() {
     // El widget se resuelve a un SizedBox vacío (SizedBox.shrink), sin Row ni
     // avatar: nada que ocupe espacio o insinúe una cabecera.
     expect(find.byType(Row), findsNothing);
+  });
+
+  // Sello "Tienda física" (PO 2026-08-12) — AUTODECLARADO, nunca junto al ✓
+  // verde de verificación de arriba.
+  testWidgets(
+      'con hasPhysicalLocation: aparece el sello, distinto del ✓ de verificado',
+      (tester) async {
+    await tester.pumpWidget(wrap(OfferCardProviderHeader(
+      info: info(
+        name: 'Ferretería El Corito',
+        whatsappVerified: true,
+        hasPhysicalLocation: true,
+      ),
+    )));
+
+    expect(find.text('Ferretería El Corito'), findsOneWidget);
+    expect(find.byIcon(Icons.verified), findsOneWidget);
+    expect(find.text('Tienda física'), findsOneWidget);
+    expect(find.byIcon(Icons.storefront_outlined), findsOneWidget);
+  });
+
+  testWidgets('sin hasPhysicalLocation: no aparece el sello', (tester) async {
+    await tester.pumpWidget(wrap(OfferCardProviderHeader(
+      info: info(name: 'Ferretería El Corito'),
+    )));
+
+    expect(find.text('Tienda física'), findsNothing);
+    expect(find.byIcon(Icons.storefront_outlined), findsNothing);
   });
 }

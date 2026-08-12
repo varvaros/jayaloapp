@@ -166,6 +166,13 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
   /// header degrada a "Proveedor" sin logo, nunca rompe la pantalla.
   BusinessIdentity? _identity;
 
+  /// Sello "Tienda física" (PO 2026-08-12), AUTODECLARADO — nunca se pinta
+  /// junto al ✓ verde de `_verified` (eso sí lo comprueba Jayalo, esto no).
+  /// `businessesPhysicalLocation` ya degrada a `false` internamente si la
+  /// columna todavía no existe en producción, así que no hace falta un
+  /// try/catch adicional aquí.
+  bool _hasPhysicalLocation = false;
+
   @override
   void initState() {
     super.initState();
@@ -181,12 +188,14 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
         businessRatings([bid]),
         businessesVerified([bid]),
         businessPublicIdentity(bid),
+        businessesPhysicalLocation([bid]),
       ]);
       if (!mounted) return;
       setState(() {
         _rep = (res[0] as Map<String, BusinessRating>)[bid];
         _verified = (res[1] as Map<String, bool>)[bid];
         _identity = res[2] as BusinessIdentity?;
+        _hasPhysicalLocation = (res[3] as Map<String, bool>)[bid] ?? false;
       });
     } catch (_) {/* best-effort: si falla, se omite el bloque */}
   }
@@ -276,6 +285,20 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
                     if (_responseLabel != null)
                       _metaChip(Icons.schedule_outlined, _responseLabel!),
                   ]),
+                  // Sello autodeclarado, en su PROPIA fila y con su propio
+                  // tratamiento (píldora teal `requisito`) — nunca dentro del
+                  // Wrap de arriba ni con el color verde de `_verified`, para
+                  // que sea imposible confundirlo con algo que Jayalo comprobó.
+                  if (_hasPhysicalLocation) ...[
+                    const SizedBox(height: 6),
+                    StatusChip(
+                      label: 'Tienda física',
+                      icon: Icons.storefront_outlined,
+                      tone: Theme.of(context).brightness == Brightness.dark
+                          ? JayaloStatus.requisitoDark
+                          : JayaloStatus.requisitoLight,
+                    ),
+                  ],
                 ],
               ),
             ),

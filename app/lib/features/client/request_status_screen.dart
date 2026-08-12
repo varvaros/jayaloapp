@@ -707,26 +707,45 @@ class OfferCardProviderHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final info = this.info;
     if (info == null) return const SizedBox.shrink();
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Flexible(
-          child: Text(
-            info.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: jayaloHead(context),
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                info.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: jayaloHead(context),
+                ),
+              ),
             ),
+            const SizedBox(width: 5),
+            VerifiedTick(
+              whatsappVerified: info.whatsappVerified,
+              idVerified: info.identityVerified || info.businessVerified,
+              size: 14,
+            ),
+          ],
+        ),
+        // Sello "Tienda física" (PO 2026-08-12) — AUTODECLARADO, así que va en
+        // su propia fila, debajo del nombre, y con la píldora teal `requisito`
+        // en vez del ✓ verde de `VerifiedTick`: mezclarlos afirmaría una
+        // verificación que Jayalo nunca hizo.
+        if (info.hasPhysicalLocation) ...[
+          const SizedBox(height: 3),
+          StatusChip(
+            label: 'Tienda física',
+            icon: Icons.storefront_outlined,
+            tone: Theme.of(context).brightness == Brightness.dark
+                ? JayaloStatus.requisitoDark
+                : JayaloStatus.requisitoLight,
           ),
-        ),
-        const SizedBox(width: 5),
-        VerifiedTick(
-          whatsappVerified: info.whatsappVerified,
-          idVerified: info.identityVerified || info.businessVerified,
-          size: 14,
-        ),
+        ],
       ],
     );
   }
