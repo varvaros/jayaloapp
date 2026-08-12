@@ -532,6 +532,11 @@ Future<void> submitRequest({
   String serviceModality = '',
   String urgencyLevel = '',
   DateTime? serviceEventDate,
+  // Frecuencia del servicio (opción del formulario, NUNCA pregunta de la IA —
+  // decisión PO 2026-08-12). Vacío = "Una sola vez". Va a la pareja de columnas
+  // que ya existía: `is_recurring` + `recurrence_note` (paridad web
+  // src/lib/serviceFrequency.ts).
+  String serviceFrequency = '',
   // Presupuesto estimado del cliente (opcional, solo servicios — paridad web
   // requests/new.tsx). Se guarda solo si es > 0.
   num? budgetMin,
@@ -580,8 +585,8 @@ Future<void> submitRequest({
       'budget_max': isService && budgetMax != null && budgetMax > 0
           ? budgetMax
           : null,
-      'is_recurring': false,
-      'recurrence_note': '',
+      'is_recurring': isService && serviceFrequency.trim().isNotEmpty,
+      'recurrence_note': isService ? serviceFrequency.trim() : '',
       'is_wholesale': !isService && wholesale,
       'wholesale_quantity': (!isService && wholesale)
           ? wholesaleQuantity

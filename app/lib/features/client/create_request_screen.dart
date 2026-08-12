@@ -101,6 +101,24 @@ const _serviceUrgencyOptions = [
   ),
 ];
 
+/// Frecuencia de un servicio recurrente — OPCIÓN DEL FORMULARIO, nunca una
+/// pregunta de la IA (decisión PO 2026-08-12; el clarificador la tiene
+/// prohibida en el prompt de la web). El valor viaja tal cual a
+/// `recurrence_note`; vacío = "Una sola vez" ⇒ `is_recurring` false.
+/// Paridad con `SERVICE_FREQUENCY_PRESETS` de la web (src/lib/serviceFrequency.ts):
+/// si cambian las opciones allá, cambian aquí.
+const _serviceFrequencyOptions = [
+  ('', 'Una sola vez', 'Un trabajo puntual.', Icons.looks_one_outlined),
+  ('Diario', 'Diario', 'Todos los días.', Icons.today_outlined),
+  ('Semanal', 'Semanal', 'Una vez por semana.', Icons.view_week_outlined),
+  ('Quincenal', 'Quincenal', 'Cada dos semanas.', Icons.date_range_outlined),
+  ('Mensual', 'Mensual', 'Una vez al mes.', Icons.calendar_month_outlined),
+  ('__otra__', 'Otra', 'La escribo yo.', Icons.edit_outlined),
+];
+
+/// Valor centinela de la opción "Otra": NO se guarda, abre el campo de texto.
+const kServiceFrequencyOther = '__otra__';
+
 /// Foto pendiente de una solicitud: el `dataUrl` base64 viaja a la IA en cada
 /// turno; la ruta local (`file.path`) se sube a Storage al enviar.
 class _PendingPhoto {
@@ -167,6 +185,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   String _serviceModality = '';
   String _urgencyLevel = '';
   DateTime? _serviceEventDate;
+  // Frecuencia del servicio: la píldora elegida ('' = una sola vez, o el
+  // centinela `kServiceFrequencyOther`) y el texto libre de "Otra".
+  String _serviceFrequency = '';
+  String _serviceFrequencyOther = '';
   // Presupuesto estimado (opcional, servicios) — paridad web requests/new.tsx.
   String _budgetMin = '';
   String _budgetMax = '';
@@ -674,6 +696,13 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         _toast('Indica la fecha del evento.');
         return;
       }
+      // "Otra" en blanco guardaría un servicio recurrente SIN frecuencia, que
+      // al proveedor no le dice más que "una sola vez".
+      if (_serviceFrequency == kServiceFrequencyOther &&
+          _serviceFrequencyOther.trim().isEmpty) {
+        _toast('Escribe cada cuánto se repite el servicio.');
+        return;
+      }
     }
     if (!isService && effectiveWholesale) {
       final qty = int.tryParse(_wsQuantity.trim());
@@ -760,6 +789,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         serviceModality: _serviceModality,
         urgencyLevel: _urgencyLevel,
         serviceEventDate: _serviceEventDate,
+        // El centinela de "Otra" no se guarda: viaja lo que escribió el cliente.
+        serviceFrequency: _serviceFrequency == kServiceFrequencyOther
+            ? _serviceFrequencyOther.trim()
+            : _serviceFrequency,
         budgetMin: isService ? _parseMoney(_budgetMin) : null,
         budgetMax: isService ? _parseMoney(_budgetMax) : null,
         wholesaleQuantity: (!isService && effectiveWholesale)
@@ -2031,6 +2064,39 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               () => setState(() => _urgencyLevel = value),
               icon: icon,
             ),
+          const SizedBox(height: 16),
+          _sectionTitle('¿Cada cuánto se repite?'),
+          Text(
+            'Limpieza semanal, mantenimiento mensual, etc.',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 6),
+          for (final (value, title, desc, icon) in _serviceFrequencyOptions)
+            _selectTile(
+              title,
+              desc,
+              _serviceFrequency == value,
+              () => setState(() {
+                _serviceFrequency = value;
+                // Cambiar de píldora descarta lo escrito en "Otra": si no, un
+                // texto viejo viajaría con una opción cerrada elegida.
+                if (value != kServiceFrequencyOther) _serviceFrequencyOther = '';
+              }),
+              icon: icon,
+            ),
+          if (_serviceFrequency == kServiceFrequencyOther) ...[
+            const SizedBox(height: 8),
+            TextField(
+              onChanged: (v) => _serviceFrequencyOther = v,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Escribe la frecuencia',
+                hintText: 'Ej: cada lunes a las 9am',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           _sectionTitle('Presupuesto estimado'),
           Text(
