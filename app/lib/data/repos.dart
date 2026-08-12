@@ -551,9 +551,28 @@ Future<void> submitRequest({
 }) async {
   final uid = supa.auth.currentUser!.id;
   final isService = kind == 'servicio';
+  // Ubicación de la solicitud: se COPIA del perfil (no se referencia) para que
+  // el trabajo siga diciendo dónde era aunque el cliente se mude — mismo
+  // criterio que la web (requests/new.tsx). Un fallo aquí no cancela el envío:
+  // una solicitud sin ubicación sigue siendo útil (best-effort, mismo patrón
+  // que el resto de lecturas de este archivo, p.ej. closedConversationReasons).
+  Map<String, dynamic>? prof;
+  try {
+    prof = await supa
+        .from('profiles')
+        .select('city,sector,lat,lng')
+        .eq('user_id', uid)
+        .maybeSingle();
+  } catch (_) {
+    prof = null;
+  }
   try {
     await supa.from('customer_requests').insert({
       'user_id': uid,
+      'city': prof?['city'] ?? '',
+      'sector': prof?['sector'] ?? '',
+      'lat': prof?['lat'],
+      'lng': prof?['lng'],
       'client_request_id': clientRequestId,
       'kind': kind,
       'title': title,
