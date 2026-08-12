@@ -1,8 +1,10 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/error_reporter.dart';
 import '../core/ttl_cache.dart';
 import '../domain/chat.dart' show QuickItem;
 import '../domain/contact_info.dart'
@@ -554,8 +556,16 @@ Future<void> submitRequest({
   // Ubicación de la solicitud: se COPIA del perfil (no se referencia) para que
   // el trabajo siga diciendo dónde era aunque el cliente se mude — mismo
   // criterio que la web (requests/new.tsx). Un fallo aquí no cancela el envío:
-  // una solicitud sin ubicación sigue siendo útil (best-effort, mismo patrón
-  // que el resto de lecturas de este archivo, p.ej. closedConversationReasons).
+  // una solicitud sin ubicación sigue siendo útil (fail-open, igual que las
+  // otras 4 lecturas best-effort de este archivo, p.ej. closedConversationReasons).
+  //
+  // A DIFERENCIA de esas 4, aquí SÍ se reporta el error (`reportError`, no
+  // relanza ni bloquea el insert). Esas otras cubren datos de presentación:
+  // si fallan, la pantalla queda un poco más pobre y se nota. Esta lectura
+  // alimenta justo el dato que esta tarea existe para arreglar — si se
+  // rompe en silencio (RLS, esquema, lo que sea), el síntoma es IDÉNTICO al
+  // bug original: 100% de las solicitudes del APK nacen sin ubicación, sin
+  // que nadie se entere. Mismo criterio que requests/new.tsx en la web.
   Map<String, dynamic>? prof;
   try {
     prof = await supa
@@ -563,8 +573,9 @@ Future<void> submitRequest({
         .select('city,sector,lat,lng')
         .eq('user_id', uid)
         .maybeSingle();
-  } catch (_) {
+  } catch (e, s) {
     prof = null;
+    unawaited(reportError(e, s));
   }
   try {
     await supa.from('customer_requests').insert({
