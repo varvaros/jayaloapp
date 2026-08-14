@@ -41,6 +41,9 @@ Widget buildBubble(
   required void Function(String src) onImageTap,
   required void Function(ChatMessage, String) onQuickAnswer,
   required bool canAnswerQuick,
+  /// URLs firmadas de las fotos guardadas en el bucket privado, indexadas por su
+  /// marcador `chat-media:`. Vacío mientras la firma está en vuelo.
+  Map<String, String> signedChatImages = const {},
 }) {
   final cs = Theme.of(context).colorScheme;
   final pal = chatPalette(context);
@@ -76,25 +79,52 @@ Widget buildBubble(
 
   Widget inner;
   if (m.kind == 'image') {
-    if (!isRenderableImageSrc(m.body)) return const SizedBox.shrink();
-    inner = ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: GestureDetector(
-        onTap: () => onImageTap(m.body),
-        child: JayaloNetworkImage(
-          m.body,
-          width: 200,
-          height: 200,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => Container(
-            width: 200,
-            height: 120,
-            color: cs.surfaceContainerHighest,
-            child: const Icon(Icons.broken_image_outlined),
+    // Las fotos del chat viajan como marcador `chat-media:{ruta}` (bucket
+    // privado) y hay que firmarlas antes de pintarlas; las del compartir-
+    // artículo siguen siendo URLs públicas y se usan tal cual.
+    final marker = isChatMediaMarker(m.body);
+    final src = marker ? signedChatImages[m.body] : m.body;
+    if (marker && src == null) {
+      // Mientras se firma se deja un hueco con su spinner. Antes esta rama
+      // devolvía SizedBox.shrink() y la burbuja de toda foto enviada desde la
+      // web DESAPARECÍA, aunque la lista de chats dijera "📷 Foto".
+      inner = Container(
+        width: 200,
+        height: 200,
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ),
-      ),
-    );
+      );
+    } else if (src == null || !isRenderableImageSrc(src)) {
+      return const SizedBox.shrink();
+    } else {
+      inner = ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: GestureDetector(
+          onTap: () => onImageTap(src),
+          child: JayaloNetworkImage(
+            src,
+            width: 200,
+            height: 200,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => Container(
+              width: 200,
+              height: 120,
+              color: cs.surfaceContainerHighest,
+              child: const Icon(Icons.broken_image_outlined),
+            ),
+          ),
+        ),
+      );
+    }
   } else if (m.kind == 'quick') {
     final p = parseQuick(m.body);
     if (p == null) return const SizedBox.shrink();

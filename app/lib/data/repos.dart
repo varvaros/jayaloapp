@@ -6,7 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/error_reporter.dart';
 import '../core/ttl_cache.dart';
-import '../domain/chat.dart' show QuickItem;
+import '../domain/chat.dart'
+    show QuickItem, chatMediaPath, chatMediaPrefix, isChatMediaMarker;
 import '../domain/contact_info.dart'
     show contactInfoCode, contactInfoMessage, payloadHasContactInfo;
 import '../domain/credit_shop.dart' show ShopPackage;
@@ -2070,9 +2071,61 @@ Future<void> markChatNotificationsRead(String convId) async {
   ]);
 }
 
-/// Foto del chat → `{uid}/chat/<ts>-<rand>.<ext>` (mismo bucket público).
-Future<String> uploadChatImage(String filePath) =>
-    _uploadMarketplaceImage(filePath, 'chat');
+/// Foto del chat → bucket **privado** `chat-media`, carpeta por conversación.
+/// Devuelve el marcador `chat-media:{path}`, NO una URL: el bucket no es
+/// público y una URL firmada guardada en el `body` caducaría.
+///
+/// La ruta TIENE que empezar por el `conversation_id`: la política RLS del
+/// bucket valida participación comparando `foldername[1]` contra
+/// `conversations.customer_id / provider_user_id`. Por eso no se puede reusar
+/// [_uploadMarketplaceImage] con `bucket:'chat-media'` — construye la ruta como
+/// `{uid}/{kind}/…` y el INSERT saldría rechazado.
+///
+/// Hasta el 2026-08-13 esto subía al bucket PÚBLICO `business-logos`, así que
+/// las fotos privadas de un chat quedaban legibles por URL para cualquiera; la
+/// web ya lo había cerrado el 2026-07-31. El formato del marcador es el mismo
+/// que emite `persistChatImage` en la web, para que las fotos crucen en las dos
+/// direcciones.
+Future<String> uploadChatImage(String filePath, String conversationId) async {
+  final dot = filePath.lastIndexOf('.');
+  final raw = dot == -1 ? '' : filePath.substring(dot + 1).toLowerCase();
+  final ext = raw.isEmpty ? 'jpg' : raw;
+  final rand = _rand.nextInt(1 << 31).toRadixString(16);
+  final path =
+      '$conversationId/${DateTime.now().millisecondsSinceEpoch}-$rand-chat.$ext';
+  await supa.storage
+      .from('chat-media')
+      .upload(
+        path,
+        File(filePath),
+        fileOptions: FileOptions(contentType: _imageContentType(ext)),
+      );
+  return '$chatMediaPrefix$path';
+}
+
+/// Firma los marcadores `chat-media:` de una tanda de mensajes para poder
+/// pintarlos. Devuelve un mapa marcador → URL firmada; los que fallen
+/// simplemente no aparecen (la burbuja se queda en su placeholder).
+///
+/// Los bodies que ya son `http(s)`/`data:` NO pasan por aquí: el compartir-
+/// artículo del chat inserta URLs públicas de otros buckets y firmarlas
+/// rompería lo que hoy funciona.
+Future<Map<String, String>> signChatImages(
+  List<String> markers, {
+  int ttlSeconds = 3600,
+}) async {
+  final unique = markers.where(isChatMediaMarker).toSet().toList();
+  if (unique.isEmpty) return const {};
+  final results = await supa.storage
+      .from('chat-media')
+      .createSignedUrlsResult(unique.map(chatMediaPath).toList(), ttlSeconds);
+  final out = <String, String>{};
+  for (var i = 0; i < results.length && i < unique.length; i++) {
+    final r = results[i];
+    if (r is SignedUrlSuccess) out[unique[i]] = r.signedUrl;
+  }
+  return out;
+}
 
 Future<String?> myBusinessAddressBody() async {
   final uid = supa.auth.currentUser!.id;

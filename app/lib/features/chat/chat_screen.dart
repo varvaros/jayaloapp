@@ -123,6 +123,11 @@ class _ChatScreenState extends State<ChatScreen> {
   DateTime? _lastTypingSent;
   Timer? _peerTypingTimer;
 
+  /// URLs firmadas de las fotos del bucket privado, por marcador `chat-media:`.
+  /// Se llena tras cada carga o mensaje entrante; mientras falte una, su burbuja
+  /// muestra el placeholder en vez de desaparecer.
+  final Map<String, String> _signedChatImages = {};
+
   String get _uid => supa.auth.currentUser!.id;
   bool get _isProvider => _conv?['provider_user_id'] == _uid;
   bool get _isOpen => _conv?['status'] == 'abierto';
@@ -199,6 +204,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       _setupRealtime();
       _afterLoad();
+      _resolveChatImages();
       _loadReviewContext(conv);
       // Sellos de la contraparte — best-effort, no bloquea la UI (mismo
       // patrón fire-and-forget que las notificaciones leídas de abajo).
@@ -408,6 +414,7 @@ class _ChatScreenState extends State<ChatScreen> {
               }
               if (mounted) setState(() {});
               _jumpToBottom();
+              _resolveChatImages();
               markChatNotificationsRead(widget.conversationId).catchError((_) {});
             }
           },
@@ -685,12 +692,36 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     setState(() => _uploadingImage = true);
     try {
-      final url = await uploadChatImage(picked.path);
-      await _sendRaw('image', url);
+      // Devuelve el marcador `chat-media:{ruta}` del bucket privado, no una URL.
+      final marker = await uploadChatImage(picked.path, widget.conversationId);
+      await _sendRaw('image', marker);
+      // Firmarla ya, para que la foto propia se vea sin esperar a un refresco.
+      await _resolveChatImages();
     } catch (_) {
       _snack('No se pudo enviar la imagen.');
     } finally {
       if (mounted) setState(() => _uploadingImage = false);
+    }
+  }
+
+  /// Pide URL firmada para las fotos que viven en el bucket privado y que aún no
+  /// tenemos. Las que ya son URL pública (compartir-artículo) no pasan por aquí.
+  ///
+  /// Best-effort: si la firma falla, la burbuja se queda en su placeholder y el
+  /// siguiente mensaje o recarga vuelve a intentarlo. Nunca debe tumbar el chat.
+  Future<void> _resolveChatImages() async {
+    final pendientes = _session.messages
+        .where((m) => m.kind == 'image' && isChatMediaMarker(m.body))
+        .map((m) => m.body)
+        .where((b) => !_signedChatImages.containsKey(b))
+        .toList();
+    if (pendientes.isEmpty) return;
+    try {
+      final firmadas = await signChatImages(pendientes);
+      if (firmadas.isEmpty || !mounted) return;
+      setState(() => _signedChatImages.addAll(firmadas));
+    } catch (e) {
+      debugPrint('No se pudieron firmar las fotos del chat: $e');
     }
   }
 
@@ -1052,7 +1083,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         peerAvatarUrl: _peerAvatarUrl,
                         onImageTap: _openLightbox,
                         onQuickAnswer: _answerQuick,
-                        canAnswerQuick: _isOpen);
+                        canAnswerQuick: _isOpen,
+                        signedChatImages: _signedChatImages);
                     if (!needsDaySep(ms, i)) return bubble;
                     return Column(children: [
                       Center(

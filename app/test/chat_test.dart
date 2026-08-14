@@ -112,6 +112,23 @@ void main() {
     test('https ok', () => expect(isRenderableImageSrc('https://x.co/a.jpg'), isTrue));
     test('data ok', () => expect(isRenderableImageSrc('data:image/jpeg;base64,AAAA'), isTrue));
     test('javascript no', () => expect(isRenderableImageSrc('javascript:alert(1)'), isFalse));
+    test('el marcador del bucket privado NO es pintable directo: se firma antes',
+        () => expect(isRenderableImageSrc('chat-media:abc/1-2-chat.jpg'), isFalse));
+  });
+  group('marcador chat-media', () {
+    test('reconoce el marcador que escribe la web', () {
+      expect(isChatMediaMarker('chat-media:abc/1-2-chat.jpg'), isTrue);
+    });
+    test('una URL pública NO es marcador (compartir-artículo sigue directo)', () {
+      expect(isChatMediaMarker('https://x.co/a.jpg'), isFalse);
+      expect(isChatMediaMarker('data:image/jpeg;base64,AAAA'), isFalse);
+    });
+    test('extrae la ruta, que empieza por el id de conversación (lo exige la RLS)', () {
+      expect(chatMediaPath('chat-media:abc/1-2-chat.jpg'), 'abc/1-2-chat.jpg');
+    });
+    test('sobre algo que no es marcador devuelve el valor tal cual', () {
+      expect(chatMediaPath('https://x.co/a.jpg'), 'https://x.co/a.jpg');
+    });
   });
   test('buildGreeting reemplaza placeholders', () {
     final g = buildGreeting(

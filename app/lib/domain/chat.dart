@@ -122,6 +122,22 @@ String sendFailureMessage({
 
 final _dataImg = RegExp(r'^data:image/(png|jpe?g|webp|gif|svg\+xml);base64,', caseSensitive: false);
 
+/// Prefijo que marca el `body` de una imagen como RUTA dentro del bucket privado
+/// `chat-media`, en vez de una URL. Espejo de `CHAT_MEDIA_PREFIX` de la web
+/// (`src/lib/image/uploadRequestImage.ts`).
+///
+/// El bucket es privado desde el 2026-07-31, así que no hay URL pública que
+/// guardar: hay que pedir una firmada antes de pintar. Por eso
+/// [isRenderableImageSrc] sigue diciendo `false` para el marcador — se resuelve
+/// ANTES de llegar ahí. Guardar la URL firmada en el `body` no vale: caduca.
+const chatMediaPrefix = 'chat-media:';
+
+bool isChatMediaMarker(String body) => body.startsWith(chatMediaPrefix);
+
+/// La ruta dentro del bucket, sin el prefijo.
+String chatMediaPath(String body) =>
+    isChatMediaMarker(body) ? body.substring(chatMediaPrefix.length) : body;
+
 bool isRenderableImageSrc(String src) {
   if (_dataImg.hasMatch(src)) return true;
   final uri = Uri.tryParse(src);
