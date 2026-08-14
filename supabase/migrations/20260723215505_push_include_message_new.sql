@@ -1,3 +1,16 @@
+-- ⛔ OBSOLETA — NO APLICAR NI COPIAR COMO BASE. (Marcada el 2026-08-14.)
+--
+-- Esta es la migracion que revirtio la whitelist de push en silencio el
+-- 2026-07-23: define 5 kinds partiendo de una foto vieja. La lista VIVA tiene 14
+-- y se mantiene en el repo WEB
+-- (play-billing/supabase/migrations/20260814120000_push_whitelist_cancelaciones_wallet.sql).
+-- Aplicar o copiar este fichero quita 9 kinds y los push dejan de salir sin
+-- ningun error visible.
+--
+-- `push_on_notification` vive sobre la tabla `notifications`, que es dominio de
+-- la web: el repo de la APP no debe volver a definirla. Si hay que tocarla,
+-- hacerlo en el repo web y partiendo de `pg_get_functiondef` leido de produccion.
+
 -- 20260723215505_push_include_message_new.sql
 -- Suma `message_new` (CHAT) a los kinds que disparan push (pedido PO
 -- 2026-07-23). Antes solo empujaban ofertas

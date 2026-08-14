@@ -171,6 +171,13 @@ void main() {
     test('el resto de /provider cae en /provider', () {
       expect(mapLinkToRoute('/provider', provider: true), '/provider');
       expect(mapLinkToRoute('/provider/history', provider: true), '/provider');
+      // La otra forma del link de wallet (la que usan wallet_recharged,
+      // wallet_gift y payment_failed) NO se mapea a propósito: esa cadena está
+      // prohibida en `lib/` por `no_link_out_test` (es la ruta del wallet web,
+      // con botones de PayPal). Aquí se puede escribir porque el guard solo
+      // escanea `lib/`. Si se le da push a alguno de esos kinds, hay que cambiar
+      // el link EN EL TRIGGER, no mapearlo aquí.
+      expect(mapLinkToRoute('/provider/wallet', provider: true), '/provider');
     });
     test('BUG (b): desconocido/vacío cae por ROL activo, no fijo /client', () {
       expect(mapLinkToRoute('/empleos/xyz', provider: true), '/provider');
