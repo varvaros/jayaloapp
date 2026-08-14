@@ -123,6 +123,8 @@ flutter:
   assets:
     - assets/images/mascot.png
     - assets/images/chat-bg.jpg
+    # Jayi 3D de la «PORTADA JAYI» del login (webp CON canal alfa, 218 KB).
+    - assets/images/jayi-hero.webp
     - assets/sounds/oferta_aceptada.mp3
     - assets/sounds/desbloqueo.mp3
     # Avisos de mensaje con la app ABIERTA. Con la app cerrada el sonido lo pone

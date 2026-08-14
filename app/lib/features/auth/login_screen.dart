@@ -1,12 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/turnstile.dart';
 import '../shared/jayalo_loader.dart';
-import 'portada_animada.dart';
+import 'portada_jayi.dart';
 
 /// El usuario cerró el selector de cuenta de Google. No es un fallo: no hay que
 /// enseñarle ningún error.
@@ -81,11 +82,6 @@ String passwordLoginError(Object e) {
   return 'No pudimos entrar. Revisa tu conexión e inténtalo de nuevo.';
 }
 
-// Fondo de la bienvenida: el cielo/mar de la portada animada. Los textos van
-// en blanco sobre el agua; el CTA mantiene el violeta FIJO de marca (no
-// `cs.primary`, que en modo oscuro se iría al azul).
-const _welcomeSea = Color(0xFF1B7ECB);
-
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -132,13 +128,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _welcomeSea,
+    // La portada es arena clara: los iconos de la status bar tienen que ser
+    // oscuros o desaparecen (ningún otro sitio de la app fija la barra).
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+      // Arena FIJA de marca (no `cs.background`: la portada no tiene modo
+      // oscuro). El CTA mantiene el violeta FIJO por la misma razón.
+      backgroundColor: JayaloColors.background,
       body: Stack(
         children: [
-          // El loop de la isla de Jayi a pantalla completa. El mar bajo la
-          // isla viene limpio del mockup a propósito: es la zona de botones.
-          const Positioned.fill(child: PortadaAnimada()),
+          // «PORTADA JAYI» a pantalla completa (mockup portada-jayi.html). El
+          // bottomReserve deja libre la zona de botones, como el mar limpio
+          // de FONDO PLAYA.
+          const Positioned.fill(child: PortadaJayi(bottomReserve: 170)),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(28, 14, 28, 22),
@@ -175,7 +182,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontSize: 12,
                         height: 1.4,
                         fontWeight: FontWeight.w400,
-                        color: Colors.white.withValues(alpha: .8)),
+                        // Sobre la arena de la portada, tinta (antes blanco
+                        // sobre el mar de FONDO PLAYA).
+                        color: JayaloColors.foreground.withValues(alpha: .8)),
                   ),
                   // Puerta para las cuentas creadas en jayalo.com con correo y
                   // contraseña: sin esto quedaban fuera de la app si su correo
@@ -187,7 +196,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
-                          color: Colors.white.withValues(alpha: .95)),
+                          // Violeta de acción sobre la arena (antes blanco).
+                          color: JayaloColors.primary),
                     ),
                   ),
                 ],
@@ -195,6 +205,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
