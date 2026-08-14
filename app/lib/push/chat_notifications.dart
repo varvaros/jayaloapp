@@ -28,6 +28,21 @@ import '../core/config.dart';
 /// De paso: un solo canal "Mensajes" en los Ajustes del sistema, así el usuario
 /// silencia los chats de una vez sin perder los avisos de dinero.
 const kChatChannelId = 'jayalo_chat_v1';
+
+/// Canal de los AVISOS que no son chat (ofertas, desbloqueos, billetera). Es el
+/// MISMO que crea `MainActivity` (`ALERTS_CHANNEL_ID`, con el timbre
+/// `notif_bell`) y el mismo que `send-push` pide en `channel_id` para todo lo
+/// que no es `message_new`; además es el `default_notification_channel_id` del
+/// manifest. Los tres tienen que decir lo mismo: inventar aquí otro id haría que
+/// Android auto-creara un canal con el sonido por defecto — exactamente la
+/// desalineación que dejó mudo el pop de burbuja en julio.
+///
+/// Como el canal ya existe cuando Dart arranca, `flutter_local_notifications` NO
+/// lo recrea (su acción por defecto es "crear si no existe"), así que el sonido
+/// del canal manda. Por eso [showAlertNotification] no pasa `sound:` ni
+/// `channelAction:`: hacerlo devolvería el aviso al tono genérico del sistema.
+const kAlertsChannelId = 'jayalo_alerts_v2';
+
 const kReplyActionId = 'REPLY';
 
 final flnp = FlutterLocalNotificationsPlugin();
@@ -90,6 +105,45 @@ Future<void> showChatReplyNotification({
     notificationDetails: NotificationDetails(android: details),
     payload: jsonEncode({'conversation_id': conversationId}),
   );
+}
+
+/// Pinta un aviso que NO es de chat (oferta nueva, contacto desbloqueado,
+/// interés en un producto…) con la app en FOREGROUND, que es justo donde Android
+/// no dibuja nada por su cuenta ni siquiera con los notification-message. Es la
+/// MISMA notificación que el usuario vería con la app cerrada: mismo canal y por
+/// tanto mismo timbre.
+///
+/// Sin `number:` a propósito — el badge del launcher lo lleva `NotifCountStore`
+/// con el conteo real del servidor, y escribirlo también aquí lo haría parpadear
+/// entre dos fuentes. Y sin acción "Responder": eso es solo del chat.
+Future<void> showAlertNotification({
+  required String link,
+  required String title,
+  required String body,
+}) async {
+  try {
+    await flnp.show(
+      // Id único por aviso: dos ofertas seguidas deben APILARSE, no
+      // reemplazarse (al revés que el chat, que colapsa por conversación).
+      id: DateTime.now().millisecondsSinceEpoch & 0x7fffffff,
+      title: title,
+      body: body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          kAlertsChannelId,
+          'Avisos de Jayalo',
+          channelDescription: 'Ofertas, billetera y avisos de tu cuenta',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+      payload: jsonEncode({'link': link}),
+    );
+  } catch (e) {
+    // Un aviso que no se puede pintar (plugin aún sin inicializar en la ventana
+    // de arranque) jamás debe tumbar la app que el usuario está usando.
+    debugPrint('No se pudo pintar el aviso: $e');
+  }
 }
 
 /// Notificación simple sin acción (confirmación de "Enviado"/"No se pudo").

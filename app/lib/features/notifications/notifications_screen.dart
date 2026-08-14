@@ -113,7 +113,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         _justArrivedId = n.id;
         _arrivedIds.add(n.id);
       });
-      notifCountStore.add(1);
+      // `refresh()` y no `add(1)`: con la app en foreground esta MISMA fila llega
+      // también por push, y el handler de push refresca el contador. Un `add(1)`
+      // aquí más un conteo allí dejaban el badge una unidad por encima. Los dos
+      // caminos preguntan ahora al servidor, así que convergen al mismo número
+      // sin importar cuál gane la carrera.
+      notifCountStore.refresh();
       // La animación de llegada dura ~1s (slide+fade+shimmer); pasado ese
       // tiempo se limpia _justArrivedId para que una segunda llegada no
       // reanime esta tarjeta. _arrivedIds recuerda que ya animó para que
