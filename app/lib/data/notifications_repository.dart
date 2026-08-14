@@ -24,16 +24,32 @@ Future<List<Map<String, dynamic>>> notificationsPage(int page) async {
       .range(page * notifPageSize, page * notifPageSize + notifPageSize - 1));
 }
 
+/// Ventana del badge, ESPEJO de `BADGE_WINDOW_DAYS` en la edge function
+/// `send-push`. El badge es un empujón ("tienes cosas recientes por ver"), no un
+/// histórico: sin ventana, las informativas que nadie abre (confirmaciones,
+/// billetera, bienvenidas) se acumulaban hasta números absurdos.
+///
+/// Tiene que valer lo mismo que en el servidor. Los dos escriben el badge del
+/// launcher —el servidor con cada push, la app en cada refresco— así que si las
+/// ventanas difieren el número SALTA entre dos verdades según quién escribió
+/// último.
+const notifBadgeWindowDays = 30;
+
 /// Conteo de no-leídas para el badge. `count` respeta los filtros e IGNORA
 /// limit/range, así que el `limit(1)` deja el payload en ~1 fila — el
 /// equivalente práctico del `head: true` que usa la web.
 Future<int> unreadNotificationsCount() async {
   final uid = supa.auth.currentUser!.id;
+  final since = DateTime.now()
+      .toUtc()
+      .subtract(const Duration(days: notifBadgeWindowDays))
+      .toIso8601String();
   final res = await supa
       .from('notifications')
       .select('id')
       .eq('user_id', uid)
       .isFilter('read_at', null)
+      .gte('created_at', since)
       .limit(1)
       .count(CountOption.exact);
   return res.count;
