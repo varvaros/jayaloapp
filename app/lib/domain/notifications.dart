@@ -154,6 +154,17 @@ String mapLinkToRoute(String link, {required bool provider}) {
   if (link == '/provider/offers' || link == '/provider?view=offers') {
     return '/provider/offers';
   }
+  // Avisos de saldo (`wallet_low_balance` / `wallet_empty`, en la whitelist de
+  // push desde el 2026-08-14): su copy dice "recarga ahora", así que el tap tiene
+  // que dejar al proveedor EN la tienda de créditos IN-APP. Sin esta rama caían
+  // al dashboard genérico y había que buscar la recarga a mano.
+  //
+  // Solo se mapea la forma con query. La otra que usan algunos triggers lleva
+  // la ruta del wallet WEB en el literal, y `no_link_out_test` prohíbe esa
+  // cadena en todo `lib/`: esa página tiene botones de PayPal y un solo call
+  // site la haría no publicable en Play. Si algún día se le da push a
+  // `wallet_recharged`, hay que cambiar el link EN EL TRIGGER, no aquí.
+  if (link == '/provider?panel=wallet') return '/tienda-creditos';
   if (link.startsWith('/provider')) return '/provider';
   return provider ? '/provider' : '/client';
 }

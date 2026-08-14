@@ -164,10 +164,13 @@ void main() {
       expect(mapLinkToRoute('/provider/offers', provider: true), '/provider/offers');
       expect(mapLinkToRoute('/provider?view=offers', provider: true), '/provider/offers');
     });
-    test('wallet y resto de /provider caen en /provider', () {
-      expect(mapLinkToRoute('/provider?panel=wallet', provider: true), '/provider');
-      expect(mapLinkToRoute('/provider/wallet', provider: true), '/provider');
+    test('los avisos de saldo llevan a la tienda de créditos, no al dashboard', () {
+      // Su copy dice "recarga ahora": el tap tiene que dejarte donde se recarga.
+      expect(mapLinkToRoute('/provider?panel=wallet', provider: true), '/tienda-creditos');
+    });
+    test('el resto de /provider cae en /provider', () {
       expect(mapLinkToRoute('/provider', provider: true), '/provider');
+      expect(mapLinkToRoute('/provider/history', provider: true), '/provider');
     });
     test('BUG (b): desconocido/vacío cae por ROL activo, no fijo /client', () {
       expect(mapLinkToRoute('/empleos/xyz', provider: true), '/provider');
