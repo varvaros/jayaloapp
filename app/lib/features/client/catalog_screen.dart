@@ -303,14 +303,16 @@ class _CatalogViewState extends State<CatalogView> {
                         right: 16,
                         top: 10,
                         bottom: 12 + navBarReservedSpace(context)),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
                       crossAxisSpacing: 11,
                       mainAxisSpacing: 11,
                       // 238 → 256: hueco para la fila de atributos
                       // (envío/estado/color) de la Variante A (PO 2026-08-11).
-                      mainAxisExtent: 256,
+                      // Ese 256 era fijo y el precio se salía por abajo con la
+                      // fuente del sistema en grande: ahora lo calcula la
+                      // tarjeta a partir de la escala tipográfica.
+                      mainAxisExtent: catalogGridCardExtent(context),
                     ),
                     itemCount: items.length,
                     itemBuilder: (_, i) =>

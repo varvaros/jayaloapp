@@ -212,6 +212,43 @@ class ProductListCard extends StatelessWidget {
       );
 }
 
+/// Alto de la foto de [ProductGridCard]: lo ÚNICO de la tarjeta que NO crece
+/// con la fuente del sistema.
+const double _kGridImageHeight = 118;
+
+/// Padding vertical del bloque de texto (10 arriba + 12 abajo).
+const double _kGridTextPadding = 22;
+
+/// Alto del bloque de texto de [ProductGridCard] a escala 1, en el CASO PEOR:
+/// eyebrow + nombre a 2 líneas + reputación + DOS renglones de atributos +
+/// precio, con sus huecos. Medido con el test de `product_list_card_test.dart`,
+/// que es quien vigila que siga alcanzando (el caso peor ocupa 261 con la
+/// tipografía del entorno de test, ~253 con Roboto: se toma la mayor + margen).
+const double _kGridTextBlock = 122;
+
+/// Alto de la celda de la rejilla del catálogo. La tarjeta vive en un
+/// `mainAxisExtent` FIJO y todo lo que va bajo la foto es texto, así que con
+/// la fuente del sistema en grande —o en una pantalla estrecha, donde la fila
+/// de atributos se parte en dos renglones— el bloque crecía, el precio se
+/// salía por debajo y quedaba recortado (reporte PO 2026-08-14). Con la fuente
+/// por defecto son 262 (6 más que el 256 aprobado — el margen que le faltaba a
+/// una tarjeta con dos renglones de atributos), y de ahí crece con el texto.
+double catalogGridCardExtent(BuildContext context) {
+  // Escala tipográfica efectiva (Android 14 la aplica de forma no lineal, por
+  // eso se mide sobre un tamaño representativo del bloque en vez de asumirla).
+  final scale = MediaQuery.textScalerOf(context).scale(13) / 13;
+  return _kGridImageHeight +
+      _kGridTextPadding +
+      _kGridTextBlock * scale.clamp(1.0, 1.8);
+}
+
+/// Alto de un renglón de la fila de atributos: el icono (12) o su texto a la
+/// escala del sistema, lo que mida más.
+double _attrRunHeight(BuildContext context) {
+  final text = MediaQuery.textScalerOf(context).scale(10) * 1.25;
+  return text < 12 ? 12 : text;
+}
+
 /// Tarjeta de REJILLA del catálogo (mockup aprobado PO 2026-08-10): la foto
 /// llena el ancho de la tarjeta arriba; abajo solo lo que decide un vistazo —
 /// categoría en eyebrow violeta, nombre a 2 líneas y precio. La descripción
@@ -299,12 +336,19 @@ class ProductGridCard extends StatelessWidget {
                       const Icon(Icons.star_rounded,
                           size: 13, color: Color(0xFFF5A623)),
                       const SizedBox(width: 3),
-                      Text('${avg.toStringAsFixed(1)} ($count)',
-                          style: TextStyle(
-                              fontSize: 11, color: cs.onSurfaceVariant)),
+                      // Flexible: con muchas reseñas y la fuente en grande
+                      // ("9.8 (1204)") la línea no cabe en media tarjeta —
+                      // se corta con puntos suspensivos en vez de desbordar.
+                      Flexible(
+                        child: Text('${avg.toStringAsFixed(1)} ($count)',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 11, color: cs.onSurfaceVariant)),
+                      ),
                     ]),
                   ],
-                  ?_attrsRow(cs),
+                  ?_attrsRow(context, cs),
                   const Spacer(),
                   _gridPrice(cs),
                 ],
@@ -322,7 +366,7 @@ class ProductGridCard extends StatelessWidget {
   /// El color sigue la regla de la ficha: la lista de `offer_defaults.colors`
   /// gana sobre la columna legada `color`. Texto en `onSurface` (no el muted):
   /// mismo motivo de contraste documentado en la descripción de la fila ancha.
-  Widget? _attrsRow(ColorScheme cs) {
+  Widget? _attrsRow(BuildContext context, ColorScheme cs) {
     final condition = item['condition'] as String?;
     final conditionLabel =
         condition == 'nuevo' ? 'Nuevo' : condition == 'usado' ? 'Usado' : null;
@@ -343,25 +387,35 @@ class ProductGridCard extends StatelessWidget {
     if (attrs.isEmpty) return null;
     return Padding(
       padding: const EdgeInsets.only(top: 5),
-      child: Wrap(spacing: 10, runSpacing: 3, children: [
-        for (final (icon, label) in attrs)
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 12, color: cs.onSurfaceVariant),
-            const SizedBox(width: 3.5),
-            ConstrainedBox(
-              // Una lista larga de colores se corta con puntos suspensivos en
-              // vez de reventar el ancho de la media tarjeta.
-              constraints: const BoxConstraints(maxWidth: 96),
-              child: Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: cs.onSurface)),
-            ),
+      // DOS renglones como máximo: la celda de la rejilla tiene alto fijo (ver
+      // [catalogGridCardExtent], que reserva justo esos dos), así que un tercer
+      // renglón —pantalla muy estrecha + fuente muy grande— se recorta aquí en
+      // vez de empujar el precio fuera de la tarjeta.
+      child: ClipRect(
+        child: ConstrainedBox(
+          constraints:
+              BoxConstraints(maxHeight: _attrRunHeight(context) * 2 + 3),
+          child: Wrap(spacing: 10, runSpacing: 3, children: [
+            for (final (icon, label) in attrs)
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 12, color: cs.onSurfaceVariant),
+                const SizedBox(width: 3.5),
+                ConstrainedBox(
+                  // Una lista larga de colores se corta con puntos suspensivos
+                  // en vez de reventar el ancho de la media tarjeta.
+                  constraints: const BoxConstraints(maxWidth: 96),
+                  child: Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: cs.onSurface)),
+                ),
+              ]),
           ]),
-      ]),
+        ),
+      ),
     );
   }
 
