@@ -55,13 +55,21 @@ bool isGroupEnd(List<ChatMessage> ms, int i) {
 
 // ── Texto ───────────────────────────────────────────────────────────────────
 
-/// Trim + quita caracteres de control + cap a [maxMessageLen]
-/// (espejo de sanitizeUserText + slice de la web).
+/// Trim + quita caracteres de control + cap a [maxMessageLen]. Espejo de
+/// `sanitizeChatText` + `truncateByCodePoints` de la web: los emojis se
+/// CONSERVAN (nunca se borraron aquí) y el corte va por runas.
+///
+/// `substring` cuenta unidades UTF-16, así que partía en dos el emoji que cayera
+/// en el carácter 300 y dejaba media pareja suelta; al codificar salía un
+/// carácter roto al final del mensaje.
 String sanitizeChatText(String raw) {
   final cleaned = raw
       .replaceAll(RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]'), '')
       .trim();
-  return cleaned.length > maxMessageLen ? cleaned.substring(0, maxMessageLen) : cleaned;
+  final runas = cleaned.runes.toList();
+  return runas.length > maxMessageLen
+      ? String.fromCharCodes(runas.take(maxMessageLen))
+      : cleaned;
 }
 
 /// SQLSTATE propio del anti-flood del servidor (trigger

@@ -2119,10 +2119,16 @@ Future<Map<String, String>> signChatImages(
   final results = await supa.storage
       .from('chat-media')
       .createSignedUrlsResult(unique.map(chatMediaPath).toList(), ttlSeconds);
+  // Se empareja por la RUTA que devuelve cada resultado, no por posición: así no
+  // depende de que el servidor conserve el orden de lo pedido.
+  final porRuta = <String, String>{
+    for (final r in results)
+      if (r is SignedUrlSuccess) r.path: r.signedUrl,
+  };
   final out = <String, String>{};
-  for (var i = 0; i < results.length && i < unique.length; i++) {
-    final r = results[i];
-    if (r is SignedUrlSuccess) out[unique[i]] = r.signedUrl;
+  for (final marker in unique) {
+    final url = porRuta[chatMediaPath(marker)];
+    if (url != null) out[marker] = url;
   }
   return out;
 }

@@ -530,6 +530,9 @@ class _ChatScreenState extends State<ChatScreen> {
       final rows = await messagesPage(widget.conversationId,
           beforeCreatedAt: cursor.$1, beforeId: cursor.$2, limit: _pageSize);
       _session.prependOlder(rows, _pageSize);
+      // Las fotos que entran con el historial también hay que firmarlas, o se
+      // quedan con el placeholder girando para siempre.
+      _resolveChatImages();
     } catch (_) {/* silencioso: el usuario puede reintentar scrolleando */} finally {
       if (mounted) setState(() => _loadingOlder = false);
     }

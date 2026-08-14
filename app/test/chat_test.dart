@@ -115,6 +115,17 @@ void main() {
     test('el marcador del bucket privado NO es pintable directo: se firma antes',
         () => expect(isRenderableImageSrc('chat-media:abc/1-2-chat.jpg'), isFalse));
   });
+  group('sanitizeChatText corta por runas', () {
+    test('no parte el emoji que cae en el límite', () {
+      final out = sanitizeChatText('${'a' * 299}👍');
+      expect(out.runes.length, 300);
+      expect(out.endsWith('👍'), isTrue);
+    });
+    test('conserva emojis y quita caracteres de control', () {
+      expect(sanitizeChatText('hola 👋'), 'hola 👋');
+      expect(sanitizeChatText('mal\x00\x07texto'), 'maltexto');
+    });
+  });
   group('marcador chat-media', () {
     test('reconoce el marcador que escribe la web', () {
       expect(isChatMediaMarker('chat-media:abc/1-2-chat.jpg'), isTrue);
