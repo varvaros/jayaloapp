@@ -62,8 +62,11 @@ class PortadaJayi extends StatefulWidget {
   State<PortadaJayi> createState() => _PortadaJayiState();
 }
 
+// TickerProviderStateMixin (no Single): el ticker se re-crea si el sistema
+// cambia "reducir animaciones" con el login montado, y el Single lanza en
+// debug a la segunda creación aunque la primera esté dispuesta.
 class _PortadaJayiState extends State<PortadaJayi>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   /// Segundos transcurridos; todos los relojes (47/61/53/44/58/13/4.8/7.3/6.4 s)
   /// derivan de aquí, así que un solo ticker mueve toda la portada.
   final ValueNotifier<double> _t = ValueNotifier(0);
@@ -227,90 +230,109 @@ class _Jayi extends StatelessWidget {
       final h = w * .81;
       final dpr = MediaQuery.devicePixelRatioOf(context);
       final cacheW = math.min((w * dpr).round(), 1024);
-      return AnimatedBuilder(
-        animation: time,
-        builder: (context, _) {
-          final t = time.value;
-          final float = -_breathe((t % 4.8) / 4.8) * h * .03;
-          final tilt = _breathe((t % 7.3) / 7.3) * 1.3 * math.pi / 180;
-          return Transform.rotate(
-            angle: tilt,
-            child: Transform.translate(
-              offset: Offset(0, float),
-              child: SizedBox(
-                width: w,
-                height: h,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    // Glow blanco que despega a Jayi del pattern.
-                    Positioned(
-                      left: w * .5 - w * .6,
-                      top: h * .52 - w * .6,
-                      width: w * 1.2,
-                      height: w * 1.2,
-                      child: const DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            colors: [
-                              Color(0xF2FFFFFF),
-                              Color(0x99FFFFFF),
-                              Color(0x00FFFFFF),
-                            ],
-                            stops: [0, .45, .68],
-                          ),
-                        ),
-                      ),
+      // Parte estática (glow + imagen recortada): va por `child` para que el
+      // AnimatedBuilder no la reconstruya 60 veces por segundo (hallazgo del
+      // verificador); el párpado sí depende del reloj y vive en el builder.
+      final staticPart = SizedBox(
+        width: w,
+        height: h,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // Glow blanco que despega a Jayi del pattern.
+            Positioned(
+              left: w * .5 - w * .6,
+              top: h * .52 - w * .6,
+              width: w * 1.2,
+              height: w * 1.2,
+              child: const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    // radius .707 = farthest-corner de CSS (ver _blob).
+                    radius: .707,
+                    colors: [
+                      Color(0xF2FFFFFF),
+                      Color(0x99FFFFFF),
+                      Color(0x00FFFFFF),
+                    ],
+                    stops: [0, .45, .68],
+                  ),
+                ),
+              ),
+            ),
+            ClipRect(
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: 0,
+                    top: -w * .27, // franja 18%–72% de la imagen
+                    width: w,
+                    child: Image.asset(
+                      'assets/images/jayi-hero.webp',
+                      width: w,
+                      cacheWidth: cacheW,
+                      filterQuality: FilterQuality.medium,
                     ),
-                    ClipRect(
-                      child: Stack(
-                        children: [
-                          Positioned(
-                            left: 0,
-                            top: -w * .27, // franja 18%–72% de la imagen
-                            width: w,
-                            child: Image.asset(
-                              'assets/images/jayi-hero.webp',
-                              width: w,
-                              cacheWidth: cacheW,
-                              filterQuality: FilterQuality.medium,
-                            ),
-                          ),
-                          // Párpado: ventana circular sobre el ojo por la que
-                          // baja y sube un degradado más oscuro que el cuerpo.
-                          Positioned(
-                            left: w * _eyeX - w * _lidD / 2,
-                            top: h * _eyeY - w * _lidD / 2,
-                            width: w * _lidD,
-                            height: w * _lidD,
-                            child: ClipOval(
-                              child: FractionalTranslation(
-                                translation:
-                                    Offset(0, _lidY((t % 6.4) / 6.4)),
-                                child: const DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                        Color(0xFF6233D8),
-                                        Color(0xFF4E23BB),
-                                      ],
-                                    ),
-                                  ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+      // RepaintBoundary: que el flote de Jayi no arrastre el repintado de la
+      // cabecera (que comparte capa con este subárbol).
+      return RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: time,
+          child: staticPart,
+          builder: (context, staticChild) {
+            final t = time.value;
+            final float = -_breathe((t % 4.8) / 4.8) * h * .03;
+            final tilt = _breathe((t % 7.3) / 7.3) * 1.3 * math.pi / 180;
+            return Transform.rotate(
+              angle: tilt,
+              child: Transform.translate(
+                offset: Offset(0, float),
+                child: SizedBox(
+                  width: w,
+                  height: h,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      staticChild!,
+                      // Párpado: ventana circular sobre el ojo por la que baja
+                      // y sube un degradado más oscuro que el cuerpo.
+                      Positioned(
+                        left: w * _eyeX - w * _lidD / 2,
+                        top: h * _eyeY - w * _lidD / 2,
+                        width: w * _lidD,
+                        height: w * _lidD,
+                        child: ClipOval(
+                          child: FractionalTranslation(
+                            translation: Offset(0, _lidY((t % 6.4) / 6.4)),
+                            child: const DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Color(0xFF6233D8),
+                                    Color(0xFF4E23BB),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       );
     });
   }
@@ -358,7 +380,10 @@ class _FondoPainter extends CustomPainter {
       double t, Offset baseCenter, double d, Color color, double stop) {
     final (dx, dy, s) = _sample(ruta, (t % period) / period);
     final center = baseCenter + Offset(dx * d, dy * d);
-    final r = d / 2 * s;
+    // 1.414: los stops % del radial-gradient de CSS son relativos al
+    // farthest-corner (0.707·d), no al radio (0.5·d). Sin esto las masas
+    // quedan ~29% más compactas que en el mockup (hallazgo del verificador).
+    final r = d / 2 * 1.414 * s;
     final paint = Paint()
       ..shader = RadialGradient(
         colors: [color, color.withValues(alpha: 0)],

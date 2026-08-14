@@ -36,11 +36,15 @@ void main() {
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(app());
-    // Instantes clave: arranque, mitad del flote, el parpadeo del ciclo de
-    // 6.4 s (cierra hacia t=2.69), y pasada la primera vuelta del vaivén.
-    for (final ms in [0, 500, 2400, 2690, 2800, 5000, 13500]) {
-      await tester.pump(Duration(milliseconds: ms == 0 ? 16 : ms));
-      expect(tester.takeException(), isNull, reason: 't=$ms ms');
+    // OJO: pump(Duration) AVANZA el reloj (delta, no absoluto). Acumulados:
+    // 0.016 → 0.516 → 2.716 (párpado CERRADO: ventana 2.688–2.784 del ciclo
+    // de 6.4 s) → 2.806 (rampa de apertura) → 5.006 → 13.506 (tras una
+    // vuelta del vaivén).
+    var acumulado = 0;
+    for (final ms in [16, 500, 2200, 90, 2200, 8500]) {
+      acumulado += ms;
+      await tester.pump(Duration(milliseconds: ms));
+      expect(tester.takeException(), isNull, reason: 't=$acumulado ms');
     }
     expect(find.text('Todo comienza con una idea'), findsOneWidget);
     expect(
