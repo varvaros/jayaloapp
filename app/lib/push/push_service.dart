@@ -165,6 +165,13 @@ Future<void> initPush(GoRouter router) async {
         return;
       }
 
+      // La campana cuenta TODAS las no leídas, incluidas las de chat, así que se
+      // refresca para cualquier kind. `refresh()` (conteo del SERVIDOR) y nunca
+      // `add(1)`: la pantalla de notificaciones también reacciona a la MISMA
+      // fila por realtime, y sumar en los dos lados dejaba el contador una
+      // unidad por encima. Dos `refresh()` concurrentes convergen.
+      notifCountStore.refresh();
+
       if (kind == 'message_new') {
         // Va ANTES del return de abajo: dentro del chat es justo cuando más
         // falta hace que el badge de la pestaña quede al día.
@@ -179,11 +186,6 @@ Future<void> initPush(GoRouter router) async {
         return;
       }
 
-      // Resto de avisos. `refresh()` (conteo del SERVIDOR) y NUNCA `add(1)`: la
-      // pantalla de notificaciones incrementa por su cuenta desde el realtime,
-      // sobre la MISMA fila que disparó este push — sumar aquí lo contaría dos
-      // veces. Dos `refresh()` concurrentes convergen al mismo número.
-      notifCountStore.refresh();
       // El título y el cuerpo viajan en el bloque `notification`, NO en `data`
       // (send-push solo mete link/kind/conversation_id en data). Leerlos de
       // `data` dejaría el aviso en blanco.
