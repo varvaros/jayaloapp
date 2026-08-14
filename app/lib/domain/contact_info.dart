@@ -36,13 +36,52 @@ final String _guionesUnicode =
     '${String.fromCharCode(0x2010)}-${String.fromCharCode(0x2015)}'
     '${String.fromCharCode(0x2212)}';
 
-// Los separadores que se eliminan (espeja `SEPARADORES` del TS): espacio,
-// punto, guion ASCII, parentesis, espacio duro, coma y la familia de guiones
-// Unicode. NUNCA letras -- ver el comentario en [containsContactInfo]. `/` y
-// `_` NO entran a proposito (fusionarian numeros legitimos: "pieza
-// 809/5551234") -- decision aparte.
-final RegExp _separadores = RegExp('[ .\\-()$_nbsp,$_guionesUnicode]');
-final RegExp _telRd = RegExp(r'(\+?1)?(809|829|849)[0-9]{7}');
+// Los separadores que se eliminan (espeja `SEPARADORES` del TS): punto, guion
+// ASCII, parentesis, espacio duro, coma y la familia de guiones Unicode.
+// NUNCA letras -- ver el comentario en [containsContactInfo].
+//
+// ⚠️ v2 (2026-08-14): el ESPACIO ya NO se elimina. Es el nucleo del arreglo, y
+// es un cambio de UN caracter facil de pasar por alto en una revision: si
+// alguien devuelve el espacio a esta clase, la app deja de bloquear
+// "8 0 9 5 5 5 1 2 3 4" mientras la BD si lo bloquea, y el usuario pierde lo
+// escrito. Hay un test que lo afirma explicitamente.
+/// Los 6 INVISIBLES que hay que borrar por PARIDAD, no por estetica: son
+/// exactamente los codepoints en los que `\s` de Dart/ECMAScript y
+/// `[[:space:]]` de glibc NO coinciden (glibc incluye 1C..1F y 0085 pero NO
+/// FEFF; Dart al reves). Sin borrarlos, `809 + U+FEFF + 8675309` lo BLOQUEABA el
+/// SQL y lo dejaban pasar TS y Dart -- la divergencia en la PEOR direccion: el
+/// formulario acepta, la BD rechaza y el usuario pierde lo escrito despues de
+/// subir fotos. Y un BOM se cuela solo al pegar desde Word.
+final String _invisibles = '${String.fromCharCode(0xFEFF)}'
+    '${String.fromCharCode(0x85)}'
+    '${String.fromCharCode(0x1C)}-${String.fromCharCode(0x1F)}';
+
+final RegExp _separadores =
+    RegExp('[.\\-()$_nbsp,$_guionesUnicode$_invisibles]');
+
+/// HUECO admitido entre dos digitos del telefono (espeja `HUECO` del TS y el
+/// `replace(..., 'H', ...)` de la migracion). Existe porque "809 x 1234567"
+/// (medida legitima) y "809x8675309" (evasion) son la MISMA forma. Al dejar de
+/// borrar el espacio, la diferencia aparece sola: el caracter de una evasion va
+/// PEGADO, el de una medida va ESPACIADO.
+///   1) `[ \t]+` espacios/tabs, NUNCA salto de linea (frontera dura: sin eso,
+///      las viñetas y listas numeradas que compone la MAQUINA se fusionaban).
+///      Sin esta rama se cae "8 0 9 5 5 5 1 2 3 4".
+///   2) `[^0-9\s]+` basura PEGADA. Es el ticket. Con `+` porque un emoji con
+///      tono de piel son DOS code points.
+///   3) simbolo de teclado telefonico entre espacios (lista BLANCA: admitir
+///      cualquiera devolveria el falso positivo de las viñetas).
+const String _hueco = r'(?:[ \t]+|[^0-9\s]+|[ \t]*[*/#:;_+][ \t]*)?';
+
+/// El hueco cubre CADA par de digitos, incluido el prefijo: si solo cubriera los
+/// 7 finales, "8 0 9 5 5 5 1 2 3 4" se escaparia -- una regresion.
+/// `unicode: true` es OBLIGATORIO: sin el, un emoji fuera del BMP se parte en
+/// dos unidades UTF-16 y el veredicto diverge del servidor.
+final RegExp _telRd = RegExp(
+  '(?:\\+?1$_hueco)?8$_hueco(?:0|2|4)$_hueco'
+  '9(?:$_hueco[0-9]){7}',
+  unicode: true,
+);
 final RegExp _whatsapp = RegExp(
   r'(wa\.me/|api\.whatsapp\.com|chat\.whatsapp\.com)',
   caseSensitive: false,
