@@ -2479,7 +2479,7 @@ myBusinessProfile() async {
         'whatsapp_verified_at,category_id,city,is_wholesale,description,'
         'business_type,experience_years,founded_year,employees_count,'
         'service_area,service_hours,languages,payment_methods,warranty,'
-        'services',
+        'services,offers,profession,team_photos',
       )
       .eq('user_id', uid)
       .limit(1)
@@ -2633,6 +2633,13 @@ Future<String?> providerBusinessType(String businessId) async {
 /// del negocio, de lectura pública — viene en el mismo select principal
 /// (Task 1: `provider_businesses.services text[]` ya aplicada en prod), sin
 /// un segundo viaje a la red.
+///
+/// `offers`, `profession` y `team_photos` (Task 9, 2026-08-14 — paridad del
+/// perfil diferenciado técnico vs. tienda) van en `raw`, no como campos
+/// propios: `offers` alimenta `profileSections` (orden/presencia de
+/// productos/servicios/paquetes) y `team_photos` la galería del equipo,
+/// visible solo si `business_type == 'tecnico'`. Las tres columnas ya tienen
+/// `GRANT SELECT` para `anon`/`authenticated` en prod.
 typedef BusinessIdentity = ({
   String name,
   String? logoUrl,
@@ -2647,7 +2654,8 @@ Future<BusinessIdentity?> businessPublicIdentity(String businessId) async {
       .select(
         'name,logo_url,cover_url,is_wholesale,business_type,experience_years,'
         'founded_year,employees_count,service_area,service_hours,languages,'
-        'payment_methods,warranty,category_id,city,services',
+        'payment_methods,warranty,category_id,city,services,offers,'
+        'profession,team_photos',
       )
       .eq('id', businessId)
       .maybeSingle();

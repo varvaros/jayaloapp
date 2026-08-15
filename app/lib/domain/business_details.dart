@@ -20,6 +20,7 @@ typedef BusinessDetailRow = ({
 /// interpretar la etiqueta.
 enum BusinessDetailKind {
   wholesale,
+  profession,
   experience,
   founded,
   team,
@@ -86,6 +87,20 @@ List<BusinessDetailRow> businessDetailRows(
       kind: BusinessDetailKind.wholesale,
       label: 'Ventas',
       value: 'Al por mayor',
+    ));
+  }
+
+  // Sin gate por `business_type` (paridad exacta con `BusinessDetailsCard
+  // .tsx`, web): se muestra si hay dato, sea cual sea el tipo de negocio.
+  // En la práctica es un campo de `tecnico`/`informal` (decisión PO
+  // 2026-08-14, Task 9): "informal → como el técnico [...] manteniendo
+  // número de empleados" — profesión incluida.
+  final profession = (business['profession'] as String?)?.trim();
+  if (profession != null && profession.isNotEmpty) {
+    rows.add((
+      kind: BusinessDetailKind.profession,
+      label: 'Profesión',
+      value: profession,
     ));
   }
 

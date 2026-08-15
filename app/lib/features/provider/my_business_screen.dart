@@ -10,6 +10,7 @@ import '../../core/error_reporter.dart';
 import '../../core/safe_image_picker.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
+import '../../domain/profile_sections.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/business_cover_hero.dart';
@@ -17,6 +18,7 @@ import '../shared/business_details_card.dart';
 import '../shared/local_image_guard.dart';
 import '../shared/product_list_card.dart';
 import '../shared/service_chips_editor.dart';
+import '../shared/team_gallery_block.dart';
 import '../shared/text_editor_sheet.dart';
 import '../shared/tile_carril.dart';
 import '../shared/violet_header.dart';
@@ -641,6 +643,10 @@ class _MyBusinessViewState extends State<MyBusinessView> {
           onTap: _editServices,
         ).cascadeIn(2),
         BusinessDetailsCard(business: b.raw).cascadeIn(3),
+        // Galería del equipo (Task 9, 2026-08-14): solo `tecnico` y solo si
+        // ya hay fotos — sin edición desde aquí en esta tarea (paridad de
+        // LECTURA; el alta de fotos queda para otra tarea).
+        ?_teamGallery(b),
         // «Editar en la web» se quitó (pedido PO 2026-08-10): la tienda ya se
         // edita completa desde la app; el editor web sigue existiendo pero no
         // se promociona desde aquí.
@@ -650,12 +656,21 @@ class _MyBusinessViewState extends State<MyBusinessView> {
         // en la app porque alimenta ofertas más rápidas.
         if (widget.onAddItem != null)
           _AddToStoreCard(onChoose: _chooseKind).cascadeIn(4),
-        const SectionHeader(text: 'PRODUCTOS'),
-        ..._itemsOrEmpty(widget.productos, 'Aún no tienes productos.',
-            'producto', 'Añadir producto'),
-        const SectionHeader(text: 'SERVICIOS'),
-        ..._itemsOrEmpty(widget.servicios, 'Aún no tienes servicios.',
-            'servicio', 'Añadir servicio'),
+        // PRODUCTOS/SERVICIOS: orden según `offers` (puerto Dart de
+        // `profileSections`, regla anti-inferencia) — el DUEÑO ve ambas
+        // secciones SIEMPRE, aunque estén vacías (`includeEmpty: true`), para
+        // poder publicar desde su propio perfil. PAQUETES/TRABAJOS quedan
+        // fuera de este orden, mismo trato que la tienda pública y la web.
+        for (final section in _catalogOrder(b))
+          if (section == ProfileSection.productos) ...[
+            const SectionHeader(text: 'PRODUCTOS'),
+            ..._itemsOrEmpty(widget.productos, 'Aún no tienes productos.',
+                'producto', 'Añadir producto'),
+          ] else if (section == ProfileSection.servicios) ...[
+            const SectionHeader(text: 'SERVICIOS'),
+            ..._itemsOrEmpty(widget.servicios, 'Aún no tienes servicios.',
+                'servicio', 'Añadir servicio'),
+          ],
         const SectionHeader(text: 'PAQUETES'),
         ..._packagesOrAdd(widget.paquetes),
         const SectionHeader(text: 'TRABAJOS'),
@@ -697,6 +712,26 @@ class _MyBusinessViewState extends State<MyBusinessView> {
     if (kind == null) return;
     await widget.onAddItem?.call(kind);
   }
+
+  /// Orden de PRODUCTOS/SERVICIOS para el DUEÑO (puerto Dart de
+  /// `profileSections`, `includeEmpty: true`): ambas secciones se pintan
+  /// SIEMPRE, en el orden de `offers`, aunque estén vacías — así el dueño
+  /// puede publicar desde su propio perfil sin que la regla anti-inferencia
+  /// (que sí aplica al visitante) le esconda una sección propia.
+  List<ProfileSection> _catalogOrder(StoreProfile b) => profileSections(
+        offers: b.raw['offers'] as String?,
+        productCount: widget.productos.length,
+        serviceCount: widget.servicios.length,
+        packageCount: widget.paquetes.length,
+        includeEmpty: true,
+      );
+
+  /// Galería del equipo (Task 9, 2026-08-14) — `null` si no corresponde
+  /// pintar nada (ver [TeamGalleryBlock.maybe]).
+  Widget? _teamGallery(StoreProfile b) => TeamGalleryBlock.maybe(
+        businessType: b.raw['business_type'] as String?,
+        teamPhotos: (b.raw['team_photos'] as List?)?.cast<String>(),
+      );
 
   /// Productos/servicios propios + la fila «+ Añadir …» al final, cuando el
   /// dueño puede crear (`onAddItem` cableado) — mismo patrón que

@@ -26,6 +26,7 @@ class BusinessDetailsCard extends StatelessWidget {
 
   static IconData _iconFor(BusinessDetailKind k) => switch (k) {
         BusinessDetailKind.wholesale => Icons.inventory_2_outlined,
+        BusinessDetailKind.profession => Icons.engineering_outlined,
         BusinessDetailKind.experience => Icons.workspace_premium_outlined,
         BusinessDetailKind.founded => Icons.event_outlined,
         BusinessDetailKind.team => Icons.groups_outlined,

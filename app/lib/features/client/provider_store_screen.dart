@@ -4,12 +4,14 @@ import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
+import '../../domain/profile_sections.dart';
 import '../shared/brand_kit.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
 import '../shared/portfolio_gallery_viewer.dart';
 import '../shared/product_list_card.dart';
 import '../shared/service_chips_editor.dart';
+import '../shared/team_gallery_block.dart';
 import '../shared/tile_carril.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
@@ -365,13 +367,31 @@ class ProviderStoreView extends StatelessWidget {
     );
   }
 
+  /// Orden y presencia de PRODUCTOS/SERVICIOS (regla anti-inferencia, puerto
+  /// Dart de `profileSections`): una sección se pinta si tiene filas;
+  /// `offers` solo decide el orden y, con todo vacío, cuál sección enseña el
+  /// estado vacío. PAQUETES/TRABAJOS quedan FUERA de este orden — mismo
+  /// tratamiento que `business.$id.tsx` (web): siguen su bloque propio, sin
+  /// reordenarse, siempre después de productos/servicios.
+  List<ProfileSection> get _catalogOrder => profileSections(
+        offers: identity?.raw['offers'] as String?,
+        productCount: productos.length,
+        serviceCount: servicios.length,
+        packageCount: paquetes.length,
+      );
+
   @override
   Widget build(BuildContext context) {
     final repCard = _repCard(context);
     final physicalBadge = _physicalLocationBadge(context);
     final servicesBlock = _servicesBlock();
+    final teamGallery = TeamGalleryBlock.maybe(
+      businessType: identity?.raw['business_type'] as String?,
+      teamPhotos: (identity?.raw['team_photos'] as List?)?.cast<String>(),
+    );
     final catalogEmpty =
         productos.isEmpty && servicios.isEmpty && paquetes.isEmpty && trabajos.isEmpty;
+    final order = _catalogOrder;
     return CustomScrollView(slivers: [
       SliverToBoxAdapter(
         child: BusinessCoverHero(
@@ -385,11 +405,15 @@ class ProviderStoreView extends StatelessWidget {
       if (servicesBlock != null) SliverToBoxAdapter(child: servicesBlock),
       if (repCard != null) SliverToBoxAdapter(child: repCard),
       if (physicalBadge != null) SliverToBoxAdapter(child: physicalBadge),
+      if (teamGallery != null) SliverToBoxAdapter(child: teamGallery),
       SliverToBoxAdapter(
         child: BusinessDetailsCard(business: identity?.raw ?? const {}),
       ),
-      if (productos.isNotEmpty) ..._itemsSection('PRODUCTOS', productos),
-      if (servicios.isNotEmpty) ..._itemsSection('SERVICIOS', servicios),
+      for (final section in order)
+        if (section == ProfileSection.productos && productos.isNotEmpty)
+          ..._itemsSection('PRODUCTOS', productos)
+        else if (section == ProfileSection.servicios && servicios.isNotEmpty)
+          ..._itemsSection('SERVICIOS', servicios),
       if (paquetes.isNotEmpty) ..._carrilSection('PAQUETES', paquetes,
           height: kPackageCarrilHeight,
           tileBuilder: (p) => PackageTile(
