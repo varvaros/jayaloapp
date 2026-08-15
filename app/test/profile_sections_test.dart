@@ -70,8 +70,8 @@ void main() {
       );
     });
 
-    test('todo vacío: deja UNA sección para el estado vacío, según offers',
-        () {
+    test('todo vacío: lista vacía, no una sección fantasma (fix 2026-08-14 '
+        '— espejo del fix de la web en storefront.ts)', () {
       expect(
         profileSections(
           offers: 'servicios',
@@ -79,7 +79,7 @@ void main() {
           serviceCount: 0,
           packageCount: 0,
         ),
-        [ProfileSection.servicios],
+        <ProfileSection>[],
       );
       expect(
         profileSections(
@@ -88,7 +88,7 @@ void main() {
           serviceCount: 0,
           packageCount: 0,
         ),
-        [ProfileSection.productos],
+        <ProfileSection>[],
       );
     });
 
@@ -109,7 +109,7 @@ void main() {
           serviceCount: 0,
           packageCount: 0,
         ),
-        [ProfileSection.productos],
+        <ProfileSection>[],
       );
     });
 

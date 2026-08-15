@@ -58,5 +58,5 @@ List<ProfileSection> profileSections({
     ProfileSection.paquetes: packageCount,
   };
   final withContent = order.where((s) => counts[s]! > 0).toList();
-  return withContent.isNotEmpty ? withContent : [order.first];
+  return withContent;
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'network_image.dart';
 import 'portfolio_gallery_viewer.dart';
 
 /// Galería del equipo (PO 2026-08-14, Task 9 — paridad del perfil
@@ -69,11 +70,18 @@ class TeamGalleryBlock extends StatelessWidget {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
+                    child: JayaloNetworkImage(
                       url,
                       width: 88,
                       height: 88,
                       fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Container(
+                        width: 88,
+                        height: 88,
+                        color: cs.surfaceContainerHighest,
+                        child: Icon(Icons.person_outline,
+                            color: cs.onSurfaceVariant),
+                      ),
                     ),
                   ),
                 ),
