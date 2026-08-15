@@ -50,6 +50,12 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   final _profession = TextEditingController(); // solo técnico
   String _offers = 'productos'; // productos | servicios | ambos
   bool _wholesale = false;
+  // Sello "Tienda física" (PO 2026-08-14) — AUTODECLARADO, paridad con la web
+  // y con el cotejo que ya existe en el landing público del proveedor
+  // (`provider_store_screen.dart`). La RPC `complete_provider_onboarding` ya
+  // acepta `has_physical_location` en producción; sin este campo en el
+  // cotejo, ese soporte de la RPC queda muerto.
+  bool _hasPhysicalLocation = false;
 
   // Paso 2 — qué vendes y dónde
   final List<String> _categories = [];
@@ -405,6 +411,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           'rubros': _rubros,
           'name': _name.text.trim(),
           'is_wholesale': _wholesale,
+          'has_physical_location': _hasPhysicalLocation,
           'rnc': _businessType == 'formal' ? _rnc.text.trim() : '',
           'description': '',
           'whatsapp': phoneE164,
@@ -598,6 +605,15 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           value: _wholesale,
           onChanged: (v) => setState(() => _wholesale = v),
         ),
+      // Sello "Tienda física" — AUTODECLARADO (nadie lo comprueba), se pinta
+      // después en teal, nunca con el verde de verificación (ver brand.dart).
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('¿Tienes tienda física?'),
+        subtitle: const Text('Un local abierto al público, no solo domicilio.'),
+        value: _hasPhysicalLocation,
+        onChanged: (v) => setState(() => _hasPhysicalLocation = v),
+      ),
     ]);
   }
 
