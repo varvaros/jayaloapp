@@ -37,6 +37,51 @@ void main() {
     expect(guardado!['lng'], -69.9312);
   });
 
+  testWidgets('si la carga falla NO deja guardar (no machaca la direccion buena)',
+      (t) async {
+    var guardadas = 0;
+    await t.pumpWidget(MaterialApp(
+      home: AddressScreen(
+        load: () async => throw Exception('sin red'),
+        save: (m) async => guardadas++,
+      ),
+    ));
+    await t.pumpAndSettle();
+
+    // El formulario NO se pinta: en blanco es indistinguible de "no tengo
+    // direccion", y guardar ese blanco escribia NULL sobre city/sector/street/
+    // street_number/address_reference.
+    expect(find.text('No pudimos cargar tu dirección'), findsOneWidget);
+    expect(find.byKey(const Key('campo-referencia')), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Guardar'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Reintentar'), findsOneWidget);
+    expect(guardadas, 0);
+  });
+
+  testWidgets('Reintentar vuelve a cargar y entonces si guarda', (t) async {
+    var intentos = 0;
+    Map<String, dynamic>? guardado;
+    await t.pumpWidget(MaterialApp(
+      home: AddressScreen(
+        load: () async {
+          intentos++;
+          if (intentos == 1) throw Exception('sin red');
+          return {'address': 'Calle Primera 12', 'city': 'Santo Domingo Este'};
+        },
+        save: (m) async => guardado = m,
+      ),
+    ));
+    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(FilledButton, 'Reintentar'));
+    await t.pumpAndSettle();
+
+    expect(find.text('No pudimos cargar tu dirección'), findsNothing);
+    await t.tap(find.text('Guardar'));
+    await t.pumpAndSettle();
+    expect(guardado!['address'], 'Calle Primera 12');
+    expect(guardado!['city'], 'Santo Domingo Este');
+  });
+
   group('applyGeocodedPlace (hallazgo 1: geocode parcial no debe borrar)', () {
     test('city y sector vacios en el geocode conservan lo que ya habia', () {
       final applied = applyGeocodedPlace(

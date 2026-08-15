@@ -21,6 +21,7 @@ import '../../domain/rubro_choices.dart';
 import '../../core/motion.dart';
 import '../../core/safe_image_picker.dart';
 import '../../domain/contact_info.dart';
+import '../../domain/demand_guard.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/request_progress.dart';
 import '../../domain/request_seed.dart';
@@ -818,10 +819,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       releaseUnsavedGuard(this);
       setState(() => _submitted = true);
     } catch (e) {
-      // Red de seguridad: si el aviso previo no atrapó algo, el trigger de la
-      // BD (JY422) sí lo bloquea — traducir su SQLSTATE al mismo mensaje
-      // humano en vez del genérico de abajo.
-      _toast(isContactInfoError(e) ? contactInfoMessage : 'No se pudo enviar la solicitud.');
+      // Red de seguridad: si el aviso previo no atrapó algo, los triggers de
+      // la BD sí lo bloquean — traducir su SQLSTATE al mensaje humano en vez
+      // del genérico de abajo. JY422 = contacto; JY423 = "esto es una venta,
+      // no una solicitud" (solo demanda, PO 2026-08-13).
+      _toast(
+        isContactInfoError(e)
+            ? contactInfoMessage
+            : isOfferNotAllowedError(e)
+            ? offerNotAllowedMessage
+            : 'No se pudo enviar la solicitud.',
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }

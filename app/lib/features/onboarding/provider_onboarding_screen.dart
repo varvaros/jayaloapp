@@ -19,6 +19,7 @@ import '../shared/brand_kit.dart';
 import '../shared/location_coverage_picker.dart';
 import '../shared/searchable_picker.dart';
 import '../shared/violet_header.dart';
+import '../verification/otp_sheet.dart';
 
 /// Alta de proveedor (spec §7): pasos que SOLO recolectan; la única escritura
 /// es la RPC atómica `complete_provider_onboarding` al final (ADR-0029) —
@@ -366,6 +367,32 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     }
     setState(() => _busy = true);
     try {
+      // OTP BLOQUEANTE (decisión PO 2026-08-12): nadie pasa el registro sin
+      // confirmar su número, ni cliente ni proveedor. Mismo sitio y misma hoja
+      // que el alta de consumidor (consumer_onboarding_screen `_submit`).
+      //
+      // Abandonar aquí NO deja negocio ni billetera — la RPC de abajo ni se
+      // llama. Lo que SÍ queda: (1) la fila de `profiles`, que ya existía desde
+      // el alta de la cuenta — el trigger `handle_new_user` la inserta SIEMPRE,
+      // fuera del bloque del negocio, y por eso hay perfiles en prod con 0
+      // negocios; y (2) la fila de `account_verifications`, porque `send-otp`
+      // persiste ANTES de llamar a Twilio, a propósito (cierra el bypass de
+      // spam). Las dos son inocuas: el siguiente intento las actualiza.
+      //
+      // Sin `businessId`: el negocio todavía no existe (lo crea la RPC de
+      // abajo) y lo que se confirma es el número de la CUENTA — la fila
+      // personal de `account_verifications` (business_id nulo), el único número
+      // confirmado por cuenta.
+      //
+      // La insignia pública del negocio la enciende la BD sola: el trigger
+      // `provider_businesses_seal_wa` (migración 20260813050000, decisión del
+      // PO) copia el sello personal al crear el negocio si el número coincide.
+      // Aquí solo hay que confirmar el número de la CUENTA.
+      final verified = await showOtpSheet(context, phone: phoneE164);
+      if (!verified) {
+        if (mounted) _snack('Confirma tu WhatsApp para crear la cuenta.');
+        return;
+      }
       await completeProviderOnboarding(
         firstName: _first.text.trim(),
         lastName: _last.text.trim(),

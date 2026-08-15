@@ -1,7 +1,10 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/error_reporter.dart';
 import '../../core/geocode_client.dart';
 import '../../data/repos.dart';
 import '../../domain/geo.dart' show GeocodedPlace;
@@ -111,6 +114,14 @@ class _AddressScreenState extends State<AddressScreen> {
   bool _saving = false;
   bool _locating = false;
 
+  // Si la lectura del perfil falla, el formulario queda VACIO — indistinguible
+  // de un perfil sin direccion. Guardar sobre ese formulario mandaba
+  // `updateMyAddress` con todo en blanco y `city`/`sector`/`street`/
+  // `street_number`/`address_reference` se escribian NULL encima de la
+  // direccion buena. Con esto el guardado se bloquea hasta que la carga
+  // funcione: se pierde un intento de guardar, no la direccion del usuario.
+  bool _loadFailed = false;
+
   @override
   void initState() {
     super.initState();
@@ -146,6 +157,8 @@ class _AddressScreenState extends State<AddressScreen> {
       );
 
   Future<void> _bootstrap() async {
+    if (mounted) setState(() => _loading = true);
+    _loadFailed = false;
     try {
       final row = await (widget.load ?? _defaultLoad)();
       if (row != null) {
@@ -158,9 +171,12 @@ class _AddressScreenState extends State<AddressScreen> {
         _lat = (row['lat'] as num?)?.toDouble();
         _lng = (row['lng'] as num?)?.toDouble();
       }
-    } catch (_) {
-      // Best-effort: si falla la carga, la pantalla igual se abre vacia y el
-      // usuario puede escribir su direccion desde cero.
+    } catch (e, s) {
+      // NO es best-effort: una carga fallida deja el formulario vacio, y
+      // guardar ese vacio borra la direccion que si estaba en la BD. Se marca
+      // para bloquear el guardado y se reporta (antes se tragaba entero).
+      _loadFailed = true;
+      unawaited(reportError(e, s));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -223,6 +239,10 @@ class _AddressScreenState extends State<AddressScreen> {
   }
 
   Future<void> _save() async {
+    if (_loadFailed) {
+      _snack('No pudimos leer tu dirección actual. Reintenta la carga antes de guardar.');
+      return;
+    }
     setState(() => _saving = true);
     try {
       final map = <String, dynamic>{
@@ -264,13 +284,15 @@ class _AddressScreenState extends State<AddressScreen> {
         Expanded(
           child: _loading
               ? const Center(child: JayaloSpinner(size: 28))
-              : _form(context),
+              : _loadFailed
+                  ? _loadError(context)
+                  : _form(context),
         ),
         // "Guardar" queda FIJO abajo, fuera del scroll: si se metiera dentro
         // del ListView, un formulario largo podria dejarlo fuera de la
         // pantalla inicial sin que el usuario (o un test) supiera que hay que
         // bajar para encontrarlo.
-        if (!_loading)
+        if (!_loading && !_loadFailed)
           SafeArea(
             top: false,
             child: Padding(
@@ -284,6 +306,41 @@ class _AddressScreenState extends State<AddressScreen> {
             ),
           ),
       ]),
+    );
+  }
+
+  // Pantalla de fallo de carga. Se muestra EN LUGAR del formulario a proposito:
+  // dejar escribir en un formulario que no se puede guardar sin borrar datos es
+  // peor que no mostrarlo. Sin boton "Guardar" (ver el `if` del build).
+  Widget _loadError(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off, size: 40),
+            const SizedBox(height: 12),
+            const Text(
+              'No pudimos cargar tu dirección',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'No la editamos a ciegas para no borrar la que ya tienes guardada. '
+              'Revisa tu conexión y vuelve a intentarlo.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _bootstrap,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reintentar'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
