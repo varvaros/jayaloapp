@@ -75,36 +75,30 @@ class _OtpSheetState extends State<_OtpSheet> {
   Future<void> _listenForCode() async {
     if (!Platform.isAndroid) return;
     try {
-      // Un reenvío arma un segundo escucha sobre la MISMA API de Google. Sin
-      // retirar el anterior quedan dos registrados y el nuevo puede no recibir
-      // nada, así que el autocompletado dejaba de funcionar justo después de
-      // pulsar "Reenviar código".
-      await _smartAuth.removeSmsRetrieverApiListener();
-    } catch (_) {
-      // Si no había ninguno puesto, retirar es un no-op que puede lanzar.
-    }
-    try {
       final res = await _smartAuth.getSmsWithRetrieverApi(matcher: r'\d{6}');
       if (!mounted) return;
       final code = res.data?.code;
       if (res.hasData && code != null && RegExp(r'^\d{6}$').hasMatch(code)) {
         setState(() => _code.text = code);
-        // Auto-verifica solo si no hay otra operación en curso; si la hay,
-        // queda anotado y `_send` lo dispara al terminar.
         if (!_sending && !_verifying) {
           _verify();
-        } else {
+        } else if (_sending) {
+          // Queda anotado y `_send` lo dispara al terminar.
           _pendingAutoVerify = true;
         }
+        // Si hay un `verifyOtp` EN VUELO no se anota nada: el único que
+        // consume la anotación es `_send`, así que quedaría colgada hasta el
+        // próximo envío. El código ya está puesto en el campo y el botón
+        // "Verificar" queda disponible en cuanto termine el intento anterior.
       }
     } catch (_) {
       // Best-effort: cualquier fallo del retriever cae al tipeo manual.
     }
   }
 
-  void _startCountdown() {
+  void _startCountdown({int seconds = 60}) {
     _timer?.cancel();
-    setState(() => _resendIn = 60);
+    setState(() => _resendIn = seconds);
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return t.cancel();
       setState(() => _resendIn--);
@@ -124,19 +118,32 @@ class _OtpSheetState extends State<_OtpSheet> {
     // no lo ve nunca. Sin `await` a propósito — el Future solo resuelve cuando
     // llega el SMS.
     unawaited(_listenForCode());
+    var sentOk = false;
     try {
       final channel = await sendOtp(phone: widget.phone, businessId: widget.businessId);
+      sentOk = true;
       if (mounted) setState(() => _channel = channel);
       _startCountdown();
     } catch (e) {
       if (mounted) {
         setState(() =>
             _error = e.toString().replaceFirst('Exception: ', ''));
+        // Throttle TAMBIÉN al fallar. Si no, el botón "Reenviar" queda
+        // habilitado en el mismo frame (el contador solo arrancaba en el
+        // camino de éxito) y cinco toques seguidos agotan el tope de 5/15min
+        // del servidor: el usuario acaba bloqueado un cuarto de hora en el
+        // primer minuto de vida de su cuenta. Es más corto que los 60s del
+        // éxito porque el servidor deshace su cooldown cuando el envío falla,
+        // y un microcorte de red no merece el castigo completo.
+        _startCountdown(seconds: 15);
       }
     } finally {
       if (mounted) setState(() => _sending = false);
     }
-    if (mounted && _pendingAutoVerify && !_verifying) {
+    // Solo si el envío SALIÓ: si falló, auto-verificar aquí borraría el error
+    // recién puesto y gastaría un intento contra un código que ya no es el
+    // guardado (el envío fallido igual pisó la fila con uno nuevo).
+    if (mounted && sentOk && _pendingAutoVerify && !_verifying) {
       _pendingAutoVerify = false;
       _verify();
     }

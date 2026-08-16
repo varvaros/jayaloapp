@@ -2697,9 +2697,11 @@ Future<({bool ok, bool alreadyExists, String? id})> sendProductInterest(
   );
 }
 
-/// Dirección compuesta del perfil del cliente — paridad con el `useEffect`
-/// de `InterestConfirmDialog.tsx`: `address` completo gana; si no existe se
-/// arma con `street street_number, sector, city` ([composeProfileAddress]).
+/// Dirección compuesta del cliente para que el PROVEEDOR pueda entregar: calle
+/// + sector + ciudad ([composeDeliveryAddress]). Desde que el alta desglosó la
+/// dirección, `profiles.address` guarda solo calle y número, así que la
+/// semántica de la web (`address` completo gana y se ignora el resto) dejaba
+/// al proveedor sin ciudad ni sector.
 Future<String?> myDeliveryAddress() async {
   final uid = supa.auth.currentUser?.id;
   if (uid == null) return null;
@@ -2709,7 +2711,7 @@ Future<String?> myDeliveryAddress() async {
       .eq('user_id', uid)
       .maybeSingle();
   if (p == null) return null;
-  return composeProfileAddress(
+  return composeDeliveryAddress(
     address: p['address'] as String?,
     street: p['street'] as String?,
     streetNumber: p['street_number'] as String?,

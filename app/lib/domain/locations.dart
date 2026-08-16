@@ -161,6 +161,12 @@ List<String> sectorsOf(String? country, String? city) {
     return (city: city, sector: null);
   }
 
+  // Ciudad resuelta y sin sector que buscar: se devuelve tal cual. Sin este
+  // corte se caería al fallback de abajo con el nombre de la CIUDAD como
+  // candidato a sector, y bastaría que el catálogo tuviera algún día un sector
+  // llamado igual que otra provincia para devolver la provincia equivocada.
+  if (city != null) return (city: city, sector: null);
+
   // Sin ciudad: a veces el geocoder mete en `locality` lo que para nosotros es
   // un sector (p. ej. "Naco"). Se busca el sector en todo el país y la ciudad
   // se deduce de él.

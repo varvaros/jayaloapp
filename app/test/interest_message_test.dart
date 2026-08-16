@@ -180,4 +180,54 @@ void main() {
       expect(composeProfileAddress(address: '   '), isNull);
     });
   });
+
+  group('composeDeliveryAddress', () {
+    // La regresión que motiva estos tests: al desglosar la dirección del alta,
+    // `profiles.address` pasó a guardar SOLO calle y número. Con la semántica
+    // de `composeProfileAddress` (address gana y se ignora el resto) el
+    // proveedor recibía "Calle Duarte 45", sin ciudad ni sector: imposible
+    // entregar ahí.
+    test('añade sector y ciudad a la calle guardada en address', () {
+      expect(
+        composeDeliveryAddress(
+          address: 'Calle Duarte 45',
+          sector: 'Villa Olga',
+          city: 'Santiago',
+        ),
+        'Calle Duarte 45, Villa Olga, Santiago',
+      );
+    });
+
+    test('sin address usa street + número', () {
+      expect(
+        composeDeliveryAddress(
+          street: 'Calle Duarte',
+          streetNumber: '45',
+          sector: 'Villa Olga',
+          city: 'Santiago',
+        ),
+        'Calle Duarte 45, Villa Olga, Santiago',
+      );
+    });
+
+    test('un perfil viejo con la dirección entera en address no se repite', () {
+      expect(
+        composeDeliveryAddress(
+          address: 'Calle Duarte 45, Villa Olga, Santiago',
+          sector: 'Villa Olga',
+          city: 'Santiago',
+        ),
+        'Calle Duarte 45, Villa Olga, Santiago',
+      );
+    });
+
+    test('con solo ciudad devuelve la ciudad', () {
+      expect(composeDeliveryAddress(city: 'Santiago'), 'Santiago');
+    });
+
+    test('sin ningún dato devuelve null', () {
+      expect(composeDeliveryAddress(), isNull);
+      expect(composeDeliveryAddress(address: '  ', sector: ' '), isNull);
+    });
+  });
 }

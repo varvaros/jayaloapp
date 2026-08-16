@@ -167,6 +167,10 @@ class _SearchSheetState extends State<_SearchSheet> {
                     ),
                   )
                 : ListView.builder(
+                    // Con el teclado cerrado, el último ítem quedaba pegado al
+                    // borde, debajo de la barra de gestos.
+                    padding: EdgeInsets.only(
+                        bottom: MediaQuery.of(context).padding.bottom + 8),
                     itemCount: list.length,
                     itemBuilder: (_, i) {
                       final o = list[i];

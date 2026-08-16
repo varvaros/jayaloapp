@@ -74,6 +74,32 @@ void main() {
       expect(r.sector, isNull);
     });
 
+    test('ciudad resuelta sin sector no cae al fallback', () {
+      // 'Santiago' es ciudad. Sin este corte, el fallback la buscaría como
+      // SECTOR por todo el país y devolvería la provincia que la contuviera.
+      final r = matchLocation(
+          country: 'República Dominicana', locality: 'Santiago');
+      expect(r.city, 'Santiago');
+      expect(r.sector, isNull);
+    });
+
+    test('Villa Mella (está en dos provincias) resuelve determinista', () {
+      // Dato duplicado heredado del catálogo de la web: sin ciudad que lo
+      // desempate gana la primera entrada del árbol. El test fija el resultado
+      // para que reordenar el mapa no lo cambie en silencio.
+      final r = matchLocation(
+          country: 'República Dominicana', subLocality: 'Villa Mella');
+      expect(r.city, 'Distrito Nacional');
+      expect(r.sector, 'Villa Mella');
+      // Con la provincia correcta explícita, sí cae donde debe.
+      final r2 = matchLocation(
+          country: 'República Dominicana',
+          locality: 'Santo Domingo Norte',
+          subLocality: 'Villa Mella');
+      expect(r2.city, 'Santo Domingo Norte');
+      expect(r2.sector, 'Villa Mella');
+    });
+
     test('país desconocido devuelve vacío', () {
       final r = matchLocation(country: 'Narnia', locality: 'Naco');
       expect(r.city, isNull);
