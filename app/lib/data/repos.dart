@@ -21,8 +21,8 @@ final requestsChanged = ValueNotifier<int>(0);
 /// Su significado depende del rol activo (solo hay uno por sesión), pero desde
 /// 2026-08-16 los dos roles cuentan LO MISMO: cosas SIN VER, medidas con una
 /// notificación no leída. Para el CLIENTE = solicitudes con una `offer_new` sin
-/// leer; para el PROVEEDOR = solicitudes de su bandeja con una
-/// `request_new_in_category` sin leer.
+/// leer; para el PROVEEDOR = solicitudes de su bandeja con un aviso de
+/// solicitud nueva sin leer (ver [kNewRequestNotifKinds]).
 ///
 /// Antes el proveedor contaba "abiertas en Para ti", que no es una alerta: no
 /// bajaba al mirarlas, así que el badge vivía encendido y dejó de significar
@@ -327,26 +327,29 @@ Future<Map<String, int>> offerCountsForRequests(List<String> requestIds) async {
   };
 }
 
-/// Kind de la notificación que el backend le crea al proveedor cuando entra
-/// una solicitud de su rubro (trigger `notify_new_request_matches`). Es el
-/// ÚNICO indicador de "nueva" del lado del proveedor: su `entity_id` es el id
-/// de la solicitud DIRECTAMENTE (a diferencia de `offer_new` en el cliente,
-/// cuyo `entity_id` es la oferta y hay que mapear oferta→solicitud).
-const kNewRequestNotifKind = 'request_new_in_category';
+/// Kinds con los que el backend le avisa al proveedor de una solicitud nueva
+/// (trigger `notify_new_request_matches`). Son el indicador de "nueva" del lado
+/// del proveedor: su `entity_id` es el id de la solicitud DIRECTAMENTE (a
+/// diferencia de `offer_new` en el cliente, cuyo `entity_id` es la oferta y hay
+/// que mapear oferta→solicitud).
+///
+/// Son DOS porque la bandeja muestra dos fuerzas de coincidencia y el aviso las
+/// distingue: `request_new_in_category` es el rubro exacto (lleva push y
+/// correo) y `request_new_related` es la categoría sin el rubro (solo in-app,
+/// queda fuera de las listas blancas de `push_on_notification` y
+/// `enqueue_notification_email`).
+///
+/// Para la bandeja los dos valen igual: lo que enciende el chip "Nueva" y el
+/// badge es la solicitud sin ver, no por qué camino se enteró. Si aparece un
+/// tercer camino, va aquí y todo lo demás sigue funcionando.
+const kNewRequestNotifKinds = ['request_new_in_category', 'request_new_related'];
 
-/// Ids de solicitudes que este proveedor NO HA VISTO: las que tienen su
-/// `request_new_in_category` sin leer. Alimenta el badge de la pestaña y el
-/// "Nueva" de la tarjeta.
+/// Ids de solicitudes que este proveedor NO HA VISTO: las que tienen su aviso
+/// de solicitud nueva sin leer. Alimenta el badge de la pestaña y el "Nueva" de
+/// la tarjeta.
 ///
 /// Best-effort en quien llama: si esto falla, la bandeja se pinta sin marcas
 /// (mismo criterio que estados y conteos) — nunca sin lista.
-///
-/// Ojo con el alcance: el trigger notifica por RUBRO (`target_rubros`) y la
-/// bandeja lista por CATEGORÍA (`target_categories`), que es más ancha. Una
-/// solicitud que cruza tu categoría pero no tu rubro aparece en la lista SIN
-/// notificación, y por diseño no cuenta como nueva: nunca te avisamos de ella,
-/// así que marcarla como no-vista sería mentir. Es la misma frontera que ya
-/// decide a quién le llega el push.
 Future<Set<String>> unseenInboxRequestIds() async {
   final uid = supa.auth.currentUser?.id;
   if (uid == null) return {};
@@ -355,7 +358,7 @@ Future<Set<String>> unseenInboxRequestIds() async {
         .from('notifications')
         .select('entity_id')
         .eq('user_id', uid)
-        .eq('kind', kNewRequestNotifKind)
+        .inFilter('kind', kNewRequestNotifKinds)
         .isFilter('read_at', null),
   );
   return rows
@@ -364,8 +367,14 @@ Future<Set<String>> unseenInboxRequestIds() async {
       .toSet();
 }
 
-/// Al ABRIR la solicitud queda vista: marca su `request_new_in_category` leída.
+/// Al ABRIR la solicitud queda vista: marca leído su aviso de solicitud nueva.
 /// Espejo exacto de `_markOfferSeen` en el detalle del cliente.
+///
+/// Marca por los DOS kinds aunque el trigger nunca cree los dos para el mismo
+/// proveedor y solicitud (el camino por categoría excluye a quien ya recibió el
+/// del rubro): quien abre la solicitud la vio, y de qué kind era su aviso no
+/// cambia eso. Filtrar por uno solo dejaría notificaciones sin leer detrás si
+/// esa exclusión se rompiera algún día.
 ///
 /// El `isFilter('read_at', null)` no es decorativo: sin él, reabrir la
 /// solicitud reescribiría el `read_at` con la fecha de hoy y movería la
@@ -377,7 +386,7 @@ Future<void> markInboxRequestSeen(String requestId) async {
       .from('notifications')
       .update({'read_at': DateTime.now().toUtc().toIso8601String()})
       .eq('user_id', uid)
-      .eq('kind', kNewRequestNotifKind)
+      .inFilter('kind', kNewRequestNotifKinds)
       .eq('entity_id', requestId)
       .isFilter('read_at', null);
 }
