@@ -67,11 +67,19 @@ Deno.serve(async (req) => {
 
     let businessBadgeVerified = false;
     if (businessId) {
-      const { data: biz } = await admin
+      const { data: biz, error: bizErr } = await admin
         .from("provider_businesses")
         .select("whatsapp")
         .eq("id", businessId)
         .maybeSingle();
+      // Si no se pudo LEER el negocio, no se decide nada sobre su sello: con
+      // `biz` nulo, `sameWhatsappNumber` da false para todo y el sello se
+      // borraría por un fallo transitorio. El OTP en sí ya quedó sellado
+      // arriba, así que se devuelve OK sin tocar el negocio.
+      if (bizErr) {
+        console.error("verify-otp: no se pudo leer el negocio:", bizErr.message);
+        return json({ ok: true, phone: row.whatsapp_e164, business_badge_verified: false });
+      }
       businessBadgeVerified = sameWhatsappNumber(row.whatsapp_e164, biz?.whatsapp ?? null);
       if (businessBadgeVerified) {
         await admin
@@ -85,19 +93,27 @@ Deno.serve(async (req) => {
         // verificado del dueño respalda el número público de hoy (que es el
         // caso real que el borrado quería cubrir: cambiaron el público por uno
         // sin verificar).
-        const { data: verifiedRows } = await admin
+        const { data: verifiedRows, error: vErr } = await admin
           .from("account_verifications")
           .select("whatsapp_e164")
           .eq("user_id", userId)
           .not("whatsapp_verified_at", "is", null);
-        const stillBacked = (verifiedRows ?? []).some((v) =>
-          sameWhatsappNumber(v.whatsapp_e164 as string | null, biz?.whatsapp ?? null)
-        );
-        if (!stillBacked) {
-          await admin
-            .from("provider_businesses")
-            .update({ whatsapp_verified_at: null })
-            .eq("id", businessId);
+        if (vErr) {
+          // Lectura fallida ⇒ NO se toca el sello. Antes se descartaba este
+          // error y un timeout de PostgREST bastaba para borrar estado
+          // permanente: fallar hacia lo destructivo es el peor default aquí.
+          console.error(
+            "verify-otp: no se pudo comprobar el respaldo del sello:", vErr.message);
+        } else {
+          const stillBacked = (verifiedRows ?? []).some((v) =>
+            sameWhatsappNumber(v.whatsapp_e164 as string | null, biz?.whatsapp ?? null)
+          );
+          if (!stillBacked) {
+            await admin
+              .from("provider_businesses")
+              .update({ whatsapp_verified_at: null })
+              .eq("id", businessId);
+          }
         }
       }
     }
