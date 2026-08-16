@@ -14,7 +14,6 @@ import {
   getOtpChannel,
   buildOtpMessage,
   generateOtpCode,
-  sameWhatsappNumber,
 } from "../_shared/otp.ts";
 
 /** Copy común de los dos topes: ver el comentario del tope por número. */
@@ -52,7 +51,7 @@ Deno.serve(async (req) => {
 
     let q = admin
       .from("account_verifications")
-      .select("id, whatsapp_last_sent_at, whatsapp_e164")
+      .select("id, whatsapp_last_sent_at")
       .eq("user_id", userId);
     q = businessId ? q.eq("business_id", businessId) : q.is("business_id", null);
     const { data: existing } = await q.maybeSingle();
@@ -91,21 +90,20 @@ Deno.serve(async (req) => {
     }
 
     const code = generateOtpCode();
-    // Si el número CAMBIA respecto al que había en la fila, el sello anterior
-    // deja de aplicar: se refiere a otro teléfono. Sin esto, el par
-    // (whatsapp_e164, whatsapp_verified_at) se desincroniza con solo PEDIR un
-    // código y abandonarlo — la fila pasa a decir "el número Z está verificado
-    // desde T0" cuando lo que se verificó fue A. Todo lo que lee ese par (el
-    // gate de revelado y el sello del negocio) se lo creería.
-    const numberChanged = existing != null &&
-      !sameWhatsappNumber(existing.whatsapp_e164 as string | null, phone);
+    // El número EN VUELO va a su propia columna y no toca `whatsapp_e164`, que
+    // a partir de la migración 20260816224534 solo guarda números verificados.
+    // Antes esto escribía el número aquí mismo, y el guard de la base
+    // (`trg_clear_whatsapp_seal_on_number_change`) borraba el sello por el
+    // cambio: abrir la hoja de OTP con otro número y ABANDONARLA costaba un
+    // sello legítimamente ganado, sin que nadie verificara nada.
+    // La promoción a `whatsapp_e164` la hace `consume_whatsapp_otp_attempt`,
+    // en el mismo UPDATE que pone el sello.
     const row = {
-      whatsapp_e164: phone,
+      whatsapp_pending_e164: phone,
       whatsapp_otp_hash: await sha256Hex(code),
       whatsapp_otp_expires_at: new Date(Date.now() + OTP_TTL_MS).toISOString(),
       whatsapp_attempts: 0,
       whatsapp_last_sent_at: new Date().toISOString(),
-      ...(numberChanged ? { whatsapp_verified_at: null } : {}),
     };
 
     // NO usar upsert/onConflict aquí. La unicidad de las filas PERSONALES la da
