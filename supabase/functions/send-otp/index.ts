@@ -13,6 +13,7 @@ import {
   sendOtpMessage,
   getOtpChannel,
   buildOtpMessage,
+  generateOtpCode,
 } from "../_shared/otp.ts";
 
 Deno.serve(async (req) => {
@@ -86,7 +87,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = generateOtpCode();
     const row = {
       whatsapp_e164: phone,
       whatsapp_otp_hash: await sha256Hex(code),
@@ -103,20 +104,55 @@ Deno.serve(async (req) => {
     // bug que dejó `account_verifications` con CERO filas personales en prod: la
     // verificación del cliente nunca se pudo sellar (y por eso
     // get_unlocked_offer_contact siempre lanzaba). Update-or-insert explícito:
-    const { error: upErr } = existing
-        ? await admin.from("account_verifications").update(row).eq("id", existing.id)
-        : await admin.from("account_verifications").insert({
-            ...row,
-            user_id: userId,
-            business_id: businessId ?? null,
-          });
-    if (upErr) return json({ error: upErr.message }, 500);
+    // El cooldown previo se guarda para poder DESHACERLO si el envío falla.
+    const previousSentAt: string | null = existing?.whatsapp_last_sent_at ?? null;
+    let rowId: string | null = existing?.id ?? null;
+    if (existing) {
+      const { error: upErr } = await admin
+        .from("account_verifications").update(row).eq("id", existing.id);
+      if (upErr) return json({ error: upErr.message }, 500);
+    } else {
+      const { data: inserted, error: insErr } = await admin
+        .from("account_verifications")
+        .insert({ ...row, user_id: userId, business_id: businessId ?? null })
+        .select("id")
+        .single();
+      if (insErr) return json({ error: insErr.message }, 500);
+      rowId = inserted?.id ?? null;
+    }
 
     // Devolver el canal REAL usado: el copy de la app lo sigue, así no miente
     // cuando app_settings.otp_channel cambie a 'whatsapp' (Twilio Sender).
     const channel = await getOtpChannel(admin);
     const hash = Deno.env.get("SMS_RETRIEVER_HASH") ?? null;
-    await sendOtpMessage(admin, phone, buildOtpMessage(code, channel, hash));
+    if (channel === "sms" && !hash) {
+      // Sin el hash, `buildOtpMessage` manda el SMS en formato normal (sin el
+      // `<#>` ni la firma), y entonces Android NO se lo entrega a la app: el
+      // autocompletado del código no puede funcionar, pase lo que pase en el
+      // cliente. Degradaba en SILENCIO, que es justo lo que lo volvía
+      // imposible de diagnosticar desde la app.
+      console.error(
+        "SMS_RETRIEVER_HASH no configurado: el SMS sale sin formato de Google " +
+          "SMS Retriever y el autocompletado en Android queda inoperativo. " +
+          "Configura el secreto con el hash de 11 caracteres de la firma de release.",
+      );
+    }
+    try {
+      await sendOtpMessage(admin, phone, buildOtpMessage(code, channel, hash));
+    } catch (e) {
+      // El envío falló: devolver `whatsapp_last_sent_at` a como estaba. Si no,
+      // un fallo NUESTRO deja al usuario 60s bloqueado sin haber recibido nada.
+      // Los topes por usuario y por número ya se consumieron y siguen
+      // consumidos, así que esto no reabre el bypass de spam que motivó el
+      // "persistir antes de enviar".
+      if (rowId) {
+        await admin
+          .from("account_verifications")
+          .update({ whatsapp_last_sent_at: previousSentAt })
+          .eq("id", rowId);
+      }
+      throw e;
+    }
     return json({ ok: true, phone, channel });
   } catch (e) {
     // Todo lo que llega aquí ya trae copy apto para el usuario (teléfono

@@ -73,10 +73,33 @@ Deno.serve(async (req) => {
         .eq("id", businessId)
         .maybeSingle();
       businessBadgeVerified = sameWhatsappNumber(row.whatsapp_e164, biz?.whatsapp ?? null);
-      await admin
-        .from("provider_businesses")
-        .update({ whatsapp_verified_at: businessBadgeVerified ? verifiedAt : null })
-        .eq("id", businessId);
+      if (businessBadgeVerified) {
+        await admin
+          .from("provider_businesses")
+          .update({ whatsapp_verified_at: verifiedAt })
+          .eq("id", businessId);
+      } else {
+        // El número verificado NO es el público del negocio. Antes esto ponía
+        // el sello a NULL sin más, así que verificar cualquier otro número
+        // BORRABA un sello ya ganado. Solo se retira si ningún número
+        // verificado del dueño respalda el número público de hoy (que es el
+        // caso real que el borrado quería cubrir: cambiaron el público por uno
+        // sin verificar).
+        const { data: verifiedRows } = await admin
+          .from("account_verifications")
+          .select("whatsapp_e164")
+          .eq("user_id", userId)
+          .not("whatsapp_verified_at", "is", null);
+        const stillBacked = (verifiedRows ?? []).some((v) =>
+          sameWhatsappNumber(v.whatsapp_e164 as string | null, biz?.whatsapp ?? null)
+        );
+        if (!stillBacked) {
+          await admin
+            .from("provider_businesses")
+            .update({ whatsapp_verified_at: null })
+            .eq("id", businessId);
+        }
+      }
     }
     return json({
       ok: true,

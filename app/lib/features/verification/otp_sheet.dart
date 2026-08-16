@@ -46,6 +46,11 @@ class _OtpSheetState extends State<_OtpSheet> {
   Timer? _timer;
   String _channel = 'sms'; // lo confirma send-otp; el copy lo sigue
   final _smartAuth = SmartAuth.instance;
+  /// El SMS llegó mientras `_send` seguía en curso, así que la verificación
+  /// automática no pudo correr todavía. Solo lo pone el autocompletado: nunca
+  /// se auto-verifica un código TECLEADO, o pulsar "Reenviar" mandaría a
+  /// verificar lo que el usuario dejó a medias.
+  bool _pendingAutoVerify = false;
 
   @override
   void initState() {
@@ -70,13 +75,27 @@ class _OtpSheetState extends State<_OtpSheet> {
   Future<void> _listenForCode() async {
     if (!Platform.isAndroid) return;
     try {
+      // Un reenvío arma un segundo escucha sobre la MISMA API de Google. Sin
+      // retirar el anterior quedan dos registrados y el nuevo puede no recibir
+      // nada, así que el autocompletado dejaba de funcionar justo después de
+      // pulsar "Reenviar código".
+      await _smartAuth.removeSmsRetrieverApiListener();
+    } catch (_) {
+      // Si no había ninguno puesto, retirar es un no-op que puede lanzar.
+    }
+    try {
       final res = await _smartAuth.getSmsWithRetrieverApi(matcher: r'\d{6}');
       if (!mounted) return;
       final code = res.data?.code;
       if (res.hasData && code != null && RegExp(r'^\d{6}$').hasMatch(code)) {
         setState(() => _code.text = code);
-        // Auto-verifica solo si no hay otra operación en curso.
-        if (!_sending && !_verifying) _verify();
+        // Auto-verifica solo si no hay otra operación en curso; si la hay,
+        // queda anotado y `_send` lo dispara al terminar.
+        if (!_sending && !_verifying) {
+          _verify();
+        } else {
+          _pendingAutoVerify = true;
+        }
       }
     } catch (_) {
       // Best-effort: cualquier fallo del retriever cae al tipeo manual.
@@ -97,13 +116,18 @@ class _OtpSheetState extends State<_OtpSheet> {
     setState(() {
       _sending = true;
       _error = null;
+      _pendingAutoVerify = false;
     });
+    // El escucha se arma ANTES de pedir el envío, no después: el SMS puede
+    // llegar en el mismo instante en que responde la función, y si el listener
+    // todavía no está puesto Google ya entregó el mensaje al sistema y la app
+    // no lo ve nunca. Sin `await` a propósito — el Future solo resuelve cuando
+    // llega el SMS.
+    unawaited(_listenForCode());
     try {
       final channel = await sendOtp(phone: widget.phone, businessId: widget.businessId);
       if (mounted) setState(() => _channel = channel);
       _startCountdown();
-      // Arranca el escucha de SMS Retriever recién enviado el código (Android).
-      _listenForCode();
     } catch (e) {
       if (mounted) {
         setState(() =>
@@ -111,6 +135,10 @@ class _OtpSheetState extends State<_OtpSheet> {
       }
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+    if (mounted && _pendingAutoVerify && !_verifying) {
+      _pendingAutoVerify = false;
+      _verify();
     }
   }
 

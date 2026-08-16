@@ -99,6 +99,24 @@ export function buildOtpAddresses(channel: OtpChannel, fromRaw: string, toE164: 
     : { from: `whatsapp:${bareFrom}`, to: `whatsapp:${bareTo}` };
 }
 
+/**
+ * Código de 6 dígitos con CSPRNG. `Math.random()` NO sirve para esto: su estado
+ * interno es predecible a partir de unas pocas salidas, así que quien observe
+ * códigos propios puede anticipar los ajenos. El muestreo es por RECHAZO —
+ * 2^32 no es múltiplo de 900000, y un `% 900000` a secas haría más probables
+ * los primeros códigos del rango.
+ */
+export function generateOtpCode(): string {
+  const buf = new Uint32Array(1);
+  const limit = Math.floor(4294967296 / 900000) * 900000;
+  let v: number;
+  do {
+    crypto.getRandomValues(buf);
+    v = buf[0];
+  } while (v >= limit);
+  return String(100000 + (v % 900000));
+}
+
 export async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest))
