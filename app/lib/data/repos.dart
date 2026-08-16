@@ -1168,6 +1168,9 @@ Future<void> completeConsumerProfile({
   required String lastName,
   required String whatsapp, // E.164
   required String address,
+  String? country,
+  String? city,
+  String? sector,
   double? lat,
   double? lng,
   required String termsVersion,
@@ -1181,6 +1184,12 @@ Future<void> completeConsumerProfile({
     'phone': whatsapp,
     'whatsapp': whatsapp,
     'address': address,
+    // Columnas ya existentes en `profiles` (con grant de escritura para
+    // `authenticated`): antes el alta nativa las dejaba en NULL y toda la
+    // dirección vivía apelotonada en `address`.
+    'country': country,
+    'city': city,
+    'sector': sector,
     'lat': lat,
     'lng': lng,
     'location_captured_at': (lat != null && lng != null)

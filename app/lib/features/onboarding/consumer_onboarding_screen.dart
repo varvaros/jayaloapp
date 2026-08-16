@@ -8,10 +8,11 @@ import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
-import '../../domain/geo.dart';
+import '../../domain/locations.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
 import '../shared/brand_kit.dart';
+import '../shared/searchable_select.dart';
 import '../verification/otp_sheet.dart';
 
 /// Alta de consumidor (spec §6): nombre precargado de las claims de Google,
@@ -20,6 +21,12 @@ import '../verification/otp_sheet.dart';
 /// verificar antes de `completeConsumerProfile` es seguro,
 /// ubicación GPS opcional + dirección obligatoria, términos. Una sola
 /// escritura al final (upsert de profiles, atómico por naturaleza).
+///
+/// La dirección va DESGLOSADA en país / ciudad / sector (del catálogo de
+/// `domain/locations.dart`, el mismo que la web usa para la zona de cobertura
+/// del proveedor) más la calle en texto libre. Antes era un único campo de
+/// texto: lo que el cliente escribía no se podía cruzar con la zona declarada
+/// por ningún proveedor.
 class ConsumerOnboardingScreen extends StatefulWidget {
   const ConsumerOnboardingScreen({super.key});
   @override
@@ -32,6 +39,13 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
   String _prefix = '809';
   final _local = TextEditingController();
   final _address = TextEditingController();
+  // País / ciudad / sector salen del catálogo compartido con la web
+  // (`domain/locations.dart`), no de texto libre: así la dirección del cliente
+  // es comparable con la zona de cobertura que declara un proveedor, en vez de
+  // ser una cadena que cada quien escribe a su manera.
+  String? _country = kCountries.length == 1 ? kCountries.first : null;
+  String? _city;
+  String? _sector;
   double? _lat, _lng;
   bool _locating = false;
   bool _terms = false;
@@ -90,7 +104,9 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
         perm = await Geolocator.requestPermission();
       }
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        _snack('Sin permiso de ubicación — puedes escribir tu dirección igual.');
+        if (mounted) {
+          _snack('Sin permiso de ubicación — puedes escribir tu dirección igual.');
+        }
         return;
       }
       // `timeLimit` no es opcional en la práctica: sin él, si el GPS no fija
@@ -106,37 +122,66 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
         _lat = pos.latitude;
         _lng = pos.longitude;
       });
-      // Reverse geocoding nativo (gratis). Solo rellena si el usuario no escribió.
-      if (_address.text.trim().isEmpty) {
-        try {
-          final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
-          if (marks.isNotEmpty && mounted) {
-            final m = marks.first;
-            final addr = formatPlacemarkAddress(
-              street: m.street,
-              subLocality: m.subLocality,
-              locality: m.locality,
-              administrativeArea: m.administrativeArea,
+      // Reverse geocoding nativo (gratis). Best-effort, y NO PISA nada que el
+      // usuario ya haya elegido o escrito: solo rellena los huecos.
+      try {
+        final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+        if (marks.isEmpty || !mounted) return;
+        final m = marks.first;
+        // El país solo se deduce si aún no hay uno puesto y el geocoder devuelve
+        // uno que EXISTE en el catálogo.
+        final country = _country ??
+            kCountries.firstWhere(
+              (c) => normalizeLoose(c) == normalizeLoose(m.country),
+              orElse: () => '',
             );
-            if (addr.isNotEmpty && _address.text.trim().isEmpty) {
-              setState(() => _address.text = addr);
-            }
+        final ({String? city, String? sector}) hit = country.isEmpty
+            ? (city: null, sector: null)
+            : matchLocation(
+                country: country,
+                locality: m.locality,
+                subLocality: m.subLocality,
+              );
+        // Solo calle y número: ciudad y sector tienen su propio campo, y
+        // repetirlos aquí los enseñaría dos veces en la misma pantalla.
+        final street = [m.thoroughfare, m.subThoroughfare]
+            .map((v) => v?.trim() ?? '')
+            .where((v) => v.isNotEmpty)
+            .join(' ');
+        setState(() {
+          if (_country == null && country.isNotEmpty) _country = country;
+          if (_city == null && hit.city != null) _city = hit.city;
+          // El sector solo se acepta si pertenece a la ciudad que quedó puesta:
+          // si el usuario ya había elegido otra, el sector del GPS no es suyo.
+          if (_sector == null && hit.sector != null && _city == hit.city) {
+            _sector = hit.sector;
           }
-        } catch (_) {
-          // Best-effort: si el geocoder falla, se queda solo con lat/lng.
-        }
+          if (_address.text.trim().isEmpty && street.isNotEmpty) {
+            _address.text = street;
+          }
+        });
+      } catch (_) {
+        // Sin geocoder quedan las coordenadas; los campos se llenan a mano.
       }
     } catch (_) {
-      _snack('No pudimos captar tu ubicación — puedes escribir tu dirección igual.');
+      if (mounted) {
+        _snack('No pudimos captar tu ubicación — puedes escribir tu dirección igual.');
+      }
     } finally {
       if (mounted) setState(() => _locating = false);
     }
   }
 
+  // El SECTOR queda opcional a propósito: el catálogo trae unos pocos por
+  // provincia, así que exigirlo dejaría fuera del registro a quien viva en uno
+  // que no está en la lista. País y ciudad sí son obligatorios — son los que
+  // usan los proveedores para saber si alguien les queda dentro de su zona.
   bool get _valid =>
       _first.text.trim().isNotEmpty &&
       _composedPhone.isNotEmpty &&
       _phoneError == null &&
+      _country != null &&
+      _city != null &&
       _address.text.trim().isNotEmpty &&
       _terms;
 
@@ -155,6 +200,9 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
         lastName: _last.text.trim(),
         whatsapp: _composedPhone,
         address: _address.text.trim(),
+        country: _country,
+        city: _city,
+        sector: _sector,
         lat: _lat,
         lng: _lng,
         termsVersion: AppConfig.termsVersion,
@@ -274,13 +322,52 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
                   ? JayaloStatus.unlockedDark
                   : JayaloStatus.unlockedLight,
             ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
+          // País solo si hay más de uno que elegir: con un único país el
+          // selector no es una decisión, es un trámite. El valor se guarda igual.
+          if (kCountries.length > 1) ...[
+            SearchableSelectField(
+              label: 'País',
+              value: _country,
+              options: kCountries,
+              placeholder: 'Elige tu país',
+              onChanged: (v) => setState(() {
+                _country = v;
+                // Cambiar de país invalida lo de abajo: la ciudad elegida ya no
+                // pertenece al árbol nuevo.
+                _city = null;
+                _sector = null;
+              }),
+            ),
+            const SizedBox(height: 10),
+          ],
+          SearchableSelectField(
+            label: 'Ciudad / Provincia',
+            value: _city,
+            options: citiesOf(_country),
+            placeholder: 'Elige tu ciudad',
+            disabledHint: 'Elige primero un país',
+            onChanged: (v) => setState(() {
+              _city = v;
+              _sector = null; // el sector anterior era de otra ciudad
+            }),
+          ),
+          const SizedBox(height: 10),
+          SearchableSelectField(
+            label: 'Sector (opcional)',
+            value: _sector,
+            options: sectorsOf(_country, _city),
+            placeholder: 'Elige tu sector',
+            disabledHint: 'Elige primero una ciudad',
+            onChanged: (v) => setState(() => _sector = v),
+          ),
+          const SizedBox(height: 10),
           TextField(
             controller: _address,
             textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(
                 labelText: 'Dirección',
-                hintText: 'Calle, sector, ciudad — para ofertas cerca de ti'),
+                hintText: 'Calle y número — para ofertas cerca de ti'),
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 24),
