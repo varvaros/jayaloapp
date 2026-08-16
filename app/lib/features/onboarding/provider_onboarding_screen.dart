@@ -11,6 +11,7 @@ import '../../core/config.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
+import '../../domain/geo.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
 import '../shared/brand_kit.dart';
@@ -301,10 +302,11 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           // Calle Y NÚMERO. Antes era solo `thoroughfare` (el nombre de la
           // calle), así que la dirección del negocio quedaba en "Calle Duarte"
           // mientras el alta de consumidor sí traía el número.
-          final street = [m.thoroughfare, m.subThoroughfare]
-              .map((v) => v?.trim() ?? '')
-              .where((v) => v.isNotEmpty)
-              .join(' ');
+          final street = composeStreetLine(
+            thoroughfare: m.thoroughfare,
+            subThoroughfare: m.subThoroughfare,
+            street: m.street,
+          );
           if (street.isNotEmpty && _address.text.trim().isEmpty) {
             _address.text = street;
           }

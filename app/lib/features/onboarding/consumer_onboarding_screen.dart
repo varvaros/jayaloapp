@@ -8,6 +8,7 @@ import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
+import '../../domain/geo.dart';
 import '../../domain/locations.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
@@ -150,10 +151,11 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
               );
         // Solo calle y número: ciudad y sector tienen su propio campo, y
         // repetirlos aquí los enseñaría dos veces en la misma pantalla.
-        final street = [m.thoroughfare, m.subThoroughfare]
-            .map((v) => v?.trim() ?? '')
-            .where((v) => v.isNotEmpty)
-            .join(' ');
+        final street = composeStreetLine(
+          thoroughfare: m.thoroughfare,
+          subThoroughfare: m.subThoroughfare,
+          street: m.street,
+        );
         setState(() {
           if (_country == null && country.isNotEmpty) _country = country;
           if (_city == null && hit.city != null) _city = hit.city;
