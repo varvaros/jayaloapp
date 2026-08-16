@@ -267,7 +267,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       }
       if (perm == LocationPermission.denied ||
           perm == LocationPermission.deniedForever) {
-        _snack('Sin permiso de ubicación — escribe tu ciudad y sector.');
+        if (mounted) _snack('Sin permiso de ubicación — escribe tu ciudad y sector.');
         return;
       }
       // `timeLimit`: sin él, si el GPS no fija el Future no resuelve NUNCA y
@@ -283,23 +283,37 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         _lat = pos.latitude;
         _lng = pos.longitude;
       });
-      final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
-      if (!mounted || marks.isEmpty) return;
-      final m = marks.first;
-      setState(() {
-        final city = m.locality ?? '';
-        final sector = m.subLocality ?? '';
-        if (city.isNotEmpty && !_cities.contains(city)) _cities.add(city);
-        if (sector.isNotEmpty && !_sectors.contains(sector)) {
-          _sectors.add(sector);
-        }
-        final street = m.thoroughfare ?? '';
-        if (street.isNotEmpty && _address.text.trim().isEmpty) {
-          _address.text = street;
-        }
-      });
+      // El geocoder va en su PROPIO try (como ya hacía el flujo de consumidor):
+      // la coordenada quedó guardada arriba, así que un fallo suyo no debe caer
+      // en el catch de afuera, que dice "no pudimos captar tu ubicación" —
+      // mentía, y mandaba al usuario a repetir un permiso que ya había dado.
+      try {
+        final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+        if (!mounted || marks.isEmpty) return;
+        final m = marks.first;
+        setState(() {
+          final city = m.locality ?? '';
+          final sector = m.subLocality ?? '';
+          if (city.isNotEmpty && !_cities.contains(city)) _cities.add(city);
+          if (sector.isNotEmpty && !_sectors.contains(sector)) {
+            _sectors.add(sector);
+          }
+          // Calle Y NÚMERO. Antes era solo `thoroughfare` (el nombre de la
+          // calle), así que la dirección del negocio quedaba en "Calle Duarte"
+          // mientras el alta de consumidor sí traía el número.
+          final street = [m.thoroughfare, m.subThoroughfare]
+              .map((v) => v?.trim() ?? '')
+              .where((v) => v.isNotEmpty)
+              .join(' ');
+          if (street.isNotEmpty && _address.text.trim().isEmpty) {
+            _address.text = street;
+          }
+        });
+      } catch (_) {
+        // Best-effort: sin geocoder quedan las coordenadas y los campos a mano.
+      }
     } catch (_) {
-      _snack('No pudimos captar tu ubicación — escribe tu ciudad y sector.');
+      if (mounted) _snack('No pudimos captar tu ubicación — escribe tu ciudad y sector.');
     } finally {
       if (mounted) setState(() => _locating = false);
     }
