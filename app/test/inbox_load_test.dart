@@ -42,6 +42,32 @@ void main() {
       },
     );
 
+    test('oleada A: las no-vistas NO esperan a los items', () async {
+      final itemsGate = Completer<List<Map<String, dynamic>>>();
+      var unseenStarted = false;
+
+      final future = loadInboxData(
+        fetchItems: () => itemsGate.future,
+        fetchOfferedOpen: null,
+        fetchStatuses: (_) async => {},
+        fetchCounts: (_) async => {},
+        fetchUnseen: () async {
+          unseenStarted = true;
+          return {'a'};
+        },
+      );
+
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        unseenStarted,
+        isTrue,
+        reason: 'no necesita los ids, así que no debe hacer cola tras ellos',
+      );
+
+      itemsGate.complete([req('a')]);
+      expect((await future).badgeCount, 1);
+    });
+
     test('oleada B: estados y conteos se piden A LA VEZ', () async {
       final statusGate = Completer<Map<String, String>>();
       final countGate = Completer<Map<String, int>>();
@@ -79,12 +105,69 @@ void main() {
         fetchOfferedOpen: () async => [req('b')],
         fetchStatuses: (_) async => {},
         fetchCounts: (_) async => {},
+        // Todo sin ver: aísla el recorte por merge/tienda de este test del
+        // filtro de no-vistas, que tiene los suyos abajo.
+        fetchUnseen: () async => {'a', 'tienda', 'b'},
       );
       expect(
         data.badgeCount,
         1,
         reason: 'la tienda no cuenta, y "b" es seguimiento, no pendiente',
       );
+    });
+
+    test('el badge cuenta SIN VER, no abiertas', () async {
+      final data = await loadInboxData(
+        fetchItems: () async => [req('a'), req('b'), req('c')],
+        fetchOfferedOpen: null,
+        fetchStatuses: (_) async => {},
+        fetchCounts: (_) async => {},
+        fetchUnseen: () async => {'b'},
+      );
+      expect(
+        data.badgeCount,
+        1,
+        reason: 'hay 3 abiertas pero solo "b" tiene su aviso sin leer',
+      );
+      expect(data.unseen, {'b'});
+    });
+
+    test('sin fetchUnseen no hay badge (nada consta como sin ver)', () async {
+      final data = await loadInboxData(
+        fetchItems: () async => [req('a'), req('b')],
+        fetchOfferedOpen: null,
+        fetchStatuses: (_) async => {},
+        fetchCounts: (_) async => {},
+      );
+      expect(data.badgeCount, 0);
+      expect(data.unseen, isEmpty);
+    });
+
+    test(
+      'un aviso sin leer de algo que YA NO está en la bandeja no cuenta',
+      () async {
+        final data = await loadInboxData(
+          fetchItems: () async => [req('a')],
+          fetchOfferedOpen: null,
+          fetchStatuses: (_) async => {},
+          fetchCounts: (_) async => {},
+          // 'cerrada' se cerró (o dejó de cruzar su rubro): su notificación
+          // sigue sin leer, pero el badge apuntaría a algo inalcanzable.
+          fetchUnseen: () async => {'a', 'cerrada'},
+        );
+        expect(data.badgeCount, 1);
+      },
+    );
+
+    test('la tienda nunca cuenta, aunque conste sin ver', () async {
+      final data = await loadInboxData(
+        fetchItems: () async => [req('s', source: 'store')],
+        fetchOfferedOpen: null,
+        fetchStatuses: (_) async => {},
+        fetchCounts: (_) async => {},
+        fetchUnseen: () async => {'s'},
+      );
+      expect(data.badgeCount, 0);
     });
 
     test(
@@ -159,6 +242,19 @@ void main() {
         expect(data.counts, isEmpty);
       },
     );
+
+    test('si fallan las no-vistas, la bandeja se pinta sin marcas', () async {
+      final data = await loadInboxData(
+        fetchItems: () async => [req('a')],
+        fetchOfferedOpen: null,
+        fetchStatuses: (_) async => {},
+        fetchCounts: (_) async => {},
+        fetchUnseen: () async => throw StateError('red caída'),
+      );
+      expect(data.items.map((r) => r['id']).toList(), ['a']);
+      expect(data.unseen, isEmpty);
+      expect(data.badgeCount, 0);
+    });
 
     test(
       'si falla la lista principal, el error SÍ propaga (no es best-effort)',

@@ -153,6 +153,14 @@ class _ProviderRequestDetailScreenState
             .catchError((_) => null);
       }
     });
+    // Abrirla es verla: apaga su "Nueva" en la bandeja y baja el badge de la
+    // pestaña (best-effort — el badge se corrige solo en el `_refetch` que la
+    // bandeja hace al volver, así que un fallo aquí no deja nada inconsistente
+    // más allá de la recarga siguiente). Espejo de `_markOfferSeen` en el
+    // detalle del cliente; a diferencia de aquel NO hace falta avisar a la
+    // lista con un notifier: la bandeja ya se refresca en el `await
+    // context.push(...)` de su `onTap`.
+    markInboxRequestSeen(widget.requestId).catchError((_) {});
     // FOMO: cuántas ofertas ya tiene esta solicitud (best-effort, solo el
     // número — no se pueden ver las ofertas).
     offerCountsForRequests([widget.requestId])

@@ -6,8 +6,13 @@
 /// —las dos últimas llamadas necesitan los ids que producen las dos primeras—,
 /// así que son dos OLEADAS concurrentes:
 ///
-///   oleada A: fetchItems ‖ fetchOfferedOpen
+///   oleada A: fetchItems ‖ fetchOfferedOpen ‖ fetchUnseen
 ///   oleada B: fetchStatuses(ids) ‖ fetchCounts(ids)
+///
+/// [fetchUnseen] entra en la oleada A y no en la B aunque su resultado se cruce
+/// con los items: no necesita los ids (lee las notificaciones sin leer del
+/// usuario, no de una lista), así que hacerlo esperar sería añadir latencia a
+/// cambio de nada.
 ///
 /// Vive aquí y no en la pantalla porque las tres funciones de `repos.dart` que
 /// usa no son inyectables: dentro del widget la concurrencia no se puede probar
@@ -18,21 +23,29 @@ typedef InboxData = ({
   List<Map<String, dynamic>> items,
   Map<String, String> statuses,
   Map<String, int> counts,
+  Set<String> unseen,
   int badgeCount,
 });
 
 /// [fetchOfferedOpen] en `null` = pestaña "Todas" (ahí no se hace el merge de
 /// las solicitudes de otro rubro a las que ya ofertó).
 ///
-/// Best-effort: si fallan las ofertas de otro rubro, los estados o los conteos,
-/// la bandeja se pinta igual con lo que sí llegó. Lo ÚNICO que propaga es el
-/// fallo de [fetchItems] — sin la lista principal no hay pantalla que pintar,
-/// y el `FutureBuilder` debe poder mostrar su estado de error.
+/// [fetchUnseen] en `null` (o si falla) = nada consta como sin ver: la bandeja
+/// sale sin chips "Nueva" y sin badge. Es la degradación correcta — de las dos
+/// mentiras posibles, "no tienes nada nuevo" se corrige sola en la siguiente
+/// carga; marcar de nuevo lo ya visto obligaría a abrir solicitudes para
+/// apagar un badge que nadie encendió.
+///
+/// Best-effort: si fallan las ofertas de otro rubro, las no-vistas, los estados
+/// o los conteos, la bandeja se pinta igual con lo que sí llegó. Lo ÚNICO que
+/// propaga es el fallo de [fetchItems] — sin la lista principal no hay pantalla
+/// que pintar, y el `FutureBuilder` debe poder mostrar su estado de error.
 Future<InboxData> loadInboxData({
   required Future<List<Map<String, dynamic>>> Function() fetchItems,
   required Future<List<Map<String, dynamic>>> Function()? fetchOfferedOpen,
   required Future<Map<String, String>> Function(List<String>) fetchStatuses,
   required Future<Map<String, int>> Function(List<String>) fetchCounts,
+  Future<Set<String>> Function()? fetchUnseen,
 }) async {
   // El manejo del error va PEGADO a la creación del future, no en un `try` que
   // envuelva al `await`: al lanzarlo en paralelo el error puede ocurrir antes de
@@ -52,12 +65,37 @@ Future<InboxData> loadInboxData({
         onError: (Object _, StackTrace _) => <Map<String, dynamic>>[],
       );
 
+  final unseenFuture = fetchUnseen?.call().then<Set<String>>(
+    (v) => v,
+    onError: (Object _, StackTrace _) => <String>{},
+  );
+
   var items = await fetchItems();
+  final unseen = await (unseenFuture ?? Future.value(<String>{}));
 
   // El badge se calcula ANTES del merge a propósito: dar seguimiento a una
   // oferta propia en otro rubro no es una alerta pendiente y no debe inflar el
   // contador de la pestaña "Solicitudes".
-  final badgeCount = items.where((r) => r['source'] != 'store').length;
+  //
+  // Y cuenta SIN VER, no abiertas (cambio 2026-08-16): el badge viejo era el
+  // tamaño de la bandeja, así que no bajaba nunca por mirar nada — un número
+  // permanente que el proveedor aprendía a ignorar. Ahora solo cuenta lo que
+  // tiene su `request_new_in_category` sin leer, y abrir la solicitud lo apaga.
+  //
+  // `unseen` se RECORTA aquí a lo que de verdad sale en la bandeja, y el badge
+  // es su tamaño. Se devuelve ya recortado (no el conjunto crudo de la consulta)
+  // para que la pantalla pinte el chip "Nueva" EXACTAMENTE sobre lo que el badge
+  // cuenta: si fueran dos conjuntos distintos volvería el problema que este
+  // cambio arregla —un número que no corresponde a nada que puedas tocar—, solo
+  // que al revés. Quedan fuera dos cosas: los avisos de solicitudes que ya se
+  // cerraron o dejaron de cruzar su rubro (siguen sin leer, pero ya no están en
+  // la lista) y los items de después del merge, que son seguimiento de ofertas
+  // propias en otro rubro y nunca fueron una alerta pendiente.
+  final unseenHere = {
+    for (final r in items)
+      if (r['source'] != 'store' && unseen.contains(r['id'])) r['id'] as String,
+  };
+  final badgeCount = unseenHere.length;
 
   if (offeredFuture != null) {
     final have = {for (final r in items) r['id']};
@@ -87,6 +125,7 @@ Future<InboxData> loadInboxData({
     items: items,
     statuses: await statusesFuture,
     counts: await countsFuture,
+    unseen: unseenHere,
     badgeCount: badgeCount,
   );
 }

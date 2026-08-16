@@ -125,6 +125,13 @@ abstract final class JayaloStatus {
   /// receta oklch de los demás status sobre el rosa del gradiente de marca.
   static const reviewLight = (bg: Color(0xFFFFE4F2), ink: Color(0xFF8D2661));
   static const reviewDark = (bg: Color(0xFF492537), ink: Color(0xFFFFB3D7));
+
+  /// "Nueva" (sin ver todavía). La tinta clara es el MISMO rojo que ya usa
+  /// "Nuevas ofertas" en la bandeja del cliente (`my_requests_screen`), para
+  /// que "no lo has visto" sea un solo color en toda la app; el fondo pastel y
+  /// la variante oscura salen de la receta de los demás status.
+  static const unseenLight = (bg: Color(0xFFFFE5E3), ink: Color(0xFFC0261C));
+  static const unseenDark = (bg: Color(0xFF44201D), ink: Color(0xFFFFB4AC));
 }
 
 /// Esquemas M3 con los roles clave clavados a los tokens de la web. Se parte de

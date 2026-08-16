@@ -50,11 +50,18 @@ class ProviderInboxView extends StatefulWidget {
   const ProviderInboxView({
     super.key,
     required this.fetch,
+    this.fetchUnseen = unseenInboxRequestIds,
     this.leading = const HeaderAvatar(),
     this.actions = const [HeaderBell()],
   });
 
   final InboxFetch fetch;
+
+  /// Qué solicitudes están SIN VER. Inyectable como [fetch] para probar el chip
+  /// "Nueva" y el badge sin red; el default real es best-effort dentro de
+  /// `loadInboxData`, así que en un test que no lo pase la bandeja se pinta
+  /// igual (sin marcas) en vez de reventar por Supabase sin inicializar.
+  final Future<Set<String>> Function() fetchUnseen;
 
   /// Inyectable (como [actions]): `HeaderAvatar` toca Supabase en su
   /// `initState`, así que los tests pasan un widget inerte.
@@ -107,6 +114,12 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   /// `_runFetch`.
   Map<String, int> _offerCounts = {};
 
+  /// Solicitudes que este proveedor NO HA VISTO (su aviso de "nueva solicitud
+  /// en tu rubro" sigue sin leer). Pintan el chip "Nueva" y son exactamente lo
+  /// que cuenta el badge de la pestaña. Se vacía por solicitud al abrir el
+  /// detalle, que marca su notificación leída.
+  Set<String> _unseen = {};
+
   late Future<List<Map<String, dynamic>>> _load = _runFetch();
 
   /// Carga la bandeja en DOS OLEADAS concurrentes (antes eran 4 viajes a la red
@@ -125,12 +138,14 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
           : () => myOfferedOpenRequests(kind: _kind),
       fetchStatuses: myOfferedRequestStatuses,
       fetchCounts: offerCountsForRequests,
+      fetchUnseen: widget.fetchUnseen,
     );
     // En "Todas" no se toca el badge: ese conteo no es una alerta accionable,
     // es exploración.
     if (mounted && !_todas) solicitudesBadge.value = data.badgeCount;
     _offeredStatuses = data.statuses;
     _offerCounts = data.counts;
+    _unseen = data.unseen;
     return data.items;
   }
 
@@ -313,6 +328,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           ).cascadeIn(i);
                         }
                         final card = _InboxCard(
+                          unseen: _unseen.contains(r['id']),
                           title: r['title'] as String? ?? '',
                           description: r['description'] as String? ?? '',
                           kind: r['kind'] as String?,
@@ -375,6 +391,7 @@ class _InboxCard extends StatelessWidget {
     this.wholesale = false,
     this.offerStatus,
     this.offerCount = 0,
+    this.unseen = false,
   });
 
   final String title;
@@ -396,6 +413,12 @@ class _InboxCard extends StatelessWidget {
   /// Cuántas ofertas ha recibido la solicitud EN TOTAL (FOMO, pedido PO
   /// 2026-07-21): solo el número, no se pueden ver. 0 = no se muestra chip.
   final int offerCount;
+
+  /// Solicitud SIN VER (su aviso "Nueva solicitud en tu rubro" sigue sin leer):
+  /// chip "Nueva". Sin esto el badge de la pestaña diría "1" y el proveedor no
+  /// tendría cómo saber CUÁL de la lista lo enciende — el número quedaría tan
+  /// muerto como el que reemplaza. Equivale a "Nuevas ofertas" del cliente.
+  final bool unseen;
 
   /// Miniatura de la foto del cliente (nunca ícono roto: cae al ícono si no
   /// hay foto o falla la URL). Antes la lista era solo-ícono — el PO reportó
@@ -484,6 +507,17 @@ class _InboxCard extends StatelessWidget {
                         color: cs.onSurfaceVariant,
                       ),
                     ),
+                    // "Nueva" va PRIMERO de los chips: es lo único que cambia
+                    // por haber mirado o no la solicitud, así que gana el
+                    // primer sitio después de la hora.
+                    if (unseen)
+                      StatusChip(
+                        label: 'Nueva',
+                        icon: Icons.fiber_new_outlined,
+                        tone: Theme.of(context).brightness == Brightness.dark
+                            ? JayaloStatus.unseenDark
+                            : JayaloStatus.unseenLight,
+                      ),
                     // FOMO (pedido PO 2026-07-21): cuántas ofertas ya recibió
                     // esta solicitud — solo el número, no se pueden ver. Chip
                     // ámbar con llama = competencia/urgencia. 0 → no se muestra.

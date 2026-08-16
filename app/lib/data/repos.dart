@@ -18,10 +18,16 @@ final supa = Supabase.instance.client;
 final requestsChanged = ValueNotifier<int>(0);
 
 /// Contador para el badge de la pestaña "Solicitudes" de la barra flotante.
-/// Su significado depende del rol activo (solo hay uno por sesión): para el
-/// CLIENTE = solicitudes con ofertas por revisar; para el PROVEEDOR = solicitudes
-/// abiertas en su bandeja "Para ti". Cada pantalla lo actualiza tras su fetch;
-/// la barra lo lee con un `ValueListenableBuilder`. 0 = sin badge.
+/// Su significado depende del rol activo (solo hay uno por sesión), pero desde
+/// 2026-08-16 los dos roles cuentan LO MISMO: cosas SIN VER, medidas con una
+/// notificación no leída. Para el CLIENTE = solicitudes con una `offer_new` sin
+/// leer; para el PROVEEDOR = solicitudes de su bandeja con una
+/// `request_new_in_category` sin leer.
+///
+/// Antes el proveedor contaba "abiertas en Para ti", que no es una alerta: no
+/// bajaba al mirarlas, así que el badge vivía encendido y dejó de significar
+/// nada. Cada pantalla lo actualiza tras su fetch; la barra lo lee con un
+/// `ValueListenableBuilder`. 0 = sin badge.
 final solicitudesBadge = ValueNotifier<int>(0);
 
 /// Badge de MENSAJES sin leer para el ícono "Mensajes" de la barra flotante
@@ -319,6 +325,61 @@ Future<Map<String, int>> offerCountsForRequests(List<String> requestIds) async {
     for (final r in rows)
       r['request_id'] as String: (r['offer_count'] as num).toInt(),
   };
+}
+
+/// Kind de la notificación que el backend le crea al proveedor cuando entra
+/// una solicitud de su rubro (trigger `notify_new_request_matches`). Es el
+/// ÚNICO indicador de "nueva" del lado del proveedor: su `entity_id` es el id
+/// de la solicitud DIRECTAMENTE (a diferencia de `offer_new` en el cliente,
+/// cuyo `entity_id` es la oferta y hay que mapear oferta→solicitud).
+const kNewRequestNotifKind = 'request_new_in_category';
+
+/// Ids de solicitudes que este proveedor NO HA VISTO: las que tienen su
+/// `request_new_in_category` sin leer. Alimenta el badge de la pestaña y el
+/// "Nueva" de la tarjeta.
+///
+/// Best-effort en quien llama: si esto falla, la bandeja se pinta sin marcas
+/// (mismo criterio que estados y conteos) — nunca sin lista.
+///
+/// Ojo con el alcance: el trigger notifica por RUBRO (`target_rubros`) y la
+/// bandeja lista por CATEGORÍA (`target_categories`), que es más ancha. Una
+/// solicitud que cruza tu categoría pero no tu rubro aparece en la lista SIN
+/// notificación, y por diseño no cuenta como nueva: nunca te avisamos de ella,
+/// así que marcarla como no-vista sería mentir. Es la misma frontera que ya
+/// decide a quién le llega el push.
+Future<Set<String>> unseenInboxRequestIds() async {
+  final uid = supa.auth.currentUser?.id;
+  if (uid == null) return {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('notifications')
+        .select('entity_id')
+        .eq('user_id', uid)
+        .eq('kind', kNewRequestNotifKind)
+        .isFilter('read_at', null),
+  );
+  return rows
+      .map((r) => r['entity_id'] as String?)
+      .whereType<String>()
+      .toSet();
+}
+
+/// Al ABRIR la solicitud queda vista: marca su `request_new_in_category` leída.
+/// Espejo exacto de `_markOfferSeen` en el detalle del cliente.
+///
+/// El `isFilter('read_at', null)` no es decorativo: sin él, reabrir la
+/// solicitud reescribiría el `read_at` con la fecha de hoy y movería la
+/// notificación en cualquier vista que ordene por ese campo.
+Future<void> markInboxRequestSeen(String requestId) async {
+  final uid = supa.auth.currentUser?.id;
+  if (uid == null) return;
+  await supa
+      .from('notifications')
+      .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+      .eq('user_id', uid)
+      .eq('kind', kNewRequestNotifKind)
+      .eq('entity_id', requestId)
+      .isFilter('read_at', null);
 }
 
 /// Solicitudes ABIERTAS (de otros) a las que este proveedor ya ofertó — para
