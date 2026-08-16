@@ -25,45 +25,54 @@ Deno.serve(async (req) => {
       return json({ error: "No autorizado para este negocio" }, 403);
     }
 
-    let q = admin
-      .from("account_verifications")
-      .select(
-        "id, whatsapp_otp_hash, whatsapp_otp_expires_at, whatsapp_attempts, whatsapp_e164",
-      )
-      .eq("user_id", userId);
-    q = businessId ? q.eq("business_id", businessId) : q.is("business_id", null);
-    const { data: row } = await q.maybeSingle();
-
-    if (!row?.whatsapp_otp_hash) {
+    // Leer-comprobar-incrementar vivía aquí y no era atómico: dos peticiones
+    // concurrentes leían el mismo `whatsapp_attempts` y ambas escribían el
+    // mismo +1, así que el tope de 5 se rebasaba con solo lanzarlas en
+    // paralelo. Ahora el ciclo entero ocurre en la base con la fila bloqueada.
+    const { data: result, error: rpcErr } = await admin.rpc(
+      "consume_whatsapp_otp_attempt",
+      {
+        _user_id: userId,
+        _business_id: businessId ?? null,
+        _code_hash: await sha256Hex(code.trim()),
+        _max_attempts: MAX_ATTEMPTS,
+      },
+    );
+    if (rpcErr) {
+      // Antes el UPDATE del contador se hacía sin mirar el error: un fallo
+      // transitorio se traducía en un intento gratis. Ahora se rechaza.
+      console.error("verify-otp: falló la RPC del intento:", rpcErr.message);
+      return json({ error: "No pudimos verificar el código. Inténtalo de nuevo." }, 500);
+    }
+    const outcome = (result ?? {}) as {
+      status?: string;
+      phone?: string | null;
+      verified_at?: string;
+      attempts_left?: number;
+    };
+    if (outcome.status === "no_pending") {
       return json({ error: "No hay código pendiente. Envía uno nuevo." }, 400);
     }
-    if (
-      row.whatsapp_otp_expires_at &&
-      new Date(row.whatsapp_otp_expires_at).getTime() < Date.now()
-    ) {
+    if (outcome.status === "expired") {
       return json({ error: "El código expiró. Envía uno nuevo." }, 400);
     }
-    if ((row.whatsapp_attempts ?? 0) >= MAX_ATTEMPTS) {
+    if (outcome.status === "too_many") {
       return json({ error: "Demasiados intentos. Envía un código nuevo." }, 400);
     }
-    if ((await sha256Hex(code.trim())) !== row.whatsapp_otp_hash) {
-      await admin
-        .from("account_verifications")
-        .update({ whatsapp_attempts: (row.whatsapp_attempts ?? 0) + 1 })
-        .eq("id", row.id);
-      return json({ error: "Código incorrecto" }, 400);
+    if (outcome.status !== "ok") {
+      // Los intentos restantes son del propio usuario, así que decírselos no
+      // filtra nada y evita que el bloqueo le llegue de golpe y sin aviso.
+      const left = outcome.attempts_left ?? 0;
+      return json({
+        error: left > 0
+          ? `Código incorrecto. Te ${left === 1 ? "queda 1 intento" : `quedan ${left} intentos`}.`
+          : "Código incorrecto",
+      }, 400);
     }
 
-    const verifiedAt = new Date().toISOString();
-    await admin
-      .from("account_verifications")
-      .update({
-        whatsapp_verified_at: verifiedAt,
-        whatsapp_otp_hash: null,
-        whatsapp_otp_expires_at: null,
-        whatsapp_attempts: 0,
-      })
-      .eq("id", row.id);
+    // Mismo instante que el sello de la fila: lo pone la RPC, no este proceso.
+    const verifiedAt = outcome.verified_at ?? new Date().toISOString();
+    const verifiedPhone = outcome.phone ?? null;
 
     let businessBadgeVerified = false;
     if (businessId) {
@@ -78,9 +87,9 @@ Deno.serve(async (req) => {
       // arriba, así que se devuelve OK sin tocar el negocio.
       if (bizErr) {
         console.error("verify-otp: no se pudo leer el negocio:", bizErr.message);
-        return json({ ok: true, phone: row.whatsapp_e164, business_badge_verified: false });
+        return json({ ok: true, phone: verifiedPhone, business_badge_verified: false });
       }
-      businessBadgeVerified = sameWhatsappNumber(row.whatsapp_e164, biz?.whatsapp ?? null);
+      businessBadgeVerified = sameWhatsappNumber(verifiedPhone, biz?.whatsapp ?? null);
       if (businessBadgeVerified) {
         await admin
           .from("provider_businesses")
@@ -119,7 +128,7 @@ Deno.serve(async (req) => {
     }
     return json({
       ok: true,
-      phone: row.whatsapp_e164,
+      phone: verifiedPhone,
       business_badge_verified: businessBadgeVerified,
     });
   } catch (e) {
