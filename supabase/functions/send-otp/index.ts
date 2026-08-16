@@ -62,6 +62,30 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Tope por NÚMERO DESTINO, además del tope por usuario de arriba. Sin este,
+    // el cupo se estrena entero con cada cuenta nueva: juntando cuentas se puede
+    // dirigir SMS ilimitados al mismo teléfono (SMS-pumping — cada envío nos
+    // cuesta dinero en Twilio, y al dueño del número lo acosa). Va después del
+    // cooldown para que los reintentos que el cooldown ya rechazó no gasten el
+    // cupo del destino. La clave se HASHEA: `api_rate_limits.bucket` es texto
+    // plano y no hay razón para dejar teléfonos ahí.
+    const phoneKey = (await sha256Hex(`wa_otp_to:${phone}`)).slice(0, 32);
+    const { data: toAllowed, error: toErr } = await admin.rpc("try_consume_rate_limit", {
+      _bucket: `wa_otp_to:${phoneKey}`,
+      // 6/hora cubre el caso legítimo más largo (verificar el número personal y
+      // el del negocio, con un reenvío cada uno) sin dejar margen al abuso.
+      _max: 6,
+      _window_seconds: 3600,
+    });
+    // Mismo copy que el tope por usuario a propósito: un mensaje distinto según
+    // el teléfono convertiría esto en un oráculo de qué números se están usando.
+    if (!toErr && toAllowed === false) {
+      return json(
+        { error: "Enviaste demasiados códigos. Espera unos minutos e intenta de nuevo." },
+        429,
+      );
+    }
+
     const code = String(Math.floor(100000 + Math.random() * 900000));
     const row = {
       whatsapp_e164: phone,
