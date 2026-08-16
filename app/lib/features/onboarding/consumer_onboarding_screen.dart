@@ -16,11 +16,17 @@ import '../shared/searchable_select.dart';
 import '../verification/otp_sheet.dart';
 
 /// Alta de consumidor (spec §6): nombre precargado de las claims de Google,
-/// WhatsApp verificado por OTP BLOQUEANTE antes de crear la cuenta (§6.1) —
-/// `verify-otp` solo escribe `account_verifications`, no `profiles`, así que
-/// verificar antes de `completeConsumerProfile` es seguro,
+/// WhatsApp verificado por OTP BLOQUEANTE antes de crear la cuenta (§6.1),
 /// ubicación GPS opcional + dirección obligatoria, términos. Una sola
 /// escritura al final (upsert de profiles, atómico por naturaleza).
+///
+/// Verificar ANTES de `completeConsumerProfile` ya no es solo "seguro": desde
+/// la migración 20260816230658 es lo que RESERVA el número. La RPC del OTP
+/// sella `profiles.phone_verified_at` (la fila ya existe, la crea
+/// `handle_new_user`) y la unicidad de teléfono aplica solo a números sellados.
+/// Al tocar este orden, cuidado: el upsert final debe mandar el MISMO número
+/// que se verificó — con otro, el guard `trg_clear_phone_seal_on_number_change`
+/// retira el sello y el número deja de estar reservado.
 ///
 /// La dirección va DESGLOSADA en país / ciudad / sector (del catálogo de
 /// `domain/locations.dart`, el mismo que la web usa para la zona de cobertura
