@@ -2173,22 +2173,37 @@ Future<String?> myBusinessAddressBody() async {
   );
 }
 
+/// Normaliza la respuesta cruda de una RPC de ubicacion (`get_request_location`
+/// / `get_business_location`, Task 11) a coordenadas o null. Extraida como
+/// funcion pura (sin red) para que un test la pueda blindar sin mockear
+/// Supabase — mismo motivo que [businessVerifiedFrom] mas arriba.
+///
+/// Las dos RPCs dicen "sin ubicacion" de DOS formas distintas y esta funcion
+/// las colapsa a la misma: `get_request_location` filtra nulls, asi que
+/// responde una lista VACIA; `get_business_location` NO filtra, asi que
+/// responde 1 fila con `lat`/`lng` en null. Ambas caen aqui en null — nunca
+/// un `null` colado en la URL del mapa. `as num?` (no `as double?`) importa:
+/// PostgREST puede devolver `numeric` como `int` cuando el valor no tiene
+/// decimales.
+({double lat, double lng})? latLngFromRpcRow(dynamic res) {
+  final row = (res is List && res.isNotEmpty) ? res.first : null;
+  if (row is! Map) return null;
+  final lat = (row['lat'] as num?)?.toDouble();
+  final lng = (row['lng'] as num?)?.toDouble();
+  if (lat == null || lng == null) return null;
+  return (lat: lat, lng: lng);
+}
+
 /// Coordenadas de una solicitud (Task 11: boton "Ver en el mapa" en el
 /// detalle que ve el proveedor). Devuelve null si la reja de
 /// `get_request_location` no deja pasar al llamador (la RPC responde 0 filas
 /// por diseno, no lanza) o si la solicitud no tiene coordenadas guardadas —
-/// las dos formas de "sin ubicacion" tienen que acabar igual: sin boton,
-/// nunca con un `null` colado en la URL del mapa.
+/// ver [latLngFromRpcRow].
 Future<({double lat, double lng})?> requestLocation(String requestId) async {
   try {
     final res = await supa
         .rpc('get_request_location', params: {'_request_id': requestId});
-    final row = (res is List && res.isNotEmpty) ? res.first : null;
-    if (row is! Map) return null;
-    final lat = (row['lat'] as num?)?.toDouble();
-    final lng = (row['lng'] as num?)?.toDouble();
-    if (lat == null || lng == null) return null;
-    return (lat: lat, lng: lng);
+    return latLngFromRpcRow(res);
   } catch (_) {
     return null;
   }
@@ -2196,19 +2211,13 @@ Future<({double lat, double lng})?> requestLocation(String requestId) async {
 
 /// Coordenadas de un negocio (Task 11: boton "Ver en el mapa" en la tienda
 /// que ve el cliente). A diferencia de [requestLocation], `get_business_
-/// location` NO filtra nulls: un negocio sin coordenadas devuelve 1 fila con
-/// `lat`/`lng` en null, y este lector la trata igual que la lista vacia —
-/// null tambien.
+/// location` NO filtra nulls — ver [latLngFromRpcRow] para como se colapsan
+/// las dos formas a null igual.
 Future<({double lat, double lng})?> businessLocation(String businessId) async {
   try {
     final res = await supa
         .rpc('get_business_location', params: {'_business_id': businessId});
-    final row = (res is List && res.isNotEmpty) ? res.first : null;
-    if (row is! Map) return null;
-    final lat = (row['lat'] as num?)?.toDouble();
-    final lng = (row['lng'] as num?)?.toDouble();
-    if (lat == null || lng == null) return null;
-    return (lat: lat, lng: lng);
+    return latLngFromRpcRow(res);
   } catch (_) {
     return null;
   }

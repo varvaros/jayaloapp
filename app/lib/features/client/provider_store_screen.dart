@@ -168,7 +168,7 @@ class ProviderStoreView extends StatelessWidget {
     required this.identity,
     required this.stats,
     required this.hasPhysicalLocation,
-    this.location,
+    required this.location,
     required this.productos,
     required this.servicios,
     required this.paquetes,

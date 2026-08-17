@@ -50,6 +50,59 @@ void main() {
     );
   });
 
+  /// Blinda el riesgo central de la Task 11: `get_request_location` y
+  /// `get_business_location` dicen "sin ubicación" de DOS formas distintas
+  /// (lista vacía vs. fila con lat/lng en null) y las dos tienen que acabar
+  /// en null — nunca un `null` colado en la URL del mapa. Si un futuro
+  /// "simplificar" el `row is! Map` o el `as num?` reintroduce el bug, este
+  /// test revienta.
+  group('latLngFromRpcRow', () {
+    test('lista vacía (get_request_location sin permiso o sin coordenadas) → null',
+        () {
+      expect(latLngFromRpcRow(<dynamic>[]), isNull);
+    });
+
+    test('fila con lat/lng en null (get_business_location sin coordenadas) → null',
+        () {
+      expect(
+        latLngFromRpcRow([
+          {'lat': null, 'lng': null},
+        ]),
+        isNull,
+      );
+    });
+
+    test('fila con coordenadas → los valores', () {
+      expect(
+        latLngFromRpcRow([
+          {'lat': 18.5, 'lng': -69.9},
+        ]),
+        (lat: 18.5, lng: -69.9),
+      );
+    });
+
+    test(
+      'fila con coordenadas ENTERAS (PostgREST puede devolver numeric sin '
+      'decimales como int) → los valores, no revienta',
+      () {
+        expect(
+          latLngFromRpcRow([
+            {'lat': 18, 'lng': -69},
+          ]),
+          (lat: 18.0, lng: -69.0),
+        );
+      },
+    );
+
+    test('fila que no es Map (p. ej. una lista de strings) → null', () {
+      expect(latLngFromRpcRow(['x']), isNull);
+    });
+
+    test('res que no es lista (p. ej. null) → null', () {
+      expect(latLngFromRpcRow(null), isNull);
+    });
+  });
+
   group('sanitizeCatalogSearchTerm', () {
     test('reemplaza % y , por espacio (paridad con la web)', () {
       expect(sanitizeCatalogSearchTerm('50%, taladro'), '50   taladro');
