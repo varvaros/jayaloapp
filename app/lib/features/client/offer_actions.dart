@@ -355,6 +355,13 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
           n('shipping_price') != null ? fmtRD(n('shipping_price')!) : 'Gratis',
           false
         ),
+      if (o['includes_materials'] != null)
+        (
+          Icons.handyman_outlined,
+          'Materiales',
+          o['includes_materials'] == true ? 'Incluidos' : 'No incluidos',
+          false
+        ),
       if (o['offers_installation'] == true)
         (
           Icons.build_outlined,
