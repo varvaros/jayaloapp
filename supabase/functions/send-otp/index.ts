@@ -14,6 +14,8 @@ import {
   getOtpChannel,
   buildOtpMessage,
   generateOtpCode,
+  isReviewTestPhone,
+  REVIEW_TEST_CODE,
 } from "../_shared/otp.ts";
 
 /** Copy común de los dos topes: ver el comentario del tope por número. */
@@ -39,6 +41,13 @@ Deno.serve(async (req) => {
       return json({ error: "No autorizado para este negocio" }, 403);
     }
 
+    // Número de PRUEBA de la revisión de Google Play (ver `_shared/otp.ts`):
+    // ni Twilio ni cooldown, y el código es FIJO. El resto del flujo es
+    // idéntico — `verify-otp` no sabe que existe: compara contra el hash
+    // guardado como con cualquier otro código, con su expiración y su tope de
+    // intentos.
+    const reviewer = isReviewTestPhone(phone);
+
     // Tope por usuario (anti toll-fraud); fail-open si el limiter falla en BD.
     const { data: allowed, error: rlErr } = await admin.rpc("try_consume_rate_limit", {
       _bucket: `wa_otp_send:${userId}`,
@@ -55,7 +64,9 @@ Deno.serve(async (req) => {
       .eq("user_id", userId);
     q = businessId ? q.eq("business_id", businessId) : q.is("business_id", null);
     const { data: existing } = await q.maybeSingle();
-    if (existing?.whatsapp_last_sent_at) {
+    // El cooldown protege de gastar SMS de más; con el número de prueba no se
+    // envía nada, y un 429 dejaría al revisor de Google atascado.
+    if (!reviewer && existing?.whatsapp_last_sent_at) {
       const last = new Date(existing.whatsapp_last_sent_at).getTime();
       if (Date.now() - last < RESEND_COOLDOWN_MS) {
         const wait = Math.ceil((RESEND_COOLDOWN_MS - (Date.now() - last)) / 1000);
@@ -70,26 +81,33 @@ Deno.serve(async (req) => {
     // cooldown para que los reintentos que el cooldown ya rechazó no gasten el
     // cupo del destino. La clave se HASHEA: `api_rate_limits.bucket` es texto
     // plano y no hay razón para dejar teléfonos ahí.
-    const phoneKey = (await sha256Hex(`wa_otp_to:${phone}`)).slice(0, 32);
-    const { data: toAllowed, error: toErr } = await admin.rpc("try_consume_rate_limit", {
-      _bucket: `wa_otp_to:${phoneKey}`,
-      // Este tope es GLOBAL por número, así que también es un arma: quien
-      // conozca el teléfono de otro puede agotarlo y dejarlo sin poder darse de
-      // alta. Por eso no se aprieta al mínimo que soporta el caso legítimo
-      // (verificar número personal y de negocio con un reenvío cada uno = 4):
-      // 10/hora sigue acotando el gasto en Twilio y encarece el bloqueo dirigido.
-      _max: 10,
-      _window_seconds: 3600,
-    });
-    // Mismo copy que el tope por usuario: uno distinto diría si el número está
-    // siendo verificado por alguien más. Sin prometer plazo — las ventanas son
-    // distintas (15 min por usuario, 1 hora por número) y "espera unos minutos"
-    // era mentira en este segundo caso.
-    if (!toErr && toAllowed === false) {
-      return json({ error: TOO_MANY }, 429);
+    // El número de prueba se salta este tope: el bucket existe para acotar el
+    // gasto en Twilio, y para ese número no hay llamada a Twilio. Además es un
+    // tope GLOBAL por número, así que aplicarlo ahí sería justo el modo de
+    // fallo peligroso: varios intentos del revisor de Play (o varias cuentas de
+    // prueba, que ese número admite a propósito) lo dejarían bloqueado 1 hora.
+    if (!reviewer) {
+      const phoneKey = (await sha256Hex(`wa_otp_to:${phone}`)).slice(0, 32);
+      const { data: toAllowed, error: toErr } = await admin.rpc("try_consume_rate_limit", {
+        _bucket: `wa_otp_to:${phoneKey}`,
+        // Este tope es GLOBAL por número, así que también es un arma: quien
+        // conozca el teléfono de otro puede agotarlo y dejarlo sin poder darse
+        // de alta. Por eso no se aprieta al mínimo que soporta el caso legítimo
+        // (verificar número personal y de negocio con un reenvío cada uno = 4):
+        // 10/hora acota el gasto en Twilio y encarece el bloqueo dirigido.
+        _max: 10,
+        _window_seconds: 3600,
+      });
+      // Mismo copy que el tope por usuario: uno distinto diría si el número
+      // está siendo verificado por alguien más. Sin prometer plazo — las
+      // ventanas son distintas (15 min por usuario, 1 hora por número) y
+      // "espera unos minutos" era mentira en este segundo caso.
+      if (!toErr && toAllowed === false) {
+        return json({ error: TOO_MANY }, 429);
+      }
     }
 
-    const code = generateOtpCode();
+    const code = reviewer ? REVIEW_TEST_CODE : generateOtpCode();
     // El número EN VUELO va a su propia columna y no toca `whatsapp_e164`, que
     // a partir de la migración 20260816224534 solo guarda números verificados.
     // Antes esto escribía el número aquí mismo, y el guard de la base
@@ -151,6 +169,10 @@ Deno.serve(async (req) => {
     // Devolver el canal REAL usado: el copy de la app lo sigue, así no miente
     // cuando app_settings.otp_channel cambie a 'whatsapp' (Twilio Sender).
     const channel = await getOtpChannel(admin);
+    // Con el número de prueba no sale ningún mensaje: ni Twilio, ni el aviso
+    // del hash (que solo tiene sentido si de verdad se manda un SMS).
+    if (reviewer) return json({ ok: true, phone, channel });
+
     const hash = Deno.env.get("SMS_RETRIEVER_HASH") ?? null;
     if (channel === "sms" && !hash) {
       // Sin el hash, `buildOtpMessage` manda el SMS en formato normal (sin el

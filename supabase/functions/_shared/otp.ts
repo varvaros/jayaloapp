@@ -8,6 +8,30 @@ export const MAX_ATTEMPTS = 5;
 export const RESEND_COOLDOWN_MS = 60 * 1000;
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01/Accounts";
 
+// ── Número de PRUEBA para la revisión de Google Play (2026-08-10) ───────────
+//
+// El registro exige verificar un WhatsApp por OTP y es BLOQUEANTE: un revisor
+// de Google no tiene un celular dominicano, no recibe el código y no puede
+// entrar a la app -> rechazo. Este es el equivalente a la "cuenta de prueba"
+// que Play pide en `Detalles de acceso`.
+//
+// Por qué ESTE número es seguro: en el plan de numeración norteamericano el
+// central no puede empezar por 0 ni por 1, así que `809-000-0000` NUNCA podrá
+// asignarse a una persona real. Con él, `send-otp` no llama a Twilio y guarda
+// el hash del código fijo; `verify-otp` sigue comparando hashes sin saber que
+// existe (cero bypass en el verificador) y mantiene expiración e intentos.
+//
+// Para retirarlo: borrar estas constantes y redeplegar `send-otp` (el número
+// deja de verificarse solo, sin tocar nada más).
+//
+// OJO (2026-08-16): esto vivía SOLO en la función desplegada, nunca en el repo
+// — se descubrió al comparar antes de un despliegue, y desplegar el repo tal
+// cual lo habría borrado. `is_whatsapp_taken` tiene la otra mitad en la base
+// (migración 20260810174619): este número nunca sale como ocupado, para que
+// varias cuentas de prueba puedan compartirlo.
+export const REVIEW_TEST_PHONE = "+18090000000";
+export const REVIEW_TEST_CODE = "246810";
+
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -79,6 +103,11 @@ export function sameWhatsappNumber(a?: string | null, b?: string | null): boolea
   const da = toWhatsappDigits(a);
   const db = toWhatsappDigits(b);
   return da.length > 0 && da === db;
+}
+
+/** ¿Es el número de prueba de la revisión de Play? Compara ya normalizado. */
+export function isReviewTestPhone(phone?: string | null): boolean {
+  return sameWhatsappNumber(phone, REVIEW_TEST_PHONE);
 }
 
 export type OtpChannel = "sms" | "whatsapp";
