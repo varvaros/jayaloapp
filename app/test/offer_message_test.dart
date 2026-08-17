@@ -11,7 +11,7 @@ void main() {
         offersInstallation: true,
         installationPrice: 0,
       );
-      expect(m, 'Envío: RD\$300 · Instalación incluida');
+      expect(m, 'Traslado: RD\$300 · Instalación incluida');
     });
 
     test('producto: evaluación con costo', () {
@@ -38,7 +38,7 @@ void main() {
         shippingPrice: 0,
       );
       expect(m,
-          'Marca: Bosch · Color: Rojo, Azul · Garantía: 1 año · Entrega: 2 días · Envío gratis');
+          'Marca: Bosch · Color: Rojo, Azul · Garantía: 1 año · Entrega: 2 días · Traslado gratis');
     });
 
     test('servicio: los detalles de producto NO aplican', () {
@@ -67,9 +67,52 @@ void main() {
       );
       expect(m, '');
     });
+
+    test('producto: el traslado ya no se llama envío', () {
+      expect(composeOfferMessage(isService: false, offersShipping: true, shippingPrice: 300),
+          'Traslado: RD\$300');
+      expect(composeOfferMessage(isService: false, offersShipping: true), 'Traslado gratis');
+    });
+
+    test('servicio: materiales antes de la evaluación', () {
+      expect(
+        composeOfferMessage(
+            isService: true,
+            estimatedDuration: '2 días',
+            includesMaterials: true,
+            requiresEvaluation: true),
+        'Duración: 2 días · Materiales incluidos · Requiere evaluación en sitio',
+      );
+    });
+
+    test('includesMaterials nulo no emite nada', () {
+      expect(composeOfferMessage(isService: true, includesMaterials: null), '');
+    });
   });
 
   group('freeTextFromOfferMessage', () {
+    // REGRESIÓN 2026-08-17: las ofertas enviadas ANTES del renombre dicen «Envío» en
+    // su `message`. El detalle pinta la tarjeta «Traslado» con los mismos datos, así
+    // que si el lector no reconoce la etiqueta vieja, el cliente ve la línea repetida
+    // debajo de su propia tarjeta. Esto no se migra: son datos vivos.
+    test('formato histórico: «Envío: RD\$300» lo cubre la tarjeta Traslado', () {
+      expect(freeTextFromOfferMessage('Envío: RD\$300', {'Traslado'}), '');
+      expect(freeTextFromOfferMessage('Envío gratis', {'Traslado'}), '');
+    });
+
+    test('formato nuevo: «Traslado: RD\$300» también lo cubre', () {
+      expect(freeTextFromOfferMessage('Traslado: RD\$300', {'Traslado'}), '');
+      expect(freeTextFromOfferMessage('Traslado gratis', {'Traslado'}), '');
+    });
+
+    test('sin la tarjeta Traslado, la parte sobrevive como texto', () {
+      expect(freeTextFromOfferMessage('Envío: RD\$300', {'Estado'}), 'Envío: RD\$300');
+    });
+
+    test('materiales: las dos formas las cubre la tarjeta Materiales', () {
+      expect(freeTextFromOfferMessage('Materiales incluidos', {'Materiales'}), '');
+      expect(freeTextFromOfferMessage('Materiales no incluidos', {'Materiales'}), '');
+    });
     test('mensaje 100% estructurado con todos los tiles => vacío', () {
       final m = composeOfferMessage(
         isService: false,
@@ -77,9 +120,9 @@ void main() {
         warranty: '3 días',
         offersShipping: true,
       );
-      expect(m, 'Estado: Nuevo · Garantía: 3 días · Envío gratis');
+      expect(m, 'Estado: Nuevo · Garantía: 3 días · Traslado gratis');
       expect(
-        freeTextFromOfferMessage(m, {'Estado', 'Garantía', 'Envío'}),
+        freeTextFromOfferMessage(m, {'Estado', 'Garantía', 'Traslado'}),
         '',
       );
     });
@@ -96,7 +139,7 @@ void main() {
     test('parte estructurada SIN tile se conserva (oferta vieja sin columna)',
         () {
       expect(
-        freeTextFromOfferMessage('Marca: Bosch · Envío gratis', {'Envío'}),
+        freeTextFromOfferMessage('Marca: Bosch · Envío gratis', {'Traslado'}),
         'Marca: Bosch',
       );
     });

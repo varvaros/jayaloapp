@@ -15,6 +15,7 @@ String composeOfferMessage({
   double? installationPrice,
   bool requiresEvaluation = false,
   double? evaluationPrice,
+  bool? includesMaterials,
   String availabilityNote = '',
   String estimatedDuration = '',
   String brand = '',
@@ -35,13 +36,18 @@ String composeOfferMessage({
     }
     if (offersShipping) {
       parts.add((shippingPrice != null && shippingPrice > 0)
-          ? 'Envío: ${fmtRD(shippingPrice)}'
-          : 'Envío gratis');
+          ? 'Traslado: ${fmtRD(shippingPrice)}'
+          : 'Traslado gratis');
     }
     if (offersInstallation) {
       parts.add((installationPrice != null && installationPrice > 0)
           ? 'Instalación: ${fmtRD(installationPrice)}'
           : 'Instalación incluida');
+    }
+    if (includesMaterials != null) {
+      parts.add(includesMaterials
+          ? 'Materiales incluidos'
+          : 'Materiales no incluidos');
     }
     if (requiresEvaluation) {
       parts.add((evaluationPrice != null && evaluationPrice > 0)
@@ -54,6 +60,11 @@ String composeOfferMessage({
     }
     if (estimatedDuration.trim().isNotEmpty) {
       parts.add('Duración: ${estimatedDuration.trim()}');
+    }
+    if (includesMaterials != null) {
+      parts.add(includesMaterials
+          ? 'Materiales incluidos'
+          : 'Materiales no incluidos');
     }
     if (requiresEvaluation) parts.add('Requiere evaluación en sitio');
   }
@@ -73,16 +84,25 @@ String composeOfferMessage({
 String freeTextFromOfferMessage(String message, Set<String> shownLabels) {
   // Partes SIN ':' que emite composeOfferMessage, por etiqueta de su tile.
   const literales = {
-    'Envío gratis': 'Envío',
+    // 'Envío gratis' es el formato HISTÓRICO (ofertas anteriores al 2026-08-17).
+    // No se migra: se sigue leyendo. Quitarlo hace que esas ofertas repitan la
+    // línea debajo de su propia tarjeta.
+    'Envío gratis': 'Traslado',
+    'Traslado gratis': 'Traslado',
     'Instalación incluida': 'Instalación',
     'Requiere evaluación en sitio': 'Evaluación',
+    'Materiales incluidos': 'Materiales',
+    'Materiales no incluidos': 'Materiales',
   };
+  // Etiquetas con ':' cuyo nombre cambió. Misma razón que arriba.
+  const aliasEtiqueta = {'Envío': 'Traslado'};
   bool cubierta(String parte) {
     final porLiteral = literales[parte];
     if (porLiteral != null) return shownLabels.contains(porLiteral);
     final idx = parte.indexOf(': ');
     if (idx <= 0) return false;
-    return shownLabels.contains(parte.substring(0, idx));
+    final etiqueta = parte.substring(0, idx);
+    return shownLabels.contains(aliasEtiqueta[etiqueta] ?? etiqueta);
   }
 
   return message
