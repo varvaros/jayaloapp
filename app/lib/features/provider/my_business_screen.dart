@@ -1045,7 +1045,9 @@ class _ReviewsBlock extends StatelessWidget {
           child: Row(children: [
             const Icon(Icons.star_rounded, size: 18, color: Color(0xFFF5A623)),
             const SizedBox(width: 4),
-            Text(r.avg.toStringAsFixed(1),
+            // Sobre 10, como las estrellas de `_ReviewCard`: sin el "/10", pegado a
+            // una estrella se lee como una nota de cinco.
+            Text('${r.avg.toStringAsFixed(1)}/10',
                 style: const TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(width: 6),
             Text('(${r.count} ${r.count == 1 ? 'reseña' : 'reseñas'})',
@@ -1067,14 +1069,27 @@ class _ReviewCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // `business_reviews.rating` es **1-10** (CHECK 1..10, igual que
+          // `customer_reviews`), así que hay que dividir entre 2 antes de repartirlo
+          // en cinco estrellas — el mismo patrón que la web en
+          // `provider/business.$id.tsx` (`Math.round(avg / 2)`).
+          // ⚠️ Antes era `i < review.rating.round()`: saturaba desde el 5, o sea que
+          // un 5, un 6, un 8 y un 10 pintaban CINCO ESTRELLAS LLENAS idénticas.
+          // Se escribe además el número, que es lo que hace visible el error.
           Row(children: [
             for (var i = 0; i < 5; i++)
               Icon(
-                  i < review.rating.round()
+                  i < (review.rating / 2).round()
                       ? Icons.star_rounded
                       : Icons.star_outline_rounded,
                   size: 16,
                   color: const Color(0xFFF5A623)),
+            const SizedBox(width: 5),
+            Text('${review.rating.toStringAsFixed(review.rating.truncateToDouble() == review.rating ? 0 : 1)} / 10',
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ]),
           if (review.comment != null) ...[
             const SizedBox(height: 6),
