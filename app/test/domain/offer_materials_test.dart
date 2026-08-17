@@ -43,5 +43,18 @@ void main() {
         isNull,
       );
     });
+
+    test('producto con instalación (la otra combinación que aplica): pasa el valor elegido tal cual', () {
+      expect(
+        materialsValueForPayload(
+            isService: false, offersInstallation: true, includesMaterials: true),
+        isTrue,
+      );
+      expect(
+        materialsValueForPayload(
+            isService: false, offersInstallation: true, includesMaterials: false),
+        isFalse,
+      );
+    });
   });
 }

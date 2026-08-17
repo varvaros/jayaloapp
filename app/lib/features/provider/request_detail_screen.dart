@@ -802,7 +802,7 @@ class _ProviderRequestDetailScreenState
           offersInstallation: _offersInstallation,
         ) &&
         _includesMaterials == null) {
-      return _toast('Falta decir si incluye los materiales');
+      return _toast('Elige si la oferta incluye los materiales.');
     }
 
     // Cotejo contra lo que el cliente marcó. Solo al CREAR: en edición las dos

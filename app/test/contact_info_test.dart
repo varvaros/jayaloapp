@@ -121,7 +121,7 @@ void main() {
     'solar con prefijo de moneda': 'Terreno 809m2 RD\$5,551,234',
     // Textos que componen los propios generadores de la app.
     'mensaje de oferta generado':
-        'Estado: Nuevo · Garantia: 1 ano · Envio: RD\$300',
+        'Estado: Nuevo · Garantia: 1 ano · Traslado: RD\$300',
     'bullets de la IA': 'Marca: Kikkoman • Contenido: 5 fl oz (148 ml)',
     // Marketplace dominicano.
     'codigo con palabra intercalada': 'Serie 809 modelo 1234567 unidades',
