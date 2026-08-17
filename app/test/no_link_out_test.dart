@@ -53,6 +53,7 @@ void main() {
       'lib/features/onboarding/consumer_onboarding_screen.dart', // términos y privacidad
       'lib/features/settings/settings_screen.dart', // términos y privacidad
       'lib/features/chat/widgets/bubbles.dart', // mapas
+      'lib/features/shared/open_in_maps_button.dart', // mapas (Task 11)
       'lib/features/provider/unlock_flow.dart', // wa.me del contacto desbloqueado
       // El editor del negocio. Su destino lleva `?embed=app`, que hace que la
       // web NO pinte navbar ni footer — sin eso, la barra superior de esa

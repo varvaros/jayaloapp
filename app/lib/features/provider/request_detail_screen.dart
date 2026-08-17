@@ -29,6 +29,7 @@ import '../shared/customer_rep_card.dart';
 import '../shared/offer_field_options.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
+import '../shared/open_in_maps_button.dart';
 import '../shared/section_heading.dart';
 import '../shared/wholesale_card.dart';
 import '../shell/floating_nav_bar.dart';
@@ -166,6 +167,12 @@ class _ProviderRequestDetailScreenState
   /// Cuántas ofertas ha recibido esta solicitud (FOMO, pedido PO 2026-07-21):
   /// solo el número, no se pueden ver. 0 = no se muestra.
   int _offerCount = 0;
+
+  /// Coordenadas de la solicitud para el boton "Ver en el mapa" (Task 11).
+  /// `null` mientras carga, si la reja de `get_request_location` no deja
+  /// pasar al proveedor, o si la solicitud no las tiene: en los tres casos el
+  /// boton simplemente no se monta (ver [_buildLocationButton]).
+  ({double lat, double lng})? _reqLocation;
 
   /// Id de la oferta en edición. Nace de `widget.editOfferId` (ruta `?edit=`,
   /// desde "Mis ofertas") y TAMBIÉN puede activarse en sitio, desde la tarjeta
@@ -316,6 +323,11 @@ class _ProviderRequestDetailScreenState
             ? setState(() => _offerCount = m[widget.requestId] ?? 0)
             : null)
         .catchError((_) {});
+    // Ubicacion de la solicitud (Task 11, best-effort): `requestLocation` ya
+    // captura sus propios errores y devuelve null, asi que no hace falta
+    // `catchError` aqui.
+    requestLocation(widget.requestId).then(
+        (loc) => mounted ? setState(() => _reqLocation = loc) : null);
     // Registro inicial, ANTES de la rama edicion/creacion: si `offerForEdit`
     // (mas abajo) devuelve null o falla, el formulario igual se muestra
     // (compuerta `:1717-1737`, cae al `else` de abajo) pero `_prefillFromOffer`
@@ -1951,6 +1963,20 @@ class _ProviderRequestDetailScreenState
                       );
                     }),
                   ],
+                  // Ubicacion de la solicitud (Task 11): solo si la RPC dio
+                  // coordenadas — nunca un boton deshabilitado.
+                  if (_reqLocation != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: OpenInMapsButton(
+                          lat: _reqLocation!.lat,
+                          lng: _reqLocation!.lng,
+                          label: 'Ver en el mapa',
+                        ),
+                      ),
+                    ),
                   // ── 3) DESBLOQUEO O ENVIAR OFERTA ──
                   const Divider(height: 32),
                   if (!_editing && _businessId == null)

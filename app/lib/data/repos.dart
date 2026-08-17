@@ -2173,6 +2173,47 @@ Future<String?> myBusinessAddressBody() async {
   );
 }
 
+/// Coordenadas de una solicitud (Task 11: boton "Ver en el mapa" en el
+/// detalle que ve el proveedor). Devuelve null si la reja de
+/// `get_request_location` no deja pasar al llamador (la RPC responde 0 filas
+/// por diseno, no lanza) o si la solicitud no tiene coordenadas guardadas —
+/// las dos formas de "sin ubicacion" tienen que acabar igual: sin boton,
+/// nunca con un `null` colado en la URL del mapa.
+Future<({double lat, double lng})?> requestLocation(String requestId) async {
+  try {
+    final res = await supa
+        .rpc('get_request_location', params: {'_request_id': requestId});
+    final row = (res is List && res.isNotEmpty) ? res.first : null;
+    if (row is! Map) return null;
+    final lat = (row['lat'] as num?)?.toDouble();
+    final lng = (row['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return null;
+    return (lat: lat, lng: lng);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Coordenadas de un negocio (Task 11: boton "Ver en el mapa" en la tienda
+/// que ve el cliente). A diferencia de [requestLocation], `get_business_
+/// location` NO filtra nulls: un negocio sin coordenadas devuelve 1 fila con
+/// `lat`/`lng` en null, y este lector la trata igual que la lista vacia —
+/// null tambien.
+Future<({double lat, double lng})?> businessLocation(String businessId) async {
+  try {
+    final res = await supa
+        .rpc('get_business_location', params: {'_business_id': businessId});
+    final row = (res is List && res.isNotEmpty) ? res.first : null;
+    if (row is! Map) return null;
+    final lat = (row['lat'] as num?)?.toDouble();
+    final lng = (row['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return null;
+    return (lat: lat, lng: lng);
+  } catch (_) {
+    return null;
+  }
+}
+
 Future<String?> myContactBody() async {
   final uid = supa.auth.currentUser!.id;
   final p = await supa

@@ -8,6 +8,7 @@ import '../../domain/profile_sections.dart';
 import '../shared/brand_kit.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
+import '../shared/open_in_maps_button.dart';
 import '../shared/portfolio_gallery_viewer.dart';
 import '../shared/product_list_card.dart';
 import '../shared/service_chips_editor.dart';
@@ -61,6 +62,13 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
   /// siguen cargando con normalidad.
   bool _hasPhysicalLocation = false;
 
+  /// Coordenadas del negocio para el boton "Ver en el mapa" (Task 11). Null
+  /// mientras carga, si la reja de `get_business_location` no deja pasar al
+  /// cliente, o si el negocio no las tiene — `businessLocation` (repos.dart)
+  /// ya colapsa las dos formas de "sin coordenadas" (lista vacia o fila con
+  /// `lat`/`lng` en null) a un solo `null`.
+  ({double lat, double lng})? _location;
+
   @override
   void initState() {
     super.initState();
@@ -85,6 +93,10 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       // `businessesPhysicalLocation` ya degrada a `{}` internamente si la
       // columna aún no existe — no hace falta `.catchError` aquí.
       final physicalF = businessesPhysicalLocation([widget.businessId]);
+      // `businessLocation` (Task 11) ya captura sus propios errores y
+      // colapsa "sin permiso"/"sin coordenadas" a null — no hace falta
+      // `.catchError` aqui tampoco.
+      final locationF = businessLocation(widget.businessId);
       final results = await Future.wait([
         myStoreProducts(widget.businessId),
         myPortfolioItems(widget.businessId),
@@ -95,6 +107,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       final identity = await identityF;
       final paquetes = await paquetesF;
       final physical = await physicalF;
+      final location = await locationF;
       if (!mounted) return;
       setState(() {
         _productos = prod;
@@ -104,6 +117,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
         _stats = stats;
         _identity = identity;
         _hasPhysicalLocation = physical[widget.businessId] ?? false;
+        _location = location;
         _loading = false;
       });
     } catch (_) {
@@ -130,6 +144,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
                     identity: _identity,
                     stats: _stats,
                     hasPhysicalLocation: _hasPhysicalLocation,
+                    location: _location,
                     productos: _productos,
                     servicios: _servicios,
                     paquetes: _paquetes,
@@ -153,6 +168,7 @@ class ProviderStoreView extends StatelessWidget {
     required this.identity,
     required this.stats,
     required this.hasPhysicalLocation,
+    this.location,
     required this.productos,
     required this.servicios,
     required this.paquetes,
@@ -166,6 +182,10 @@ class ProviderStoreView extends StatelessWidget {
   /// `businessesPhysicalLocation`. Independiente de `stats`: un negocio sin
   /// ningún sello de verificación puede igual tener este marcado.
   final bool hasPhysicalLocation;
+
+  /// Coordenadas del negocio (Task 11) para el boton "Ver en el mapa". Null =
+  /// no se monta ningun boton (ver [_locationButton]).
+  final ({double lat, double lng})? location;
 
   final List<Map<String, dynamic>> productos;
   final List<Map<String, dynamic>> servicios;
@@ -289,6 +309,21 @@ class ProviderStoreView extends StatelessWidget {
     );
   }
 
+  /// Boton "Ver en el mapa" (Task 11) — null si [location] no llego (reja del
+  /// servidor o negocio sin coordenadas): nunca se monta un boton
+  /// deshabilitado, la seccion entera desaparece.
+  Widget? _locationButton() {
+    final loc = location;
+    if (loc == null) return null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: OpenInMapsButton(lat: loc.lat, lng: loc.lng),
+      ),
+    );
+  }
+
   /// Categoría y ciudad en una línea bajo el nombre de la portada, igual que
   /// en Mi negocio. Nulo si el negocio no declara ninguna de las dos.
   String? _subtitle() {
@@ -384,6 +419,7 @@ class ProviderStoreView extends StatelessWidget {
   Widget build(BuildContext context) {
     final repCard = _repCard(context);
     final physicalBadge = _physicalLocationBadge(context);
+    final locationButton = _locationButton();
     final servicesBlock = _servicesBlock();
     final teamGallery = TeamGalleryBlock.maybe(
       businessType: identity?.raw['business_type'] as String?,
@@ -405,6 +441,7 @@ class ProviderStoreView extends StatelessWidget {
       if (servicesBlock != null) SliverToBoxAdapter(child: servicesBlock),
       if (repCard != null) SliverToBoxAdapter(child: repCard),
       if (physicalBadge != null) SliverToBoxAdapter(child: physicalBadge),
+      if (locationButton != null) SliverToBoxAdapter(child: locationButton),
       if (teamGallery != null) SliverToBoxAdapter(child: teamGallery),
       SliverToBoxAdapter(
         child: BusinessDetailsCard(business: identity?.raw ?? const {}),
