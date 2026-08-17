@@ -1967,9 +1967,12 @@ Future<void> submitConversationRating({
 
 // ── Calificación del PROVEEDOR al CLIENTE (bilateral) ──────────────────────
 // Espejo de la web (`ProviderOffersSection`): el proveedor califica al cliente
-// 1-5 + comentario en `customer_reviews`, indexado por `offer_id`. La RLS solo
+// **1-10** + comentario en `customer_reviews`, indexado por `offer_id`. La RLS solo
 // exige que el negocio sea suyo (sin gate de estado), pero la UI lo muestra al
 // cerrarse el chat.
+// ⚠️ Este comentario decía "1-5" y era falso: la columna tiene `CHECK (1..10)` desde
+// la migración `20260619014535` y el formulario de la app escribía 1-5 contra ella
+// (arreglado el 2026-08-17). El `rating` se manda CRUDO, sin conversión de escala.
 
 /// ¿El proveedor ya calificó al cliente de esta oferta? (una reseña por oferta).
 Future<bool> hasCustomerReview(String offerId) async =>

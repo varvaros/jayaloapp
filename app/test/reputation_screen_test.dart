@@ -60,8 +60,10 @@ void main() {
   });
 
   testWidgets('con actividad muestra las cifras', (tester) async {
+    // Escala 1-10: un 9.0 es lo que este fixture quería decir con el 4.5 de
+    // cuando la app escribía 1-5 por error (arreglado 2026-08-17).
     await tester.pumpWidget(host(const ReputationView(data: {
-      'avg_rating': 4.5,
+      'avg_rating': 9.0,
       'reviews_count': 3,
       'completed_purchases': 3,
       'requests_count': 7,
@@ -70,8 +72,8 @@ void main() {
     })));
     await tester.pumpAndSettle();
     // La calificación va en un Text.rich con la reseña pegada
-    // («4.5 · 3 reseñas»), así que se busca por contenido.
-    expect(find.textContaining('4.5'), findsOneWidget);
+    // («9.0/10 · 3 reseñas»), así que se busca por contenido.
+    expect(find.textContaining('9.0/10'), findsOneWidget);
     expect(find.text('3'), findsWidgets);
     expect(find.text('7'), findsOneWidget);
     // Plantilla PO 2026-08-11: etiquetas de tarjeta y la escena de Jayi.

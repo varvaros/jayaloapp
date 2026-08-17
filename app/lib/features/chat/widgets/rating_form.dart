@@ -3,16 +3,11 @@ import '../../../data/repos.dart';
 import '../../shared/celebration.dart';
 import '../../shared/jayalo_loader.dart';
 
-/// Palabra cualitativa de una calificación en escala de 5 (proveedor→cliente).
-String ratingWord5(int n) => switch (n) {
-      1 => 'Malo',
-      2 => 'Regular',
-      3 => 'Bueno',
-      4 => 'Muy bueno',
-      _ => 'Excelente',
-    };
-
-/// Palabra cualitativa de una calificación en escala de 10 (cliente→proveedor).
+/// Palabra cualitativa de una calificación en escala de 10.
+/// Vale para las DOS direcciones: `customer_reviews` (proveedor→cliente) y
+/// `business_reviews`/`conversation_ratings` (cliente→proveedor) son todas 1-10.
+/// (Existió un `ratingWord5` para el formulario del proveedor al cliente; murió
+/// el 2026-08-17 con el arreglo de escala — esa tabla nunca fue de 5.)
 String ratingWord10(int n) => n <= 0
     ? ''
     : n <= 3
@@ -25,9 +20,15 @@ String ratingWord10(int n) => n <= 0
                     ? 'Muy bueno'
                     : 'Excelente';
 
-/// Calificación del PROVEEDOR al CLIENTE (bilateral, pedido PO): 1-5 estrellas
-/// + comentario opcional, como la web. Se muestra cuando el chat de una oferta
-/// queda cerrado (por "completado" o por el cierre automático a las 72h).
+/// Calificación del PROVEEDOR al CLIENTE (bilateral, pedido PO): **1-10** +
+/// comentario opcional, en paridad con la web (`ProviderOffersSection`). Se
+/// muestra cuando el chat de una oferta queda cerrado (por "completado" o por el
+/// cierre automático a las 72h).
+///
+/// ⚠️ ESTO ERAN 5 ESTRELLAS Y ERA UN BUG (arreglado 2026-08-17). `customer_reviews.rating`
+/// tiene `CHECK (1..10)` desde la migración `20260619014535` y la reputación se
+/// pinta como "X / 10": un cliente impecable calificado con 5 estrellas salía
+/// **5.0/10**, que parece mediocre. No volver a bajarlo a 5 sin cambiar la columna.
 class CustomerRatingPanel extends StatefulWidget {
   const CustomerRatingPanel({
     super.key,
@@ -46,7 +47,9 @@ class CustomerRatingPanel extends StatefulWidget {
 }
 
 class _CustomerRatingPanelState extends State<CustomerRatingPanel> {
-  int _rating = 5;
+  // Default 8, igual que la web (`ProviderOffersSection.tsx`): el proveedor que
+  // envía sin tocar nada no debería calificar con un aprobado raspado.
+  int _rating = 8;
   final _comment = TextEditingController();
   bool _submitting = false;
 
@@ -96,22 +99,35 @@ class _CustomerRatingPanelState extends State<CustomerRatingPanel> {
         const SizedBox(height: 10),
         const Text('Califica al cliente',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        Text('Escala de 1 a 10.',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
         const SizedBox(height: 8),
-        Row(children: [
-          for (var n = 1; n <= 5; n++)
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              onPressed: () => setState(() => _rating = n),
-              icon: Icon(n <= _rating ? Icons.star : Icons.star_border,
-                  color: n <= _rating ? cs.primary : cs.outline, size: 30),
-            ),
-          const SizedBox(width: 4),
-          Text(ratingWord5(_rating),
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: cs.primary)),
+        // Misma rejilla numerada que `RatingPanel` y `BusinessReviewPanel` de este
+        // fichero: 10 botones, no estrellas. Ver el aviso de la clase.
+        Wrap(spacing: 4, runSpacing: 4, children: [
+          for (var n = 1; n <= 10; n++)
+            InkWell(
+                onTap: () => setState(() => _rating = n),
+                child: Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                            color: n <= _rating ? cs.primary : cs.outlineVariant),
+                        color: n <= _rating ? cs.primary : null),
+                    child: Text('$n',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: n <= _rating
+                                ? cs.onPrimary
+                                : cs.onSurfaceVariant)))),
         ]),
+        const SizedBox(height: 6),
+        Text('${ratingWord10(_rating)} · $_rating/10',
+            style: TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w600, color: cs.primary)),
         TextField(
             controller: _comment,
             maxLines: 2,

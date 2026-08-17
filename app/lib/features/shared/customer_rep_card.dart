@@ -80,7 +80,9 @@ class CustomerRepCard extends StatelessWidget {
 
     final chips = <(IconData, String)>[
       if (count > 0)
-        (Icons.star_rounded, '${avg.toStringAsFixed(1)} ($count)'),
+        // Sobre 10 (`customer_reviews.rating`, CHECK 1..10). Sin el "/10", junto a
+        // una estrella se lee como una nota de cinco.
+        (Icons.star_rounded, '${avg.toStringAsFixed(1)}/10 ($count)'),
       if (requests > 0)
         (Icons.receipt_long_outlined,
             '$requests solicitud${requests == 1 ? '' : 'es'}'),

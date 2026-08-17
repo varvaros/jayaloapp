@@ -9,8 +9,11 @@ import 'package:jayalo_app/features/shared/customer_rep_card.dart';
 void main() {
   const cid = 'cliente-1';
 
+  // La escala es 1-10 (`customer_reviews.rating`, CHECK 1..10). El fixture valía
+  // 4.8 cuando la app escribía 1-5 por error; con esa escala un 4.8 era un cliente
+  // excelente y ahora sería mediocre, así que se sube para que represente lo mismo.
   final repFull = <String, dynamic>{
-    'avg_rating': 4.8,
+    'avg_rating': 8.6,
     'reviews_count': 6,
     'completed_purchases': 2,
     'requests_count': 4,
@@ -59,7 +62,7 @@ void main() {
         findsOneWidget);
     expect(find.textContaining('Este perfil es anónimo'), findsOneWidget);
     expect(find.text('~12 h'), findsOneWidget); // 720 min → destacada
-    expect(find.text('4.8'), findsOneWidget);
+    expect(find.text('8.6/10'), findsOneWidget);
     expect(find.text('Solicitudes publicadas'), findsOneWidget);
     expect(find.text('Compras cerradas'), findsOneWidget);
   });
@@ -82,7 +85,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(screen(rep: repFull, reviews: [
       {
-        'rating': 4,
+        'rating': 8,
         'comment': 'Pagó al momento y respondió rápido.',
         'business_name': 'Ferretería El Sol',
         'created_at':
@@ -94,6 +97,9 @@ void main() {
     expect(
         find.text('Pagó al momento y respondió rápido.'), findsOneWidget);
     expect(find.textContaining('Ferretería El Sol'), findsOneWidget);
+    // La nota se escribe: sin el número, un 6, un 8 y un 10 pintan las mismas
+    // estrellas y el bug de escala vuelve a ser invisible.
+    expect(find.text('8 / 10'), findsOneWidget);
   });
 
   testWidgets('sin reseñas la sección no aparece', (tester) async {

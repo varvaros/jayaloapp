@@ -117,7 +117,8 @@ class _ReputationViewState extends State<ReputationView> {
         _StatTile(
           icon: Icons.star_rounded,
           label: 'CALIFICACIÓN',
-          value: rating > 0 ? rating.toStringAsFixed(1) : '—',
+          // Sobre 10, no sobre 5: sin el "/10" se lee como una nota de cinco.
+          value: rating > 0 ? '${rating.toStringAsFixed(1)}/10' : '—',
           suffix: reviews == 1 ? ' · 1 reseña' : ' · $reviews reseñas',
           trailing: rating > 0 ? _Stars(rating: rating) : null,
         ).cascadeIn(0),
@@ -247,6 +248,12 @@ class _StatTile extends StatelessWidget {
 }
 
 /// Las cinco estrellas de la calificación, llenas según el redondeo.
+///
+/// ⚠️ La nota que llega es **sobre 10** (`customer_reviews.rating`, CHECK 1..10),
+/// así que hay que dividir entre 2 antes de repartirla en cinco estrellas. Con el
+/// `clamp(0, 5)` que había aquí, cualquier nota de 5 en adelante saturaba: un
+/// cliente con 8,4 de media veía 5/5. El mismo patrón que la web usa en
+/// `provider/business.$id.tsx` (`Math.round(avg / 2)`).
 class _Stars extends StatelessWidget {
   const _Stars({required this.rating});
   final double rating;
@@ -254,7 +261,7 @@ class _Stars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final filled = rating.round().clamp(0, 5);
+    final filled = (rating / 2).round().clamp(0, 5);
     return Row(mainAxisSize: MainAxisSize.min, children: [
       for (var i = 0; i < 5; i++)
         Icon(Icons.star_rounded,

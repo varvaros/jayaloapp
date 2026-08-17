@@ -322,7 +322,8 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
           const SizedBox(width: 10),
           tile(
               Icons.star_rounded,
-              count > 0 ? avg.toStringAsFixed(1) : '—',
+              // El promedio es sobre 10 (ver `_stars`): sin el "/10" se lee como /5.
+              count > 0 ? '${avg.toStringAsFixed(1)}/10' : '—',
               count == 1 ? '1 reseña de proveedor' : '$count reseñas de proveedores'),
         ]),
         const SizedBox(height: 10),
@@ -389,16 +390,32 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     return when.isEmpty ? biz : '$biz · $when';
   }
 
+  /// La nota es **1-10** (`customer_reviews.rating`, CHECK 1..10), no 1-5. Se
+  /// pinta sobre 5 estrellas dividiendo entre 2 —el mismo patrón que la web en
+  /// `provider/business.$id.tsx`— y se escribe el número al lado.
+  ///
+  /// ⚠️ Antes recorría `i <= rating` con 5 iconos: un 6, un 8 y un 10 salían
+  /// IDÉNTICOS (cinco estrellas llenas). Se veía coherente solo mientras el
+  /// formulario escribía 1-5, que era el bug arreglado el 2026-08-17.
   Widget _stars(int rating) => Row(mainAxisSize: MainAxisSize.min, children: [
         for (var i = 1; i <= 5; i++)
-          Icon(i <= rating ? Icons.star_rounded : Icons.star_outline_rounded,
+          Icon(
+              i <= (rating / 2).round()
+                  ? Icons.star_rounded
+                  : Icons.star_outline_rounded,
               size: 14,
-              color: i <= rating
+              color: i <= (rating / 2).round()
                   ? const Color(0xFFF2B705)
                   : Theme.of(context)
                       .colorScheme
                       .onSurfaceVariant
                       .withValues(alpha: .5)),
+        const SizedBox(width: 5),
+        Text('$rating / 10',
+            style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ]);
 
   Widget _anonNote(BuildContext context) {
