@@ -857,11 +857,11 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
           ]),
         const SizedBox(height: 16),
         _toggleRow(
-          title: 'Ofrezco envío',
+          title: 'Ofrezco traslado',
           value: _offersShipping,
           onChanged: (v) => setState(() => _offersShipping = v),
           cost: _shipping,
-          costLabel: 'Costo de envío (RD\$)',
+          costLabel: 'Costo del traslado (RD\$)',
           switchKey: const Key('switch-envio'),
         ),
         _toggleRow(

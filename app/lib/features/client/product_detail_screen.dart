@@ -258,7 +258,7 @@ class _ProductDetailViewState extends State<ProductDetailView> {
       if (delivery != null && delivery.isNotEmpty)
         (Icons.schedule_outlined, 'Entrega', delivery, false),
       if (offersShipping)
-        (Icons.local_shipping_outlined, 'Envío', 'Disponible', true),
+        (Icons.local_shipping_outlined, 'Traslado', 'Disponible', true),
       if (offersInstallation)
         (Icons.build_outlined, 'Instalación', 'Incluida', true),
       if (requiresEvaluation)

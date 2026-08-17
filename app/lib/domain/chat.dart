@@ -370,7 +370,7 @@ String storeItemChatCaption(
     'Precio: $priceLabel',
     if (!isService && condition == 'nuevo') 'Estado: Nuevo',
     if (!isService && condition == 'usado') 'Estado: Usado',
-    if (item['offers_shipping'] == true) '🚚 Con envío disponible',
+    if (item['offers_shipping'] == true) '🚚 Con traslado disponible',
     if (item['offers_installation'] == true) '🔧 Con instalación',
     if (desc.isNotEmpty) desc.length > 240 ? desc.substring(0, 240) : desc,
   ];

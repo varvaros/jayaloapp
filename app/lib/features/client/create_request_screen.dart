@@ -1937,8 +1937,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             }),
           ),
           _checkTile(
-            'Con envío',
-            'Que coticen también el envío.',
+            'Con traslado',
+            'Que coticen también el traslado.',
             _withShipping,
             (v) => setState(() => _withShipping = v),
           ),

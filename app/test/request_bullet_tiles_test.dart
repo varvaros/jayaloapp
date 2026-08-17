@@ -47,4 +47,13 @@ void main() {
     expect(r.rows[1].$1, Icons.place_outlined);
     expect(r.rows[2].$1, Icons.notes_outlined);
   });
+
+  // El matcher elige el ícono por PALABRA dentro del texto del bullet. Al renombrar
+  // «Envío» a «Traslado» (2026-08-17) el camión se perdía en silencio: no rompe
+  // ningún test de compilación, solo pinta el ícono neutro de nota.
+  test('«Traslado» sigue llevando camión, y «Envío» de bullets viejos también', () {
+    expect(iconForLabel('Traslado'), Icons.local_shipping_outlined);
+    expect(iconForLabel('Traslado a domicilio'), Icons.local_shipping_outlined);
+    expect(iconForLabel('Envío'), Icons.local_shipping_outlined);
+  });
 }

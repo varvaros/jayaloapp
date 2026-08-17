@@ -351,7 +351,7 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
       if (o['offers_shipping'] == true)
         (
           Icons.local_shipping_outlined,
-          'Envío',
+          'Traslado',
           n('shipping_price') != null ? fmtRD(n('shipping_price')!) : 'Gratis',
           false
         ),

@@ -1472,12 +1472,12 @@ class _ProviderRequestDetailScreenState
   /// con su costo opcional y la etiqueta "Gratis" cuando el costo es 0.
   List<Widget> _productExtras(BuildContext context) => [
         _toggleRow(
-          title: 'Ofrezco envío',
-          subtitle: 'Puedes llevar el producto al cliente.',
+          title: 'Ofrezco traslado',
+          subtitle: 'Puedes llevarle el producto al cliente.',
           value: _offersShipping,
           onChanged: (v) => setState(() => _offersShipping = v),
           cost: _shipping,
-          costLabel: 'Costo de envío (RD\$)',
+          costLabel: 'Costo del traslado (RD\$)',
         ),
         _toggleRow(
           title: 'Ofrezco instalación',

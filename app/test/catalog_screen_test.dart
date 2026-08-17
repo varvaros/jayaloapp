@@ -160,7 +160,7 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
-    expect(find.text('Envío'), findsOneWidget);
+    expect(find.text('Traslado'), findsOneWidget);
     expect(find.text('Nuevo'), findsOneWidget);
     // La lista de offer_defaults.colors gana sobre la columna legada.
     expect(find.text('Rojo, Azul'), findsOneWidget);
@@ -177,7 +177,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Taladro inalámbrico'), findsOneWidget);
-    expect(find.text('Envío'), findsNothing);
+    expect(find.text('Traslado'), findsNothing);
     expect(find.text('Nuevo'), findsNothing);
   });
 

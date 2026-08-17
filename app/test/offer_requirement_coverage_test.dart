@@ -46,7 +46,7 @@ void main() {
       const OfferCapabilities(offersShipping: true, hasFiscalReceipt: true),
     );
     expect(find.text('Tus condiciones'), findsOneWidget);
-    expect(find.text('Envío'), findsOneWidget);
+    expect(find.text('Traslado'), findsOneWidget);
     expect(find.text('Comprobante fiscal'), findsOneWidget);
   });
 
@@ -59,7 +59,7 @@ void main() {
       ),
       const OfferCapabilities(offersShipping: true),
     );
-    expect(find.text('Envío'), findsOneWidget);
+    expect(find.text('Traslado'), findsOneWidget);
     expect(find.text('Suplidor del Estado — no lo declaró'), findsOneWidget);
     expect(find.textContaining('no cumple'), findsNothing);
     expect(find.textContaining('no emite'), findsNothing);
@@ -80,7 +80,7 @@ void main() {
         .map((t) => t.data)
         .whereType<String>()
         .toList();
-    final iEnvio = textos.indexWhere((t) => t.startsWith('Envío'));
+    final iEnvio = textos.indexWhere((t) => t.startsWith('Traslado'));
     final iFiscal = textos.indexWhere((t) => t.startsWith('Comprobante fiscal'));
     final iEstado = textos.indexWhere((t) => t.startsWith('Suplidor del Estado'));
     expect(iEnvio < iFiscal, isTrue);

@@ -79,13 +79,13 @@ void main() {
       expect(find.text('Rango'), findsOneWidget);
       expect(find.byKey(const Key('campo-precio')), findsOneWidget);
 
-      // Envío/instalación/evaluación: el campo de costo NO se ve hasta
+      // Traslado/instalación/evaluación: el campo de costo NO se ve hasta
       // activar el interruptor.
-      expect(find.text('Ofrezco envío'), findsOneWidget);
-      expect(find.text('Costo de envío (RD\$)'), findsNothing);
+      expect(find.text('Ofrezco traslado'), findsOneWidget);
+      expect(find.text('Costo del traslado (RD\$)'), findsNothing);
       await tester.tap(find.byKey(const Key('switch-envio')));
       await tester.pumpAndSettle();
-      expect(find.text('Costo de envío (RD\$)'), findsOneWidget);
+      expect(find.text('Costo del traslado (RD\$)'), findsOneWidget);
 
       expect(find.text('Ofrezco instalación'), findsOneWidget);
       expect(find.text('Requiere evaluación'), findsOneWidget);
@@ -169,7 +169,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(
           find.byWidgetPredicate((w) =>
-              w is TextField && w.decoration?.labelText == 'Costo de envío (RD\$)'),
+              w is TextField && w.decoration?.labelText == 'Costo del traslado (RD\$)'),
           '300');
       await tester.pumpAndSettle();
 
@@ -223,7 +223,7 @@ void main() {
 
       // Nada de producto — salvo garantía (hallazgo I-1, revisión final: la
       // web SÍ permite garantía en servicios; `productOnly: false`).
-      expect(find.text('Ofrezco envío'), findsNothing);
+      expect(find.text('Ofrezco traslado'), findsNothing);
       expect(find.byKey(const Key('campo-marca')), findsNothing);
       expect(find.text('Tiempo de entrega'), findsNothing); // solo producto
       expect(find.text('Hoy'), findsNothing); // kDeliveryOptions, único ahí

@@ -85,8 +85,8 @@ bool hasAnyRequirement(RequestRequirements req) =>
 
 const _labels = <Requirement, RequirementLabel>{
   Requirement.shipping: (
-    chip: 'Requiere envío',
-    short: 'envío',
+    chip: 'Requiere traslado',
+    short: 'traslado',
     hint: 'El cliente necesita que le lleven el producto.',
   ),
   Requirement.installation: (

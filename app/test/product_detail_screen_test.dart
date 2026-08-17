@@ -391,7 +391,7 @@ void main() {
     expect(find.text('Taladro inalámbrico'), findsOneWidget);
     expect(find.text('DeWalt'), findsOneWidget);
     expect(find.text('3-5 días'), findsOneWidget);
-    expect(find.text('ENVÍO'), findsOneWidget);
+    expect(find.text('TRASLADO'), findsOneWidget);
     expect(find.text('Disponible'), findsOneWidget);
     expect(find.text('Solicitar'), findsOneWidget);
   });

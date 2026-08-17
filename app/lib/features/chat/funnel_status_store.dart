@@ -19,7 +19,7 @@ const funnelStatuses = <FunnelStatus>[
   FunnelStatus('negociando', 'Negociando', '💬', Color(0xFF6366F1)),
   FunnelStatus('avanzado', 'Avanzado', '🔥', Color(0xFF7C3AED)),
   FunnelStatus('pago', 'Pagó', '💰', Color(0xFF16A34A)),
-  FunnelStatus('esperando_envio', 'Esperando envío', '📦', Color(0xFFD97706)),
+  FunnelStatus('esperando_envio', 'Esperando traslado', '📦', Color(0xFFD97706)),
   FunnelStatus('entregado', 'Entregado', '✅', Color(0xFF15803D)),
   FunnelStatus('cuidado', 'Cuidado', '⚠️', Color(0xFFEA580C)),
   FunnelStatus('molesto', 'Molesto', '😠', Color(0xFFDC2626)),

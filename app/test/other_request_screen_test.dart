@@ -58,7 +58,7 @@ void main() {
     // Tarjetas teal de requisito (plantilla PO 2026-08-11): etiqueta arriba
     // y «Requerido» debajo, ya no chips "Requiere …".
     expect(find.text('REQUISITOS'), findsOneWidget);
-    expect(find.text('ENVÍO'), findsOneWidget);
+    expect(find.text('TRASLADO'), findsOneWidget);
     expect(find.text('COMPROBANTE FISCAL'), findsOneWidget);
     expect(find.text('Requerido (NCF)'), findsOneWidget);
     expect(find.text('INSTALACIÓN'), findsNothing);

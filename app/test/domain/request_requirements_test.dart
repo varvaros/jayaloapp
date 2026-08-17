@@ -118,7 +118,7 @@ void main() {
       );
       expect(requirementLabel(Requirement.state).chip, 'Requiere suplidor del Estado');
       expect(requirementLabel(Requirement.evaluation).chip, 'Requiere evaluación previa');
-      expect(requirementLabel(Requirement.shipping).chip, 'Requiere envío');
+      expect(requirementLabel(Requirement.shipping).chip, 'Requiere traslado');
       expect(requirementLabel(Requirement.installation).chip, 'Requiere instalación');
     });
   });
@@ -267,13 +267,13 @@ void main() {
     });
 
     test('uno solo va suelto', () {
-      expect(unmetRequirementsMessage(const [Requirement.shipping]), 'envío');
+      expect(unmetRequirementsMessage(const [Requirement.shipping]), 'traslado');
     });
 
     test('dos se unen con "y"', () {
       expect(
         unmetRequirementsMessage(const [Requirement.shipping, Requirement.fiscal]),
-        'envío y comprobante fiscal',
+        'traslado y comprobante fiscal',
       );
     });
 
@@ -284,7 +284,7 @@ void main() {
           Requirement.fiscal,
           Requirement.state,
         ]),
-        'envío, comprobante fiscal y suplidor del Estado',
+        'traslado, comprobante fiscal y suplidor del Estado',
       );
     });
 
@@ -414,7 +414,7 @@ void main() {
         const OfferCapabilities(offersShipping: true),
       );
       expect(filas.map((f) => f.label), [
-        'Envío',
+        'Traslado',
         'Instalación — no lo declaró',
         'Comprobante fiscal — no lo declaró',
         'Suplidor del Estado — no lo declaró',

@@ -94,7 +94,7 @@ void main() {
         .map((t) => t.data)
         .toList();
     expect(textos, [
-      'Requiere envío',
+      'Requiere traslado',
       'Requiere instalación',
       'Requiere evaluación previa',
       'Requiere comprobante fiscal',
@@ -227,7 +227,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('REQUISITOS'), findsOneWidget);
-    expect(find.text('ENVÍO'), findsOneWidget);
+    expect(find.text('TRASLADO'), findsOneWidget);
     expect(find.text('Requerido'), findsOneWidget);
     // El fiscal lleva la sigla: es el único cuyo "qué es" no se entiende
     // sin ella.

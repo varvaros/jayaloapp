@@ -15,7 +15,7 @@ void main() {
       expect(caption, contains('🛍️ De mi tienda: Abanico de pedestal'));
       expect(caption, contains('Precio: RD\$2,500'));
       expect(caption, contains('Estado: Usado'));
-      expect(caption, contains('🚚 Con envío disponible'));
+      expect(caption, contains('🚚 Con traslado disponible'));
       expect(caption, contains('Tres velocidades, poco uso.'));
       expect(caption, isNot(contains('instalación')));
     });

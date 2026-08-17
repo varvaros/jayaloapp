@@ -379,7 +379,7 @@ class ProductGridCard extends StatelessWidget {
         : (item['color'] as String?);
     final attrs = <(IconData, String)>[
       if (item['offers_shipping'] == true)
-        (Icons.local_shipping_outlined, 'Envío'),
+        (Icons.local_shipping_outlined, 'Traslado'),
       if (conditionLabel != null) (Icons.inventory_2_outlined, conditionLabel),
       if (colorLabel != null && colorLabel.trim().isNotEmpty)
         (Icons.palette_outlined, colorLabel.trim()),

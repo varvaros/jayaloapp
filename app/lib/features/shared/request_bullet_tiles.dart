@@ -35,10 +35,14 @@ import 'package:flutter/material.dart';
   return (rows: rows, freeText: free);
 }
 
+/// Alias de prueba para `_iconFor` — no hacer pública la privada.
+@visibleForTesting
+IconData iconForLabel(String label) => _iconFor(label);
+
 /// Ícono por etiqueta, alineado con los que ya usan la hoja de oferta y el
 /// detalle del catálogo (Estado=caja, Marca=tag, Color=paleta, Entrega=reloj,
-/// Envío/logística=camión…) para que el mismo concepto lleve el mismo dibujo
-/// en toda la app. Etiqueta desconocida → ícono neutro de nota.
+/// Traslado/logística=camión…) para que el mismo concepto lleve el mismo
+/// dibujo en toda la app. Etiqueta desconocida → ícono neutro de nota.
 IconData _iconFor(String label) {
   final l = _fold(label);
   if (l.contains('producto') || l.contains('articulo')) {
@@ -52,7 +56,9 @@ IconData _iconFor(String label) {
   if (l.contains('tipo de compra') || l.contains('frecuencia')) {
     return Icons.autorenew_rounded;
   }
-  if (l.contains('logistica') || l.contains('envio')) {
+  if (l.contains('logistica') ||
+      l.contains('envio') ||
+      l.contains('traslado')) {
     return Icons.local_shipping_outlined;
   }
   if (l.contains('ubicacion') ||
