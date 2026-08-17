@@ -319,7 +319,7 @@ class ProviderStoreView extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: OpenInMapsButton(lat: loc.lat, lng: loc.lng),
+        child: OpenInMapsButton(lat: loc.lat, lng: loc.lng, label: 'Ver en el mapa'),
       ),
     );
   }

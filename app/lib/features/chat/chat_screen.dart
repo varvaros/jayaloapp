@@ -95,6 +95,10 @@ class _ChatScreenState extends State<ChatScreen> {
   int _tempSeq = 0;
   bool _greeted = false;
   bool _sending = false;
+  // Guarda de reentrada para _sendCurrentLocation: el GPS puede tardar hasta
+  // 15s (timeLimit) y ese metodo no toca _sending, asi que sin esto un
+  // segundo toque en "+" durante la espera mandaba dos mensajes de ubicacion.
+  bool _capturingLocation = false;
   bool _uploadingImage = false;
   bool _hasRating = false;
   // Calificación bilateral: ¿el proveedor ya calificó al cliente? + el
@@ -673,6 +677,9 @@ class _ChatScreenState extends State<ChatScreen> {
   /// esta en su casa. Best-effort — si el permiso falla no se manda nada, y si
   /// el reverse-geocode falla se manda igual con solo el enlace.
   Future<void> _sendCurrentLocation() async {
+    if (_capturingLocation) return;
+    setState(() => _capturingLocation = true);
+    _snack('Captando tu ubicación…');
     try {
       var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
@@ -716,6 +723,8 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {
       if (!mounted) return;
       _snack('No pudimos captar tu ubicación — puedes enviar tu dirección guardada.');
+    } finally {
+      if (mounted) setState(() => _capturingLocation = false);
     }
   }
 
