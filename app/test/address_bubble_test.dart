@@ -36,11 +36,17 @@ void main() {
     expect(find.text('Abrir en el mapa'), findsOneWidget);
     expect(find.text('Calle Primera 12\nParque del Este'), findsOneWidget);
     expect(find.text(url), findsNothing);
+    // con enlace
+    expect(find.text('Ubicación'), findsOneWidget);
+    expect(find.text('Dirección'), findsNothing);
   });
 
   testWidgets('sin enlace: la burbuja se ve como siempre', (t) async {
     await t.pumpWidget(_host(_msg('Calle Primera 12')));
     expect(find.text('Abrir en el mapa'), findsNothing);
     expect(find.text('Calle Primera 12'), findsOneWidget);
+    // sin enlace
+    expect(find.text('Dirección'), findsOneWidget);
+    expect(find.text('Ubicación'), findsNothing);
   });
 }

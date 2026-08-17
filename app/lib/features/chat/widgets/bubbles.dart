@@ -243,7 +243,7 @@ Widget buildBubble(
                 Icon(Icons.place_outlined, size: 14, color: bubbleInk),
                 const SizedBox(width: 4),
                 Text(
-                  'Dirección',
+                  addressSplit?.mapUrl != null ? 'Ubicación' : 'Dirección',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
