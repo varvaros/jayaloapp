@@ -11,7 +11,6 @@ import '../domain/chat.dart'
 import '../domain/contact_info.dart'
     show contactInfoCode, contactInfoMessage, payloadHasContactInfo;
 import '../domain/credit_shop.dart' show ShopPackage;
-import '../domain/geo.dart' show mapsLinkFor;
 import '../domain/phase.dart';
 import '../domain/profile_address.dart';
 import '../domain/request_requirements.dart';
@@ -2137,7 +2136,7 @@ Future<String?> myBusinessAddressBody() async {
   final uid = supa.auth.currentUser!.id;
   final biz = await supa
       .from('provider_businesses')
-      .select('id,name,city,sector,lat,lng')
+      .select('id,name,city,sector')
       .eq('user_id', uid)
       .limit(1)
       .maybeSingle();
@@ -2147,20 +2146,31 @@ Future<String?> myBusinessAddressBody() async {
     params: {'_business_id': biz['id']},
   );
   if (address == null || (address as String).isEmpty) return null;
-  final cityLine = [
-    biz['sector'],
-    biz['city'],
-  ].whereType<String>().where((s) => s.isNotEmpty).join(', ');
-  final lat = (biz['lat'] as num?)?.toDouble();
-  final lng = (biz['lng'] as num?)?.toDouble();
-  // El nombre del negocio va PRIMERO, asi que se compone a mano en vez de
-  // reutilizar buildLocationBody (que empieza por la direccion).
-  return [
-    biz['name'],
-    address,
-    cityLine,
-    if (lat != null && lng != null) mapsLinkFor(lat, lng),
-  ].whereType<String>().where((s) => s.isNotEmpty).join('\n');
+  // lat/lng NO tienen GRANT SELECT en provider_businesses (migracion
+  // 20260709000001): pedirlas en el select hacia fallar la peticion ENTERA con
+  // un error de permiso de columna, asi que esta accion no mandaba nada.
+  double? lat, lng;
+  try {
+    final loc = await supa
+        .rpc('get_business_location', params: {'_business_id': biz['id']});
+    final row = (loc is List && loc.isNotEmpty) ? loc.first : null;
+    if (row is Map) {
+      lat = (row['lat'] as num?)?.toDouble();
+      lng = (row['lng'] as num?)?.toDouble();
+    }
+  } catch (_) {
+    // Sin coordenadas se manda igual: el texto de la direccion ya sirve.
+  }
+  return businessAddressBody(
+    name: biz['name'] is String ? biz['name'] as String : '',
+    address: address,
+    cityLine: [biz['sector'], biz['city']]
+        .whereType<String>()
+        .where((s) => s.isNotEmpty)
+        .join(', '),
+    lat: lat,
+    lng: lng,
+  );
 }
 
 Future<String?> myContactBody() async {

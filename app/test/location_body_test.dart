@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/data/location_body.dart';
+import 'package:jayalo_app/domain/geo.dart';
 
 void main() {
   test('el cuerpo lleva el enlace al mapa cuando hay coordenadas', () {
@@ -27,5 +28,28 @@ void main() {
         buildLocationBody(
             address: '', cityLine: '', reference: '', lat: null, lng: null),
         isNull);
+  });
+
+  test('el cuerpo del local pone el nombre primero y el enlace al final', () {
+    final body = businessAddressBody(
+      name: 'Ferretería El Corito',
+      address: 'Calle Duarte 45',
+      cityLine: 'Los Prados, Santiago',
+      lat: 19.451,
+      lng: -70.697,
+    );
+    expect(body.split('\n').first, 'Ferretería El Corito');
+    expect(body.split('\n').last, mapsLinkFor(19.451, -70.697));
+  });
+
+  test('el cuerpo del local sin coordenadas no lleva enlace', () {
+    final body = businessAddressBody(
+      name: 'Ferretería El Corito',
+      address: 'Calle Duarte 45',
+      cityLine: 'Los Prados, Santiago',
+      lat: null,
+      lng: null,
+    );
+    expect(body, 'Ferretería El Corito\nCalle Duarte 45\nLos Prados, Santiago');
   });
 }
