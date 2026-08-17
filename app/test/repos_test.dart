@@ -258,6 +258,15 @@ void main() {
       expect(fields['message'], 'hola');
       expect(fields.containsKey('offers_shipping'), isTrue);
     });
+
+    test('offerFields lleva includes_materials, y NULL cuando no aplica', () {
+      final conValor = offerFields(message: '', includesMaterials: true);
+      expect(conValor['includes_materials'], isTrue);
+
+      final sinValor = offerFields(message: '');
+      expect(sinValor.containsKey('includes_materials'), isTrue);
+      expect(sinValor['includes_materials'], isNull);
+    });
   });
 
   group('packagePayload (hallazgo C-1, revisión final)', () {

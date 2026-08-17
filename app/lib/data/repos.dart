@@ -297,7 +297,7 @@ const offerCols =
     // MANTENIMIENTO: si recortas esta lista, revisa `_prefillFromOffer` — un
     // campo que falte aquí llegaría vacío al formulario en sitio y el
     // siguiente guardado lo escribiría en blanco encima de la columna real.
-    ',has_fiscal_receipt,is_state_supplier';
+    ',has_fiscal_receipt,is_state_supplier,includes_materials';
 
 Future<List<Map<String, dynamic>>> offersForRequest(String requestId) async =>
     List<Map<String, dynamic>>.from(
@@ -808,6 +808,11 @@ Map<String, dynamic> offerFields({
   List<String> productColors = const [],
   String productWarranty = '',
   String deliveryTime = '',
+  // Tres estados: true incluye, false no incluye, null no aplica u oferta vieja.
+  // Va en offerFields (no aparte como has_fiscal_receipt) porque su UPDATE SÍ
+  // está permitido: la migración 20260817160000 la metió en las DOS listas
+  // blancas, de INSERT y de UPDATE, justo para que "mejorar oferta" pueda tocarla.
+  bool? includesMaterials,
 }) => {
   'price': price,
   'price_min': priceMin,
@@ -841,6 +846,7 @@ Map<String, dynamic> offerFields({
       ? null
       : productWarranty.trim(),
   'delivery_time': deliveryTime.trim().isEmpty ? null : deliveryTime.trim(),
+  'includes_materials': includesMaterials,
 };
 
 Future<void> makeOffer({
@@ -870,6 +876,7 @@ Future<void> makeOffer({
   // porque su UPDATE está denegado: ver la advertencia de ese mapa.
   bool hasFiscalReceipt = false,
   bool isStateSupplier = false,
+  bool? includesMaterials,
 }) async {
   final uid = supa.auth.currentUser!.id;
   final fields = offerFields(
@@ -893,6 +900,7 @@ Future<void> makeOffer({
     productColors: productColors,
     productWarranty: productWarranty,
     deliveryTime: deliveryTime,
+    includesMaterials: includesMaterials,
   );
   // Red de seguridad anti-elusión: barre el payload ENTERO en vez de confiar en
   // la lista de campos que la pantalla revisa a mano antes de subir fotos. Así
@@ -957,6 +965,7 @@ Future<Map<String, dynamic>> updateOffer({
   List<String> productColors = const [],
   String productWarranty = '',
   String deliveryTime = '',
+  bool? includesMaterials,
 }) async {
   final fields = offerFields(
     price: price,
@@ -979,6 +988,7 @@ Future<Map<String, dynamic>> updateOffer({
     productColors: productColors,
     productWarranty: productWarranty,
     deliveryTime: deliveryTime,
+    includesMaterials: includesMaterials,
   );
   // Misma red de seguridad que en [makeOffer]: barrido del payload entero.
   if (payloadHasContactInfo(fields)) {

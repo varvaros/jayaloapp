@@ -15,6 +15,7 @@ import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
 import '../../domain/offer_edit.dart';
 import '../../domain/offer_form_gate.dart';
+import '../../domain/offer_materials.dart';
 import '../../domain/offer_message.dart';
 import '../../domain/pricing.dart';
 import '../../domain/finalist_slots.dart';
@@ -107,6 +108,10 @@ class _ProviderRequestDetailScreenState
   final _shipping = TextEditingController();
   bool _offersInstallation = false;
   final _installation = TextEditingController();
+  /// Cotejo obligatorio "¿La cotización incluye los materiales?" (servicio
+  /// siempre; producto solo con instalación — ver `domain/offer_materials.dart`).
+  /// null = sin contestar.
+  bool? _includesMaterials;
   bool _requiresEvaluation = false;
   final _evaluation = TextEditingController();
   // Capacidades transversales (producto Y servicio): se premarcan con lo que el
@@ -146,6 +151,7 @@ class _ProviderRequestDetailScreenState
         '$_fixed', '$_svcMode',
         '$_offersShipping', '$_offersInstallation', '$_requiresEvaluation',
         '$_hasFiscalReceipt', '$_isStateSupplier',
+        '$_includesMaterials',
         _colors.join(','),
         _photos.map((x) => x.path).join(','),
         _keptUrls.join(','),
@@ -427,6 +433,7 @@ class _ProviderRequestDetailScreenState
     _installation.text = miles(o['installation_price']);
     _requiresEvaluation = o['requires_evaluation'] == true;
     _evaluation.text = miles(o['evaluation_price']);
+    _includesMaterials = o['includes_materials'] as bool?;
     // Las dos capacidades salen de la oferta, no del negocio: son la foto de lo
     // que se declaró al enviarla y su UPDATE está denegado en la base.
     _hasFiscalReceipt = o['has_fiscal_receipt'] == true;
@@ -786,6 +793,18 @@ class _ProviderRequestDetailScreenState
       }
     }
 
+    // Cotejo obligatorio de materiales (decisión PO 2026-08-17): servicio
+    // siempre, producto solo con instalación — ver `domain/offer_materials.dart`.
+    // Mismo patrón que los dos gates de arriba: avisar y `return` antes de
+    // subir fotos.
+    if (materialsChoiceRequired(
+          isService: isService,
+          offersInstallation: _offersInstallation,
+        ) &&
+        _includesMaterials == null) {
+      return _toast('Falta decir si incluye los materiales');
+    }
+
     // Cotejo contra lo que el cliente marcó. Solo al CREAR: en edición las dos
     // capacidades están congeladas (su UPDATE está denegado), así que no habría
     // nada que corregir y el aviso solo estorbaría.
@@ -808,6 +827,14 @@ class _ProviderRequestDetailScreenState
 
     // El mensaje ya no es texto libre: se arma desde los datos (decisión PO).
     final evalOn = isService ? mode == 'needs_evaluation' : _requiresEvaluation;
+    // En servicio la pregunta es siempre aplicable, sin importar
+    // `_offersInstallation` (ese toggle es propio de producto) — misma razón
+    // que en la web: `offersInstallation: false` aquí.
+    final materialsForPayload = materialsValueForPayload(
+      isService: isService,
+      offersInstallation: isService ? false : _offersInstallation,
+      includesMaterials: _includesMaterials,
+    );
     final message = composeOfferMessage(
       isService: isService,
       offersShipping: _offersShipping,
@@ -816,6 +843,7 @@ class _ProviderRequestDetailScreenState
       installationPrice: parseMiles(_installation.text)?.toDouble(),
       requiresEvaluation: evalOn,
       evaluationPrice: parseMiles(_evaluation.text)?.toDouble(),
+      includesMaterials: materialsForPayload,
       availabilityNote: _availability.text,
       estimatedDuration: _duration.text,
       brand: isService ? '' : _brand.text,
@@ -885,6 +913,7 @@ class _ProviderRequestDetailScreenState
           productColors: isService ? const [] : _colors,
           productWarranty: isService ? '' : _warranty.text.trim(),
           deliveryTime: isService ? '' : _delivery.text.trim(),
+          includesMaterials: materialsForPayload,
         );
         if (!mounted) return;
         _toast('Oferta actualizada');
@@ -964,6 +993,7 @@ class _ProviderRequestDetailScreenState
         productColors: isService ? const [] : _colors,
         productWarranty: isService ? '' : _warranty.text.trim(),
         deliveryTime: isService ? '' : _delivery.text.trim(),
+        includesMaterials: materialsForPayload,
         // Solo al crear: en `updateOffer` NO van: su UPDATE está denegado y
         // PostgREST rechazaría la fila entera.
         hasFiscalReceipt: _hasFiscalReceipt,
@@ -1487,6 +1517,7 @@ class _ProviderRequestDetailScreenState
           cost: _installation,
           costLabel: 'Costo de instalación (RD\$)',
         ),
+        if (_offersInstallation) _materialsChoice(context),
         _toggleRow(
           title: 'Requiere evaluación',
           subtitle: 'El precio depende de revisar en sitio.',
@@ -1538,6 +1569,38 @@ class _ProviderRequestDetailScreenState
           ),
         ),
     ]);
+  }
+
+  /// Elección obligatoria de materiales. El Container resaltado es lo único
+  /// propio: el PO pidió literalmente que "no quede sin cotejar por error".
+  /// Los chips son los mismos que «Estado *» y «Garantía *» de esta pantalla.
+  Widget _materialsChoice(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final pendiente = _includesMaterials == null;
+    const si = 'Incluye los materiales';
+    const no = 'No incluye los materiales';
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: pendiente
+            ? cs.errorContainer.withValues(alpha: 0.30)
+            : cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(width: 2, color: pendiente ? cs.error : cs.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionLabel('¿La cotización incluye los materiales? *'),
+          const SizedBox(height: 8),
+          _chipSelect(
+            const [si, no],
+            _includesMaterials == null ? '' : (_includesMaterials! ? si : no),
+            (v) => setState(() => _includesMaterials = v.isEmpty ? null : v == si),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Círculos de color multi-selección (paridad web COLOR_PRESETS).
@@ -2012,6 +2075,8 @@ class _ProviderRequestDetailScreenState
           const SizedBox(height: 8),
           ..._pricingFields(context),
           if (_isService) ...[
+            const SizedBox(height: 14),
+            _materialsChoice(context),
             const SizedBox(height: 14),
             _sectionLabel('Disponibilidad'),
             const SizedBox(height: 8),
