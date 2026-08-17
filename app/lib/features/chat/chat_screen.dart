@@ -2,14 +2,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../shared/network_image.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/geocode_client.dart';
+import '../../data/location_body.dart';
 import '../../data/repos.dart';
 import '../../domain/chat.dart';
 import '../../domain/chat_session.dart';
 import '../../domain/chat_time.dart';
+import '../../domain/geo.dart';
 import '../../core/error_reporter.dart';
 import '../../core/safe_image_picker.dart';
 import '../../core/sfx.dart';
@@ -654,12 +658,64 @@ class _ChatScreenState extends State<ChatScreen> {
           return;
         }
         await _sendRaw('address', body);
+      case PlusAction.sendCurrentLocation:
+        await _sendCurrentLocation();
       case PlusAction.sendPhoto:
         await _pickAndSendPhoto();
       case PlusAction.sendStoreItem:
         await _pickAndSendStoreItem();
       case PlusAction.improveOffer:
         _openImproveOffer(); // Task 10
+    }
+  }
+
+  /// GPS del momento, no la direccion guardada: es el caso del cliente que NO
+  /// esta en su casa. Best-effort — si el permiso falla no se manda nada, y si
+  /// el reverse-geocode falla se manda igual con solo el enlace.
+  Future<void> _sendCurrentLocation() async {
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        _snack('Sin permiso de ubicación — puedes enviar tu dirección guardada.');
+        return;
+      }
+      // El timeout es obligatorio: sin el, un GPS que no responde deja la
+      // accion colgada (mismo bug que documenta consumer_onboarding_screen).
+      final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 15)));
+      var street = '';
+      final token = supa.auth.currentSession?.accessToken;
+      if (token != null) {
+        // `lookup` NUNCA lanza: devuelve `empty` si falla.
+        final place = await GeocodeClient()
+            .lookup(lat: pos.latitude, lng: pos.longitude, accessToken: token);
+        street = place.addressLine.isNotEmpty
+            ? place.addressLine
+            : composeAddressLine(
+                street: place.street,
+                streetNumber: place.streetNumber,
+                sector: place.sector,
+                city: place.city,
+              );
+      }
+      final body = buildLocationBody(
+        address: street.isNotEmpty ? street : 'Ubicación compartida',
+        cityLine: '',
+        reference: '',
+        lat: pos.latitude,
+        lng: pos.longitude,
+      );
+      if (body == null || !mounted) return;
+      await _sendRaw('address', body);
+    } catch (_) {
+      if (!mounted) return;
+      _snack('No pudimos captar tu ubicación — puedes enviar tu dirección guardada.');
     }
   }
 

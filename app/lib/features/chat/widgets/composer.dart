@@ -11,9 +11,31 @@ enum PlusAction {
   improveOffer,
   sendContact,
   sendLocation,
+  sendCurrentLocation,
   sendPhoto,
   sendStoreItem,
 }
+
+/// Acciones del menu «+», por rol. Funcion pura y de nivel superior para poder
+/// testearla (mismo patron que `chatMenuValues` en chat_screen.dart).
+List<(PlusAction, IconData, String)> plusMenuItems({required bool isProvider}) =>
+    isProvider
+        ? const [
+            // Foto del dispositivo + artículos de la tienda (pedido PO
+            // 2026-07-21): el proveedor muestra su mercancía en el chat.
+            (PlusAction.sendPhoto, Icons.add_photo_alternate_outlined, 'Enviar foto'),
+            (PlusAction.sendStoreItem, Icons.storefront_outlined, 'De mi tienda'),
+            (PlusAction.sendAddress, Icons.place_outlined, 'Enviar dirección del local'),
+            (PlusAction.improveOffer, Icons.bolt_outlined, 'Mejorar oferta (bajar precio)'),
+          ]
+        : const [
+            (PlusAction.sendContact, Icons.badge_outlined, 'Enviar mis datos de contacto'),
+            // La ubicación del MOMENTO va primero: es el caso que motivó la
+            // tanda (el cliente que no está en su casa).
+            (PlusAction.sendCurrentLocation, Icons.my_location, 'Mi ubicación actual'),
+            (PlusAction.sendLocation, Icons.place_outlined, 'Mi dirección guardada'),
+            (PlusAction.sendPhoto, Icons.add_photo_alternate_outlined, 'Enviar foto'),
+          ];
 
 class ChatComposer extends StatefulWidget {
   const ChatComposer({
@@ -66,20 +88,7 @@ class _ChatComposerState extends State<ChatComposer> {
   }
 
   void _openPlusMenu() {
-    final items = widget.isProvider
-        ? const [
-            // Foto del dispositivo + artículos de la tienda (pedido PO
-            // 2026-07-21): el proveedor muestra su mercancía en el chat.
-            (PlusAction.sendPhoto, Icons.add_photo_alternate_outlined, 'Enviar foto'),
-            (PlusAction.sendStoreItem, Icons.storefront_outlined, 'De mi tienda'),
-            (PlusAction.sendAddress, Icons.place_outlined, 'Enviar dirección del local'),
-            (PlusAction.improveOffer, Icons.bolt_outlined, 'Mejorar oferta (bajar precio)'),
-          ]
-        : const [
-            (PlusAction.sendContact, Icons.badge_outlined, 'Enviar mis datos de contacto'),
-            (PlusAction.sendLocation, Icons.place_outlined, 'Enviar mi ubicación'),
-            (PlusAction.sendPhoto, Icons.add_photo_alternate_outlined, 'Enviar foto'),
-          ];
+    final items = plusMenuItems(isProvider: widget.isProvider);
     showModalBottomSheet<void>(
         sheetAnimationStyle: JayaloMotion.sheetMenu,
         context: context,
