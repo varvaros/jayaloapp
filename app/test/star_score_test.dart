@@ -80,4 +80,106 @@ void main() {
     expect(starScoreWord(9), 'Muy bueno');
     expect(starScoreWord(10), 'Excelente');
   });
+
+  // ── El control interactivo (trozo II) ──────────────────────────────────────
+  group('StarScoreInput', () {
+    late int elegido;
+
+    Widget hostInput(int value) => MaterialApp(
+        home: Scaffold(
+            body: Center(
+                child: StarScoreInput(
+                    value: value, onChanged: (v) => elegido = v))));
+
+    /// Toca a una fraccion del ancho de la fila.
+    Future<void> tocarEn(WidgetTester tester, double frac) async {
+      final r = tester.getRect(find.byType(StarScoreInput));
+      await tester.tapAt(Offset(r.left + r.width * frac, r.center.dy));
+      await tester.pump();
+    }
+
+    testWidgets('un TOQUE simple ya elige nota', (tester) async {
+      // Con solo `onHorizontalDrag*` esto no dispararia nunca: el arrastre exige
+      // superar el touch slop y ganar la arena. Por eso hay `onTapDown`.
+      elegido = -1;
+      await tester.pumpWidget(hostInput(8));
+      await tocarEn(tester, 0.65);
+      expect(elegido, 7); // ceil(0.65 * 10)
+    });
+
+    testWidgets('los extremos dan 1 y 10, sin desbordar', (tester) async {
+      elegido = -1;
+      await tester.pumpWidget(hostInput(5));
+      await tocarEn(tester, 0.001);
+      expect(elegido, 1);
+      await tocarEn(tester, 0.999);
+      expect(elegido, 10);
+    });
+
+    testWidgets('arrastrar en horizontal sigue al dedo', (tester) async {
+      elegido = -1;
+      await tester.pumpWidget(hostInput(1));
+      final r = tester.getRect(find.byType(StarScoreInput));
+      final g = await tester.startGesture(
+          Offset(r.left + r.width * 0.25, r.center.dy));
+      await tester.pump();
+      // Nada todavia: con el tap compitiendo contra el arrastre, `onTapDown` se
+      // DIFIERE hasta que alguien gana la arena. No es un fallo, es la arena.
+      expect(elegido, -1);
+      await g.moveTo(Offset(r.left + r.width * 0.85, r.center.dy));
+      await tester.pump();
+      await g.up();
+      await tester.pump();
+      expect(elegido, 9);
+    });
+
+    testWidgets('dentro de scroll: el arrastre VERTICAL scrollea y NO califica',
+        (tester) async {
+      // La prueba que de verdad importa: los tres formularios viven dentro de
+      // scroll vertical (y uno en una hoja modal que se cierra arrastrando).
+      // Con `onPanUpdate` en vez de `onHorizontalDrag*`, el control le robaria
+      // el gesto al `Scrollable` y la pantalla dejaria de moverse.
+      elegido = -1;
+      final controller = ScrollController();
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: ListView(
+        controller: controller,
+        children: [
+          const SizedBox(height: 400),
+          StarScoreInput(value: 5, onChanged: (v) => elegido = v),
+          const SizedBox(height: 800),
+        ],
+      ))));
+      await tester.drag(find.byType(StarScoreInput), const Offset(0, -150));
+      await tester.pumpAndSettle();
+      expect(controller.offset, greaterThan(0)); // la lista SI se movio
+      expect(elegido, -1); // y la nota NO cambio
+      // Y en horizontal, sobre la misma lista, el control sigue respondiendo.
+      // El rectangulo se vuelve a leer: la lista se movio y el de antes es viejo.
+      final r2 = tester.getRect(find.byType(StarScoreInput));
+      await tester.dragFrom(
+          Offset(r2.left + r2.width * 0.15, r2.center.dy), const Offset(60, 0));
+      await tester.pumpAndSettle();
+      expect(elegido, isNot(-1));
+    });
+
+    testWidgets('expone un slider accesible con su valor', (tester) async {
+      final handle = tester.ensureSemantics();
+      elegido = -1;
+      await tester.pumpWidget(hostInput(7));
+      expect(
+          tester.getSemantics(find.byType(StarScoreInput)),
+          matchesSemantics(
+            isSlider: true,
+            hasIncreaseAction: true,
+            hasDecreaseAction: true,
+            label: 'Calificación',
+            value: '7 de 10',
+            increasedValue: '8 de 10',
+            decreasedValue: '6 de 10',
+          ));
+      handle.dispose();
+    });
+  });
 }

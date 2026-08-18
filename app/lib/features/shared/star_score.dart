@@ -97,3 +97,81 @@ class StarScore extends StatelessWidget {
     ]);
   }
 }
+
+/// Las mismas cinco estrellas, pero para ELEGIR la nota (1-10).
+///
+/// Gesto: **toque y arrastre horizontal**, como el mockup aprobado
+/// (`Downloads/estrellas-medias.html`), que fija el valor en `pointerdown` y lo
+/// sigue moviendo mientras el dedo se desplaza.
+///
+/// ⚠️ `onHorizontalDragStart/Update`, **NUNCA `onPanUpdate`**. Los tres
+/// formularios que usan esto viven dentro de scroll vertical —`CustomScrollView`
+/// en el detalle de solicitud, `SingleChildScrollView` propio en el chat, y una
+/// `showModalBottomSheet(isScrollControlled: true)` que se arrastra hacia abajo
+/// para cerrarse— y `PanGestureRecognizer` acepta en CUALQUIER dirección: le
+/// robaría el scroll a la pantalla y el cierre a la hoja. El reconocedor
+/// horizontal solo entra en la arena cuando el desplazamiento es horizontal.
+///
+/// ⚠️ Y por eso mismo hace falta `onTapDown` ADEMÁS del arrastre: el arrastre
+/// solo dispara tras el *touch slop* y tras ganar la arena, así que un toque
+/// simple —que es el gesto primario— no movería nada sin él.
+///
+/// ⚠️ El ancho se lee del `RenderBox` en el callback, **no con un `LayoutBuilder`**:
+/// este control se monta bajo `SliverFillRemaining(hasScrollBody: false)`, donde
+/// un `LayoutBuilder` anidado revienta en layout sin que `flutter analyze` lo cace.
+///
+/// Accesibilidad: la fila es UN solo nodo `Semantics` de tipo slider. Los 10
+/// botones numerados que había antes eran 10 nodos enfocables; una superficie de
+/// arrastre no lo es, así que sin esto el cambio sería una regresión para
+/// TalkBack. Con `onIncrease`/`onDecrease` el lector ofrece el gesto de ajuste.
+class StarScoreInput extends StatelessWidget {
+  const StarScoreInput({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.size = 40,
+  });
+
+  /// Nota actual, 1-10.
+  final int value;
+  final ValueChanged<int> onChanged;
+  final double size;
+
+  /// Décimos del ancho TOTAL de la fila, igual que el mockup (`valorEn`), que
+  /// mide sobre el ancho completo con los huecos entre estrellas incluidos.
+  void _fijarDesde(BuildContext context, Offset globalPos) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize || box.size.width <= 0) return;
+    final dx = box.globalToLocal(globalPos).dx;
+    final v = (dx / box.size.width * 10).ceil().clamp(1, 10);
+    if (v != value) onChanged(v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      slider: true,
+      label: 'Calificación',
+      value: '$value de 10',
+      increasedValue: '${(value + 1).clamp(1, 10)} de 10',
+      decreasedValue: '${(value - 1).clamp(1, 10)} de 10',
+      onIncrease: value < 10 ? () => onChanged(value + 1) : null,
+      onDecrease: value > 1 ? () => onChanged(value - 1) : null,
+      child: ExcludeSemantics(
+        child: Builder(
+          builder: (inner) => GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (d) => _fijarDesde(inner, d.globalPosition),
+            onHorizontalDragStart: (d) => _fijarDesde(inner, d.globalPosition),
+            onHorizontalDragUpdate: (d) => _fijarDesde(inner, d.globalPosition),
+            child: StarScore(
+              score: value.toDouble(),
+              size: size,
+              showNumber: false,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

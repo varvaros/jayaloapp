@@ -1,10 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/features/chat/widgets/rating_form.dart';
+import 'package:jayalo_app/features/shared/star_score.dart';
 
 /// El detalle de solicitud completada PROMETÍA "Califica al proveedor para
 /// ayudar a la comunidad" y no tenía ningún control para hacerlo. Este panel
 /// cierra esa promesa. Escala 1-10, igual que la web.
+
+/// Elige una nota en el control de estrellas (1-10). El control mapea el toque a
+/// decimos del ancho total, asi que se toca en la fraccion correspondiente — ya
+/// no hay botones numerados que buscar por texto.
+Future<void> elegirNota(WidgetTester tester, int n) async {
+  final r = tester.getRect(find.byType(StarScoreInput));
+  await tester.tapAt(Offset(r.left + r.width * (n / 10) - 1, r.center.dy));
+  await tester.pump();
+}
+
 void main() {
   testWidgets('sin reseña previa muestra el formulario y guarda la nota', (
     tester,
@@ -21,7 +32,7 @@ void main() {
     ));
     await tester.pumpAndSettle(); // el panel se carga a sí mismo
     expect(find.text('Califica al proveedor'), findsOneWidget);
-    await tester.tap(find.text('10'));
+    await elegirNota(tester, 10);
     await tester.pump();
     await tester.tap(find.text('Enviar calificación'));
     await tester.pumpAndSettle();

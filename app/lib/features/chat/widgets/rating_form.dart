@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../data/repos.dart';
 import '../../shared/celebration.dart';
 import '../../shared/jayalo_loader.dart';
+import '../../shared/star_score.dart';
 
 /// Palabra cualitativa de una calificación en escala de 10.
 /// Vale para las DOS direcciones: `customer_reviews` (proveedor→cliente) y
@@ -102,28 +103,11 @@ class _CustomerRatingPanelState extends State<CustomerRatingPanel> {
         Text('Escala de 1 a 10.',
             style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
         const SizedBox(height: 8),
-        // Misma rejilla numerada que `RatingPanel` y `BusinessReviewPanel` de este
-        // fichero: 10 botones, no estrellas. Ver el aviso de la clase.
-        Wrap(spacing: 4, runSpacing: 4, children: [
-          for (var n = 1; n <= 10; n++)
-            InkWell(
-                onTap: () => setState(() => _rating = n),
-                child: Container(
-                    width: 34,
-                    height: 34,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                            color: n <= _rating ? cs.primary : cs.outlineVariant),
-                        color: n <= _rating ? cs.primary : null),
-                    child: Text('$n',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: n <= _rating
-                                ? cs.onPrimary
-                                : cs.onSurfaceVariant)))),
-        ]),
+        // Estrellas con medias (mockup aprobado por el PO 2026-08-17). Antes era
+        // una rejilla de 10 cuadros numerados; el PO pidio "estrellas para marcar
+        // la puntuacion, no puntos y cuadros".
+        StarScoreInput(
+            value: _rating, size: 40, onChanged: (v) => setState(() => _rating = v)),
         const SizedBox(height: 6),
         Text('${ratingWord10(_rating)} · $_rating/10',
             style: TextStyle(
@@ -276,24 +260,10 @@ class _RatingPanelState extends State<RatingPanel> {
           const Text('Califica esta transacción',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          Wrap(spacing: 4, runSpacing: 4, children: [
-            for (var n = 1; n <= 10; n++)
-              InkWell(
-                  onTap: () => setState(() => _overall = n),
-                  child: Container(
-                      width: 34, height: 34, alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                              color: n <= _overall ? cs.primary : cs.outlineVariant),
-                          color: n <= _overall ? cs.primary : null),
-                      child: Text('$n',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: n <= _overall
-                                  ? cs.onPrimary
-                                  : cs.onSurfaceVariant)))),
-          ]),
+          StarScoreInput(
+              value: _overall,
+              size: 40,
+              onChanged: (v) => setState(() => _overall = v)),
           // Etiqueta cualitativa de la nota elegida (pedido PO: que diga si es
           // malo/bueno/excelente, no solo el número).
           if (_overall > 0) ...[
@@ -473,28 +443,8 @@ class _BusinessReviewPanelState extends State<BusinessReviewPanel> {
         Text('Tu opinión ayuda a la comunidad. Escala de 1 a 10.',
             style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
         const SizedBox(height: 10),
-        Wrap(spacing: 4, runSpacing: 4, children: [
-          for (var n = 1; n <= 10; n++)
-            InkWell(
-                onTap: () => setState(() => _rating = n),
-                child: Container(
-                    width: 30,
-                    height: 30,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                            color:
-                                n <= _rating ? cs.primary : cs.outlineVariant),
-                        color: n <= _rating ? cs.primary : null),
-                    child: Text('$n',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: n <= _rating
-                                ? cs.onPrimary
-                                : cs.onSurfaceVariant)))),
-        ]),
+        StarScoreInput(
+            value: _rating, size: 36, onChanged: (v) => setState(() => _rating = v)),
         if (_rating > 0) ...[
           const SizedBox(height: 6),
           Text('${ratingWord10(_rating)} · $_rating/10',
