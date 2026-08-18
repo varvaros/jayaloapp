@@ -1,20 +1,5 @@
 import 'package:flutter/material.dart';
 
-/// Palabra cualitativa de una nota 1-10. Espejo de `ratingWord10` de
-/// `features/chat/widgets/rating_form.dart` (allí se queda porque los formularios
-/// la usan con su propio layout).
-String starScoreWord(num n) => n <= 0
-    ? ''
-    : n <= 3
-        ? 'Malo'
-        : n <= 5
-            ? 'Regular'
-            : n <= 7
-                ? 'Bueno'
-                : n <= 9
-                    ? 'Muy bueno'
-                    : 'Excelente';
-
 /// Cinco estrellas que representan una nota **1-10**, con relleno CONTINUO.
 ///
 /// Mockup aprobado por el PO el 2026-08-17 (`Downloads/estrellas-medias.html`):
@@ -152,7 +137,9 @@ class StarScoreInput extends StatelessWidget {
     return Semantics(
       slider: true,
       label: 'Calificación',
-      value: '$value de 10',
+      // Con la nota sin elegir se anuncia "sin calificar", no "0 de 10": el 0
+      // no es una nota valida de la escala. La web hace lo mismo con aria-valuetext.
+      value: value < 1 ? 'sin calificar' : '$value de 10',
       increasedValue: '${(value + 1).clamp(1, 10)} de 10',
       decreasedValue: '${(value - 1).clamp(1, 10)} de 10',
       onIncrease: value < 10 ? () => onChanged(value + 1) : null,

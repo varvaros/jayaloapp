@@ -72,14 +72,6 @@ void main() {
     expect(fracciones(tester), [1.0, 1.0, 1.0, 1.0, 0.0]);
   });
 
-  test('la palabra cualitativa cubre toda la escala', () {
-    expect(starScoreWord(0), '');
-    expect(starScoreWord(3), 'Malo');
-    expect(starScoreWord(5), 'Regular');
-    expect(starScoreWord(7), 'Bueno');
-    expect(starScoreWord(9), 'Muy bueno');
-    expect(starScoreWord(10), 'Excelente');
-  });
 
   // ── El control interactivo (trozo II) ──────────────────────────────────────
   group('StarScoreInput', () {
@@ -158,10 +150,15 @@ void main() {
       // Y en horizontal, sobre la misma lista, el control sigue respondiendo.
       // El rectangulo se vuelve a leer: la lista se movio y el de antes es viejo.
       final r2 = tester.getRect(find.byType(StarScoreInput));
-      await tester.dragFrom(
-          Offset(r2.left + r2.width * 0.15, r2.center.dy), const Offset(60, 0));
+      final g = await tester.startGesture(
+          Offset(r2.left + r2.width * 0.15, r2.center.dy));
+      await g.moveTo(Offset(r2.left + r2.width * 0.85, r2.center.dy));
+      await tester.pump();
+      await g.up();
       await tester.pumpAndSettle();
-      expect(elegido, isNot(-1));
+      // Valor EXACTO donde acaba el dedo, no solo "cambio": con `isNot(-1)` un
+      // mapeo roto pasaba igual. ceil(0.85 * 10) = 9.
+      expect(elegido, 9);
     });
 
     testWidgets('expone un slider accesible con su valor', (tester) async {
