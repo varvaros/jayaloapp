@@ -7,6 +7,15 @@ void main() {
     test('message_new es familia mensajes', () {
       expect(familyFor('message_new'), NotifFamily.messages);
     });
+    // Pasa en un chat y se resuelve en un chat: NO puede caer en "sistema",
+    // que es donde lo mandaria el fallback por no empezar por ningun prefijo.
+    test('assistant_handover_requested es familia mensajes', () {
+      expect(familyFor('assistant_handover_requested'), NotifFamily.messages);
+      expect(iconFor('assistant_handover_requested'), Icons.support_agent);
+      expect(mapLinkToRoute('/messages?c=39098468-6d7d-41ee-978a-1dd32669e60f',
+              provider: true),
+          '/messages/39098468-6d7d-41ee-978a-1dd32669e60f');
+    });
     test('ofertas/ventas: offer_*, job_response_new, sale y cancelaciones', () {
       for (final k in [
         'offer_new', 'offer_accepted', 'offer_rejected', 'offer_sent_confirmation',
