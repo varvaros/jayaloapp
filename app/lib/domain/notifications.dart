@@ -12,7 +12,11 @@ enum NotifFamily { messages, offers, wallet, reviews, system }
 /// Familia visual por kind (tabla del spec §3). Los prefijos cubren kinds
 /// futuros de la misma familia sin tocar código.
 NotifFamily familyFor(String kind) {
-  if (kind == 'message_new') return NotifFamily.messages;
+  // El handover pasa en un chat y se resuelve en un chat: va con los mensajes,
+  // no en "sistema", para que aparezca en el filtro donde el proveedor lo busca.
+  if (kind == 'message_new' || kind == 'assistant_handover_requested') {
+    return NotifFamily.messages;
+  }
   if (kind.startsWith('offer_') ||
       kind == 'job_response_new' ||
       kind == 'sale_completed_provider' ||
@@ -43,6 +47,8 @@ IconData iconFor(String kind) => switch (kind) {
         Icons.cancel_outlined,
       'welcome_customer' || 'welcome_provider' => Icons.auto_awesome,
       'message_new' => Icons.chat_bubble_outline,
+      // Un cliente pidio hablar con una persona y el asistente se apago solo.
+      'assistant_handover_requested' => Icons.support_agent,
       // Aviso de que un chat está por cerrarse por inactividad (cron 48h).
       'conversation_inactivity_warning' => Icons.hourglass_bottom,
       // El trato se dio por completado, y el chat se cerró solo por
