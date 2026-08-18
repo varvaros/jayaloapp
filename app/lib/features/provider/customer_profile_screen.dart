@@ -5,6 +5,7 @@ import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../client/my_requests_screen.dart' show timeAgo;
 import '../shared/brand_kit.dart';
+import '../shared/star_score.dart';
 import '../shared/customer_rep_card.dart'
     show CustomerAvatar, CustomerRepCard;
 import '../shared/section_heading.dart';
@@ -397,26 +398,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   /// ⚠️ Antes recorría `i <= rating` con 5 iconos: un 6, un 8 y un 10 salían
   /// IDÉNTICOS (cinco estrellas llenas). Se veía coherente solo mientras el
   /// formulario escribía 1-5, que era el bug arreglado el 2026-08-17.
-  Widget _stars(int rating) => Row(mainAxisSize: MainAxisSize.min, children: [
-        for (var i = 1; i <= 5; i++)
-          Icon(
-              i <= (rating / 2).round()
-                  ? Icons.star_rounded
-                  : Icons.star_outline_rounded,
-              size: 14,
-              color: i <= (rating / 2).round()
-                  ? const Color(0xFFF2B705)
-                  : Theme.of(context)
-                      .colorScheme
-                      .onSurfaceVariant
-                      .withValues(alpha: .5)),
-        const SizedBox(width: 5),
-        Text('$rating / 10',
-            style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurfaceVariant)),
-      ]);
+  Widget _stars(int rating) => StarScore(score: rating.toDouble(), size: 14);
 
   Widget _anonNote(BuildContext context) {
     final cs = Theme.of(context).colorScheme;

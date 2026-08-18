@@ -5,6 +5,7 @@ import '../../data/repos.dart';
 import '../../domain/money.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../shared/star_score.dart';
 import '../shared/violet_header.dart';
 
 class StatsScreen extends StatefulWidget {
@@ -121,7 +122,13 @@ class _StatsViewState extends State<StatsView> {
             Expanded(
                 child: MetricTile(
                     icon: Icons.star_rounded,
-                    value: rating > 0 ? rating.toStringAsFixed(1) : '—',
+                    // La nota es sobre 10: sin el sufijo, pegada a una estrella se
+                    // lee como si fuera sobre 5 y un proveedor mediocre parece bueno.
+                    value:
+                        rating > 0 ? '${StarScore.formatScore(rating)}/10' : '—',
+                    extra: rating > 0
+                        ? StarScore(score: rating, size: 13, showNumber: false)
+                        : null,
                     label: 'calificación')),
             Expanded(
                 child: MetricTile(

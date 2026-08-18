@@ -7,6 +7,7 @@ import '../../domain/catalog.dart';
 import '../../domain/money.dart';
 import '../../domain/offer_defaults.dart';
 import 'brand_kit.dart';
+import 'star_score.dart';
 
 /// Fila del catálogo (foto + categoría + nombre + reputación + descripción +
 /// precio) que navega a `/catalog/:id`. Extraída de `catalog_screen.dart` para
@@ -125,10 +126,12 @@ class ProductListCard extends StatelessWidget {
     );
   }
 
-  /// Reputación del proveedor: ★ + promedio a 1 decimal + conteo (misma
-  /// convención que Estadísticas/Reputación — escala de la app, no 5 estrellas).
-  /// Devuelve `null` (fila oculta) si el proveedor aún no tiene reseñas, para no
-  /// mostrar un "0.0" que parezca mala nota.
+  /// Reputación del proveedor: las cinco estrellas con medias + el promedio con
+  /// su escala + el conteo. Devuelve `null` (fila oculta) si el proveedor aún no
+  /// tiene reseñas, para no mostrar un "0.0" que parezca mala nota.
+  ///
+  /// ⚠️ Antes era UNA estrella y «8.6» a secas, que se lee como 8,6 **sobre 5** —
+  /// un negocio mediocre parecía excelente. Cambiado el 2026-08-17 con el resto.
   Widget? _ratingLine(BuildContext context, ColorScheme cs) {
     final avg = (item['avg_rating'] as num?)?.toDouble() ?? 0;
     final count = (item['reviews_count'] as num?)?.toInt() ?? 0;
@@ -136,9 +139,9 @@ class ProductListCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.star_rounded, size: 15, color: Color(0xFFF5A623)),
-        const SizedBox(width: 3),
-        Text(avg.toStringAsFixed(1),
+        StarScore(score: avg, size: 13, showNumber: false),
+        const SizedBox(width: 4),
+        Text('${StarScore.formatScore(avg)}/10',
             style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
@@ -333,14 +336,17 @@ class ProductGridCard extends StatelessWidget {
                   if (avg > 0 && count > 0) ...[
                     const SizedBox(height: 3),
                     Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.star_rounded,
-                          size: 13, color: Color(0xFFF5A623)),
+                      // Estrellas a 11 px: en media tarjeta las cinco más el texto
+                      // van justas. ⚠️ Es el sitio más apretado de los diez y el
+                      // que hay que mirar primero en el smoke del device.
+                      StarScore(score: avg, size: 11, showNumber: false),
                       const SizedBox(width: 3),
                       // Flexible: con muchas reseñas y la fuente en grande
-                      // ("9.8 (1204)") la línea no cabe en media tarjeta —
+                      // ("9.8/10 (1204)") la línea no cabe en media tarjeta —
                       // se corta con puntos suspensivos en vez de desbordar.
                       Flexible(
-                        child: Text('${avg.toStringAsFixed(1)} ($count)',
+                        child: Text(
+                            '${StarScore.formatScore(avg)}/10 ($count)',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(

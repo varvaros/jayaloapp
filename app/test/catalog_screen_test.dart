@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/client/catalog_screen.dart';
 import 'package:jayalo_app/features/shared/onboarding_store.dart';
+import 'package:jayalo_app/features/shared/star_score.dart';
 import 'package:jayalo_app/features/shared/violet_header.dart';
 
 /// `/catalog` (Task 6, listado): el toggle Producto/Servicio decide el
@@ -317,10 +318,11 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
-    // La rejilla (mockup aprobado 2026-08-10) une promedio y conteo en un
-    // solo texto compacto: "8.7 (34)".
-    expect(find.text('8.7 (34)'), findsOneWidget);
-    expect(find.byIcon(Icons.star_rounded), findsOneWidget);
+    // La rejilla (mockup aprobado 2026-08-10) une promedio y conteo en un solo
+    // texto compacto, que desde el 2026-08-17 lleva la escala: "8.7/10 (34)".
+    expect(find.text('8.7/10 (34)'), findsOneWidget);
+    // El widget, no el icono: cada estrella son dos iconos apilados.
+    expect(find.byType(StarScore), findsOneWidget);
   });
 
   testWidgets('cambiar de kind limpia categoría y rubro', (tester) async {

@@ -294,11 +294,18 @@ class MetricTile extends StatelessWidget {
     required this.icon,
     required this.value,
     required this.label,
+    this.extra,
   });
 
   final IconData icon;
   final String value;
   final String label;
+
+  /// Ranura opcional entre el valor y la etiqueta. Existe para la tarjeta de
+  /// calificación, que además del número enseña las estrellas (`StarScore`).
+  /// Se añadió en vez de meter un widget en `value` para no romper el
+  /// `tabularFigures` ni el tamaño que da identidad a la métrica.
+  final Widget? extra;
 
   @override
   Widget build(BuildContext context) {
@@ -319,6 +326,7 @@ class MetricTile extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 color: jayaloHead(context),
                 fontFeatures: const [FontFeature.tabularFigures()])),
+        if (extra != null) ...[const SizedBox(height: 3), extra!],
         const SizedBox(height: 2),
         Text(label,
             textAlign: TextAlign.center,

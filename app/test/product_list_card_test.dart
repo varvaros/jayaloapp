@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/shared/product_list_card.dart';
+import 'package:jayalo_app/features/shared/star_score.dart';
 
 void main() {
   Widget host(Widget child) => MaterialApp(
@@ -29,19 +30,24 @@ void main() {
       'price': 2500,
     })));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.star_rounded), findsNothing);
+    expect(find.byType(StarScore), findsNothing);
   });
 
-  testWidgets('con reputación dibuja la estrella', (tester) async {
+  testWidgets('con reputación dibuja las estrellas con su escala',
+      (tester) async {
     await tester.pumpWidget(host(const ProductListCard(item: {
       'id': 'p1',
       'name': 'Taladro',
       'price': 2500,
-      'avg_rating': 4.5,
+      'avg_rating': 8.6, // 1-10; era 4.5, de cuando esto se leía como /5
       'reviews_count': 8,
     })));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.star_rounded), findsOneWidget);
+    // Se busca el WIDGET, no el icono: cada estrella son DOS iconos apilados
+    // (gris debajo, dorada recortada encima), así que `find.byIcon` cuenta 10.
+    expect(find.byType(StarScore), findsOneWidget);
+    // Y la escala escrita, que es lo que impide leer el 8,6 como si fuera /5.
+    expect(find.text('8.6/10'), findsOneWidget);
   });
 
   group('ProductGridCard no desborda la celda de la rejilla', () {

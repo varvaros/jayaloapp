@@ -199,7 +199,7 @@ void main() {
     testWidgets('con stats, la tarjeta de confianza se pinta', (tester) async {
       setTallPhoneSize(tester);
       const BusinessStorefrontStats stats = (
-        avgRating: 4.5,
+        avgRating: 9.0, // 1-10: era 4.5, de cuando la vitrina pintaba sobre 5
         reviewsCount: 12,
         completedJobs: 30,
         medianResponseMinutes: 45,
@@ -220,7 +220,9 @@ void main() {
       )));
       await tester.pumpAndSettle();
 
-      expect(find.text('4.5'), findsOneWidget);
+      // Con su escala: la vitrina es lo primero que ve el cliente y un «9» junto
+      // a una estrella suelta se leía como 9 sobre 5.
+      expect(find.text('9/10'), findsOneWidget);
       expect(find.text('30'), findsOneWidget);
       // Aparece dos veces a propósito (paridad previa, sin cambios de esta
       // tarea): una vez como sello de la portada (`BusinessCoverHero`) y otra

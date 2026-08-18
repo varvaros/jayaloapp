@@ -10,6 +10,7 @@ import '../../domain/contact_info.dart';
 import '../../domain/money.dart';
 import '../../domain/offer_message.dart';
 import '../shared/brand_kit.dart';
+import '../shared/star_score.dart';
 import '../shared/celebration.dart';
 import '../shared/detail_tiles.dart';
 import '../shared/onboarding_store.dart';
@@ -277,9 +278,20 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
                   const SizedBox(height: 3),
                   Wrap(spacing: 10, runSpacing: 2, children: [
                     if (rep != null && rep.count > 0)
-                      _metaChip(Icons.star_rounded,
-                          '${rep.avg.toStringAsFixed(1)} (${rep.count})',
-                          color: const Color(0xFFF2B705))
+                      // La nota es 1-10. Antes era «8.6 (12)» junto a UNA estrella,
+                      // así que un proveedor con 4,8 —malo— parecía excelente, y
+                      // esta es justo la pantalla donde el cliente decide desbloquear.
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        StarScore(score: rep.avg, size: 14, showNumber: false),
+                        const SizedBox(width: 4),
+                        Text(
+                            '${StarScore.formatScore(rep.avg)}/10 (${rep.count})',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant)),
+                      ])
                     else
                       _metaChip(Icons.star_border_rounded, 'Sin reseñas'),
                     if (_responseLabel != null)

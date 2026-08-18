@@ -13,6 +13,7 @@ import '../../domain/catalog.dart';
 import '../../domain/profile_sections.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../shared/star_score.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
 import '../shared/local_image_guard.dart';
@@ -1069,28 +1070,11 @@ class _ReviewCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // `business_reviews.rating` es **1-10** (CHECK 1..10, igual que
-          // `customer_reviews`), así que hay que dividir entre 2 antes de repartirlo
-          // en cinco estrellas — el mismo patrón que la web en
-          // `provider/business.$id.tsx` (`Math.round(avg / 2)`).
-          // ⚠️ Antes era `i < review.rating.round()`: saturaba desde el 5, o sea que
-          // un 5, un 6, un 8 y un 10 pintaban CINCO ESTRELLAS LLENAS idénticas.
-          // Se escribe además el número, que es lo que hace visible el error.
-          Row(children: [
-            for (var i = 0; i < 5; i++)
-              Icon(
-                  i < (review.rating / 2).round()
-                      ? Icons.star_rounded
-                      : Icons.star_outline_rounded,
-                  size: 16,
-                  color: const Color(0xFFF5A623)),
-            const SizedBox(width: 5),
-            Text('${review.rating.toStringAsFixed(review.rating.truncateToDouble() == review.rating ? 0 : 1)} / 10',
-                style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          ]),
+          // `business_reviews.rating` es 1-10, igual que `customer_reviews`.
+          // ⚠️ Antes era `i < review.rating.round()` sobre cinco iconos: saturaba
+          // desde el 5, o sea que un 5, un 6, un 8 y un 10 pintaban CINCO
+          // ESTRELLAS LLENAS idénticas.
+          StarScore(score: review.rating, size: 16),
           if (review.comment != null) ...[
             const SizedBox(height: 6),
             Text(review.comment!, style: const TextStyle(fontSize: 13.5)),

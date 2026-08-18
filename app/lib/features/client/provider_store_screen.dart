@@ -12,6 +12,7 @@ import '../shared/open_in_maps_button.dart';
 import '../shared/portfolio_gallery_viewer.dart';
 import '../shared/product_list_card.dart';
 import '../shared/service_chips_editor.dart';
+import '../shared/star_score.dart';
 import '../shared/team_gallery_block.dart';
 import '../shared/tile_carril.dart';
 import '../shared/violet_header.dart';
@@ -227,11 +228,14 @@ class ProviderStoreView extends StatelessWidget {
           Expanded(
             child: _statCell(
               context,
-              hasRating ? s.avgRating!.toStringAsFixed(1) : 'Nuevo',
+              hasRating
+                  ? '${StarScore.formatScore(s.avgRating!)}/10'
+                  : 'Nuevo',
               hasRating
                   ? '${s.reviewsCount} reseña${s.reviewsCount == 1 ? '' : 's'}'
                   : 'sin reseñas aún',
               star: hasRating,
+              score: hasRating ? s.avgRating : null,
             ),
           ),
           const SizedBox(width: 8),
@@ -353,8 +357,13 @@ class ProviderStoreView extends StatelessWidget {
 
   /// Celda de un indicador del grid: cifra grande (con estrella opcional) + una
   /// etiqueta corta debajo, sobre una píldora tenue.
+  ///
+  /// Con [score] la celda enseña además las cinco estrellas con medias bajo la
+  /// cifra. ⚠️ Esta es la VITRINA del proveedor: antes decía «4.8» junto a una
+  /// estrella suelta y se leía como 4,8 **sobre 5**, o sea que un proveedor malo
+  /// parecía excelente justo donde el cliente decide.
   Widget _statCell(BuildContext context, String value, String label,
-      {bool star = false}) {
+      {bool star = false, double? score}) {
     final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -364,7 +373,7 @@ class ProviderStoreView extends StatelessWidget {
       ),
       child: Column(children: [
         Row(mainAxisSize: MainAxisSize.min, children: [
-          if (star) ...[
+          if (star && score == null) ...[
             const Icon(Icons.star_rounded, size: 16, color: Color(0xFFF5A623)),
             const SizedBox(width: 3),
           ],
@@ -379,6 +388,10 @@ class ProviderStoreView extends StatelessWidget {
                     color: jayaloHead(context))),
           ),
         ]),
+        if (score != null) ...[
+          const SizedBox(height: 3),
+          StarScore(score: score, size: 12, showNumber: false),
+        ],
         const SizedBox(height: 2),
         Text(label,
             maxLines: 1,

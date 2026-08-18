@@ -9,6 +9,7 @@ import '../../core/motion.dart';
 import '../../data/repos.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../shared/star_score.dart';
 import '../shared/violet_header.dart';
 
 /// Umbral de la web (`src/lib/responseTime.ts`): con menos de 5 respuestas
@@ -120,7 +121,9 @@ class _ReputationViewState extends State<ReputationView> {
           // Sobre 10, no sobre 5: sin el "/10" se lee como una nota de cinco.
           value: rating > 0 ? '${rating.toStringAsFixed(1)}/10' : '—',
           suffix: reviews == 1 ? ' · 1 reseña' : ' · $reviews reseñas',
-          trailing: rating > 0 ? _Stars(rating: rating) : null,
+          trailing: rating > 0
+              ? StarScore(score: rating, size: 15, showNumber: false)
+              : null,
         ).cascadeIn(0),
         _StatTile(
           icon: Icons.shopping_bag_outlined,
@@ -244,30 +247,6 @@ class _StatTile extends StatelessWidget {
         if (trailing != null) ...[const SizedBox(width: 8), trailing!],
       ]),
     );
-  }
-}
-
-/// Las cinco estrellas de la calificación, llenas según el redondeo.
-///
-/// ⚠️ La nota que llega es **sobre 10** (`customer_reviews.rating`, CHECK 1..10),
-/// así que hay que dividir entre 2 antes de repartirla en cinco estrellas. Con el
-/// `clamp(0, 5)` que había aquí, cualquier nota de 5 en adelante saturaba: un
-/// cliente con 8,4 de media veía 5/5. El mismo patrón que la web usa en
-/// `provider/business.$id.tsx` (`Math.round(avg / 2)`).
-class _Stars extends StatelessWidget {
-  const _Stars({required this.rating});
-  final double rating;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final filled = (rating / 2).round().clamp(0, 5);
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      for (var i = 0; i < 5; i++)
-        Icon(Icons.star_rounded,
-            size: 15,
-            color: i < filled ? const Color(0xFFF2B705) : cs.outlineVariant),
-    ]);
   }
 }
 

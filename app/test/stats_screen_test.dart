@@ -25,7 +25,8 @@ void main() {
     'completed_count': 12,
     'points_invested': 45,
     'revenue_total': 128500,
-    'avg_rating': 4.8,
+    // 1-10: era 4.8, de cuando la app pintaba estas notas sobre 5.
+    'avg_rating': 8.6,
     'reviews_count': 9,
   };
 
@@ -42,7 +43,8 @@ void main() {
       (tester) async {
     await tester.pumpWidget(host(const StatsView(data: conActividad)));
     await tester.pumpAndSettle();
-    expect(find.text('4.8'), findsOneWidget);
+    // Con la escala pegada: la métrica es sobre 10, no sobre 5.
+    expect(find.text('8.6/10'), findsOneWidget);
     expect(find.text('calificación'), findsOneWidget);
     expect(find.text('9'), findsOneWidget);
     expect(find.textContaining('reseñas'), findsOneWidget);
