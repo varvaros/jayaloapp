@@ -17,8 +17,8 @@ Decisiones del PO en el brainstorming, para que nadie las vuelva a litigar:
    negocio».
 3. «Descartar» cambia la **etiqueta del swipe y el texto del aviso**. El
    código interno (`hiddenRequestsStore`, `hide`, `unhide`) **no** se renombra.
-4. El toast pegado **se reproduce antes de arreglarse**. Hay hipótesis, no
-   diagnóstico.
+4. El toast pegado **se reprodujo antes de arreglarse**. La hipótesis de la
+   cola de snackbars resultó falsa; el hueco real era otro (ver el punto 2).
 5. El segundo toque en «Ver ofertas» **cierra y ya**: no devuelve scroll ni
    foco al origen.
 
@@ -98,20 +98,30 @@ cambios de pantalla.
 
 Reporte del PO: el toast no desaparece ni al tocarlo ni al cambiar de pantalla.
 
-### Hipótesis — a confirmar ANTES de escribir el arreglo
+### Diagnóstico — medido, no supuesto
 
-`hideCurrentSnackBar()` retira el aviso actual y **destapa el siguiente de la
-cola**. Descartar varias solicitudes seguidas encola una por cada una, y se ven
-encadenadas de 4 en 4 segundos; como el messenger es de raíz, la cadena
-sobrevive a la navegación. Eso explica «no desaparece aunque cambies de
-pantalla».
+La hipótesis inicial era una cola de snackbars: que `hideCurrentSnackBar()`
+destapaba el siguiente y varios descartes seguidos encadenaban avisos de 4 s.
+**Es falsa.** Se midió con `test/jayalo_toast_queue_test.dart`:
 
-Lo de «aunque lo cliquees» no es un defecto: en Flutter, tocar el cuerpo de un
-`SnackBar` no lo cierra, solo lo hace su acción.
+- Un aviso solo **sí** desaparece pasada su duración.
+- Cinco descartes seguidos **no** encadenan nada: `hideCurrentSnackBar()`
+  retira el anterior de verdad en lugar de encolarlo, así que solo se ve el
+  último.
+- **Tocar el aviso no lo cierra.** Ése era el único hueco real, y coincide con
+  lo que reportó el PO («no desaparece aunque lo cliquees»).
 
-**Si al descartar UNA sola solicitud el aviso también se queda clavado, la
-hipótesis es falsa.** En ese caso no se escribe nada: se abre depuración con
-systematic-debugging y se revisa este spec.
+Es comportamiento estándar de Flutter: el cuerpo de un `SnackBar` no responde
+al toque, solo lo hace su acción. Importa aquí más que en otras apps porque el
+`ScaffoldMessenger` es el de la raíz (`app.dart:168`), así que el aviso te
+sigue a la pantalla siguiente durante lo que le quede de vida — y sin salida
+manual se siente clavado.
+
+Nota de método: el primer intento de test daba falso positivo. Un solo
+`pump(Duration(seconds: 5))` produce **un** frame; la animación de entrada del
+SnackBar se completa en él y el temporizador de 4 s arranca justo entonces, de
+modo que el aviso parecía no irse nunca. Hay que bombear la entrada aparte
+antes de dejar correr el reloj.
 
 ### Diseño
 
@@ -123,18 +133,11 @@ Renombrado, sin condiciones:
 El icono del swipe (`visibility_off_outlined`) se deja como está: cambiarlo no
 lo pidió el PO y es una decisión estética aparte.
 
-Arreglo del toast, **condicionado** a que la reproducción confirme la
-hipótesis:
+Arreglo del toast: envolver el contenido de `showJayaloToast` en un
+`GestureDetector` opaco que llame a `hideCurrentSnackBar`. Nada más.
 
-- En `showJayaloToast`, `clearSnackBars()` en vez de `hideCurrentSnackBar()`,
-  para que un aviso nuevo sustituya la cola entera en lugar de sumarse a ella.
-  Ya hay precedente en el repo: `app.dart:263`.
-- Hacer el toast descartable al tocarlo.
-
-**Riesgo a vigilar:** `showJayaloToast` lo usa toda la app. Pasar de `hide` a
-`clear` significa que un aviso nuevo mata los pendientes. Es justo lo que se
-busca aquí, pero antes hay que comprobar que ningún flujo dependa de encolar
-dos avisos seguidos.
+**Descartado:** cambiar `hideCurrentSnackBar()` por `clearSnackBars()`. Se
+proponía para matar una cola que las mediciones demuestran que no existe.
 
 ### Verificación
 

@@ -1050,10 +1050,22 @@ class _PhotoViewerState extends State<_PhotoViewer> {
 /// margen inferior = espacio reservado de la barra + respiro.
 void showJayaloToast(BuildContext context, String message,
     {String? actionLabel, VoidCallback? onAction}) {
-  ScaffoldMessenger.of(context)
+  final messenger = ScaffoldMessenger.of(context);
+  messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
-      content: Text(message),
+      // Tocar el CUERPO de un SnackBar no lo cierra en Flutter: solo lo hace
+      // su accion. El PO lo reporto como "el aviso no desaparece aunque lo
+      // cliquees" (2026-08-18). Medido en `jayalo_toast_queue_test.dart`: el
+      // auto-cierre de 4 s SI funciona y `hideCurrentSnackBar` no deja avisos
+      // encolados — lo unico que faltaba era esta salida manual. Importa
+      // porque el messenger es el de la RAIZ (`app.dart`), asi que el aviso
+      // te sigue a la pantalla siguiente durante lo que le quede de vida.
+      content: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: messenger.hideCurrentSnackBar,
+        child: Text(message),
+      ),
       behavior: SnackBarBehavior.floating,
       // Acción opcional («Deshacer» del Ocultar del inbox): misma receta de
       // toast, sin duplicar el posicionamiento sobre la navbar.

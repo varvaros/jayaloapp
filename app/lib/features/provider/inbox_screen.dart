@@ -379,22 +379,24 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                             if (context.mounted) _refetch();
                           },
                         );
-                        // Deslizar → «Ocultar» (pedido PO 2026-08-10, «cuando
-                        // no interesa una solicitud»). Local al dispositivo,
-                        // con Deshacer en el toast.
+                        // Deslizar → «Descartar» (pedido PO 2026-08-10,
+                        // «cuando no interesa una solicitud»; renombrado de
+                        // «Ocultar» el 2026-08-18). Local al dispositivo, con
+                        // Deshacer en el toast — el store se sigue llamando
+                        // `hiddenRequestsStore` a proposito, decision del PO.
                         final row = SwipeToActions(
                           id: id,
                           group: _openRow,
                           actions: [
                             SwipeAction(
                               icon: Icons.visibility_off_outlined,
-                              label: 'Ocultar',
+                              label: 'Descartar',
                               color: Theme.of(context).colorScheme.outline,
                               onTap: () async {
                                 hiddenRequestsStore.hide(id);
                                 showJayaloToast(
                                   context,
-                                  'Solicitud ocultada.',
+                                  'Solicitud descartada.',
                                   actionLabel: 'Deshacer',
                                   onAction: () =>
                                       hiddenRequestsStore.unhide(id),

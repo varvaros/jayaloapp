@@ -17,6 +17,7 @@ import '../shared/star_score.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
 import '../shared/local_image_guard.dart';
+import '../shared/physical_location_badge.dart';
 import '../shared/product_list_card.dart';
 import '../shared/service_chips_editor.dart';
 import '../shared/team_gallery_block.dart';
@@ -410,6 +411,13 @@ class _MyBusinessViewState extends State<MyBusinessView> {
   List<String> _services = const [];
   bool _servicesBusy = false;
 
+  /// Sello "Tienda física" (PO 2026-08-18: también en "Mi negocio", pegado a
+  /// la portada). Consulta APARTE del escaparate, con su propio try/catch: la
+  /// columna `has_physical_location` puede no estar aplicada todavía y no
+  /// puede tumbar la pantalla — mismo trato best-effort que documenta
+  /// `businessesPhysicalLocation` en `data/repos.dart`.
+  bool _hasPhysicalLocation = false;
+
   @override
   void initState() {
     super.initState();
@@ -417,6 +425,26 @@ class _MyBusinessViewState extends State<MyBusinessView> {
     _logoUrl = widget.business?.logoUrl;
     _description = widget.business?.description;
     _services = widget.business?.services ?? const [];
+    _loadPhysicalLocation();
+  }
+
+  /// El padre es un `FutureBuilder`: puede reconstruir esta vista con OTRO
+  /// negocio (o con uno donde antes no había) sin volver a montar el State.
+  @override
+  void didUpdateWidget(covariant MyBusinessView old) {
+    super.didUpdateWidget(old);
+    if (old.business?.id != widget.business?.id) _loadPhysicalLocation();
+  }
+
+  Future<void> _loadPhysicalLocation() async {
+    final id = widget.business?.id;
+    if (id == null) return;
+    try {
+      final map = await businessesPhysicalLocation([id]);
+      if (mounted) setState(() => _hasPhysicalLocation = map[id] ?? false);
+    } catch (_) {
+      // Sin sello: el resto de "Mi negocio" no depende de esto.
+    }
   }
 
   @override
@@ -628,6 +656,11 @@ class _MyBusinessViewState extends State<MyBusinessView> {
           coverBusy: _coverBusy,
           logoBusy: _logoBusy,
         ).cascadeIn(0),
+        // Pegado a la portada (PO 2026-08-18), igual que en la tienda pública.
+        // Sin `cascadeIn`: es un chip pequeño y numerarlo obligaría a correr
+        // toda la cascada de abajo sin ganar nada.
+        ?PhysicalLocationBadge.maybe(
+            hasPhysicalLocation: _hasPhysicalLocation),
         const SectionHeader(text: 'SOBRE EL NEGOCIO'),
         _AboutCard(
           description: _description,

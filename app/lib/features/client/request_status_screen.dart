@@ -265,7 +265,43 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
   /// controllers custom + drag; reproducido en el Redmi). Con la animación
   /// estándar del sheet, arrastrar/tap fuera/atrás cierran como en el resto
   /// de la app.
+  /// Hoja de ofertas abierta, si la hay. Segundo toque en «Ver ofertas» =
+  /// cerrarla (pedido PO 2026-08-18), en vez de apilar otra encima.
+  ///
+  /// Se guarda el CONTEXTO de la hoja y no un `bool`: para cerrarla hay que
+  /// hacer pop de SU ruta. Un `Navigator.pop(context)` con el contexto de la
+  /// pantalla sacaria lo que este al tope del navigator, que no tiene por que
+  /// ser la hoja (p. ej. si encima se abrio el visor de fotos). Mismo patron
+  /// que `_showPickSheet` en `create_request_screen.dart`.
+  BuildContext? _offersSheetCtx;
+
+  /// Preparar la hoja es ASINCRONO (re-fetch + verificados + identidades).
+  /// Sin esta reja, dos toques durante esa espera abren dos hojas: la primera
+  /// todavia no existe, asi que `_offersSheetCtx` sigue en null y el guard de
+  /// arriba no la ve.
+  bool _offersOpening = false;
+
   Future<void> _showOffers(
+    BuildContext context,
+    Map<String, dynamic> req,
+    List<Map<String, dynamic>> offers,
+  ) async {
+    final open = _offersSheetCtx;
+    if (open != null) {
+      if (open.mounted) Navigator.of(open).pop();
+      _offersSheetCtx = null;
+      return;
+    }
+    if (_offersOpening) return;
+    _offersOpening = true;
+    try {
+      await _prepareAndShowOffers(context, req, offers);
+    } finally {
+      _offersOpening = false;
+    }
+  }
+
+  Future<void> _prepareAndShowOffers(
     BuildContext context,
     Map<String, dynamic> req,
     List<Map<String, dynamic>> offers,
@@ -326,18 +362,24 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
       // abajo y el sheet NUNCA se cerraba (reproducido en el Redmi — "sube
       // pero no baja"). Con altura fija, el arrastre nativo del BottomSheet
       // (asa/encabezado), el tap fuera y el atrás cierran como siempre.
-      builder: (ctx) => _OffersSheet(
-        request: req,
-        offers: list,
-        cheapestId: cheapest,
-        verified: verified,
-        identities: identities,
-        acceptedCount: acceptedCount,
-        closedReasons: _closedOfferReasons,
-        initialUnread: _unreadOfferIds,
-        onSeen: _markOfferSeen,
-      ),
+      builder: (ctx) {
+        _offersSheetCtx = ctx;
+        return _OffersSheet(
+          request: req,
+          offers: list,
+          cheapestId: cheapest,
+          verified: verified,
+          identities: identities,
+          acceptedCount: acceptedCount,
+          closedReasons: _closedOfferReasons,
+          initialUnread: _unreadOfferIds,
+          onSeen: _markOfferSeen,
+        );
+      },
     );
+    // Se cerro por donde sea (segundo toque, atras, arrastre, tap fuera): sin
+    // esto, el proximo toque creeria que sigue abierta y no abriria nada.
+    _offersSheetCtx = null;
   }
 }
 

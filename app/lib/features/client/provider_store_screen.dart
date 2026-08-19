@@ -9,6 +9,7 @@ import '../shared/brand_kit.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
 import '../shared/open_in_maps_button.dart';
+import '../shared/physical_location_badge.dart';
 import '../shared/portfolio_gallery_viewer.dart';
 import '../shared/product_list_card.dart';
 import '../shared/service_chips_editor.dart';
@@ -289,30 +290,6 @@ class ProviderStoreView extends StatelessWidget {
     );
   }
 
-  /// Sello "Tienda física" (PO 2026-08-12), AUTODECLARADO — píldora teal
-  /// `requisito`, NUNCA junto al ✓ verde de `_repCard` (aquello sí lo
-  /// comprueba Jayalo, esto lo dice el proveedor). Deliberadamente
-  /// independiente de `_repCard`/`stats`: la RPC de confianza y la consulta
-  /// de esta columna son dos llamadas distintas con degradación best-effort
-  /// propia cada una — si `businessStorefrontStats` falla, `_repCard` entero
-  /// desaparece, pero este sello (que viene de `businessesPhysicalLocation`,
-  /// ya blindado) debe seguir visible igual.
-  Widget? _physicalLocationBadge(BuildContext context) {
-    if (!hasPhysicalLocation) return null;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: StatusChip(
-          label: 'Tienda física',
-          icon: Icons.storefront_outlined,
-          tone: dark ? JayaloStatus.requisitoDark : JayaloStatus.requisitoLight,
-        ),
-      ),
-    );
-  }
-
   /// Boton "Ver en el mapa" (Task 11) — null si [location] no llego (reja del
   /// servidor o negocio sin coordenadas): nunca se monta un boton
   /// deshabilitado, la seccion entera desaparece.
@@ -431,7 +408,8 @@ class ProviderStoreView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repCard = _repCard(context);
-    final physicalBadge = _physicalLocationBadge(context);
+    final physicalBadge =
+        PhysicalLocationBadge.maybe(hasPhysicalLocation: hasPhysicalLocation);
     final locationButton = _locationButton();
     final servicesBlock = _servicesBlock();
     final teamGallery = TeamGalleryBlock.maybe(
@@ -451,9 +429,11 @@ class ProviderStoreView extends StatelessWidget {
           seals: _sealLabels(),
         ),
       ),
+      // Pegado a la portada (PO 2026-08-18): lo primero bajo ella, encima de
+      // servicios y de la tarjeta de reputacion.
+      if (physicalBadge != null) SliverToBoxAdapter(child: physicalBadge),
       if (servicesBlock != null) SliverToBoxAdapter(child: servicesBlock),
       if (repCard != null) SliverToBoxAdapter(child: repCard),
-      if (physicalBadge != null) SliverToBoxAdapter(child: physicalBadge),
       if (locationButton != null) SliverToBoxAdapter(child: locationButton),
       if (teamGallery != null) SliverToBoxAdapter(child: teamGallery),
       SliverToBoxAdapter(
