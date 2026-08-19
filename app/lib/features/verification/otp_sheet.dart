@@ -23,21 +23,32 @@ Future<bool> showOtpSheet(BuildContext context,
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (_) => _OtpSheet(phone: phone, businessId: businessId),
+    builder: (_) => OtpSheet(phone: phone, businessId: businessId),
   );
   return ok == true;
 }
 
-class _OtpSheet extends StatefulWidget {
-  const _OtpSheet({required this.phone, this.businessId});
+/// Publica y con el envio inyectable SOLO para poder probarla: la reja de los
+/// 15 s al FALLAR (abajo) no se puede verificar sin forzar un `sendOtp` que
+/// lance. Mismo patron de inyeccion que `MyBusinessView`.
+@visibleForTesting
+class OtpSheet extends StatefulWidget {
+  const OtpSheet({
+    super.key,
+    required this.phone,
+    this.businessId,
+    this.send = sendOtp,
+  });
   final String phone;
   final String? businessId;
+  final Future<String> Function({required String phone, String? businessId})
+      send;
 
   @override
-  State<_OtpSheet> createState() => _OtpSheetState();
+  State<OtpSheet> createState() => _OtpSheetState();
 }
 
-class _OtpSheetState extends State<_OtpSheet> {
+class _OtpSheetState extends State<OtpSheet> {
   final _code = TextEditingController();
   bool _sending = true;
   bool _verifying = false;
@@ -83,9 +94,11 @@ class _OtpSheetState extends State<_OtpSheet> {
     }
   }
 
-  void _startCountdown() {
+  /// [seconds] baja a 15 cuando el envio FALLA: ahi no se espera ningun SMS,
+  /// solo se frena el machaque del boton.
+  void _startCountdown([int seconds = 60]) {
     _timer?.cancel();
-    setState(() => _resendIn = 60);
+    setState(() => _resendIn = seconds);
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return t.cancel();
       setState(() => _resendIn--);
@@ -99,7 +112,8 @@ class _OtpSheetState extends State<_OtpSheet> {
       _error = null;
     });
     try {
-      final channel = await sendOtp(phone: widget.phone, businessId: widget.businessId);
+      final channel =
+          await widget.send(phone: widget.phone, businessId: widget.businessId);
       if (mounted) setState(() => _channel = channel);
       _startCountdown();
       // Arranca el escucha de SMS Retriever recién enviado el código (Android).
@@ -108,6 +122,12 @@ class _OtpSheetState extends State<_OtpSheet> {
       if (mounted) {
         setState(() =>
             _error = e.toString().replaceFirst('Exception: ', ''));
+        // El contador SOLO arrancaba en el camino de exito: tras un fallo el
+        // boton volvia a quedar habilitado en el MISMO frame, sin cuenta atras.
+        // Como el servidor no devuelve el intento cuando el envio falla, cinco
+        // toques nerviosos agotaban el tope de 5/15min y dejaban al usuario
+        // bloqueado un cuarto de hora con la cuenta recien creada.
+        _startCountdown(15);
       }
     } finally {
       if (mounted) setState(() => _sending = false);
