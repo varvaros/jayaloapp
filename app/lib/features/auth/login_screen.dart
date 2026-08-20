@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -117,6 +118,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   int _page = 0;
 
+  /// Hay una elección en vuelo (guardando o avanzando la lámina). Ver la guarda
+  /// de reentrada de [_chooseRole].
+  bool _choosing = false;
+
   /// Con qué copys se pintan las láminas 2 y 3. Quien saltó sin elegir ve las
   /// del cliente, que son las más neutras.
   IntroRole get _slidesRole => _introRole ?? IntroRole.consumer;
@@ -137,8 +142,15 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  /// Quien ya eligió (y mató la app, o volvió tras cerrar sesión) NO se traga
-  /// el intro otra vez: arranca directamente en la lámina de acceso.
+  /// La elección PENDIENTE de consumir sobrevive a matar la app: quien eligió
+  /// lado y se fue antes de autenticarse vuelve directo a la lámina de acceso,
+  /// sin repetir el intro.
+  ///
+  /// OJO, no es memoria permanente: el alta la consume y la borra
+  /// (`IntroRoleStore.clear()`), porque la clave no lleva uid y si no el
+  /// siguiente que se registre en el mismo teléfono heredaría la elección del
+  /// anterior. O sea que quien vuelve DESPUÉS de haber cerrado sesión ya no
+  /// tiene elección guardada y sí ve el carrusel entero.
   Future<void> _restoreRole() async {
     final role = await IntroRoleStore().read();
     if (!mounted || role == null) return;
@@ -146,40 +158,60 @@ class _LoginScreenState extends State<LoginScreen> {
       _introRole = role;
       _page = 2; // los puntos y el «Saltar» ya nacen en su sitio, sin parpadeo
     });
-    _afterLayout(() {
+    unawaited(_afterLayout(() async {
       if (_pages.hasClients) _pages.jumpToPage(2);
-    });
+    }));
   }
 
   /// Mueve el carrusel DESPUÉS del frame en el que ya hay 3 páginas: pedirle a
   /// `PageController` la página 1 mientras el viewport todavía mide una sola
-  /// deja la posición fuera de rango.
-  void _afterLayout(VoidCallback fn) =>
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) fn();
-      });
+  /// deja la posición fuera de rango. El futuro que devuelve se cierra cuando
+  /// termina la transición, para poder esperarla.
+  Future<void> _afterLayout(Future<void> Function() fn) {
+    final done = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        done.complete();
+        return;
+      }
+      fn().whenComplete(done.complete);
+    });
+    return done.future;
+  }
 
-  void _goToPage(int i) {
+  Future<void> _goToPage(int i) async {
     if (!_pages.hasClients) return;
     if (JayaloMotion.reduced(context)) {
       _pages.jumpToPage(i);
-    } else {
-      _pages.animateToPage(i,
-          duration: JayaloMotion.page, curve: JayaloMotion.emphasized);
+      return;
     }
+    return _pages.animateToPage(i,
+        duration: JayaloMotion.page, curve: JayaloMotion.emphasized);
   }
 
   /// Los recuadros NO navegan: guardan el lado elegido y avanzan la lámina.
+  ///
+  /// Guarda de reentrada hasta que la lámina termina de entrar: tocar los dos
+  /// recuadros seguidos lanzaría dos `save()` en paralelo y en disco quedaría
+  /// el que resolviera último, que no tiene por qué ser el que tocó el usuario.
+  /// Y durante la transición el recuadro de al lado sigue en pantalla y se
+  /// puede tocar.
   Future<void> _chooseRole(IntroRole role) async {
-    await IntroRoleStore().save(role);
-    if (!mounted) return;
-    setState(() => _introRole = role);
-    _afterLayout(() => _goToPage(1));
+    if (_choosing) return;
+    _choosing = true;
+    try {
+      await IntroRoleStore().save(role);
+      if (!mounted) return;
+      setState(() => _introRole = role);
+      await _afterLayout(() => _goToPage(1));
+    } finally {
+      _choosing = false;
+    }
   }
 
   void _skip() {
     setState(() => _skipped = true);
-    _afterLayout(() => _goToPage(2));
+    unawaited(_afterLayout(() => _goToPage(2)));
   }
 
   Future<void> _openPasswordSheet() => showModalBottomSheet<void>(
@@ -262,6 +294,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       Expanded(
                         child: PageView.builder(
                           controller: _pages,
+                          // Con el login en vuelo el carrusel se congela: si no,
+                          // se puede deslizar de vuelta a los recuadros y
+                          // reescribir la elección MIENTRAS se autentica, y el
+                          // alta consumiría un rol distinto del que se ve.
+                          physics: _busy
+                              ? const NeverScrollableScrollPhysics()
+                              : null,
                           itemCount: _pageCount,
                           onPageChanged: (i) => setState(() => _page = i),
                           itemBuilder: _buildSlide,

@@ -2,6 +2,7 @@
 // la elección ANTES de que haya sesión y cierra con los accesos de siempre.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jayalo_app/core/motion.dart';
 import 'package:jayalo_app/features/auth/intro_copy.dart';
 import 'package:jayalo_app/features/auth/intro_role_store.dart';
 import 'package:jayalo_app/features/auth/login_screen.dart';
@@ -76,9 +77,62 @@ void main() {
     expect(find.text('Entrar con correo y contraseña'), findsOneWidget);
   });
 
+  testWidgets('CON animaciones: el avance ANIMA, no salta', (t) async {
+    // El camino de producción: `addPostFrameCallback` + `animateToPage`, que
+    // existe justo porque el `itemCount` pasa de 1 a 3 en el mismo `setState`.
+    // Los demás tests van con reduce-motion, o sea por `jumpToPage`.
+    //
+    // Aquí NO se puede usar `pumpAndSettle`: el `Ticker` perpetuo de la
+    // «PORTADA JAYI» no deja asentar nunca. Todo va con pumps de duración
+    // explícita, tomada de los mismos tokens que usa la pantalla.
+    phone(t);
+    await t.pumpWidget(const MaterialApp(home: LoginScreen()));
+    await t.pump(); // primer frame
+    await t.pump(JayaloMotion.fast); // el read() de prefs resuelve (vacío)
+    expect(find.text('Busco algo'), findsOneWidget);
+
+    await t.tap(find.text('Busco algo'));
+    await t.pump(); // el save() resuelve y el carrusel pasa a 3 páginas
+    await t.pump(); // el postFrame ya pidió la página: la animación arranca
+
+    // A MITAD del recorrido se ven las DOS láminas a la vez — es exactamente
+    // lo que distingue animar de saltar.
+    await t.pump(JayaloMotion.fast); // 150 de los 300 ms de JayaloMotion.page
+    expect(find.text('Busco algo'), findsOneWidget,
+        reason: 'la lámina común todavía está saliendo');
+    expect(find.text(kIntroSlides[IntroRole.consumer]![0].headline),
+        findsOneWidget,
+        reason: 'la lámina del cliente ya está entrando');
+
+    // Y al terminar (+ margen) solo queda la lámina 2.
+    await t.pump(JayaloMotion.page);
+    expect(find.text(kIntroSlides[IntroRole.consumer]![0].headline),
+        findsOneWidget);
+    expect(find.text('Siguiente'), findsOneWidget);
+    expect(find.text('Busco algo'), findsNothing);
+  });
+
+  testWidgets('tocar los DOS recuadros seguidos: gana el primero', (t) async {
+    // Sin guarda de reentrada los dos `save()` corren en paralelo y en disco
+    // queda el que resuelva último, que no tiene por qué ser el que tocó el
+    // usuario.
+    phone(t);
+    await t.pumpWidget(app());
+    await t.pumpAndSettle();
+
+    await t.tap(find.text('Vendo algo'));
+    // Sin dejar que resuelva el guardado, el segundo toque va al otro recuadro.
+    await t.tap(find.text('Busco algo'), warnIfMissed: false);
+    await t.pumpAndSettle();
+
+    expect(await IntroRoleStore().read(), IntroRole.provider);
+    expect(find.text(kIntroSlides[IntroRole.provider]![0].headline),
+        findsOneWidget);
+  });
+
   testWidgets('con rol ya guardado arranca en la lámina de acceso',
       (t) async {
-    // Quien ya eligió y vuelve a la app no se traga el intro otra vez.
+    // Quien ya eligió y todavía no se ha autenticado no repite el intro.
     SharedPreferences.setMockInitialValues({
       IntroRoleStore.kKey: IntroRole.consumer.name,
     });
