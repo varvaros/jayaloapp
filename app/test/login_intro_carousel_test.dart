@@ -15,8 +15,8 @@ void main() {
 
   /// Se monta con las animaciones del sistema APAGADAS por dos razones:
   /// 1. es una conducta que hay que respetar igual (`JayaloMotion.reduced`), y
-  /// 2. la portada anima con un `Ticker` perpetuo — con ellas encendidas
-  ///    `pumpAndSettle` no asienta NUNCA.
+  /// 2. la escena de cada lámina anima con un `Ticker` perpetuo — con ellas
+  ///    encendidas `pumpAndSettle` no asienta NUNCA.
   Widget app() => MaterialApp(
     home: const LoginScreen(),
     builder: (ctx, child) => MediaQuery(
@@ -91,8 +91,8 @@ void main() {
     // existe justo porque el `itemCount` pasa de 1 a 3 en el mismo `setState`.
     // Los demás tests van con reduce-motion, o sea por `jumpToPage`.
     //
-    // Aquí NO se puede usar `pumpAndSettle`: el `Ticker` perpetuo de la
-    // «PORTADA JAYI» no deja asentar nunca. Todo va con pumps de duración
+    // Aquí NO se puede usar `pumpAndSettle`: el `Ticker` perpetuo de
+    // `JayiScene` no deja asentar nunca. Todo va con pumps de duración
     // explícita, tomada de los mismos tokens que usa la pantalla.
     phone(t);
     await t.pumpWidget(const MaterialApp(home: LoginScreen()));

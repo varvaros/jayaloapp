@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -14,7 +13,8 @@ import '../shared/brand_kit.dart' show JayaloCard;
 import '../shared/jayalo_loader.dart';
 import 'intro_copy.dart';
 import 'intro_role_store.dart';
-import 'portada_jayi.dart';
+import 'jayalo_imagotipo.dart';
+import 'jayi_scene.dart';
 
 /// El usuario cerró el selector de cuenta de Google. No es un fallo: no hay que
 /// enseñarle ningún error.
@@ -319,67 +319,49 @@ class _LoginScreenState extends State<LoginScreen> {
         canPop: _page == 0,
         onPopInvokedWithResult: _handleBackPop,
         child: Scaffold(
-          // Arena FIJA de marca (no `cs.background`: la portada no tiene modo
+          // Arena FIJA de marca (no `cs.background`: el intro no tiene modo
           // oscuro). El CTA mantiene el violeta FIJO por la misma razón.
+          //
+          // Lienzo LIMPIO, como la maqueta de onboarding: la ilustración es la
+          // escena de cada lámina, no un fondo. La «Portada Jayi» (render 3D a
+          // pantalla completa + patrón de isotipos) vivía aquí y se retiró: su
+          // render era el mismo en las tres láminas y su claim fijo («Todo
+          // comienza con una idea») dejaba DOS titulares apilados compitiendo
+          // con el de la lámina.
           backgroundColor: JayaloColors.background,
-          body: LayoutBuilder(
-            builder: (context, box) {
-              // El carrusel ocupa más que la vieja pila de botones, así que Jayi
-              // se centra en lo que queda por encima. Se clampa contra el alto
-              // real: con el hueco en 0 (pantalla corta) la webp de la portada
-              // se pediría con `cacheWidth: 0`, que es un assert.
-              final reserve = math.min(300.0, box.maxHeight * .45);
-              return Stack(
-                children: [
-                  // «PORTADA JAYI» a pantalla completa (mockup portada-jayi.html).
-                  // El bottomReserve deja libre la zona de láminas, como el mar
-                  // limpio de FONDO PLAYA.
-                  Positioned.fill(
-                    child: PortadaJayi(
-                      bottomReserve: reserve,
-                      // El claim fijo es copy de cliente («Describe lo que
-                      // necesitas...»): fuera de la lámina 0 contradice a las
-                      // láminas de proveedor. Ver doc de [PortadaJayi.showClaim].
-                      showClaim: _page == 0,
-                    ),
+          body: SafeArea(
+            child: Column(
+              children: [
+                _topRow(context),
+                Expanded(
+                  child: PageView.builder(
+                    controller: _pages,
+                    // Con el login en vuelo el carrusel se congela: si no,
+                    // se puede deslizar de vuelta a los recuadros y
+                    // reescribir la elección MIENTRAS se autentica, y el
+                    // alta consumiría un rol distinto del que se ve.
+                    physics: _busy
+                        ? const NeverScrollableScrollPhysics()
+                        : null,
+                    itemCount: _pageCount,
+                    onPageChanged: (i) => setState(() => _page = i),
+                    itemBuilder: _buildSlide,
                   ),
-                  SafeArea(
-                    child: Column(
-                      children: [
-                        _skipRow(context),
-                        Expanded(
-                          child: PageView.builder(
-                            controller: _pages,
-                            // Con el login en vuelo el carrusel se congela: si no,
-                            // se puede deslizar de vuelta a los recuadros y
-                            // reescribir la elección MIENTRAS se autentica, y el
-                            // alta consumiría un rol distinto del que se ve.
-                            physics: _busy
-                                ? const NeverScrollableScrollPhysics()
-                                : null,
-                            itemCount: _pageCount,
-                            onPageChanged: (i) => setState(() => _page = i),
-                            itemBuilder: _buildSlide,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        // Con 1 sola lámina (todavía sin elegir ni saltar)
-                        // se siguen pintando los 3 puntos de siempre: esa
-                        // lámina es la de elección, y de ahí se puede llegar
-                        // tanto al camino de 3 (con rol) como al de 2 (sin
-                        // rol) — pintar 1 solo punto ahí sugeriría un
-                        // carrusel de una sola lámina que no existe. Fuera de
-                        // ese caso transitorio, el conteo real evita el punto
-                        // del medio encendido de tres cuando en realidad solo
-                        // hay 2 (el bug que reportó el coordinador).
-                        _Dots(active: _page, count: _pageCount == 1 ? 3 : _pageCount),
-                        const SizedBox(height: 20),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            },
+                ),
+                const SizedBox(height: 14),
+                // Con 1 sola lámina (todavía sin elegir ni saltar)
+                // se siguen pintando los 3 puntos de siempre: esa
+                // lámina es la de elección, y de ahí se puede llegar
+                // tanto al camino de 3 (con rol) como al de 2 (sin
+                // rol) — pintar 1 solo punto ahí sugeriría un
+                // carrusel de una sola lámina que no existe. Fuera de
+                // ese caso transitorio, el conteo real evita el punto
+                // del medio encendido de tres cuando en realidad solo
+                // hay 2 (el bug que reportó el coordinador).
+                _Dots(active: _page, count: _pageCount == 1 ? 3 : _pageCount),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
       ),
@@ -392,36 +374,43 @@ class _LoginScreenState extends State<LoginScreen> {
   /// ve igual: es la que tiene los recuadros de rol, no la de acceso.
   bool get _showSkip => _pageCount == 1 || _page != _pageCount - 1;
 
+  /// Marca a la izquierda y «Saltar» a la derecha, como el `.top` de la
+  /// maqueta. El imagotipo vive aquí desde que se retiró la portada, que era
+  /// quien lo pintaba — y va PEQUEÑO: en el intro la marca sitúa, no protagoniza.
+  ///
   /// El alto se reserva SIEMPRE para que nada salte al llegar.
-  Widget _skipRow(BuildContext context) {
+  Widget _topRow(BuildContext context) {
     final visible = _showSkip;
     return SizedBox(
       height: 44,
       child: Padding(
-        padding: const EdgeInsets.only(right: 16),
-        child: Align(
-          alignment: Alignment.centerRight,
-          child: AnimatedOpacity(
-            opacity: visible ? 1 : 0,
-            duration: JayaloMotion.reduced(context)
-                ? Duration.zero
-                : JayaloMotion.fast,
-            curve: JayaloMotion.enter,
-            child: IgnorePointer(
-              ignoring: !visible,
-              child: TextButton(
-                onPressed: _skip,
-                child: Text(
-                  'Saltar',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: JayaloColors.foreground.withValues(alpha: .75),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            const _Wordmark(),
+            const Spacer(),
+            AnimatedOpacity(
+              opacity: visible ? 1 : 0,
+              duration: JayaloMotion.reduced(context)
+                  ? Duration.zero
+                  : JayaloMotion.fast,
+              curve: JayaloMotion.enter,
+              child: IgnorePointer(
+                ignoring: !visible,
+                child: TextButton(
+                  onPressed: _skip,
+                  child: Text(
+                    'Saltar',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: JayaloColors.foreground.withValues(alpha: .75),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -448,9 +437,10 @@ class _LoginScreenState extends State<LoginScreen> {
         _ => _accessStack(context),
       };
     }
-    // Contenido pegado ABAJO (donde estaban los botones) pero desplazable: con
-    // la fuente del sistema en gigante los titulares crecen y no deben
-    // desbordar sobre Jayi.
+    // Escena + copy arriba y la acción abajo, con el hueco repartido entre las
+    // dos — el `spacer / scene / benefit / sub / spacer / actions` de la
+    // maqueta. Desplazable porque con la fuente del sistema en gigante los
+    // titulares crecen y no deben desbordar sobre la escena.
     return LayoutBuilder(
       builder: (context, box) => SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -458,12 +448,48 @@ class _LoginScreenState extends State<LoginScreen> {
           constraints: BoxConstraints(minHeight: box.maxHeight),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [_SlideCopy(slide), const SizedBox(height: 22), action],
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Hueco de arriba: `spaceBetween` reparte el sobrante entre este
+              // hijo vacío y la acción, así que la escena queda a media altura
+              // en vez de pegada bajo la marca.
+              const SizedBox.shrink(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 220),
+                      child: JayiScene(kind: _sceneFor(i)),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _SlideCopy(slide),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 22),
+                child: action,
+              ),
+            ],
           ),
         ),
       ),
     );
+  }
+
+  /// Qué hace Jayi en cada lámina. La 0 es siempre la común (bracitos abiertos
+  /// entre las dos partes); las demás dependen del lado elegido. Sin rol, la
+  /// lámina de cierre repite la común: su copy también es el común, y no hay
+  /// lado con el que pintar una escena dedicada.
+  JayiSceneKind _sceneFor(int i) {
+    if (i == 0 || _introRole == null) return JayiSceneKind.common;
+    return switch ((_introRole!, i)) {
+      (IntroRole.consumer, 1) => JayiSceneKind.consumerOffers,
+      (IntroRole.consumer, _) => JayiSceneKind.consumerLock,
+      (IntroRole.provider, 1) => JayiSceneKind.providerTray,
+      (IntroRole.provider, _) => JayiSceneKind.providerCoin,
+    };
   }
 
   /// Los dos recuadros de la lámina común: tarjeta blanca sin borde, sombra
@@ -545,8 +571,34 @@ class _LoginScreenState extends State<LoginScreen> {
   );
 }
 
+/// El imagotipo pequeño de la fila superior. Ancho fijo y alto derivado de la
+/// proporción real del logo, para que no se deforme nunca.
+class _Wordmark extends StatelessWidget {
+  const _Wordmark();
+
+  static const _w = 84.0;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: _w,
+    height: _w * kImagotipoSize.height / kImagotipoSize.width,
+    child: const CustomPaint(painter: _WordmarkPainter()),
+  );
+}
+
+class _WordmarkPainter extends CustomPainter {
+  const _WordmarkPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      paintImagotipo(canvas, Offset.zero & size);
+
+  @override
+  bool shouldRepaint(covariant _WordmarkPainter old) => false;
+}
+
 /// Titular + apoyo de una lámina. El realce va en violeta partiendo el titular
-/// por `highlight`, igual que el «Todo comienza con una idea» de la portada.
+/// por `highlight`.
 class _SlideCopy extends StatelessWidget {
   const _SlideCopy(this.slide);
   final IntroSlide slide;
