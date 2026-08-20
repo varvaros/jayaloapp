@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,8 +7,12 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/brand.dart';
 import '../../core/config.dart';
+import '../../core/motion.dart';
 import '../../core/turnstile.dart';
+import '../shared/brand_kit.dart' show JayaloCard;
 import '../shared/jayalo_loader.dart';
+import 'intro_copy.dart';
+import 'intro_role_store.dart';
 import 'portada_jayi.dart';
 
 /// El usuario cerró el selector de cuenta de Google. No es un fallo: no hay que
@@ -82,6 +88,13 @@ String passwordLoginError(Object e) {
   return 'No pudimos entrar. Revisa tu conexión e inténtalo de nuevo.';
 }
 
+/// Primera apertura de la app: carrusel de TRES láminas que termina en los
+/// accesos de siempre.
+///
+/// Las láminas viven aquí dentro y no en rutas nuevas por un motivo duro:
+/// `redirectTarget()` empieza con `if (!loggedIn) return onLogin ? null :
+/// '/login';` — sin sesión, toda ruta que no sea `/login` rebota. Metiendo el
+/// carrusel dentro de `/login` no se toca el router.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -90,6 +103,84 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _busy = false;
+
+  final _pages = PageController();
+
+  /// La elección de rol YA GUARDADA. `null` = todavía no eligió, y entonces las
+  /// láminas 2 y 3 no existen (ver [_pageCount]).
+  IntroRole? _introRole;
+
+  /// Tocó «Saltar» sin elegir lado. No guarda nada — tras autenticar cae en
+  /// `ChooseRoleScreen`, que es la red de seguridad prevista — pero sí abre el
+  /// carrusel para poder enseñarle la lámina de cierre.
+  bool _skipped = false;
+
+  int _page = 0;
+
+  /// Con qué copys se pintan las láminas 2 y 3. Quien saltó sin elegir ve las
+  /// del cliente, que son las más neutras.
+  IntroRole get _slidesRole => _introRole ?? IntroRole.consumer;
+
+  /// Sin rol elegido el carrusel es de UNA lámina: así no se puede deslizar a
+  /// una lámina que todavía no sabe de qué lado está el usuario.
+  int get _pageCount => (_introRole == null && !_skipped) ? 1 : 3;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreRole();
+  }
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  /// Quien ya eligió (y mató la app, o volvió tras cerrar sesión) NO se traga
+  /// el intro otra vez: arranca directamente en la lámina de acceso.
+  Future<void> _restoreRole() async {
+    final role = await IntroRoleStore().read();
+    if (!mounted || role == null) return;
+    setState(() {
+      _introRole = role;
+      _page = 2; // los puntos y el «Saltar» ya nacen en su sitio, sin parpadeo
+    });
+    _afterLayout(() {
+      if (_pages.hasClients) _pages.jumpToPage(2);
+    });
+  }
+
+  /// Mueve el carrusel DESPUÉS del frame en el que ya hay 3 páginas: pedirle a
+  /// `PageController` la página 1 mientras el viewport todavía mide una sola
+  /// deja la posición fuera de rango.
+  void _afterLayout(VoidCallback fn) =>
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) fn();
+      });
+
+  void _goToPage(int i) {
+    if (!_pages.hasClients) return;
+    if (JayaloMotion.reduced(context)) {
+      _pages.jumpToPage(i);
+    } else {
+      _pages.animateToPage(i,
+          duration: JayaloMotion.page, curve: JayaloMotion.emphasized);
+    }
+  }
+
+  /// Los recuadros NO navegan: guardan el lado elegido y avanzan la lámina.
+  Future<void> _chooseRole(IntroRole role) async {
+    await IntroRoleStore().save(role);
+    if (!mounted) return;
+    setState(() => _introRole = role);
+    _afterLayout(() => _goToPage(1));
+  }
+
+  void _skip() {
+    setState(() => _skipped = true);
+    _afterLayout(() => _goToPage(2));
+  }
 
   Future<void> _openPasswordSheet() => showModalBottomSheet<void>(
         context: context,
@@ -126,6 +217,17 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Pill violeta FIJO (la portada no tiene modo oscuro): el botón de Google y
+  /// el «Siguiente» del carrusel son el mismo botón.
+  static ButtonStyle get _pill => FilledButton.styleFrom(
+        minimumSize: const Size.fromHeight(54),
+        backgroundColor: JayaloColors.primary,
+        foregroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(999))),
+        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+      );
+
   @override
   Widget build(BuildContext context) {
     // La portada es arena clara: los iconos de la status bar tienen que ser
@@ -137,76 +239,314 @@ class _LoginScreenState extends State<LoginScreen> {
         statusBarBrightness: Brightness.light,
       ),
       child: Scaffold(
-      // Arena FIJA de marca (no `cs.background`: la portada no tiene modo
-      // oscuro). El CTA mantiene el violeta FIJO por la misma razón.
-      backgroundColor: JayaloColors.background,
-      body: Stack(
-        children: [
-          // «PORTADA JAYI» a pantalla completa (mockup portada-jayi.html). El
-          // bottomReserve deja libre la zona de botones, como el mar limpio
-          // de FONDO PLAYA.
-          const Positioned.fill(child: PortadaJayi(bottomReserve: 170)),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(28, 14, 28, 22),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Spacer(),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _busy ? null : _go,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(54),
-                        backgroundColor: JayaloColors.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(999)),
-                        textStyle: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w500),
+        // Arena FIJA de marca (no `cs.background`: la portada no tiene modo
+        // oscuro). El CTA mantiene el violeta FIJO por la misma razón.
+        backgroundColor: JayaloColors.background,
+        body: LayoutBuilder(
+          builder: (context, box) {
+            // El carrusel ocupa más que la vieja pila de botones, así que Jayi
+            // se centra en lo que queda por encima. Se clampa contra el alto
+            // real: con el hueco en 0 (pantalla corta) la webp de la portada
+            // se pediría con `cacheWidth: 0`, que es un assert.
+            final reserve = math.min(300.0, box.maxHeight * .45);
+            return Stack(
+              children: [
+                // «PORTADA JAYI» a pantalla completa (mockup portada-jayi.html).
+                // El bottomReserve deja libre la zona de láminas, como el mar
+                // limpio de FONDO PLAYA.
+                Positioned.fill(child: PortadaJayi(bottomReserve: reserve)),
+                SafeArea(
+                  child: Column(
+                    children: [
+                      _skipRow(context),
+                      Expanded(
+                        child: PageView.builder(
+                          controller: _pages,
+                          itemCount: _pageCount,
+                          onPageChanged: (i) => setState(() => _page = i),
+                          itemBuilder: _buildSlide,
+                        ),
                       ),
-                      icon: _busy
-                          ? const JayaloSpinner(size: 18, color: Colors.white)
-                          : const Icon(Icons.g_mobiledata, size: 26),
-                      label: const Text('Continuar con Google'),
-                    ),
+                      const SizedBox(height: 14),
+                      _Dots(active: _page),
+                      const SizedBox(height: 20),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  // El registro es NATIVO desde el onboarding (spec 2026-07-16):
-                  // mandar a jayalo.com sería mentirle al usuario nuevo.
-                  Text(
-                    '¿Primera vez? Entra con Google y creamos tu cuenta al momento.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 12,
-                        height: 1.4,
-                        fontWeight: FontWeight.w400,
-                        // Sobre la arena de la portada, tinta (antes blanco
-                        // sobre el mar de FONDO PLAYA).
-                        color: JayaloColors.foreground.withValues(alpha: .8)),
-                  ),
-                  // Puerta para las cuentas creadas en jayalo.com con correo y
-                  // contraseña: sin esto quedaban fuera de la app si su correo
-                  // no era de Google (2026-08-10).
-                  TextButton(
-                    onPressed: _busy ? null : _openPasswordSheet,
-                    child: Text(
-                      'Entrar con correo y contraseña',
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          // Violeta de acción sobre la arena (antes blanco).
-                          color: JayaloColors.primary),
-                    ),
-                  ),
-                ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// «Saltar» arriba a la derecha en las láminas 1 y 2; en la 3 no, porque ya
+  /// es el final. El alto se reserva SIEMPRE para que nada salte al llegar.
+  Widget _skipRow(BuildContext context) {
+    final visible = _page < 2;
+    return SizedBox(
+      height: 44,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 16),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: AnimatedOpacity(
+            opacity: visible ? 1 : 0,
+            duration: JayaloMotion.reduced(context)
+                ? Duration.zero
+                : JayaloMotion.fast,
+            curve: JayaloMotion.enter,
+            child: IgnorePointer(
+              ignoring: !visible,
+              child: TextButton(
+                onPressed: _skip,
+                child: Text(
+                  'Saltar',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: JayaloColors.foreground.withValues(alpha: .75)),
+                ),
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSlide(BuildContext context, int i) {
+    final slide = i == 0 ? kIntroCommon : kIntroSlides[_slidesRole]![i - 1];
+    final action = switch (i) {
+      0 => _roleCards(context),
+      1 => FilledButton(
+          style: _pill,
+          onPressed: () => _goToPage(2),
+          child: const Text('Siguiente'),
+        ),
+      _ => _accessStack(context),
+    };
+    // Contenido pegado ABAJO (donde estaban los botones) pero desplazable: con
+    // la fuente del sistema en gigante los titulares crecen y no deben
+    // desbordar sobre Jayi.
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: box.maxHeight),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              _SlideCopy(slide),
+              const SizedBox(height: 22),
+              action,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Los dos recuadros de la lámina común: tarjeta blanca sin borde, sombra
+  /// suave, ícono lineal. NO son botones a propósito — se leen como una
+  /// elección entre pares.
+  Widget _roleCards(BuildContext context) => IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: _RoleCard(
+                icon: Icons.shopping_bag_outlined,
+                title: 'Busco algo',
+                sub: 'Quiero pedir',
+                onTap: () => _chooseRole(IntroRole.consumer),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _RoleCard(
+                icon: Icons.storefront_outlined,
+                title: 'Vendo algo',
+                sub: 'Quiero ofertar',
+                onTap: () => _chooseRole(IntroRole.provider),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  /// La pila de acceso de siempre. Google REGISTRA; el correo solo inicia
+  /// sesión — por eso uno va en pill y el otro en enlace discreto.
+  Widget _accessStack(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _busy ? null : _go,
+              style: _pill,
+              icon: _busy
+                  ? const JayaloSpinner(size: 18, color: Colors.white)
+                  : const Icon(Icons.g_mobiledata, size: 26),
+              label: const Text('Continuar con Google'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // El registro es NATIVO desde el onboarding (spec 2026-07-16):
+          // mandar a jayalo.com sería mentirle al usuario nuevo.
+          Text(
+            '¿Primera vez? Entra con Google y creamos tu cuenta al momento.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                fontWeight: FontWeight.w400,
+                // Sobre la arena de la portada, tinta (antes blanco
+                // sobre el mar de FONDO PLAYA).
+                color: JayaloColors.foreground.withValues(alpha: .8)),
+          ),
+          // Puerta para las cuentas creadas en jayalo.com con correo y
+          // contraseña: sin esto quedaban fuera de la app si su correo
+          // no era de Google (2026-08-10).
+          TextButton(
+            onPressed: _busy ? null : _openPasswordSheet,
+            child: Text(
+              'Entrar con correo y contraseña',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  // Violeta de acción sobre la arena (antes blanco).
+                  color: JayaloColors.primary),
+            ),
+          ),
+        ],
+      );
+}
+
+/// Titular + apoyo de una lámina. El realce va en violeta partiendo el titular
+/// por `highlight`, igual que el «Todo comienza con una idea» de la portada.
+class _SlideCopy extends StatelessWidget {
+  const _SlideCopy(this.slide);
+  final IntroSlide slide;
+
+  @override
+  Widget build(BuildContext context) {
+    final i = slide.headline.indexOf(slide.highlight);
+    final head = i < 0
+        ? TextSpan(text: slide.headline)
+        : TextSpan(children: [
+            TextSpan(text: slide.headline.substring(0, i)),
+            TextSpan(
+                text: slide.highlight,
+                style: const TextStyle(color: JayaloColors.primary)),
+            TextSpan(
+                text: slide.headline.substring(i + slide.highlight.length)),
+          ]);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text.rich(
+          head,
+          textAlign: TextAlign.center,
+          // Pesos 400-600, nunca bold: la doctrina tipográfica de la app.
+          style: const TextStyle(
+              fontSize: 19,
+              height: 1.3,
+              fontWeight: FontWeight.w600,
+              color: JayaloColors.head),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          slide.sub,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              fontSize: 12.5,
+              height: 1.5,
+              fontWeight: FontWeight.w400,
+              color: JayaloColors.foreground.withValues(alpha: .9)),
+        ),
+      ],
+    );
+  }
+}
+
+class _RoleCard extends StatelessWidget {
+  const _RoleCard({
+    required this.icon,
+    required this.title,
+    required this.sub,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String sub;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    // Colores FIJOS del tema claro: estos recuadros viven sobre la portada de
+    // arena, que no tiene modo oscuro.
+    return JayaloCard(
+      margin: EdgeInsets.zero,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      tint: JayaloColors.card,
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 26, color: JayaloColors.primary),
+          const SizedBox(height: 10),
+          Text(title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w600,
+                  color: JayaloColors.head)),
+          const SizedBox(height: 4),
+          Text(sub,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 11.5,
+                  height: 1.3,
+                  fontWeight: FontWeight.w400,
+                  color: JayaloColors.mutedFg)),
         ],
       ),
-      ),
+    );
+  }
+}
+
+/// Los tres puntos, con el activo alargado.
+class _Dots extends StatelessWidget {
+  const _Dots({required this.active});
+  final int active;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduced = JayaloMotion.reduced(context);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(3, (i) {
+        final on = i == active;
+        return AnimatedContainer(
+          duration: reduced ? Duration.zero : JayaloMotion.base,
+          curve: JayaloMotion.emphasized,
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          width: on ? 22 : 7,
+          height: 7,
+          decoration: BoxDecoration(
+            color: on
+                ? JayaloColors.primary
+                : JayaloColors.foreground.withValues(alpha: .22),
+            borderRadius: BorderRadius.circular(999),
+          ),
+        );
+      }),
     );
   }
 }
