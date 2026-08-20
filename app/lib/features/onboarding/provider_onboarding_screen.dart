@@ -15,6 +15,7 @@ import '../../domain/geo.dart';
 import '../../domain/locations.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
+import '../../domain/provider_signup.dart';
 import '../../domain/search_fold.dart';
 import '../shared/brand_kit.dart';
 import '../shared/location_coverage_picker.dart';
@@ -48,7 +49,9 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   final _name = TextEditingController();
   final _rnc = TextEditingController();
   String _businessType = 'informal'; // informal | tecnico | formal
-  final _profession = TextEditingController(); // solo técnico
+  // Obligatoria para los TRES tipos de negocio (PO 2026-08-20). Antes solo se
+  // pedía con `tecnico`, y encima como "(opcional)".
+  final _profession = TextEditingController();
   String _offers = 'productos'; // productos | servicios | ambos
   bool _wholesale = false;
   // Sello "Tienda física" (PO 2026-08-14) — AUTODECLARADO, paridad con la web
@@ -142,8 +145,12 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
 
   bool _stepValid(int s) => switch (s) {
-        0 => _name.text.trim().isNotEmpty &&
-            (_businessType != 'formal' || _rnc.text.trim().isNotEmpty),
+        0 => providerStep1Valid(
+          businessName: _name.text,
+          profession: _profession.text,
+          businessType: _businessType,
+          rnc: _rnc.text,
+        ),
         1 => _categories.isNotEmpty && _cities.isNotEmpty,
         2 => _composedPhone.isNotEmpty && _phoneError == null && !_checkingPhone,
         3 => _terms,
@@ -428,8 +435,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           'city': _cities.join(', '),
           'sector': _sectors.join(', '),
           'address': _address.text.trim(),
-          'profession':
-              _businessType == 'tecnico' ? _profession.text.trim() : '',
+          'profession': _profession.text.trim(),
           'experience_years': '',
           'logo_url': '',
           'owner_photo_url': '',
@@ -569,6 +575,12 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       const SizedBox(height: 10),
       _field(_name, 'Nombre del negocio',
           hint: 'Ej. Repuestos El Primo', caps: true),
+      const SizedBox(height: 10),
+      // Fuera del `if (_businessType == 'tecnico')`: es lo que el cliente lee
+      // en la ficha para saber a qué te dedicas, y escondida detrás de un tipo
+      // de negocio casi nadie la rellenaba.
+      _field(_profession, 'Profesión u oficio',
+          hint: 'Ej. Plomero, electricista, ferretero', caps: true),
       const SizedBox(height: 18),
       _sectionTitle('Tipo de negocio'),
       PillSegmented(
@@ -590,11 +602,6 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       if (_businessType == 'formal') ...[
         const SizedBox(height: 10),
         _field(_rnc, 'RNC', keyboard: TextInputType.number),
-      ],
-      if (_businessType == 'tecnico') ...[
-        const SizedBox(height: 10),
-        _field(_profession, 'Profesión / oficio (opcional)',
-            hint: 'Ej. Plomero, electricista', caps: true),
       ],
       const SizedBox(height: 18),
       _sectionTitle('¿Qué ofreces?'),
