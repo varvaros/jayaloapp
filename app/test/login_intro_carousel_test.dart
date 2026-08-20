@@ -204,6 +204,61 @@ void main() {
       // seguridad prevista.
       expect(await IntroRoleStore().read(), isNull);
     });
+
+    testWidgets('los puntos son 2, no 3 — no queda el del medio encendido', (
+      t,
+    ) async {
+      phone(t);
+      await t.pumpWidget(app());
+      await t.pumpAndSettle();
+
+      await t.tap(find.text('Saltar'));
+      await t.pumpAndSettle();
+
+      // El widget de los puntos es el único `AnimatedContainer` de la
+      // pantalla: antes pintaba fijo 3, y con el camino sin rol (2 láminas)
+      // el del medio quedaba encendido como si faltara una lámina.
+      expect(find.byType(AnimatedContainer), findsNWidgets(2));
+    });
+  });
+
+  // Regresión encontrada en la re-revisión: `_skip()` tenía la última lámina
+  // hardcodeada en el índice 1, correcto SOLO para el carrusel sin rol (2
+  // láminas). Con rol ya elegido (3 láminas) y volviendo a la lámina 0, ese
+  // hardcode dejaba «Saltar» a medio camino, en la lámina de contenido del
+  // rol en vez de en los accesos.
+  group('saltar con rol ya elegido, desde la lámina 0', () {
+    testWidgets('cae en los DOS accesos, no en la lámina de contenido', (
+      t,
+    ) async {
+      phone(t);
+      await t.pumpWidget(app());
+      await t.pumpAndSettle();
+
+      await t.tap(find.text('Vendo algo'));
+      await t.pumpAndSettle();
+      expect(
+        find.text(kIntroSlides[IntroRole.provider]![0].headline),
+        findsOneWidget,
+      );
+
+      // Vuelve a la lámina 0 por el mismo camino que el atrás de Android
+      // (FIX 1): un `maybePop` con `canPop` en false.
+      final nav = t.state<NavigatorState>(find.byType(Navigator));
+      await nav.maybePop();
+      await t.pumpAndSettle();
+      expect(find.text('Busco algo'), findsOneWidget);
+
+      await t.tap(find.text('Saltar'));
+      await t.pumpAndSettle();
+
+      expect(find.text('Continuar con Google'), findsOneWidget);
+      expect(find.text('Entrar con correo y contraseña'), findsOneWidget);
+      expect(
+        find.text(kIntroSlides[IntroRole.provider]![0].headline),
+        findsNothing,
+      );
+    });
   });
 
   // FIX 1 (I-2): el atrás de Android no debe sacar de la app desde las

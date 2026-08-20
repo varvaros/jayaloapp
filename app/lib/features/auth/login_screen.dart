@@ -227,9 +227,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _skip() {
     setState(() => _skipped = true);
-    // Sin rol el carrusel pasa a tener 2 láminas (ver [_pageCount]): la
-    // última, índice 1, es la de cierre neutro con los accesos.
-    unawaited(_afterLayout(() => _goToPage(1)));
+    // Última lámina SIEMPRE, sea cual sea el largo del carrusel: sin rol son
+    // 2 (cierre neutro, índice 1); con rol ya elegido son 3 (índice 2) — p.ej.
+    // volver deslizando a la lámina 0 con «Vendo algo» ya guardado y tocar
+    // «Saltar» debe caer en los accesos, no quedarse en la lámina de
+    // contenido del rol (índice 1). Hardcodear el 1 aquí fue el bug.
+    unawaited(_afterLayout(() => _goToPage(_pageCount - 1)));
   }
 
   Future<void> _openPasswordSheet() => showModalBottomSheet<void>(
@@ -360,7 +363,16 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 14),
-                        _Dots(active: _page),
+                        // Con 1 sola lámina (todavía sin elegir ni saltar)
+                        // se siguen pintando los 3 puntos de siempre: esa
+                        // lámina es la de elección, y de ahí se puede llegar
+                        // tanto al camino de 3 (con rol) como al de 2 (sin
+                        // rol) — pintar 1 solo punto ahí sugeriría un
+                        // carrusel de una sola lámina que no existe. Fuera de
+                        // ese caso transitorio, el conteo real evita el punto
+                        // del medio encendido de tres cuando en realidad solo
+                        // hay 2 (el bug que reportó el coordinador).
+                        _Dots(active: _page, count: _pageCount == 1 ? 3 : _pageCount),
                         const SizedBox(height: 20),
                       ],
                     ),
@@ -640,17 +652,21 @@ class _RoleCard extends StatelessWidget {
   }
 }
 
-/// Los tres puntos, con el activo alargado.
+/// Los puntos del carrusel, con el activo alargado. `count` es el número real
+/// de láminas — antes estaba fijo en 3 y con el camino de «Saltar sin rol»
+/// (2 láminas) se veía el punto del medio encendido de tres, como si faltara
+/// una lámina.
 class _Dots extends StatelessWidget {
-  const _Dots({required this.active});
+  const _Dots({required this.active, required this.count});
   final int active;
+  final int count;
 
   @override
   Widget build(BuildContext context) {
     final reduced = JayaloMotion.reduced(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(3, (i) {
+      children: List.generate(count, (i) {
         final on = i == active;
         return AnimatedContainer(
           duration: reduced ? Duration.zero : JayaloMotion.base,
