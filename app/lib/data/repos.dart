@@ -1617,6 +1617,31 @@ Future<List<Map<String, dynamic>>> rubrosForCategories(
   );
 }
 
+/// El catálogo CERRADO de profesiones, entero y en alfabético.
+///
+/// Sin filtrar por categoría a propósito (PO 2026-08-20): es un selector de
+/// profesiones, no un derivado de lo que vendes. `oficio_categories` sigue
+/// existiendo para el ruteo de solicitudes; aquí no pinta nada.
+Future<List<Map<String, dynamic>>> fetchOficios() async =>
+    List<Map<String, dynamic>>.from(
+      await supa.from('oficios').select('slug,name').order('name'),
+    );
+
+/// Declara los oficios de un negocio. Reemplaza la lista entera.
+///
+/// Va por RPC y no por un INSERT directo porque `authenticated` NO tiene GRANT
+/// de INSERT sobre `provider_business_oficios` — su política RLS de inserción
+/// es inalcanzable, hallazgo de 2026-08-20. La RPC (SECURITY DEFINER) valida
+/// dueño, tope de 4 y que cada slug exista; lanza `not_owner`,
+/// `demasiados_oficios` u `oficio_desconocido`.
+Future<int> setBusinessOficios(String businessId, List<String> slugs) async {
+  final n = await supa.rpc(
+    'set_business_oficios',
+    params: {'_business_id': businessId, '_slugs': slugs},
+  );
+  return (n as num).toInt();
+}
+
 Future<String?> uploadBusinessLogo(String filePath) async {
   final uid = supa.auth.currentUser!.id;
   final path = '$uid/logo-${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -2566,7 +2591,12 @@ myBusinessProfile() async {
         'whatsapp_verified_at,category_id,city,is_wholesale,description,'
         'business_type,experience_years,founded_year,employees_count,'
         'service_area,service_hours,languages,payment_methods,warranty,'
-        'services,offers,profession,team_photos',
+        'services,offers,profession,team_photos,'
+        // La profesión ya no es el texto libre `profession` sino el catálogo
+        // (paridad con `BusinessDetailsCard.tsx` de la web). `approved_at`
+        // viaja porque el DUEÑO ve también los suyos sin aprobar y su ficha
+        // no debe prometer al público algo que el público no ve.
+        'provider_business_oficios(approved_at,oficios(name))',
       )
       .eq('user_id', uid)
       .limit(1)
@@ -2742,7 +2772,8 @@ Future<BusinessIdentity?> businessPublicIdentity(String businessId) async {
         'name,logo_url,cover_url,is_wholesale,business_type,experience_years,'
         'founded_year,employees_count,service_area,service_hours,languages,'
         'payment_methods,warranty,category_id,city,services,offers,'
-        'profession,team_photos',
+        'profession,team_photos,'
+        'provider_business_oficios(approved_at,oficios(name))',
       )
       .eq('id', businessId)
       .maybeSingle();

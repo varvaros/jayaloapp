@@ -10,6 +10,8 @@
 /// parámetro para que "hace N años" sea testeable.
 library;
 
+import 'oficio.dart';
+
 typedef BusinessDetailRow = ({
   BusinessDetailKind kind,
   String label,
@@ -90,17 +92,16 @@ List<BusinessDetailRow> businessDetailRows(
     ));
   }
 
-  // Sin gate por `business_type` (paridad exacta con `BusinessDetailsCard
-  // .tsx`, web): se muestra si hay dato, sea cual sea el tipo de negocio.
-  // En la práctica es un campo de `tecnico`/`informal` (decisión PO
-  // 2026-08-14, Task 9): "informal → como el técnico [...] manteniendo
-  // número de empleados" — profesión incluida.
-  final profession = (business['profession'] as String?)?.trim();
-  if (profession != null && profession.isNotEmpty) {
+  // El texto libre `profession` queda SUSTITUIDO por el catálogo de oficios
+  // (PO 2026-08-20), igual que ya hizo `BusinessDetailsCard.tsx` en la web.
+  // Sin respaldo al texto viejo a propósito: mantener los dos vivos es
+  // exactamente la divergencia que el catálogo existe para cerrar.
+  final oficios = approvedOficioNames(business);
+  if (oficios.isNotEmpty) {
     rows.add((
       kind: BusinessDetailKind.profession,
-      label: 'Profesión',
-      value: profession,
+      label: oficios.length == 1 ? 'Profesión' : 'Profesiones',
+      value: oficios.join(' · '),
     ));
   }
 

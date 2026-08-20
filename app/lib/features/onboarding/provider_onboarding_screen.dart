@@ -13,6 +13,7 @@ import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../../domain/geo.dart';
 import '../../domain/locations.dart';
+import '../../domain/oficio.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
 import '../../domain/search_fold.dart';
@@ -47,8 +48,15 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   late final TextEditingController _last;
   final _name = TextEditingController();
   final _rnc = TextEditingController();
+  // Profesión = catálogo CERRADO (spec 2026-08-16, decisión PO 2026-08-20).
+  // Lista PLANA, sin filtrar por las categorías del paso 2: es un selector de
+  // profesiones y ya. Se guarda el slug, nunca texto escrito a mano.
+  List<Oficio> _catalogoOficios = [];
+  final List<String> _oficios = []; // slugs elegidos
+  bool _loadingOficios = true;
+  String? _oficiosError;
+
   String _businessType = 'informal'; // informal | tecnico | formal
-  final _profession = TextEditingController(); // solo técnico
   String _offers = 'productos'; // productos | servicios | ambos
   bool _wholesale = false;
   // Sello "Tienda física" (PO 2026-08-14) — AUTODECLARADO, paridad con la web
@@ -89,9 +97,28 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
   bool _terms = false;
   bool _busy = false;
 
+  Future<void> _loadOficios() async {
+    setState(() {
+      _loadingOficios = true;
+      _oficiosError = null;
+    });
+    try {
+      final rows = await fetchOficios();
+      if (mounted) setState(() => _catalogoOficios = oficiosFromRows(rows));
+    } catch (e) {
+      debugPrint('[onboarding] oficios fallaron: $e');
+      if (mounted) {
+        setState(() => _oficiosError = 'No pudimos cargar las profesiones.');
+      }
+    } finally {
+      if (mounted) setState(() => _loadingOficios = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    unawaited(_loadOficios());
     final meta = supa.auth.currentUser?.userMetadata ?? {};
     final full = ((meta['full_name'] ?? meta['name']) as String? ?? '').trim();
     final parts = full.split(RegExp(r'\s+'));
@@ -130,7 +157,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     _phoneDebounce?.cancel();
     _page.dispose();
     for (final c in [
-      _first, _last, _name, _rnc, _profession,
+      _first, _last, _name, _rnc,
       _address, _local,
     ]) {
       c.dispose();
@@ -142,7 +169,12 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
 
   bool _stepValid(int s) => switch (s) {
+        // La profesión es obligatoria. Salvo que el catálogo no haya podido
+        // cargar: dejar a alguien encerrado en el paso 1 por una consulta que
+        // falló es peor que un negocio sin profesión, que además se puede
+        // completar después desde el perfil.
         0 => _name.text.trim().isNotEmpty &&
+            (_oficios.isNotEmpty || _catalogoOficios.isEmpty) &&
             (_businessType != 'formal' || _rnc.text.trim().isNotEmpty),
         1 => _categories.isNotEmpty && _cities.isNotEmpty,
         2 => _composedPhone.isNotEmpty && _phoneError == null && !_checkingPhone,
@@ -407,7 +439,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         if (mounted) _snack('Confirma tu WhatsApp para crear la cuenta.');
         return;
       }
-      await completeProviderOnboarding(
+      final businessId = await completeProviderOnboarding(
         firstName: _first.text.trim(),
         lastName: _last.text.trim(),
         phone: phoneE164,
@@ -428,8 +460,11 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
           'city': _cities.join(', '),
           'sector': _sectors.join(', '),
           'address': _address.text.trim(),
-          'profession':
-              _businessType == 'tecnico' ? _profession.text.trim() : '',
+          // Texto libre RETIRADO (PO 2026-08-20): la profesión es ahora el
+          // catálogo cerrado y se escribe aparte con `set_business_oficios`.
+          // La columna se queda en la tabla con sus filas históricas; lo que
+          // no se hace es seguir alimentándola con texto a mano.
+          'profession': '',
           'experience_years': '',
           'logo_url': '',
           'owner_photo_url': '',
@@ -445,6 +480,22 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         },
         termsVersion: AppConfig.termsVersion,
       );
+      // Los oficios NO van dentro de la RPC del alta: viven en su propia tabla
+      // y se escriben con `set_business_oficios`. Si esto falla, el negocio YA
+      // existe — se avisa y se sigue, porque la profesión se puede completar
+      // luego desde el perfil y devolver al usuario al formulario le haría
+      // repetir el alta entera (y la RPC contestaría `already`).
+      if (_oficios.isNotEmpty) {
+        try {
+          await setBusinessOficios(businessId, _oficios);
+        } catch (e) {
+          debugPrint('[onboarding] oficios no se guardaron: $e');
+          if (mounted) {
+            _snack('Tu cuenta quedó creada, pero no pudimos guardar tu '
+                'profesión. Puedes ponerla desde tu perfil.');
+          }
+        }
+      }
       await roleStore.refresh(); // → redirect a /provider
     } catch (e) {
       if (mounted) _snack(onboardingErrorCopy(e));
@@ -570,6 +621,48 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       _field(_name, 'Nombre del negocio',
           hint: 'Ej. Repuestos El Primo', caps: true),
       const SizedBox(height: 18),
+      _sectionTitle('Tu profesión u oficio'),
+      if (_loadingOficios)
+        const Padding(
+            padding: EdgeInsets.all(8),
+            child: Center(child: JayaloSpinner(size: 22)))
+      else if (_oficiosError != null)
+        Row(children: [
+          Expanded(child: Text(_oficiosError!)),
+          TextButton(onPressed: _loadOficios, child: const Text('Reintentar')),
+        ])
+      else ...[
+        _dropdownAdder(
+          hint: _oficios.length >= kMaxOficios
+              ? 'Máximo $kMaxOficios profesiones'
+              : 'Elige tu profesión',
+          options: [
+            for (final o in _catalogoOficios) (id: o.slug, name: o.name)
+          ],
+          selected: _oficios,
+          enabled: _oficios.length < kMaxOficios,
+          onAdd: (slug) => setState(() {
+            if (!_oficios.contains(slug)) _oficios.add(slug);
+          }),
+        ),
+        if (_oficios.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _chips(
+            _oficios.map((slug) {
+              final o = _catalogoOficios.firstWhere(
+                (c) => c.slug == slug,
+                orElse: () => Oficio(slug: slug, name: slug),
+              );
+              return (id: slug, label: o.name);
+            }).toList(),
+            onRemove: (slug) => setState(() => _oficios.remove(slug)),
+          ),
+        ],
+        const SizedBox(height: 4),
+        _hint('Es lo que el cliente lee para saber a qué te dedicas. '
+            'Puedes elegir hasta $kMaxOficios.'),
+      ],
+      const SizedBox(height: 18),
       _sectionTitle('Tipo de negocio'),
       PillSegmented(
         options: const ['Informal', 'Técnico', 'Formal'],
@@ -590,11 +683,6 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       if (_businessType == 'formal') ...[
         const SizedBox(height: 10),
         _field(_rnc, 'RNC', keyboard: TextInputType.number),
-      ],
-      if (_businessType == 'tecnico') ...[
-        const SizedBox(height: 10),
-        _field(_profession, 'Profesión / oficio (opcional)',
-            hint: 'Ej. Plomero, electricista', caps: true),
       ],
       const SizedBox(height: 18),
       _sectionTitle('¿Qué ofreces?'),
