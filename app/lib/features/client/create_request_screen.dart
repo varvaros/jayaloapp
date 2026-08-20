@@ -329,6 +329,20 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     // Mismo pulso que el chat entre personas: acá el usuario también le está
     // MANDANDO algo a alguien (la IA que arma la solicitud).
     JayaloHaptics.sent();
+    // Arrancada la conversación, el ＋ deja de ser «Añadir foto» (PO
+    // 2026-08-20). La cámara se lo queda mientras se COMPONE la solicitud,
+    // que es cuando adjuntar una foto es la acción principal; a partir de la
+    // primera pregunta lo principal es contestar, y un botón de cámara
+    // presidiendo la pantalla invita a otra cosa.
+    //
+    // No se pierde nada: el único punto del flujo donde hace falta otra foto
+    // es el turno `image_request`, y ese trae sus propios botones dentro del
+    // contenido («Tomar otra foto» / «Seguir sin foto»).
+    //
+    // `releaseCenterAction` compara por identidad y sale si ya no es el dueño,
+    // así que llamarlo en cada turno es inofensivo — y hace que el estado sea
+    // correcto aunque se entre por un camino que no pase por el compositor.
+    releaseCenterAction(_centerCamera);
     setState(() {
       _busy = true;
       _showOther = false;
