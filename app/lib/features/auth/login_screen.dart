@@ -33,19 +33,21 @@ Future<void> signInWithGoogleNative(BuildContext context) async {
   final supa = Supabase.instance.client.auth;
   try {
     await supa.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-        accessToken: auth.accessToken);
+      provider: OAuthProvider.google,
+      idToken: idToken,
+      accessToken: auth.accessToken,
+    );
   } on AuthException catch (e) {
     // CAPTCHA global de Supabase (ADR-0028): reintento con token Turnstile.
     if (!e.message.toLowerCase().contains('captcha')) rethrow;
     if (!context.mounted) rethrow;
     final captcha = await getTurnstileToken(context);
     await supa.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-        accessToken: auth.accessToken,
-        captchaToken: captcha);
+      provider: OAuthProvider.google,
+      idToken: idToken,
+      accessToken: auth.accessToken,
+      captchaToken: captcha,
+    );
   }
 }
 
@@ -59,7 +61,10 @@ Future<void> signInWithGoogleNative(BuildContext context) async {
 /// Mismo reintento con Turnstile que el login de Google: el CAPTCHA global de
 /// Supabase (ADR-0028) también aplica a esta vía.
 Future<void> signInWithPasswordNative(
-    BuildContext context, String email, String password) async {
+  BuildContext context,
+  String email,
+  String password,
+) async {
   final supa = Supabase.instance.client.auth;
   try {
     await supa.signInWithPassword(email: email, password: password);
@@ -68,7 +73,10 @@ Future<void> signInWithPasswordNative(
     if (!context.mounted) rethrow;
     final captcha = await getTurnstileToken(context);
     await supa.signInWithPassword(
-        email: email, password: password, captchaToken: captcha);
+      email: email,
+      password: password,
+      captchaToken: captcha,
+    );
   }
 }
 
@@ -77,7 +85,8 @@ Future<void> signInWithPasswordNative(
 /// inglés ("Invalid login credentials") y no le dice al usuario qué hacer.
 String passwordLoginError(Object e) {
   final m = e is AuthException ? e.message.toLowerCase() : '';
-  if (m.contains('invalid login credentials') || m.contains('invalid_credentials')) {
+  if (m.contains('invalid login credentials') ||
+      m.contains('invalid_credentials')) {
     return 'Correo o contraseña incorrectos.';
   }
   if (m.contains('email not confirmed')) {
@@ -122,13 +131,15 @@ class _LoginScreenState extends State<LoginScreen> {
   /// de reentrada de [_chooseRole].
   bool _choosing = false;
 
-  /// Con qué copys se pintan las láminas 2 y 3. Quien saltó sin elegir ve las
-  /// del cliente, que son las más neutras.
-  IntroRole get _slidesRole => _introRole ?? IntroRole.consumer;
-
   /// Sin rol elegido el carrusel es de UNA lámina: así no se puede deslizar a
-  /// una lámina que todavía no sabe de qué lado está el usuario.
-  int get _pageCount => (_introRole == null && !_skipped) ? 1 : 3;
+  /// una lámina que todavía no sabe de qué lado está el usuario. En cuanto se
+  /// «Salta» sin elegir, se abre una segunda (y última) lámina de cierre
+  /// NEUTRO — no las 3 del camino con rol, porque no hay rol con el que
+  /// pintar contenido dedicado para una lámina intermedia.
+  int get _pageCount {
+    if (_introRole != null) return 3;
+    return _skipped ? 2 : 1;
+  }
 
   @override
   void initState() {
@@ -158,9 +169,11 @@ class _LoginScreenState extends State<LoginScreen> {
       _introRole = role;
       _page = 2; // los puntos y el «Saltar» ya nacen en su sitio, sin parpadeo
     });
-    unawaited(_afterLayout(() async {
-      if (_pages.hasClients) _pages.jumpToPage(2);
-    }));
+    unawaited(
+      _afterLayout(() async {
+        if (_pages.hasClients) _pages.jumpToPage(2);
+      }),
+    );
   }
 
   /// Mueve el carrusel DESPUÉS del frame en el que ya hay 3 páginas: pedirle a
@@ -185,8 +198,11 @@ class _LoginScreenState extends State<LoginScreen> {
       _pages.jumpToPage(i);
       return;
     }
-    return _pages.animateToPage(i,
-        duration: JayaloMotion.page, curve: JayaloMotion.emphasized);
+    return _pages.animateToPage(
+      i,
+      duration: JayaloMotion.page,
+      curve: JayaloMotion.emphasized,
+    );
   }
 
   /// Los recuadros NO navegan: guardan el lado elegido y avanzan la lámina.
@@ -211,18 +227,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _skip() {
     setState(() => _skipped = true);
-    unawaited(_afterLayout(() => _goToPage(2)));
+    // Sin rol el carrusel pasa a tener 2 láminas (ver [_pageCount]): la
+    // última, índice 1, es la de cierre neutro con los accesos.
+    unawaited(_afterLayout(() => _goToPage(1)));
   }
 
   Future<void> _openPasswordSheet() => showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        builder: (ctx) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: const _PasswordLoginSheet(),
-        ),
-      );
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+      child: const _PasswordLoginSheet(),
+    ),
+  );
 
   Future<void> _go() async {
     setState(() => _busy = true);
@@ -240,7 +258,8 @@ class _LoginScreenState extends State<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-                'No pudimos iniciar sesión. Revisa tu conexión e inténtalo de nuevo.'),
+              'No pudimos iniciar sesión. Revisa tu conexión e inténtalo de nuevo.',
+            ),
           ),
         );
       }
@@ -252,13 +271,32 @@ class _LoginScreenState extends State<LoginScreen> {
   /// Pill violeta FIJO (la portada no tiene modo oscuro): el botón de Google y
   /// el «Siguiente» del carrusel son el mismo botón.
   static ButtonStyle get _pill => FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(54),
-        backgroundColor: JayaloColors.primary,
-        foregroundColor: Colors.white,
-        shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(999))),
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-      );
+    minimumSize: const Size.fromHeight(54),
+    backgroundColor: JayaloColors.primary,
+    foregroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.all(Radius.circular(999)),
+    ),
+    textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+  );
+
+  /// Atrás de Android dentro del carrusel: en vez de salir de la app (o de
+  /// `/login`, que sin sesión rebota otra vez aquí — ver el doc de la
+  /// clase), retrocede una lámina. Solo en la lámina 0 se deja pasar el pop
+  /// de verdad.
+  void _handleBackPop(bool didPop, Object? result) {
+    if (didPop) return;
+    // Misma guarda de reentrada que [_chooseRole]: un back machacado en
+    // mitad de una transición no debe lanzar una segunda `animateToPage` en
+    // paralelo con la que ya está en vuelo.
+    if (_choosing) return;
+    // Con el login en vuelo el carrusel está congelado (mismo motivo que la
+    // física del `PageView`, ver el comentario en `build`): retroceder aquí
+    // dejaría reelegir rol mientras `_go()` sigue autenticando.
+    if (_busy) return;
+    _choosing = true;
+    unawaited(_goToPage(_page - 1).whenComplete(() => _choosing = false));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -270,60 +308,81 @@ class _LoginScreenState extends State<LoginScreen> {
         statusBarIconBrightness: Brightness.dark,
         statusBarBrightness: Brightness.light,
       ),
-      child: Scaffold(
-        // Arena FIJA de marca (no `cs.background`: la portada no tiene modo
-        // oscuro). El CTA mantiene el violeta FIJO por la misma razón.
-        backgroundColor: JayaloColors.background,
-        body: LayoutBuilder(
-          builder: (context, box) {
-            // El carrusel ocupa más que la vieja pila de botones, así que Jayi
-            // se centra en lo que queda por encima. Se clampa contra el alto
-            // real: con el hueco en 0 (pantalla corta) la webp de la portada
-            // se pediría con `cacheWidth: 0`, que es un assert.
-            final reserve = math.min(300.0, box.maxHeight * .45);
-            return Stack(
-              children: [
-                // «PORTADA JAYI» a pantalla completa (mockup portada-jayi.html).
-                // El bottomReserve deja libre la zona de láminas, como el mar
-                // limpio de FONDO PLAYA.
-                Positioned.fill(child: PortadaJayi(bottomReserve: reserve)),
-                SafeArea(
-                  child: Column(
-                    children: [
-                      _skipRow(context),
-                      Expanded(
-                        child: PageView.builder(
-                          controller: _pages,
-                          // Con el login en vuelo el carrusel se congela: si no,
-                          // se puede deslizar de vuelta a los recuadros y
-                          // reescribir la elección MIENTRAS se autentica, y el
-                          // alta consumiría un rol distinto del que se ve.
-                          physics: _busy
-                              ? const NeverScrollableScrollPhysics()
-                              : null,
-                          itemCount: _pageCount,
-                          onPageChanged: (i) => setState(() => _page = i),
-                          itemBuilder: _buildSlide,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      _Dots(active: _page),
-                      const SizedBox(height: 20),
-                    ],
+      child: PopScope<Object?>(
+        // Solo la lámina 0 deja salir de verdad (cerrar la app / volver a
+        // donde sea que llevó a `/login`). En cualquier otra, el atrás de
+        // Android retrocede una lámina en vez de sacar al usuario del
+        // onboarding (I-2: desde las láminas 2-3 se salía de la app entera).
+        canPop: _page == 0,
+        onPopInvokedWithResult: _handleBackPop,
+        child: Scaffold(
+          // Arena FIJA de marca (no `cs.background`: la portada no tiene modo
+          // oscuro). El CTA mantiene el violeta FIJO por la misma razón.
+          backgroundColor: JayaloColors.background,
+          body: LayoutBuilder(
+            builder: (context, box) {
+              // El carrusel ocupa más que la vieja pila de botones, así que Jayi
+              // se centra en lo que queda por encima. Se clampa contra el alto
+              // real: con el hueco en 0 (pantalla corta) la webp de la portada
+              // se pediría con `cacheWidth: 0`, que es un assert.
+              final reserve = math.min(300.0, box.maxHeight * .45);
+              return Stack(
+                children: [
+                  // «PORTADA JAYI» a pantalla completa (mockup portada-jayi.html).
+                  // El bottomReserve deja libre la zona de láminas, como el mar
+                  // limpio de FONDO PLAYA.
+                  Positioned.fill(
+                    child: PortadaJayi(
+                      bottomReserve: reserve,
+                      // El claim fijo es copy de cliente («Describe lo que
+                      // necesitas...»): fuera de la lámina 0 contradice a las
+                      // láminas de proveedor. Ver doc de [PortadaJayi.showClaim].
+                      showClaim: _page == 0,
+                    ),
                   ),
-                ),
-              ],
-            );
-          },
+                  SafeArea(
+                    child: Column(
+                      children: [
+                        _skipRow(context),
+                        Expanded(
+                          child: PageView.builder(
+                            controller: _pages,
+                            // Con el login en vuelo el carrusel se congela: si no,
+                            // se puede deslizar de vuelta a los recuadros y
+                            // reescribir la elección MIENTRAS se autentica, y el
+                            // alta consumiría un rol distinto del que se ve.
+                            physics: _busy
+                                ? const NeverScrollableScrollPhysics()
+                                : null,
+                            itemCount: _pageCount,
+                            onPageChanged: (i) => setState(() => _page = i),
+                            itemBuilder: _buildSlide,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        _Dots(active: _page),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
   }
 
-  /// «Saltar» arriba a la derecha en las láminas 1 y 2; en la 3 no, porque ya
-  /// es el final. El alto se reserva SIEMPRE para que nada salte al llegar.
+  /// «Saltar» arriba a la derecha en toda lámina salvo la última (la de los
+  /// accesos): ahí ya no hay nada que saltar. Con una sola lámina (todavía
+  /// sin elegir ni saltar) esa última lámina es la única que hay, así que se
+  /// ve igual: es la que tiene los recuadros de rol, no la de acceso.
+  bool get _showSkip => _pageCount == 1 || _page != _pageCount - 1;
+
+  /// El alto se reserva SIEMPRE para que nada salte al llegar.
   Widget _skipRow(BuildContext context) {
-    final visible = _page < 2;
+    final visible = _showSkip;
     return SizedBox(
       height: 44,
       child: Padding(
@@ -343,9 +402,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Text(
                   'Saltar',
                   style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: JayaloColors.foreground.withValues(alpha: .75)),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: JayaloColors.foreground.withValues(alpha: .75),
+                  ),
                 ),
               ),
             ),
@@ -356,16 +416,26 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildSlide(BuildContext context, int i) {
-    final slide = i == 0 ? kIntroCommon : kIntroSlides[_slidesRole]![i - 1];
-    final action = switch (i) {
-      0 => _roleCards(context),
-      1 => FilledButton(
+    final IntroSlide slide;
+    final Widget action;
+    if (_introRole == null) {
+      // Saltó sin elegir lado: 2 láminas, ambas con el copy común — no hay
+      // rol con el que pintar contenido dedicado para ninguna de las dos.
+      // Lámina 0 = elegir; lámina 1 (última) = cierre neutro con los accesos.
+      slide = kIntroCommon;
+      action = i == 0 ? _roleCards(context) : _accessStack(context);
+    } else {
+      slide = i == 0 ? kIntroCommon : kIntroSlides[_introRole]![i - 1];
+      action = switch (i) {
+        0 => _roleCards(context),
+        1 => FilledButton(
           style: _pill,
           onPressed: () => _goToPage(2),
           child: const Text('Siguiente'),
         ),
-      _ => _accessStack(context),
-    };
+        _ => _accessStack(context),
+      };
+    }
     // Contenido pegado ABAJO (donde estaban los botones) pero desplazable: con
     // la fuente del sistema en gigante los titulares crecen y no deben
     // desbordar sobre Jayi.
@@ -377,11 +447,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              _SlideCopy(slide),
-              const SizedBox(height: 22),
-              action,
-            ],
+            children: [_SlideCopy(slide), const SizedBox(height: 22), action],
           ),
         ),
       ),
@@ -392,77 +458,79 @@ class _LoginScreenState extends State<LoginScreen> {
   /// suave, ícono lineal. NO son botones a propósito — se leen como una
   /// elección entre pares.
   Widget _roleCards(BuildContext context) => IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: _RoleCard(
-                icon: Icons.shopping_bag_outlined,
-                title: 'Busco algo',
-                sub: 'Quiero pedir',
-                onTap: () => _chooseRole(IntroRole.consumer),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _RoleCard(
-                icon: Icons.storefront_outlined,
-                title: 'Vendo algo',
-                sub: 'Quiero ofertar',
-                onTap: () => _chooseRole(IntroRole.provider),
-              ),
-            ),
-          ],
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: _RoleCard(
+            icon: Icons.shopping_bag_outlined,
+            title: 'Busco algo',
+            sub: 'Quiero pedir',
+            onTap: () => _chooseRole(IntroRole.consumer),
+          ),
         ),
-      );
+        const SizedBox(width: 12),
+        Expanded(
+          child: _RoleCard(
+            icon: Icons.storefront_outlined,
+            title: 'Vendo algo',
+            sub: 'Quiero ofertar',
+            onTap: () => _chooseRole(IntroRole.provider),
+          ),
+        ),
+      ],
+    ),
+  );
 
   /// La pila de acceso de siempre. Google REGISTRA; el correo solo inicia
   /// sesión — por eso uno va en pill y el otro en enlace discreto.
   Widget _accessStack(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _busy ? null : _go,
-              style: _pill,
-              icon: _busy
-                  ? const JayaloSpinner(size: 18, color: Colors.white)
-                  : const Icon(Icons.g_mobiledata, size: 26),
-              label: const Text('Continuar con Google'),
-            ),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: _busy ? null : _go,
+          style: _pill,
+          icon: _busy
+              ? const JayaloSpinner(size: 18, color: Colors.white)
+              : const Icon(Icons.g_mobiledata, size: 26),
+          label: const Text('Continuar con Google'),
+        ),
+      ),
+      const SizedBox(height: 12),
+      // El registro es NATIVO desde el onboarding (spec 2026-07-16):
+      // mandar a jayalo.com sería mentirle al usuario nuevo.
+      Text(
+        '¿Primera vez? Entra con Google y creamos tu cuenta al momento.',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 12,
+          height: 1.4,
+          fontWeight: FontWeight.w400,
+          // Sobre la arena de la portada, tinta (antes blanco
+          // sobre el mar de FONDO PLAYA).
+          color: JayaloColors.foreground.withValues(alpha: .8),
+        ),
+      ),
+      // Puerta para las cuentas creadas en jayalo.com con correo y
+      // contraseña: sin esto quedaban fuera de la app si su correo
+      // no era de Google (2026-08-10).
+      TextButton(
+        onPressed: _busy ? null : _openPasswordSheet,
+        child: Text(
+          'Entrar con correo y contraseña',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            // Violeta de acción sobre la arena (antes blanco).
+            color: JayaloColors.primary,
           ),
-          const SizedBox(height: 12),
-          // El registro es NATIVO desde el onboarding (spec 2026-07-16):
-          // mandar a jayalo.com sería mentirle al usuario nuevo.
-          Text(
-            '¿Primera vez? Entra con Google y creamos tu cuenta al momento.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: 12,
-                height: 1.4,
-                fontWeight: FontWeight.w400,
-                // Sobre la arena de la portada, tinta (antes blanco
-                // sobre el mar de FONDO PLAYA).
-                color: JayaloColors.foreground.withValues(alpha: .8)),
-          ),
-          // Puerta para las cuentas creadas en jayalo.com con correo y
-          // contraseña: sin esto quedaban fuera de la app si su correo
-          // no era de Google (2026-08-10).
-          TextButton(
-            onPressed: _busy ? null : _openPasswordSheet,
-            child: Text(
-              'Entrar con correo y contraseña',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  // Violeta de acción sobre la arena (antes blanco).
-                  color: JayaloColors.primary),
-            ),
-          ),
-        ],
-      );
+        ),
+      ),
+    ],
+  );
 }
 
 /// Titular + apoyo de una lámina. El realce va en violeta partiendo el titular
@@ -476,14 +544,18 @@ class _SlideCopy extends StatelessWidget {
     final i = slide.headline.indexOf(slide.highlight);
     final head = i < 0
         ? TextSpan(text: slide.headline)
-        : TextSpan(children: [
-            TextSpan(text: slide.headline.substring(0, i)),
-            TextSpan(
+        : TextSpan(
+            children: [
+              TextSpan(text: slide.headline.substring(0, i)),
+              TextSpan(
                 text: slide.highlight,
-                style: const TextStyle(color: JayaloColors.primary)),
-            TextSpan(
-                text: slide.headline.substring(i + slide.highlight.length)),
-          ]);
+                style: const TextStyle(color: JayaloColors.primary),
+              ),
+              TextSpan(
+                text: slide.headline.substring(i + slide.highlight.length),
+              ),
+            ],
+          );
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -492,20 +564,22 @@ class _SlideCopy extends StatelessWidget {
           textAlign: TextAlign.center,
           // Pesos 400-600, nunca bold: la doctrina tipográfica de la app.
           style: const TextStyle(
-              fontSize: 19,
-              height: 1.3,
-              fontWeight: FontWeight.w600,
-              color: JayaloColors.head),
+            fontSize: 19,
+            height: 1.3,
+            fontWeight: FontWeight.w600,
+            color: JayaloColors.head,
+          ),
         ),
         const SizedBox(height: 10),
         Text(
           slide.sub,
           textAlign: TextAlign.center,
           style: TextStyle(
-              fontSize: 12.5,
-              height: 1.5,
-              fontWeight: FontWeight.w400,
-              color: JayaloColors.foreground.withValues(alpha: .9)),
+            fontSize: 12.5,
+            height: 1.5,
+            fontWeight: FontWeight.w400,
+            color: JayaloColors.foreground.withValues(alpha: .9),
+          ),
         ),
       ],
     );
@@ -540,20 +614,26 @@ class _RoleCard extends StatelessWidget {
         children: [
           Icon(icon, size: 26, color: JayaloColors.primary),
           const SizedBox(height: 10),
-          Text(title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w600,
-                  color: JayaloColors.head)),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w600,
+              color: JayaloColors.head,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(sub,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 11.5,
-                  height: 1.3,
-                  fontWeight: FontWeight.w400,
-                  color: JayaloColors.mutedFg)),
+          Text(
+            sub,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 11.5,
+              height: 1.3,
+              fontWeight: FontWeight.w400,
+              color: JayaloColors.mutedFg,
+            ),
+          ),
         ],
       ),
     );
@@ -626,7 +706,10 @@ class _PasswordLoginSheetState extends State<_PasswordLoginSheet> {
     });
     try {
       await signInWithPasswordNative(
-          context, _email.text.trim(), _password.text);
+        context,
+        _email.text.trim(),
+        _password.text,
+      );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (kDebugMode) debugPrint('[login-password] $e');
@@ -640,15 +723,15 @@ class _PasswordLoginSheetState extends State<_PasswordLoginSheet> {
   }
 
   InputDecoration _field(String label, {Widget? suffix}) => InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: const Color(0xFFF3F1FA),
-        suffixIcon: suffix,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
-      );
+    labelText: label,
+    filled: true,
+    fillColor: const Color(0xFFF3F1FA),
+    suffixIcon: suffix,
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide.none,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -658,19 +741,23 @@ class _PasswordLoginSheetState extends State<_PasswordLoginSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Entra con tu correo',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: jayaloHead(context))),
+          Text(
+            'Entra con tu correo',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: jayaloHead(context),
+            ),
+          ),
           const SizedBox(height: 6),
           Text(
             'Para las cuentas creadas en jayalo.com. Si entraste con Google, '
             'usa el botón de Google.',
             style: TextStyle(
-                fontSize: 12.5,
-                height: 1.4,
-                color: Theme.of(context).colorScheme.onSurfaceVariant),
+              fontSize: 12.5,
+              height: 1.4,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 16),
           TextField(
@@ -691,23 +778,30 @@ class _PasswordLoginSheetState extends State<_PasswordLoginSheet> {
             decoration: _field(
               'Contraseña',
               suffix: IconButton(
-                icon: Icon(_hide
-                    ? Icons.visibility_outlined
-                    : Icons.visibility_off_outlined),
+                icon: Icon(
+                  _hide
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                ),
                 onPressed: () => setState(() => _hide = !_hide),
               ),
             ),
           ),
           if (_error != null) ...[
             const SizedBox(height: 10),
-            Text(_error!,
-                style: TextStyle(
-                    fontSize: 12.5,
-                    color: Theme.of(context).colorScheme.error)),
+            Text(
+              _error!,
+              style: TextStyle(
+                fontSize: 12.5,
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
           ],
           const SizedBox(height: 16),
           FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(50),
+            ),
             onPressed: (_canSubmit && !_busy) ? _submit : null,
             child: _busy
                 ? const JayaloSpinner(size: 18, color: Colors.white)
@@ -718,8 +812,9 @@ class _PasswordLoginSheetState extends State<_PasswordLoginSheet> {
             '¿Olvidaste tu contraseña? Recupérala en jayalo.com.',
             textAlign: TextAlign.center,
             style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant),
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),

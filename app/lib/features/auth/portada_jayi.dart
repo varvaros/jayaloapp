@@ -33,7 +33,9 @@ class _Wp {
     final a = wps[i], b = wps[i + 1];
     if (phase <= b.t) {
       final span = b.t - a.t;
-      final f = span <= 0 ? 1.0 : Curves.easeInOut.transform((phase - a.t) / span);
+      final f = span <= 0
+          ? 1.0
+          : Curves.easeInOut.transform((phase - a.t) / span);
       return (
         a.dx + (b.dx - a.dx) * f,
         a.dy + (b.dy - a.dy) * f,
@@ -51,12 +53,23 @@ double _breathe(double phase) => phase < .5
     : Curves.easeInOut.transform(2 - phase * 2);
 
 class PortadaJayi extends StatefulWidget {
-  const PortadaJayi({super.key, this.bottomReserve = 0});
+  const PortadaJayi({super.key, this.bottomReserve = 0, this.showClaim = true});
 
   /// Alto (px lógicos) que los botones del login tapan por abajo: Jayi se
   /// centra en el espacio libre por encima. Mismo contrato que el mar limpio
   /// de FONDO PLAYA.
   final double bottomReserve;
+
+  /// Oculta SOLO el claim fijo de la cabecera («Describe lo que
+  /// necesitas...», copy de cliente) — el wordmark y el título se quedan.
+  /// El carrusel de `LoginScreen` lo apaga fuera de la lámina 0, porque ese
+  /// claim contradice a las láminas de proveedor («Hay clientes cerca de ti
+  /// pidiendo justo lo que tú vendes»).
+  ///
+  /// Se RESERVA el hueco (no se colapsa): la cabecera es un único widget que
+  /// vive fuera del `PageView` y no se remonta al cambiar de lámina, así que
+  /// colapsar el alto haría saltar a Jayi de sitio en cada deslizamiento.
+  final bool showClaim;
 
   @override
   State<PortadaJayi> createState() => _PortadaJayiState();
@@ -83,8 +96,8 @@ class _PortadaJayiState extends State<PortadaJayi>
     _ticker = null;
     if (!reduced) {
       _ticker = createTicker(
-          (elapsed) => _t.value = elapsed.inMicroseconds / 1e6)
-        ..start();
+        (elapsed) => _t.value = elapsed.inMicroseconds / 1e6,
+      )..start();
     } else {
       _t.value = 0; // frame estático, párpado abierto
     }
@@ -107,7 +120,7 @@ class _PortadaJayiState extends State<PortadaJayi>
         ),
         Column(
           children: [
-            const _Cabecera(),
+            _Cabecera(showClaim: widget.showClaim),
             Expanded(
               child: Padding(
                 padding: EdgeInsets.only(bottom: widget.bottomReserve),
@@ -126,7 +139,8 @@ class _PortadaJayiState extends State<PortadaJayi>
 // ---------------------------------------------------------------------------
 
 class _Cabecera extends StatelessWidget {
-  const _Cabecera();
+  const _Cabecera({required this.showClaim});
+  final bool showClaim;
   @override
   Widget build(BuildContext context) {
     // Portada decorativa: la fuente del sistema en gigante no debe exprimir la
@@ -144,9 +158,8 @@ class _Cabecera extends StatelessWidget {
                 children: [
                   SizedBox(
                     width: logoW,
-                    height: logoW *
-                        kImagotipoSize.height /
-                        kImagotipoSize.width,
+                    height:
+                        logoW * kImagotipoSize.height / kImagotipoSize.width,
                     child: const CustomPaint(painter: _LogoPainter()),
                   ),
                   const SizedBox(height: 14),
@@ -165,17 +178,24 @@ class _Cabecera extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    'Describe lo que necesitas y proveedores verificados '
-                    'encontrarán la solución.',
-                    textAlign: TextAlign.center,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      height: 1.55,
-                      fontWeight: FontWeight.w400,
-                      color: JayaloColors.foreground.withValues(alpha: .9),
+                  AnimatedOpacity(
+                    opacity: showClaim ? 1 : 0,
+                    duration: JayaloMotion.reduced(context)
+                        ? Duration.zero
+                        : JayaloMotion.fast,
+                    curve: JayaloMotion.enter,
+                    child: Text(
+                      'Describe lo que necesitas y proveedores verificados '
+                      'encontrarán la solución.',
+                      textAlign: TextAlign.center,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.55,
+                        fontWeight: FontWeight.w400,
+                        color: JayaloColors.foreground.withValues(alpha: .9),
+                      ),
                     ),
                   ),
                 ],
@@ -224,117 +244,119 @@ class _Jayi extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, box) {
-      // Ventana del recorte: proporción 100/81 (1024 × el 54% de 1536).
-      final w = math.min(box.maxWidth * .80, box.maxHeight / 0.95);
-      final h = w * .81;
-      final dpr = MediaQuery.devicePixelRatioOf(context);
-      final cacheW = math.min((w * dpr).round(), 1024);
-      // Parte estática (glow + imagen recortada): va por `child` para que el
-      // AnimatedBuilder no la reconstruya 60 veces por segundo (hallazgo del
-      // verificador); el párpado sí depende del reloj y vive en el builder.
-      final staticPart = SizedBox(
-        width: w,
-        height: h,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            // Glow blanco que despega a Jayi del pattern.
-            Positioned(
-              left: w * .5 - w * .6,
-              top: h * .52 - w * .6,
-              width: w * 1.2,
-              height: w * 1.2,
-              child: const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    // radius .707 = farthest-corner de CSS (ver _blob).
-                    radius: .707,
-                    colors: [
-                      Color(0xF2FFFFFF),
-                      Color(0x99FFFFFF),
-                      Color(0x00FFFFFF),
-                    ],
-                    stops: [0, .45, .68],
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Ventana del recorte: proporción 100/81 (1024 × el 54% de 1536).
+        final w = math.min(box.maxWidth * .80, box.maxHeight / 0.95);
+        final h = w * .81;
+        final dpr = MediaQuery.devicePixelRatioOf(context);
+        final cacheW = math.min((w * dpr).round(), 1024);
+        // Parte estática (glow + imagen recortada): va por `child` para que el
+        // AnimatedBuilder no la reconstruya 60 veces por segundo (hallazgo del
+        // verificador); el párpado sí depende del reloj y vive en el builder.
+        final staticPart = SizedBox(
+          width: w,
+          height: h,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Glow blanco que despega a Jayi del pattern.
+              Positioned(
+                left: w * .5 - w * .6,
+                top: h * .52 - w * .6,
+                width: w * 1.2,
+                height: w * 1.2,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      // radius .707 = farthest-corner de CSS (ver _blob).
+                      radius: .707,
+                      colors: [
+                        Color(0xF2FFFFFF),
+                        Color(0x99FFFFFF),
+                        Color(0x00FFFFFF),
+                      ],
+                      stops: [0, .45, .68],
+                    ),
                   ),
                 ),
               ),
-            ),
-            ClipRect(
-              child: Stack(
-                children: [
-                  Positioned(
-                    left: 0,
-                    top: -w * .27, // franja 18%–72% de la imagen
-                    width: w,
-                    child: Image.asset(
-                      'assets/images/jayi-hero.webp',
+              ClipRect(
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: 0,
+                      top: -w * .27, // franja 18%–72% de la imagen
                       width: w,
-                      cacheWidth: cacheW,
-                      filterQuality: FilterQuality.medium,
+                      child: Image.asset(
+                        'assets/images/jayi-hero.webp',
+                        width: w,
+                        cacheWidth: cacheW,
+                        filterQuality: FilterQuality.medium,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-      );
-      // RepaintBoundary: que el flote de Jayi no arrastre el repintado de la
-      // cabecera (que comparte capa con este subárbol).
-      return RepaintBoundary(
-        child: AnimatedBuilder(
-          animation: time,
-          child: staticPart,
-          builder: (context, staticChild) {
-            final t = time.value;
-            final float = -_breathe((t % 4.8) / 4.8) * h * .03;
-            final tilt = _breathe((t % 7.3) / 7.3) * 1.3 * math.pi / 180;
-            return Transform.rotate(
-              angle: tilt,
-              child: Transform.translate(
-                offset: Offset(0, float),
-                child: SizedBox(
-                  width: w,
-                  height: h,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      staticChild!,
-                      // Párpado: ventana circular sobre el ojo por la que baja
-                      // y sube un degradado más oscuro que el cuerpo.
-                      Positioned(
-                        left: w * _eyeX - w * _lidD / 2,
-                        top: h * _eyeY - w * _lidD / 2,
-                        width: w * _lidD,
-                        height: w * _lidD,
-                        child: ClipOval(
-                          child: FractionalTranslation(
-                            translation: Offset(0, _lidY((t % 6.4) / 6.4)),
-                            child: const DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Color(0xFF6233D8),
-                                    Color(0xFF4E23BB),
-                                  ],
+            ],
+          ),
+        );
+        // RepaintBoundary: que el flote de Jayi no arrastre el repintado de la
+        // cabecera (que comparte capa con este subárbol).
+        return RepaintBoundary(
+          child: AnimatedBuilder(
+            animation: time,
+            child: staticPart,
+            builder: (context, staticChild) {
+              final t = time.value;
+              final float = -_breathe((t % 4.8) / 4.8) * h * .03;
+              final tilt = _breathe((t % 7.3) / 7.3) * 1.3 * math.pi / 180;
+              return Transform.rotate(
+                angle: tilt,
+                child: Transform.translate(
+                  offset: Offset(0, float),
+                  child: SizedBox(
+                    width: w,
+                    height: h,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        staticChild!,
+                        // Párpado: ventana circular sobre el ojo por la que baja
+                        // y sube un degradado más oscuro que el cuerpo.
+                        Positioned(
+                          left: w * _eyeX - w * _lidD / 2,
+                          top: h * _eyeY - w * _lidD / 2,
+                          width: w * _lidD,
+                          height: w * _lidD,
+                          child: ClipOval(
+                            child: FractionalTranslation(
+                              translation: Offset(0, _lidY((t % 6.4) / 6.4)),
+                              child: const DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Color(0xFF6233D8),
+                                      Color(0xFF4E23BB),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
-        ),
-      );
-    });
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -376,8 +398,17 @@ class _FondoPainter extends CustomPainter {
   // mide ~72 px de alto, como en el mockup.
   static final Rect _isoBounds = ImagotipoPaths.cuerpo.getBounds();
 
-  void _blob(Canvas canvas, Size size, List<_Wp> ruta, double period,
-      double t, Offset baseCenter, double d, Color color, double stop) {
+  void _blob(
+    Canvas canvas,
+    Size size,
+    List<_Wp> ruta,
+    double period,
+    double t,
+    Offset baseCenter,
+    double d,
+    Color color,
+    double stop,
+  ) {
     final (dx, dy, s) = _sample(ruta, (t % period) / period);
     final center = baseCenter + Offset(dx * d, dy * d);
     // 1.414: los stops % del radial-gradient de CSS son relativos al
@@ -392,8 +423,16 @@ class _FondoPainter extends CustomPainter {
     canvas.drawCircle(center, r, paint);
   }
 
-  void _iso(Canvas canvas, double x, double y, double rot, double scale,
-      Paint cuerpo, Paint ojo, Paint iris) {
+  void _iso(
+    Canvas canvas,
+    double x,
+    double y,
+    double rot,
+    double scale,
+    Paint cuerpo,
+    Paint ojo,
+    Paint iris,
+  ) {
     canvas.save();
     canvas.translate(x, y);
     final cx = _isoBounds.width * scale / 2;
@@ -415,14 +454,17 @@ class _FondoPainter extends CustomPainter {
     canvas.restore();
   }
 
-  void _patternLayer(Canvas canvas, Size size,
-      {required double tile,
-      required double offset,
-      required double isoScale,
-      required List<(double, double, double)> instances,
-      required Paint cuerpo,
-      required Paint ojo,
-      required Paint iris}) {
+  void _patternLayer(
+    Canvas canvas,
+    Size size, {
+    required double tile,
+    required double offset,
+    required double isoScale,
+    required List<(double, double, double)> instances,
+    required Paint cuerpo,
+    required Paint ojo,
+    required Paint iris,
+  }) {
     final o = offset % tile;
     for (var x = -tile + o; x < size.width + tile; x += tile) {
       for (var y = -tile + o; y < size.height + tile; y += tile) {
@@ -439,12 +481,39 @@ class _FondoPainter extends CustomPainter {
     final w = size.width, h = size.height;
 
     // 1) Gradiente líquido (fuera del vaivén, como en el mockup).
-    _blob(canvas, size, _ruta1, 47, t, Offset(.18 * w, .5 * w - .14 * h),
-        1.00 * w, const Color(0x9EAC8EF4), .68); // rgba(172,142,244,.62)
-    _blob(canvas, size, _ruta2, 61, t, Offset(.90 * w, .55 * w + .06 * h),
-        1.10 * w, const Color(0x80ECC48E), .66); // rgba(236,196,142,.5)
-    _blob(canvas, size, _ruta3, 53, t, Offset(.27 * w, 1.26 * h - .45 * w),
-        0.90 * w, const Color(0x8CBEA0F8), .70); // rgba(190,160,248,.55)
+    _blob(
+      canvas,
+      size,
+      _ruta1,
+      47,
+      t,
+      Offset(.18 * w, .5 * w - .14 * h),
+      1.00 * w,
+      const Color(0x9EAC8EF4),
+      .68,
+    ); // rgba(172,142,244,.62)
+    _blob(
+      canvas,
+      size,
+      _ruta2,
+      61,
+      t,
+      Offset(.90 * w, .55 * w + .06 * h),
+      1.10 * w,
+      const Color(0x80ECC48E),
+      .66,
+    ); // rgba(236,196,142,.5)
+    _blob(
+      canvas,
+      size,
+      _ruta3,
+      53,
+      t,
+      Offset(.27 * w, 1.26 * h - .45 * w),
+      0.90 * w,
+      const Color(0x8CBEA0F8),
+      .70,
+    ); // rgba(190,160,248,.55)
 
     // 2) Pattern del isotipo con el vaivén de 13 s.
     final sway = _breathe((t % 13) / 13);
