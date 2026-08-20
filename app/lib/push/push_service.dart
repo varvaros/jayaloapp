@@ -15,6 +15,7 @@ import '../domain/notifications.dart';
 import '../features/chat/opened_conversations.dart';
 import '../features/notifications/notification_bell.dart' show notifCountStore;
 import 'chat_notifications.dart';
+import 'push_permission.dart';
 
 /// Handler de mensajes FCM con la app en background/terminada. DEBE ser una
 /// función de nivel superior con `@pragma('vm:entry-point')` (corre en un
@@ -263,12 +264,22 @@ Future<void> initPush(GoRouter router) async {
   } catch (e) {
     debugPrint('getToken falló: $e');
   }
-  try {
-    // El ÚLTIMO: en Android el permiso solo condiciona que se PINTEN las
-    // notificaciones, no que se emita el token ni que FCM entregue. Si se
-    // cuelga, ya está todo lo demás registrado.
-    await fcm.requestPermission(); // Android 13+: diálogo del sistema
-  } catch (e) {
-    debugPrint('requestPermission falló: $e');
-  }
+  // El diálogo de permiso de Android 13+ YA NO se pide en el arranque.
+  //
+  // Iba aquí, el último de la lista, porque es el que se cuelga — pero se
+  // pedía igual con la app recién abierta y SIN sesión, y entonces aterrizaba
+  // encima de la primera pantalla que hubiera: el intro. Tapaba los recuadros
+  // «Busco algo / Vendo algo» justo en la única apertura en que se ven
+  // (PO 2026-08-20), y con el gotcha de MIUI —los toques atraviesan los
+  // overlays— un toque en «No permitir» podía además elegir lado por debajo.
+  //
+  // Ahora espera al primer instante en que el rol queda resuelto, o sea a que
+  // el usuario esté DENTRO de la app y tenga algo que le puedan notificar. No
+  // hay await: el arranque no depende de esto, y `requestPermission` sigue
+  // pudiendo colgarse sin arrastrar a nadie.
+  wirePushPermissionPrompt(
+    source: roleStore,
+    role: () => roleStore.value,
+    ask: fcm.requestPermission,
+  );
 }
