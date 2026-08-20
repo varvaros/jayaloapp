@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/repos.dart' show isAdmin;
+import '../features/auth/intro_role_store.dart';
 import '../features/auth/login_screen.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/chat/conversations_screen.dart';
@@ -71,7 +74,28 @@ GoRouter buildRouter() => GoRouter(
       routes: [
         GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
         GoRoute(path: '/gate', builder: (_, _) => const GateScreen()),
-        GoRoute(path: '/onboarding', builder: (_, _) => const ChooseRoleScreen()),
+        GoRoute(
+            path: '/onboarding',
+            // Task 4: si el intro guardó una elección de rol, saltar
+            // ChooseRoleScreen directo al alta correspondiente. Este
+            // redirect de RUTA corre DESPUÉS del global de arriba, así que
+            // quien ya tiene el rol resuelto ya fue sacado de aquí antes de
+            // llegar — `introRoleRedirect` igual lo verifica por defensa en
+            // profundidad (rol real gana sobre la elección guardada).
+            // ChooseRoleScreen NO se borra: sigue siendo la red de
+            // seguridad para quien llega sin elección (sesión reanudada,
+            // login por correo, deep link).
+            redirect: (_, _) async {
+              final choice = await IntroRoleStore().read();
+              final target =
+                  introRoleRedirect(role: roleStore.value, choice: choice);
+              // Se borra solo al CONSUMIRLA (hay destino): la clave no lleva
+              // uid (Task 1), así que dejarla viva la heredaría el siguiente
+              // usuario del mismo teléfono.
+              if (target != null) unawaited(IntroRoleStore().clear());
+              return target;
+            },
+            builder: (_, _) => const ChooseRoleScreen()),
         GoRoute(
             path: '/onboarding/consumer',
             builder: (_, _) => const ConsumerOnboardingScreen()),

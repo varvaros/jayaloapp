@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import '../data/repos.dart';
+import '../features/auth/intro_role_store.dart';
 
 enum RoleState { unknown, needsOnboarding, consumer, provider }
 
@@ -28,6 +31,29 @@ String? redirectTarget({
   }
   return null;
 }
+
+/// Task 4: a dónde saltar desde `/onboarding` según la elección guardada en
+/// el intro (Task 1). El rol REAL manda: quien ya es cliente no entra al
+/// alta de proveedor aunque en el intro tocara «Vendo algo». Pura para poder
+/// testearla sin router.
+String? introRoleRedirect({
+  required RoleState role,
+  required IntroRole? choice,
+}) {
+  if (role != RoleState.needsOnboarding) return null;
+  if (choice == null) return null;
+  return choice == IntroRole.provider
+      ? '/onboarding/provider'
+      : '/onboarding/consumer';
+}
+
+/// Ruling A6 (revisión Task 3): si el rol real queda resuelto (cuenta ya
+/// existente, `consumer` o `provider`) el usuario nunca pasa por
+/// `/onboarding`, así que el `clear()` del Step 1 no corre — la elección del
+/// intro se queda en disco y el siguiente usuario del mismo teléfono
+/// heredaría lámina 3 + un alta ajena. Pura para poder testearla sin BD.
+bool introChoiceShouldClear(RoleState role) =>
+    role == RoleState.consumer || role == RoleState.provider;
 
 /// Decide el rol efectivo. Pura para poder testearla sin BD.
 ///
@@ -62,6 +88,10 @@ class RoleStore extends ChangeNotifier {
     if (kDebugMode) debugPrint('[gate] hasBusiness=$hasBusiness');
     value = roleFrom(accountType: type, hasBusiness: hasBusiness);
     if (kDebugMode) debugPrint('[gate] rol resuelto=$value');
+    // Ruling A6: cuenta ya existente (nunca pasa por /onboarding) → la
+    // elección del intro, si quedó guardada, no la va a consumir nadie.
+    // Fire-and-forget: no hay razón para bloquear la navegación por esto.
+    if (introChoiceShouldClear(value)) unawaited(IntroRoleStore().clear());
     notifyListeners();
   }
 
