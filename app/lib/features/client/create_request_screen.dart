@@ -618,7 +618,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _catalogError = null;
     });
     try {
-      final rows = await rubrosForCategories(List.of(_categories));
+      // `_kind` es lo que el usuario tocó antes de escribir (producto/servicio):
+      // es la señal con la que el picker aplica la misma reja que el servidor.
+      final rows = await rubrosForCategories(
+        List.of(_categories),
+        kind: _kind.isEmpty ? null : _kind,
+      );
       if (mounted) setState(() => _catalogRubros = rows);
     } catch (e) {
       debugPrint('[create_request] catálogo de rubros falló: $e');
@@ -1638,11 +1643,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     List<String> opciones,
     Map<String, String> names,
   ) => SearchablePickerField(
-    hint: 'Añadir otro rubro…',
+    hint: 'Proveedores de…',
     items: [for (final id in opciones) PickerItem(id, _rubroLabel(id, names))],
     onPick: (v) => setState(() => _selectedRubros.add(v)),
     decoration: InputDecoration(
-      labelText: 'Añadir otro rubro…',
+      labelText: 'Proveedores de…',
       filled: true,
       fillColor: cs.surfaceContainerHighest,
       suffixIcon: const Icon(Icons.expand_more),
@@ -1884,7 +1889,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        _sectionTitle('Elige uno o más rubros', required: true),
+        _sectionTitle('¿Dónde más buscamos?', required: true),
         Text(
           'Para que solo proveedores realmente especializados reciban tu solicitud.',
           style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),

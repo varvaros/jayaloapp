@@ -2,7 +2,7 @@
 ///
 /// Existe por un bloqueo real (2026-08-07): la pantalla pintaba las fichas
 /// SOLO con lo que la IA había sugerido (`for (final id in _rubros)`), mientras
-/// el título "Elige uno o más rubros *" y el guard del envío se mostraban
+/// el título de la sección (hoy "¿Dónde más buscamos? *") y el guard del envío se mostraban
 /// siempre. El servidor retiró su fallback "top-3 por sort_order" (commit
 /// `35b7263` de jayalo-main) razonando que "el cliente elige en el picker, que
 /// ya es obligatorio en web y app" — cierto en la web (`RubroPicker` consulta

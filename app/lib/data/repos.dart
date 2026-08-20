@@ -1593,15 +1593,29 @@ Future<bool> canRevealOffer(String offerId) async =>
     ) ==
     true;
 
+/// Los rubros que puede elegir a mano una solicitud de [kind].
+///
+/// La MISMA reja que el clasificador del servidor (`filterRubrosByKind` en
+/// jayalo-main): sin ella el picker de una solicitud de producto seguía
+/// ofreciendo «Vibe coding» y «Ciberseguridad» aunque la IA ya no pudiera
+/// elegirlos. `ambos` entra en los dos lados a propósito (un aire se vende y
+/// se instala); sin [kind] no se filtra, porque no hay señal con la que decidir.
 Future<List<Map<String, dynamic>>> rubrosForCategories(
-  List<String> categoryIds,
-) async => List<Map<String, dynamic>>.from(
-  await supa
-      .from('rubros')
-      .select('id,name,category_id')
-      .inFilter('category_id', categoryIds)
-      .order('name'),
-);
+  List<String> categoryIds, {
+  String? kind,
+}) async {
+  final kinds = kind == null
+      ? const ['producto', 'servicio', 'ambos']
+      : [kind, 'ambos'];
+  return List<Map<String, dynamic>>.from(
+    await supa
+        .from('rubros')
+        .select('id,name,category_id')
+        .inFilter('category_id', categoryIds)
+        .inFilter('kind', kinds)
+        .order('name'),
+  );
+}
 
 Future<String?> uploadBusinessLogo(String filePath) async {
   final uid = supa.auth.currentUser!.id;
