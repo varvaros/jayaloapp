@@ -13,8 +13,10 @@ import '../shared/brand_kit.dart' show JayaloCard;
 import '../shared/jayalo_loader.dart';
 import 'intro_copy.dart';
 import 'intro_role_store.dart';
+import 'intro_seen_store.dart';
 import 'jayalo_imagotipo.dart';
 import 'jayi_scene.dart';
+import 'portada_jayi.dart';
 
 /// El usuario cerró el selector de cuenta de Google. No es un fallo: no hay que
 /// enseñarle ningún error.
@@ -127,6 +129,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
   int _page = 0;
 
+  /// ¿Este teléfono ya vio el intro? `null` mientras se lee del disco: en ese
+  /// primer frame no se pinta NI el carrusel ni la portada, porque acertar por
+  /// defecto es imposible y equivocarse se ve como un parpadeo entre dos
+  /// pantallas muy distintas. La lectura es de `SharedPreferences`, o sea un
+  /// puñado de microsegundos sobre un mapa ya cargado en memoria.
+  bool? _introSeen;
+
+  /// Ya se escribió la marca en esta sesión de pantalla. `_introSeen` NO sirve
+  /// de guarda: sigue valiendo `false` (estamos en modo intro) después de
+  /// marcar, y sin esto cada deslizamiento hasta los accesos repetiría la
+  /// escritura en disco.
+  bool _seenMarked = false;
+
   /// Hay una elección en vuelo (guardando o avanzando la lámina). Ver la guarda
   /// de reentrada de [_chooseRole].
   bool _choosing = false;
@@ -144,7 +159,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _restoreRole();
+    unawaited(_restore());
   }
 
   @override
@@ -153,27 +168,63 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  /// La elección PENDIENTE de consumir sobrevive a matar la app: quien eligió
-  /// lado y se fue antes de autenticarse vuelve directo a la lámina de acceso,
-  /// sin repetir el intro.
+  /// Decide en qué modo abre el login y, si toca el carrusel, en qué lámina.
   ///
-  /// OJO, no es memoria permanente: el alta la consume y la borra
-  /// (`IntroRoleStore.clear()`), porque la clave no lleva uid y si no el
-  /// siguiente que se registre en el mismo teléfono heredaría la elección del
-  /// anterior. O sea que quien vuelve DESPUÉS de haber cerrado sesión ya no
-  /// tiene elección guardada y sí ve el carrusel entero.
-  Future<void> _restoreRole() async {
+  /// **Modo clásico** (marca `IntroSeenStore` puesta): la Portada Jayi de
+  /// siempre. El intro es de UNA VEZ POR TELÉFONO (PO 2026-08-20), así que
+  /// quien cierra sesión y vuelve —o el segundo usuario del mismo aparato— ya
+  /// no lo ve. Elegir lado pasa a ser trabajo de `ChooseRoleScreen`, que sigue
+  /// intacto detrás de `/onboarding`.
+  ///
+  /// **Modo intro**: además se restaura la elección PENDIENTE de consumir, que
+  /// sobrevive a matar la app — quien eligió lado y se fue antes de
+  /// autenticarse vuelve directo a la lámina de acceso. Esa sí es memoria
+  /// efímera: el alta la consume y la borra (`IntroRoleStore.clear()`), porque
+  /// su clave no lleva uid y si no el siguiente que se registrara en el mismo
+  /// teléfono heredaría la elección del anterior.
+  Future<void> _restore() async {
+    final seen = await IntroSeenStore().read();
+    if (!mounted) return;
+    if (seen) {
+      setState(() => _introSeen = true);
+      return;
+    }
     final role = await IntroRoleStore().read();
-    if (!mounted || role == null) return;
+    if (!mounted) return;
     setState(() {
+      _introSeen = false;
+      if (role == null) return;
       _introRole = role;
       _page = 2; // los puntos y el «Saltar» ya nacen en su sitio, sin parpadeo
     });
+    if (role == null) return;
+    // Volver con lado ya elegido aterriza en los accesos, que es el final del
+    // carrusel: para el usuario el intro ya está visto.
+    _markSeenIfDone();
     unawaited(
       _afterLayout(() async {
         if (_pages.hasClients) _pages.jumpToPage(2);
       }),
     );
+  }
+
+  /// ¿La lámina `i` es la de los accesos, o sea el FINAL del carrusel?
+  ///
+  /// No vale `i == _pageCount - 1`: mientras no se elige lado ni se salta, el
+  /// carrusel mide UNA lámina y esa única lámina es la de los recuadros de rol
+  /// — marcar ahí daría el intro por visto a quien no ha visto nada. Ver
+  /// [_buildSlide], que reparte las acciones con este mismo criterio.
+  bool _isAccessSlide(int i) => _introRole == null ? i >= 1 : i >= 2;
+
+  /// Deja la marca de «visto» en cuanto el usuario alcanza los accesos, por
+  /// cualquiera de los tres caminos (elegir lado y avanzar, «Saltar», o volver
+  /// con lado ya elegido). No se retira nunca: deslizar hacia atrás a mirar
+  /// otra lámina no deshace el haberlo visto.
+  void _markSeenIfDone() {
+    if (_seenMarked || _introSeen != false) return; // ya marcado, o sin leer
+    if (!_isAccessSlide(_page)) return;
+    _seenMarked = true;
+    unawaited(IntroSeenStore().markSeen());
   }
 
   /// Mueve el carrusel DESPUÉS del frame en el que ya hay 3 páginas: pedirle a
@@ -311,7 +362,21 @@ class _LoginScreenState extends State<LoginScreen> {
         statusBarIconBrightness: Brightness.dark,
         statusBarBrightness: Brightness.light,
       ),
-      child: PopScope<Object?>(
+      // Tres estados, no dos. Mientras `_introSeen` es null todavía se está
+      // leyendo la marca del disco: se pinta la arena pelada, porque elegir
+      // por defecto y corregir un frame después se ve como un parpadeo entre
+      // dos pantallas que no se parecen en nada.
+      child: _introSeen == null
+          // Modo CLÁSICO: este teléfono ya vio el intro y no vuelve a verlo.
+          // Nada de PopScope ahí — sin carrusel no hay lámina a la que
+          // retroceder, y retener el atrás encerraría al usuario en el login.
+          ? const Scaffold(
+              backgroundColor: JayaloColors.background,
+              body: SizedBox.expand(),
+            )
+          : _introSeen!
+          ? _classicLogin(context)
+          : PopScope<Object?>(
         // Solo la lámina 0 deja salir de verdad (cerrar la app / volver a
         // donde sea que llevó a `/login`). En cualquier otra, el atrás de
         // Android retrocede una lámina en vez de sacar al usuario del
@@ -344,7 +409,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? const NeverScrollableScrollPhysics()
                         : null,
                     itemCount: _pageCount,
-                    onPageChanged: (i) => setState(() => _page = i),
+                    onPageChanged: (i) {
+                      setState(() => _page = i);
+                      _markSeenIfDone();
+                    },
                     itemBuilder: _buildSlide,
                   ),
                 ),
@@ -514,6 +582,33 @@ class _LoginScreenState extends State<LoginScreen> {
             title: 'Vendo algo',
             sub: 'Quiero ofertar',
             onTap: () => _chooseRole(IntroRole.provider),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  /// El login de SIEMPRE, el que había antes del intro (`451d1ab`): la
+  /// «Portada Jayi» a pantalla completa —el render 3D de Jayi sobre el pattern
+  /// de isotipos— con los accesos abajo.
+  ///
+  /// Es la pantalla que ve el 99 % de las aperturas, porque el carrusel es de
+  /// una sola vez por teléfono. `bottomReserve` deja libre la banda de los
+  /// botones para que la composición no se los coma, igual que antes.
+  Widget _classicLogin(BuildContext context) => Scaffold(
+    // Arena FIJA de marca (no `cs.background`: la portada no tiene modo
+    // oscuro). El CTA mantiene el violeta FIJO por la misma razón.
+    backgroundColor: JayaloColors.background,
+    body: Stack(
+      children: [
+        const Positioned.fill(child: PortadaJayi(bottomReserve: 170)),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(28, 14, 28, 22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [const Spacer(), _accessStack(context)],
+            ),
           ),
         ),
       ],
