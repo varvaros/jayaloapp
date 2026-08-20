@@ -55,4 +55,56 @@ void main() {
     expect(p.sector, '');
     expect(p.sectorInCatalog, false);
   });
+
+  group('addressLineFor — lo que escribe «Usar mi ubicacion»', () {
+    test('prefiere la linea que compone el servidor', () {
+      expect(
+        addressLineFor(const GeocodedPlace(
+          street: 'Calle Primera',
+          streetNumber: '12',
+          sector: 'Parque del Este',
+          city: 'Santo Domingo Este',
+          addressLine: 'Calle Primera 12, Parque del Este, Santo Domingo Este, '
+              'Republica Dominicana',
+        )),
+        'Calle Primera 12, Parque del Este, Santo Domingo Este, '
+            'Republica Dominicana',
+      );
+    });
+
+    test('sin linea del servidor la arma con las piezas sueltas', () {
+      // El caso que rompia el alta de PROVEEDOR: escribia `street` a secas y
+      // el sector y la ciudad se perdian.
+      expect(
+        addressLineFor(const GeocodedPlace(
+          street: 'Calle Primera',
+          streetNumber: '12',
+          sector: 'Parque del Este',
+          city: 'Santo Domingo Este',
+        )),
+        'Calle Primera 12, Parque del Este, Santo Domingo Este',
+      );
+    });
+
+    test('con solo ciudad devuelve la ciudad, no vacio', () {
+      expect(
+        addressLineFor(const GeocodedPlace(city: 'Santiago')),
+        'Santiago',
+      );
+    });
+
+    test('un place vacio devuelve vacio: la pantalla tiene que AVISAR', () {
+      expect(addressLineFor(GeocodedPlace.empty), '');
+    });
+
+    test('una linea del servidor en blanco no gana al respaldo', () {
+      expect(
+        addressLineFor(const GeocodedPlace(
+          city: 'Santiago',
+          addressLine: '   ',
+        )),
+        'Santiago',
+      );
+    });
+  });
 }

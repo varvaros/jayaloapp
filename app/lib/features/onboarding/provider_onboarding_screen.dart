@@ -11,6 +11,7 @@ import '../../core/geocode_client.dart';
 import '../../core/session_state.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
+import '../../domain/geo.dart';
 import '../../domain/locations.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
@@ -306,6 +307,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
       final place = await GeocodeClient()
           .lookup(lat: pos.latitude, lng: pos.longitude, accessToken: token);
       if (!mounted) return;
+      final line = addressLineFor(place);
       setState(() {
         if (place.city.isNotEmpty &&
             citiesFor(_country).contains(place.city) &&
@@ -315,10 +317,16 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         if (place.sector.isNotEmpty && !_sectors.contains(place.sector)) {
           _sectors.add(place.sector);
         }
-        if (place.street.isNotEmpty && _address.text.trim().isEmpty) {
-          _address.text = place.street;
-        }
+        // Dirección COMPLETA, y PISANDO lo que hubiera (PO 2026-08-20). Antes
+        // se escribía `place.street` a secas y solo con el campo vacío: el
+        // número, el sector y la ciudad que el endpoint ya devuelve se tiraban
+        // a la basura, y el proveedor se quedaba con "Calle Primera" por
+        // dirección de su negocio.
+        if (line.isNotEmpty) _address.text = line;
       });
+      if (line.isEmpty) {
+        _snack('Captamos tu ubicación, pero no la dirección — escríbela.');
+      }
       // La ciudad tiene que existir en el catalogo o el selector no puede
       // ofrecerla: si no coincide, se avisa y el proveedor la elige a mano.
       if (place.city.isNotEmpty && !citiesFor(_country).contains(place.city)) {

@@ -61,6 +61,28 @@ String composeAddressLine({
   return parts.join(', ');
 }
 
+/// La linea que «Usar mi ubicacion» escribe en el campo Direccion.
+///
+/// Existe porque los dos formularios de alta la resolvian distinto y mal:
+/// el de proveedor escribia `place.street` a secas —o sea SOLO la calle,
+/// tirando el numero, el sector y la ciudad que el endpoint ya devuelve— y el
+/// de cliente usaba `addressLine` pero se quedaba mudo cuando venia vacia.
+///
+/// Prefiere la linea que compone el servidor (lleva tambien el pais cuando lo
+/// hay) y solo si falta la arma con las piezas sueltas. Devuelve `''` cuando
+/// no hay NADA que escribir, y entonces la pantalla debe AVISAR en vez de
+/// dejar el campo como estaba sin explicar por que.
+String addressLineFor(GeocodedPlace place) {
+  final servidor = place.addressLine.trim();
+  if (servidor.isNotEmpty) return servidor;
+  return composeAddressLine(
+    street: place.street,
+    streetNumber: place.streetNumber,
+    sector: place.sector,
+    city: place.city,
+  );
+}
+
 /// Enlace universal al mapa.
 ///
 /// A proposito NO se usa el esquema `geo:`: lo entiende Android, pero no el

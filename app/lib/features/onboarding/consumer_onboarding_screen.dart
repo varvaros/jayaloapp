@@ -7,6 +7,7 @@ import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/geocode_client.dart';
 import '../../core/session_state.dart';
+import '../../domain/geo.dart';
 import '../../data/repos.dart';
 import '../../domain/onboarding_errors.dart';
 import '../../domain/phone.dart';
@@ -114,24 +115,29 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
       });
       // Reverse geocoding contra la web (bug PO 2026-08-04): el nativo de
       // Android en RD devuelve la vía grande más cercana, no la calle real.
-      // Solo rellena si el usuario no escribió.
-      if (_address.text.trim().isEmpty) {
-        final token = supa.auth.currentSession?.accessToken;
-        if (token != null) {
-          final place = await GeocodeClient()
-              .lookup(lat: pos.latitude, lng: pos.longitude, accessToken: token);
-          if (mounted && place.addressLine.isNotEmpty &&
-              _address.text.trim().isEmpty) {
-            setState(() {
-              _address.text = place.addressLine;
-              _city = place.city;
-              _sector = place.sector;
-              _street = place.street;
-              _streetNumber = place.streetNumber;
-            });
-          }
-        }
+      //
+      // PISA lo que hubiera escrito (PO 2026-08-20): el botón es explícito, y
+      // quien lo toca está pidiendo la dirección del GPS, no una sugerencia
+      // para cuando el campo esté vacío.
+      final token = supa.auth.currentSession?.accessToken;
+      if (token == null) return;
+      final place = await GeocodeClient()
+          .lookup(lat: pos.latitude, lng: pos.longitude, accessToken: token);
+      if (!mounted) return;
+      final line = addressLineFor(place);
+      if (line.isEmpty) {
+        // Antes esto era el camino MUDO: el botón decía "Ubicación captada ✓"
+        // y la dirección se quedaba en blanco sin que nadie explicara por qué.
+        _snack('Captamos tu ubicación, pero no la dirección — escríbela.');
+        return;
       }
+      setState(() {
+        _address.text = line;
+        _city = place.city;
+        _sector = place.sector;
+        _street = place.street;
+        _streetNumber = place.streetNumber;
+      });
     } catch (_) {
       _snack('No pudimos captar tu ubicación — puedes escribir tu dirección igual.');
     } finally {
