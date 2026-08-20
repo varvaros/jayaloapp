@@ -13,15 +13,18 @@ import 'package:jayalo_app/domain/catalog.dart';
 /// `jayalo-main/src/mocks/categories.ts`. Si la web agrega una categoría y aquí
 /// no, este test falla — que es justo la señal que faltó la vez pasada.
 void main() {
+  // 45 desde el 2026-08-20 (catálogo del PO): entran `arquitectura`,
+  // `inmobiliaria`, `turismo`, `rrhh`, `empresariales` y `seguros`, y sale
+  // `editorial` — sus 6 rubros se mudaron a `redaccion` conservando su id.
   const idsEsperados = <String>{
-    'agricultura', 'arte', 'autos', 'belleza', 'cerrajeria', 'climatizacion',
-    'construccion', 'contabilidad', 'contenido', 'deportes', 'editorial',
-    'educacion', 'electricidad', 'electronica', 'eventos', 'ferreteria',
-    'fotografia', 'gastronomia', 'hogar', 'investigacion', 'jardineria',
-    'joyeria', 'legal', 'limpieza', 'locucion', 'maquinarias', 'marketing',
-    'mascotas', 'medios', 'mudanzas', 'musica', 'pintura', 'plomeria',
-    'redaccion', 'relaciones_publicas', 'ropa', 'salud', 'seguridad',
-    'servicios', 'tecnologia',
+    'agricultura', 'arquitectura', 'arte', 'autos', 'belleza', 'cerrajeria',
+    'climatizacion', 'construccion', 'contabilidad', 'contenido', 'deportes',
+    'educacion', 'electricidad', 'electronica', 'empresariales', 'eventos',
+    'ferreteria', 'fotografia', 'gastronomia', 'hogar', 'inmobiliaria',
+    'investigacion', 'jardineria', 'joyeria', 'legal', 'limpieza', 'locucion',
+    'maquinarias', 'marketing', 'mascotas', 'medios', 'mudanzas', 'musica',
+    'pintura', 'plomeria', 'redaccion', 'relaciones_publicas', 'ropa', 'rrhh',
+    'salud', 'seguridad', 'seguros', 'servicios', 'tecnologia', 'turismo',
   };
 
   test('el catálogo tiene exactamente las categorías de la web', () {

@@ -52,7 +52,8 @@ const List<Category> kCategories = [
   (id: 'relaciones_publicas', name: 'Relaciones Públicas'),
   (id: 'contenido', name: 'Contenido y Publicaciones'),
   (id: 'investigacion', name: 'Investigación'),
-  (id: 'editorial', name: 'Producción Editorial'),
+  // `editorial` se retiró el 2026-08-20: sus 6 rubros se mudaron a `redaccion`
+  // conservando su id (decisión PO).
   (id: 'locucion', name: 'Locución y Presentación'),
   // `musica` existía en la BD (13 rubros) y la IA la ofrecía, pero faltaba en
   // los DOS catálogos de cliente (este y el de la web): `categoryNameById`
@@ -60,4 +61,13 @@ const List<Category> kCategories = [
   // y product_list_card. Peor: ningún proveedor podía elegirla, así que una
   // solicitud de música no le llegaba a nadie.
   (id: 'musica', name: 'Música'),
+
+  // Las 6 del catálogo del PO (2026-08-20). Entran A LA VEZ que en la BD y que
+  // en el mock de la web, por la misma razón que documenta `musica`.
+  (id: 'arquitectura', name: 'Arquitectura y diseño'),
+  (id: 'inmobiliaria', name: 'Inmobiliaria'),
+  (id: 'turismo', name: 'Turismo'),
+  (id: 'rrhh', name: 'Recursos humanos'),
+  (id: 'empresariales', name: 'Servicios empresariales'),
+  (id: 'seguros', name: 'Seguros y finanzas'),
 ];
