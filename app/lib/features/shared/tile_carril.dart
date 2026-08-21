@@ -71,9 +71,26 @@ class TileCarril extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: items.length,
+        // Emparejamiento por id, no por posición (regresión ronda de
+        // arreglo 1/5, Task 8): sin esto, `ListView.separated` indexa sus
+        // hijos por POSICIÓN — si se borra un ítem de en medio, los que le
+        // siguen se corren de posición y el Element/State de la posición
+        // que ocupaban (p. ej. `_idx`/`PageController` de PortfolioTile, la
+        // página del carrusel) queda huérfano en vez de seguir con SU
+        // trabajo. `findItemIndexCallback` le dice al framework dónde está
+        // AHORA el ítem con esa key, para que reubique el Element existente
+        // (y su estado) en vez de descartarlo.
+        findItemIndexCallback: (key) {
+          if (key is! ValueKey) return null;
+          final i = items.indexWhere((it) => it['id'] == key.value);
+          return i == -1 ? null : i;
+        },
         separatorBuilder: (_, _) => const SizedBox(width: 12),
-        itemBuilder: (_, i) =>
-            SizedBox(width: cardWidth, child: tileBuilder(items[i])),
+        itemBuilder: (_, i) => SizedBox(
+          key: ValueKey(items[i]['id']),
+          width: cardWidth,
+          child: tileBuilder(items[i]),
+        ),
       ),
     );
   }

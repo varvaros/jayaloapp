@@ -851,6 +851,13 @@ class _MyBusinessViewState extends State<MyBusinessView> {
           items: trabajos,
           height: kPortfolioCarrilHeight,
           tileBuilder: (t) => PortfolioTile(
+            // Clave por id, NO por posición: el carril indexa por posición
+            // (ListView.separated) y PortfolioTile guarda estado propio
+            // (pagina del carrusel). Sin esta clave, al borrar un trabajo
+            // Flutter reutiliza el State de la posición para OTRO trabajo y
+            // este se queda mostrando la pagina que tenia el que ocupaba esa
+            // posición antes.
+            key: ValueKey(t['id']),
             item: t,
             onTap: widget.onEditTrabajo == null
                 ? null

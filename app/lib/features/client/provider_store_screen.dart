@@ -451,6 +451,9 @@ class ProviderStoreView extends StatelessWidget {
       if (trabajos.isNotEmpty) ..._carrilSection('TRABAJOS', trabajos,
           height: kPortfolioCarrilHeight,
           tileBuilder: (t) => PortfolioTile(
+              // Clave por id, no por posición — ver el mismo comentario en
+              // my_business_screen.dart junto a PortfolioTile.
+              key: ValueKey(t['id']),
               item: t,
               onTap: () => showPortfolioGallery(
                     context,
