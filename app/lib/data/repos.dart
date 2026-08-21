@@ -2920,11 +2920,15 @@ Future<List<Map<String, dynamic>>> myStoreProducts(String businessId) async =>
 /// Incluye `description` (Task 8, 2026-08-09): el editor de trabajo de "Mi
 /// negocio" la prellena — antes de esta tarea el select no la traía porque
 /// nada la leía todavía.
+///
+/// Incluye `media` (spec 2026-08-20, video en portafolio): la columna ya está
+/// aplicada en prod. `image_urls` sigue viajando tal cual — es el espejo
+/// solo-imagenes que otros lectores (la oferta) necesitan seguir leyendo.
 Future<List<Map<String, dynamic>>> myPortfolioItems(String businessId) async =>
     List<Map<String, dynamic>>.from(
       await supa
           .from('provider_portfolio_items')
-          .select('id,title,description,image_urls,category_id,completed_at')
+          .select('id,title,description,image_urls,media,category_id,completed_at')
           .eq('business_id', businessId)
           .order('position', ascending: true)
           .limit(200),

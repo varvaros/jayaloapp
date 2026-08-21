@@ -15,6 +15,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../data/portfolio_media.dart';
 import '../../domain/money.dart';
 import 'brand_kit.dart';
 import 'network_image.dart';
@@ -85,42 +86,103 @@ class TileCarril extends StatelessWidget {
 /// `margin: EdgeInsets.zero` porque el espaciado entre tarjetas lo pone
 /// [TileCarril] (separador + padding del carril), no el margen individual de
 /// `JayaloCard`.
-class PortfolioTile extends StatelessWidget {
+class PortfolioTile extends StatefulWidget {
   const PortfolioTile({super.key, required this.item, this.onTap, this.onLongPress});
   final Map<String, dynamic> item;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
   @override
+  State<PortfolioTile> createState() => _PortfolioTileState();
+}
+
+class _PortfolioTileState extends State<PortfolioTile> {
+  final _page = PageController();
+  int _idx = 0;
+
+  @override
+  void dispose() {
+    _page.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
-    final img = images.isEmpty ? null : images.first;
+    final media = parseMedia(widget.item['media'], widget.item['image_urls']);
     return JayaloCard(
       padding: EdgeInsets.zero,
       margin: EdgeInsets.zero,
-      onTap: onTap,
-      onLongPress: onLongPress,
+      onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           ClipRRect(
             borderRadius: kTileImageRadius,
-            child: img == null || img.isEmpty
+            child: media.isEmpty
                 ? tilePlaceholder(cs, Icons.photo_outlined)
-                : JayaloNetworkImage(
-                    img,
-                    width: double.infinity,
+                : SizedBox(
                     height: kTileImageHeight,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        tilePlaceholder(cs, Icons.photo_outlined),
+                    child: Stack(children: [
+                      PageView.builder(
+                        controller: _page,
+                        itemCount: media.length,
+                        onPageChanged: (i) => setState(() => _idx = i),
+                        itemBuilder: (_, i) {
+                          final c = coverOf(media[i]);
+                          final base = c.src == null
+                              ? tilePlaceholder(cs, Icons.photo_outlined)
+                              : JayaloNetworkImage(
+                                  c.src!,
+                                  width: double.infinity,
+                                  height: kTileImageHeight,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) =>
+                                      tilePlaceholder(cs, Icons.photo_outlined),
+                                );
+                          if (!c.esVideo) return base;
+                          return Stack(alignment: Alignment.center, children: [
+                            base,
+                            const CircleAvatar(
+                              radius: 18,
+                              backgroundColor: Colors.black54,
+                              child: Icon(Icons.play_arrow,
+                                  color: Colors.white, size: 22),
+                            ),
+                          ]);
+                        },
+                      ),
+                      if (media.length > 1)
+                        Positioned(
+                          bottom: 8,
+                          left: 0,
+                          right: 0,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              for (var i = 0; i < media.length; i++)
+                                Container(
+                                  width: i == _idx ? 16 : 6,
+                                  height: 6,
+                                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                                  decoration: BoxDecoration(
+                                    color: i == _idx
+                                        ? Colors.white
+                                        : Colors.white.withValues(alpha: .5),
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ]),
                   ),
           ),
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Text(item['title'] as String? ?? '',
+            child: Text(widget.item['title'] as String? ?? '',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),

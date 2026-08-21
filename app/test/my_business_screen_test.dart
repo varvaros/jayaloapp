@@ -400,6 +400,13 @@ void main() {
   // y la tarjeta de un trabajo sigue con la foto ARRIBA a todo el ancho DE
   // LA TARJETA (`width: double.infinity`), pero con la tarjeta angosta y la
   // foto más chica que la iteración anterior (168 → 120).
+  //
+  // Video en portafolio (2026-08-20): la tarjeta pasó de una foto fija a un
+  // mini-carrusel (`PageView`) — la imagen ya no cuelga directo del
+  // `ClipRRect`, cuelga de la página del `PageView`. El finder busca la
+  // `Image` DENTRO del `PageView` a propósito, para seguir comprobando lo
+  // mismo que antes (la foto pinta a todo el ancho de la tarjeta) en la
+  // estructura nueva, no un `Image` cualquiera de la pantalla.
   testWidgets(
       'TRABAJOS es un carril horizontal y la tarjeta pinta la foto arriba, '
       'a todo el ancho de la tarjeta', (tester) async {
@@ -429,9 +436,56 @@ void main() {
         (lv) => lv.scrollDirection == Axis.horizontal);
     expect(carril.scrollDirection, Axis.horizontal);
 
-    final img = tester.widget<Image>(find.byType(Image).first);
+    final img = tester.widget<Image>(find
+        .descendant(of: find.byType(PageView), matching: find.byType(Image))
+        .first);
     expect(img.width, double.infinity);
     expect(img.height, 120);
+  });
+
+  testWidgets('TRABAJOS: un trabajo con 2 archivos pinta los puntos del carrusel',
+      (t) async {
+    // Monta la vista con un item cuyo `media` trae 2 elementos y comprueba que
+    // hay un PageView y exactamente 2 puntos.
+    await t.pumpWidget(host(MyBusinessView(
+      business: negocio,
+      productos: const [],
+      servicios: const [],
+      trabajos: const [
+        {
+          'id': 't1',
+          'title': 'Instalación de verja',
+          'image_urls': <String>[],
+          'media': [
+            {'url': 'https://x/verja.jpg', 'kind': 'image'},
+            {
+              'url': 'https://x/verja.mp4',
+              'kind': 'video',
+              'poster': 'https://x/verja-poster.jpg',
+            },
+          ],
+        }
+      ],
+      reviews: const [],
+      rating: null,
+    )));
+    await t.pumpAndSettle();
+    await t.drag(
+        find.byKey(const Key('mi-negocio-scroll')), const Offset(0, -600));
+    await t.pumpAndSettle();
+
+    expect(find.byType(PageView), findsOneWidget);
+
+    // Los puntos del carrusel son `Container` de 6px de alto con
+    // `BoxDecoration` redondeada — combinación que en esta pantalla solo
+    // pinta la fila de puntos (nada más en TRABAJOS/PAQUETES mide 6 de alto
+    // con decoración). Se cuentan así en vez de por `Key` porque el punto no
+    // lleva una — es puramente decorativo.
+    final puntos = t.widgetList<Container>(find.byType(Container)).where((c) =>
+        c.decoration is BoxDecoration &&
+        (c.decoration as BoxDecoration).borderRadius != null &&
+        c.constraints?.maxHeight == 6);
+    expect(puntos.length, 2);
   });
 
   testWidgets(
