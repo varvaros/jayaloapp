@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
+import 'package:jayalo_app/data/portfolio_media.dart' show PortfolioMedia;
 import 'package:jayalo_app/domain/contact_info.dart'
     show contactInfoCode, contactInfoMessage;
 import 'package:jayalo_app/features/provider/add_store_item_screen.dart';
@@ -48,11 +49,15 @@ void main() {
 
   Future<void> noopUpdate(String id, Map<String, dynamic> payload) async {}
 
+  // Firma actualizada en la Task 13 (video): `savePortfolio` ahora recibe
+  // `media` en vez de `imageUrls` — este doble nunca se llama en los tests
+  // de producto/servicio de este fichero (son otro `kind`), solo debe
+  // seguir compilando.
   Future<void> noopPortfolio({
     required String businessId,
     required String title,
     String? description,
-    List<String> imageUrls = const [],
+    List<PortfolioMedia> media = const [],
   }) async {}
 
   Future<({String? categoryId, String? rubro})> fakeCatRubro(

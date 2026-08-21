@@ -4,16 +4,19 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_compress/video_compress.dart';
 
 import '../../core/brand.dart';
 import '../../core/error_reporter.dart';
 import '../../core/safe_image_picker.dart';
 import '../../core/unsaved_guard.dart';
+import '../../data/portfolio_media.dart' show PortfolioMedia, parseMedia;
 import '../../data/repos.dart';
 import '../../domain/contact_info.dart' show contactInfoMessage, isContactInfoError;
 import '../../domain/image_pick.dart';
 import '../../domain/money.dart' show parseMiles;
 import '../../domain/offer_defaults.dart';
+import '../../domain/video_pick.dart';
 import '../shared/brand_kit.dart';
 import '../shared/network_image.dart';
 import '../shared/offer_field_options.dart';
@@ -24,12 +27,25 @@ import '../shell/floating_nav_bar.dart';
 /// autocompletar ofertas, no tiene sentido que carguen más que ellas.
 const _maxItemPhotos = 5;
 
-/// Tope de fotos de un trabajo del portafolio (Task 8) — espejo de
+/// Tope de ARCHIVOS de un trabajo del portafolio — espejo de
 /// `MAX_PORTFOLIO_PHOTOS` en la web. Más alto que [_maxItemPhotos]: un
 /// trabajo terminado suele necesitar más fotos que un producto/servicio de
-/// catálogo (antes de esta tarea, `_pick` no distinguía kind y aplicaba el
+/// catálogo (antes de la Task 8, `_pick` no distinguía kind y aplicaba el
 /// tope de 5 también a trabajo — nunca se imponía el tope correcto).
+///
+/// Desde la Task 13 (video) el nombre queda corto a propósito: sigue siendo
+/// UNA sola constante, pero pasa a contar fotos + videos JUNTOS (8 archivos
+/// totales por trabajo, corrección del PO sobre el brief) — ver
+/// [_AddStoreItemScreenState._fileCount]. Producto/servicio nunca tienen
+/// video, así que ahí sigue significando "fotos" sin más.
 const kMaxPortfolioPhotos = 8;
+
+/// Tope de VIDEOS de un trabajo del portafolio (Task 13, corrección del PO
+/// sobre el brief original) — distinto del tope de archivos de arriba: un
+/// trabajo puede tener hasta 8 archivos, pero como máximo 2 de ellos pueden
+/// ser video. El techo de 10 videos por NEGOCIO existe pero es del trigger
+/// de la base de datos — no se cuenta aquí.
+const kMaxPortfolioVideos = 2;
 
 /// Copiado TAL CUAL de `request_detail_screen.dart` (`_svcModes`, Task 6): el
 /// molde de oferta usa las MISMAS claves, en el MISMO orden — divergir aquí
@@ -52,6 +68,31 @@ const _colorPresets = <(String, Color)>[
   ('Marrón', Color(0xFF7C4A2A)),
   ('Rosa', Color(0xFFEC4899)),
 ];
+
+/// Video local recien elegido y comprimido (Task 13): `path` es el archivo
+/// YA comprimido (lo que se sube), `posterPath` es la miniatura local (o
+/// `null` si `getFileThumbnail` falló — el video se sube igual, la tarjeta
+/// degrada al placeholder, NUNCA al .mp4, ver `data/portfolio_media.dart`).
+typedef _PickedVideo = ({
+  String path,
+  String? posterPath,
+  int durationSeconds,
+});
+
+/// Content-type de una foto por extensión, para [uploadPortfolioMedia] (que
+/// a diferencia de `_uploadMarketplaceImage` en `repos.dart` no lo infiere
+/// solo — lo decide quien llama). Mismo mapeo que el `_imageContentType`
+/// privado de `repos.dart`, pero no se puede importar (es privado a ese
+/// fichero) — se duplica aquí, son 3 líneas.
+String _imageContentTypeFor(String path) {
+  final dot = path.lastIndexOf('.');
+  final ext = dot == -1 ? '' : path.substring(dot + 1).toLowerCase();
+  return switch (ext) {
+    'png' => 'image/png',
+    'webp' => 'image/webp',
+    _ => 'image/jpeg',
+  };
+}
 
 /// Convierte lo escrito en el campo de precio ("5,000", "RD$5000",
 /// "3000.50") a un número; null si está vacío.
@@ -129,21 +170,25 @@ class AddStoreItemScreen extends StatefulWidget {
   saveProduct;
   final Future<void> Function(String id, Map<String, dynamic> payload)
   updateItem;
+  /// Firma con `media` (Task 13, no `imageUrls`): [savePortfolioItem]
+  /// escribe la columna `media` completa Y el espejo `image_urls` (solo
+  /// imágenes) a partir de ella — ver `data/repos.dart`.
   final Future<void> Function({
     required String businessId,
     required String title,
     String? description,
-    List<String> imageUrls,
+    List<PortfolioMedia> media,
   })
   savePortfolio;
 
   /// Edición de un trabajo propio (Task 8), vía [initial]. Mismo criterio
-  /// inyectable que [updateItem].
+  /// inyectable que [updateItem]; mismo cambio a `media` que [savePortfolio]
+  /// (Task 13).
   final Future<void> Function(
     String id, {
     required String title,
     String? description,
-    required List<String> imageUrls,
+    required List<PortfolioMedia> media,
   })
   updatePortfolio;
   final Future<({String? categoryId, String? rubro})> Function(
@@ -192,19 +237,53 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
 
   /// Fotos YA subidas (edición): URLs de `initial['image_urls']` que se
   /// conservan salvo que el usuario las quite. Mismo patrón que `_keptUrls`
-  /// en `request_detail_screen.dart`.
+  /// en `request_detail_screen.dart`. Para trabajo, se prellena desde
+  /// `media` (Task 13) — solo la parte imagen, ver [_prefill].
   final List<String> _keptUrls = [];
 
+  /// Videos YA subidos de un trabajo (edición) que se conservan salvo que
+  /// el usuario los quite — mismo trato que [_keptUrls] pero con el objeto
+  /// completo (necesitamos `poster`/`duration`, no solo la URL). Solo
+  /// aplica a `trabajo` (Task 13); producto/servicio nunca tienen video.
+  final List<PortfolioMedia> _keptVideos = [];
+
+  /// Videos NUEVOS de un trabajo: ya comprimidos a 720p y con su poster
+  /// local (si `getFileThumbnail` no falló), esperando subirse en `_save`.
+  final List<_PickedVideo> _newVideos = [];
+
   /// Ruta local → URL ya subida. Evita re-subir el mismo fichero en cada
-  /// reintento del guardado (ver `_save`).
+  /// reintento del guardado (ver `_save`). Compartida entre fotos y videos
+  /// (Task 13): la clave es la ruta local, así que no colisiona.
   final Map<String, String> _uploaded = {};
   bool _busy = false;
   bool _saved = false;
+
+  /// Video eligiéndose/comprimiéndose — deshabilita el botón «Agregar
+  /// video» mientras dura (puede tardar varios segundos).
+  bool _compressingVideo = false;
+
+  /// Progreso de subida de un trabajo con archivos nuevos (Task 13): `0`
+  /// mientras no se está subiendo nada. Antes de esto la subida ocurría a
+  /// ciegas — con 10 MB de video por datos móviles son minutos de spinner
+  /// sin saber si avanza.
+  int _uploadTotal = 0;
+  int _uploadDone = 0;
+  bool get _uploading => _uploadTotal > 0;
 
   bool get _esTrabajo => widget.kind == 'trabajo';
   bool get _isService => widget.kind == 'servicio';
   bool get _editing => widget.initial != null;
   int get _photoCount => _photos.length + _keptUrls.length;
+
+  /// Videos de un trabajo, conservados + nuevos. Siempre 0 para
+  /// producto/servicio (esos `kind` nunca tienen video) — Task 13.
+  int get _videoCount => _keptVideos.length + _newVideos.length;
+
+  /// Archivos TOTALES (fotos + videos) — el tope de 8 de [kMaxPortfolioPhotos]
+  /// se aplica a esta suma, no solo a fotos (Task 13). Para producto/servicio
+  /// [_videoCount] es siempre 0, así que coincide con [_photoCount] — sin
+  /// cambio de comportamiento ahí.
+  int get _fileCount => _photoCount + _videoCount;
 
   /// Tope de fotos según [kind] — [kMaxPortfolioPhotos] para trabajo
   /// (Task 8), [_maxItemPhotos] para producto/servicio.
@@ -270,8 +349,17 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
     if (_esTrabajo) {
       _name.text = (item['title'] as String?) ?? '';
       _desc.text = (item['description'] as String?) ?? '';
-      final urls = (item['image_urls'] as List?)?.cast<String>() ?? const [];
-      _keptUrls.addAll(urls);
+      // Task 13: `parseMedia` ya sabe reconstruir desde `image_urls` si
+      // `media` viene vacío (filas escritas antes de esta migración) — no
+      // hay que replicar ese fallback aquí. Se separa por `kind` porque
+      // [_keptUrls] (compartido con producto/servicio) solo lleva imágenes.
+      for (final m in parseMedia(item['media'], item['image_urls'])) {
+        if (m.esVideo) {
+          _keptVideos.add(m);
+        } else {
+          _keptUrls.add(m.url);
+        }
+      }
       return;
     }
     _name.text = (item['name'] as String?) ?? '';
@@ -376,6 +464,12 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
     _brand.dispose();
     _warranty.dispose();
     _delivery.dispose();
+    // Limpieza best-effort de los temporales que dejó `video_compress` si el
+    // usuario picó un video y salió sin guardar (Task 13) — nunca bloquea el
+    // dispose ni se reporta: es higiene, no correctness.
+    if (_newVideos.isNotEmpty) {
+      unawaited(VideoCompress.deleteAllCache());
+    }
     super.dispose();
   }
 
@@ -408,6 +502,11 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
     _svcMode,
     _photos.length,
     _keptUrls.join(','),
+    // Task 13: video solo existe para trabajo, pero sumarlo aquí sin
+    // gatear por `_esTrabajo` es inofensivo (siempre vacío en los otros
+    // `kind`) y evita que un cambio futuro lo olvide.
+    _keptVideos.map((v) => v.url).join(','),
+    _newVideos.length,
   ].join('|');
 
   bool _hasUnsavedWork() => !_saved && _formSnapshot() != _cleanSnapshot;
@@ -420,8 +519,14 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
 
   /// Cámara = una foto; Galería = varias — mismo patrón que las fotos de una
   /// oferta (`request_detail_screen._pickPhoto`).
+  ///
+  /// El tope se mide en [_fileCount] (Task 13), no en [_photoCount]: para un
+  /// trabajo con videos ya cargados, una foto de más también debe rechazarse
+  /// si entre las dos se pasa de [_maxPhotos] archivos totales. Para
+  /// producto/servicio [_fileCount] == [_photoCount] siempre (nunca tienen
+  /// video) — sin cambio de comportamiento ahí.
   Future<void> _pick(ImageSource source) async {
-    if (_photoCount >= _maxPhotos) {
+    if (_fileCount >= _maxPhotos) {
       _toast('Máximo $_maxPhotos fotos');
       return;
     }
@@ -440,13 +545,91 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
       final res = validatePickedImage(
           sizeBytes: await x.length(),
           path: x.path,
-          currentCount: _photoCount,
+          currentCount: _fileCount,
           maxCount: _maxPhotos);
       if (res is ImagePickError) {
         _toast(res.message);
         break;
       }
       if (mounted) setState(() => _photos.add(x));
+    }
+  }
+
+  /// Botón «Agregar video» (Task 13). El tope de CANTIDAD (2 por trabajo) y
+  /// el de ARCHIVOS TOTALES (8) se chequean ANTES de abrir el selector —
+  /// evita gastar batería/datos comprimiendo un video que de entrada no
+  /// cabe, mismo criterio que [_pick]. La duración se valida DESPUÉS de
+  /// elegir (hace falta leer el archivo), el tamaño DESPUÉS de comprimir
+  /// (es el archivo real que se sube) — ver `domain/video_pick.dart`.
+  Future<void> _pickVideo() async {
+    if (_videoCount >= kMaxPortfolioVideos) {
+      _toast('Máximo $kMaxPortfolioVideos videos por trabajo.');
+      return;
+    }
+    if (_fileCount >= _maxPhotos) {
+      _toast('Máximo $_maxPhotos fotos');
+      return;
+    }
+    final picked = await guardedPick((p) => p.pickVideo(source: ImageSource.gallery));
+    if (picked == null) return;
+    setState(() => _compressingVideo = true);
+    try {
+      final info = await VideoCompress.getMediaInfo(picked.path);
+      final seconds = ((info.duration ?? 0) / 1000).round();
+      if (seconds > maxVideoSeconds) {
+        _toast('El video no puede durar más de $maxVideoSeconds segundos.');
+        return;
+      }
+      // Preset elegido: el ÚNICO de este plugin que topa la resolución en
+      // 720p sin más ("no pasar de 720p" — corrección PO 2026-08-21). El
+      // `frameRate` NO se pasa a propósito: el plugin nativo lo ignora para
+      // este preset (solo lo aplica en `HighestQuality`, que no topa
+      // resolución) — pasarlo aquí daría una falsa sensación de control.
+      // Ver `targetVideoBitrateBps` en `domain/video_pick.dart` para el
+      // hueco declarado sobre el bitrate real que sale de este preset.
+      final compressed = await VideoCompress.compressVideo(
+        picked.path,
+        quality: VideoQuality.Res1280x720Quality,
+        deleteOrigin: false,
+        includeAudio: true,
+      );
+      final compressedPath = compressed?.path;
+      if (compressedPath == null) {
+        _toast('No se pudo procesar el video. Intenta de nuevo.');
+        return;
+      }
+      final sizeBytes =
+          compressed?.filesize ?? await File(compressedPath).length();
+      final res =
+          validatePickedVideo(durationSeconds: seconds, sizeBytes: sizeBytes);
+      if (res is VideoPickError) {
+        _toast(res.message);
+        // El comprimido YA se escribió a disco (rechazo por tamaño, no por
+        // duración) — nunca entra a `_newVideos`, así que el `dispose()` no
+        // lo vería. Limpieza best-effort aquí mismo.
+        unawaited(VideoCompress.deleteAllCache());
+        return;
+      }
+      // Póster OBLIGATORIO en el sentido de "se intenta siempre", NUNCA
+      // bloqueante: si falla, el video sube igual con poster null — la
+      // tarjeta degrada al placeholder, jamás al .mp4 (regla de
+      // `data/portfolio_media.dart`).
+      String? posterPath;
+      try {
+        final poster =
+            await VideoCompress.getFileThumbnail(compressedPath, quality: 60);
+        posterPath = poster.path;
+      } catch (_) {
+        posterPath = null;
+      }
+      if (!mounted) return;
+      setState(() => _newVideos.add((
+            path: compressedPath,
+            posterPath: posterPath,
+            durationSeconds: seconds,
+          )));
+    } finally {
+      if (mounted) setState(() => _compressingVideo = false);
     }
   }
 
@@ -555,31 +738,36 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
     }
     setState(() => _busy = true);
     try {
-      // Fotos a Storage ANTES del insert/update — nunca base64 en la BD.
+      // Fotos (y video, Task 13) a Storage ANTES del insert/update — nunca
+      // base64 en la BD.
       //
       // Cacheadas por ruta: si el guardado falla y el usuario reintenta (el
       // toast se lo pide), sin esto se volvían a subir los MISMOS ficheros y
       // se acumulaba una copia por intento.
-      final newUrls = await Future.wait(_photos.map((x) async =>
-          _uploaded[x.path] ??= await (_esTrabajo
-              ? uploadPortfolioImage(x.path)
-              : uploadStoreProductImage(x.path))));
-      final imageUrls = [..._keptUrls, ...newUrls];
+      List<String> imageUrls = const [];
+      List<PortfolioMedia> media = const [];
+      if (_esTrabajo) {
+        media = await _uploadTrabajoMedia();
+      } else {
+        final newUrls = await Future.wait(_photos.map((x) async =>
+            _uploaded[x.path] ??= await uploadStoreProductImage(x.path)));
+        imageUrls = [..._keptUrls, ...newUrls];
+      }
       if (_esTrabajo && _editing) {
-        // Task 8: editar un trabajo propio — mismas URLs conservadas +
-        // nuevas que el alta, pero UPDATE en vez de INSERT.
+        // Task 8: editar un trabajo propio — mismos archivos conservados +
+        // nuevos que el alta, pero UPDATE en vez de INSERT.
         await widget.updatePortfolio(
           widget.initial!['id'] as String,
           title: nombre,
           description: _desc.text,
-          imageUrls: imageUrls,
+          media: media,
         );
       } else if (_esTrabajo) {
         await widget.savePortfolio(
           businessId: widget.businessId,
           title: nombre,
           description: _desc.text,
-          imageUrls: imageUrls,
+          media: media,
         );
       } else if (_editing) {
         final defaults = _offerDefaultsForSave();
@@ -643,8 +831,64 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
         _toast('No se pudo guardar. Intenta de nuevo.');
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _uploadTotal = 0;
+          _uploadDone = 0;
+        });
+      }
     }
+  }
+
+  /// Sube fotos y videos NUEVOS de un trabajo — secuencial, no
+  /// `Future.wait` en paralelo como producto/servicio: así [_uploadDone]
+  /// refleja subidas REALES ya terminadas, no un contador decorativo. Con
+  /// 10 MB de video por datos móviles, un spinner ciego son minutos sin
+  /// saber si avanza (Task 13).
+  ///
+  /// Reusa la caché [_uploaded] por ruta local (foto, video Y poster
+  /// comparten el mismo mapa — la clave es la ruta, no colisiona) para no
+  /// volver a subir lo que ya subió un intento fallido anterior.
+  Future<List<PortfolioMedia>> _uploadTrabajoMedia() async {
+    setState(() {
+      _uploadTotal = _photos.length + _newVideos.length;
+      _uploadDone = 0;
+    });
+    final media = <PortfolioMedia>[
+      for (final url in _keptUrls) PortfolioMedia(url: url, kind: 'image'),
+    ];
+    for (final x in _photos) {
+      final url = _uploaded[x.path] ??= await uploadPortfolioMedia(x.path,
+          contentType: _imageContentTypeFor(x.path));
+      media.add(PortfolioMedia(url: url, kind: 'image'));
+      if (mounted) setState(() => _uploadDone++);
+    }
+    media.addAll(_keptVideos);
+    for (final v in _newVideos) {
+      final url = _uploaded[v.path] ??=
+          await uploadPortfolioMedia(v.path, contentType: 'video/mp4');
+      String? posterUrl;
+      final posterPath = v.posterPath;
+      if (posterPath != null) {
+        // El póster nunca bloquea el video: si ESTA subida (no la del
+        // video, que ya pasó) falla, el video sube igual con poster null.
+        try {
+          posterUrl = _uploaded[posterPath] ??= await uploadPortfolioMedia(
+              posterPath,
+              contentType: 'image/jpeg');
+        } catch (_) {
+          posterUrl = null;
+        }
+      }
+      media.add(PortfolioMedia(
+          url: url, kind: 'video', poster: posterUrl, duration: v.durationSeconds));
+      if (mounted) setState(() => _uploadDone++);
+    }
+    if (_newVideos.isNotEmpty) {
+      unawaited(VideoCompress.deleteAllCache());
+    }
+    return media;
   }
 
   Future<({String? categoryId, String? rubro})?> _fetchCatRubroSafely() async {
@@ -689,20 +933,37 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
             padding: EdgeInsets.fromLTRB(
                 16, 16, 16, 24 + navBarReservedSpace(context)),
             children: [
-              if (_keptUrls.isNotEmpty || _photos.isNotEmpty)
+              if (_keptUrls.isNotEmpty ||
+                  _photos.isNotEmpty ||
+                  _keptVideos.isNotEmpty ||
+                  _newVideos.isNotEmpty)
                 SizedBox(
                   height: 88,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    itemCount: _keptUrls.length + _photos.length,
+                    itemCount: _keptUrls.length +
+                        _photos.length +
+                        _keptVideos.length +
+                        _newVideos.length,
                     separatorBuilder: (_, _) => const SizedBox(width: 8),
-                    itemBuilder: (_, i) => i < _keptUrls.length
-                        ? _keptThumb(_keptUrls[i], i)
-                        : _localThumb(_photos[i - _keptUrls.length],
-                            i - _keptUrls.length),
+                    itemBuilder: (_, i) {
+                      if (i < _keptUrls.length) {
+                        return _keptThumb(_keptUrls[i], i);
+                      }
+                      i -= _keptUrls.length;
+                      if (i < _photos.length) return _localThumb(_photos[i], i);
+                      i -= _photos.length;
+                      if (i < _keptVideos.length) {
+                        return _keptVideoThumb(_keptVideos[i], i);
+                      }
+                      i -= _keptVideos.length;
+                      return _localVideoThumb(_newVideos[i], i);
+                    },
                   ),
                 ),
-              if (_photoCount < _maxPhotos)
+              // Task 13: el tope se mide en archivos totales (fotos + video),
+              // no solo fotos — ver [_fileCount].
+              if (_fileCount < _maxPhotos)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(children: [
@@ -724,6 +985,31 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
                       ),
                     ),
                   ]),
+                ),
+              // Solo trabajo tiene video. El botón sigue visible aunque ya
+              // haya 2 videos (tope de [kMaxPortfolioVideos]) — tocarlo
+              // rechaza con el toast, no se oculta: solo se oculta al llegar
+              // al tope de ARCHIVOS ([_fileCount]), igual que arriba.
+              if (_esTrabajo && _fileCount < _maxPhotos)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: (_busy || _compressingVideo)
+                          ? null
+                          : _pickVideo,
+                      icon: _compressingVideo
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.videocam_outlined),
+                      label: Text(_compressingVideo
+                          ? 'Procesando video…'
+                          : 'Agregar video'),
+                    ),
+                  ),
                 ),
               const SizedBox(height: 16),
               TextField(
@@ -747,6 +1033,23 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
                 _moldeSection(),
               ],
               const SizedBox(height: 20),
+              // Barra de progreso REAL de la subida (Task 13) — sube en
+              // pasos con cada archivo que termina de subir
+              // ([_uploadTrabajoMedia]), no es una animación decorativa.
+              // Solo aparece para trabajo con archivos nuevos por subir.
+              if (_uploading) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: _uploadDone / _uploadTotal,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text('Subiendo $_uploadDone de $_uploadTotal…',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                const SizedBox(height: 8),
+              ],
               FilledButton(
                 onPressed: _busy ? null : _save,
                 child: _busy
@@ -811,6 +1114,86 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
           right: 2,
           child: InkWell(
             onTap: () => setState(() => _photos.removeAt(index)),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              padding: const EdgeInsets.all(2),
+              child: const Icon(Icons.close, size: 14, color: Colors.white),
+            ),
+          ),
+        ),
+      ]);
+
+  /// Gris + ícono de video — mismo trato que un thumb de foto rota, pero
+  /// para un video sin póster (Task 13): degradación intencional, NUNCA se
+  /// intenta pintar el .mp4 como imagen (regla de `data/portfolio_media.dart`).
+  Widget _videoPlaceholder() => Container(
+        width: 88,
+        height: 88,
+        alignment: Alignment.center,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        child: Icon(Icons.videocam_outlined,
+            color: Theme.of(context).colorScheme.onSurfaceVariant),
+      );
+
+  /// Insignia de "esto es un video" sobre la miniatura — mismo patrón visual
+  /// que `tile_carril.dart` (`PortfolioTile`), a menor escala (miniatura de
+  /// 88 en vez de la tarjeta del carril).
+  Widget _playBadge() => const Positioned.fill(
+        child: Center(
+          child: CircleAvatar(
+            radius: 14,
+            backgroundColor: Colors.black54,
+            child: Icon(Icons.play_arrow, color: Colors.white, size: 16),
+          ),
+        ),
+      );
+
+  Widget _keptVideoThumb(PortfolioMedia v, int index) => Stack(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: v.poster == null
+              ? _videoPlaceholder()
+              : JayaloNetworkImage(v.poster!,
+                  width: 88,
+                  height: 88,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => _videoPlaceholder()),
+        ),
+        _playBadge(),
+        Positioned(
+          top: 2,
+          right: 2,
+          child: InkWell(
+            onTap: () => setState(() => _keptVideos.removeAt(index)),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              padding: const EdgeInsets.all(2),
+              child: const Icon(Icons.close, size: 14, color: Colors.white),
+            ),
+          ),
+        ),
+      ]);
+
+  Widget _localVideoThumb(_PickedVideo v, int index) => Stack(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: v.posterPath == null
+              ? _videoPlaceholder()
+              : Image.file(File(v.posterPath!),
+                  width: 88, height: 88, fit: BoxFit.cover),
+        ),
+        _playBadge(),
+        Positioned(
+          top: 2,
+          right: 2,
+          child: InkWell(
+            onTap: () => setState(() => _newVideos.removeAt(index)),
             child: Container(
               decoration: BoxDecoration(
                 color: Colors.black54,

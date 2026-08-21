@@ -15,6 +15,7 @@ import '../domain/phase.dart';
 import '../domain/profile_address.dart';
 import '../domain/request_requirements.dart';
 import 'location_body.dart';
+import 'portfolio_media.dart' show PortfolioMedia, imagesOf;
 
 final supa = Supabase.instance.client;
 
@@ -3009,18 +3010,57 @@ Future<String> uploadStoreProductImage(String filePath) =>
     _uploadMarketplaceImage(filePath, 'products');
 
 /// Foto de un trabajo del portafolio → `{uid}/portfolio/<ts>-<rand>`.
+///
+/// Desde la Task 13, los trabajos NUEVOS suben fotos Y videos por
+/// [uploadPortfolioMedia] (bucket `portfolio-media`, ruta plana) — esta
+/// función queda sin llamadores en el editor, pero se deja: es infraestructura
+/// inerte, no un bug (nada la invoca con datos reales).
 Future<String> uploadPortfolioImage(String filePath) =>
     _uploadMarketplaceImage(filePath, 'portfolio');
 
+/// Archivo (foto o video) de un trabajo → `portfolio-media/{uid}/<ts>-<rand>.<ext>`.
+///
+/// Ruta PLANA a proposito, NO `{uid}/portfolio/...`: el purgado de cuenta
+/// (`accountDeletion.server.ts:38`) usa un `.list(uid)` que no es recursivo, y
+/// lo anidado sobrevive al borrado (medido 2026-08-20: 75 de 84 objetos
+/// anidados sobreviven). Un video lleva cara y voz — más motivo para que la
+/// ruta sea alcanzable por el purgado.
+///
+/// ⚠️ El bucket `portfolio-media` TODAVIA NO EXISTE en prod (su migración
+/// está escrita y sin aplicar) — este código sube ahí de todas formas porque
+/// es lo planificado; no "arreglarlo" apuntando a otro bucket.
+Future<String> uploadPortfolioMedia(
+  String filePath, {
+  required String contentType,
+}) async {
+  final uid = supa.auth.currentUser!.id;
+  final dot = filePath.lastIndexOf('.');
+  final ext = (dot == -1 ? '' : filePath.substring(dot + 1).toLowerCase());
+  final rand = _rand.nextInt(1 << 31).toRadixString(16);
+  final path =
+      '$uid/${DateTime.now().millisecondsSinceEpoch}-$rand.${ext.isEmpty ? 'bin' : ext}';
+  await supa.storage.from('portfolio-media').upload(
+        path,
+        File(filePath),
+        fileOptions: FileOptions(contentType: contentType),
+      );
+  return supa.storage.from('portfolio-media').getPublicUrl(path);
+}
+
 /// Alta de un trabajo del portafolio desde la app (espejo del insert de
 /// `PortfolioEditorDialog.tsx` de la web: RLS de dueño, solo exige
-/// business_id + user_id + title). A diferencia de la web, las fotos van a
+/// business_id + user_id + title). A diferencia de la web, los archivos van a
 /// Storage y aquí se guardan URLs — nunca base64 en la BD (regla de la casa).
+///
+/// Escribe DOS columnas (Task 13): `media` con fotos Y videos completos, e
+/// `image_urls` como el ESPEJO solo-imagenes ([imagesOf]) — es lo que impide
+/// que un video llegue a `provider_offers` por "cargar trabajos anteriores"
+/// (`request_detail_screen.dart:644`). Ver `data/portfolio_media.dart`.
 Future<void> savePortfolioItem({
   required String businessId,
   required String title,
   String? description,
-  List<String> imageUrls = const [],
+  List<PortfolioMedia> media = const [],
 }) async {
   final uid = supa.auth.currentUser!.id;
   await supa.from('provider_portfolio_items').insert({
@@ -3029,26 +3069,46 @@ Future<void> savePortfolioItem({
     'title': title,
     'description':
         (description == null || description.trim().isEmpty) ? null : description.trim(),
-    'image_urls': imageUrls,
+    'media': [
+      for (final m in media)
+        {
+          'url': m.url,
+          'kind': m.kind,
+          'poster': m.poster,
+          'duration': m.duration,
+        },
+    ],
+    // El ESPEJO: solo imagenes. Ver el comentario de arriba.
+    'image_urls': imagesOf(media),
   });
 }
 
 /// Edita un trabajo propio del portafolio (RLS: dueño) — "Mi negocio" →
 /// tocar un `_PortfolioTile` propio (Task 8). Mismo criterio de
 /// `description` en blanco que [savePortfolioItem]: cadena vacía se guarda
-/// como `null`, no como `''`.
+/// como `null`, no como `''`. Mismo trato de `media`/`image_urls` que
+/// [savePortfolioItem] (Task 13).
 Future<void> updatePortfolioItem(
   String id, {
   required String title,
   String? description,
-  required List<String> imageUrls,
+  required List<PortfolioMedia> media,
 }) =>
     supa.from('provider_portfolio_items').update({
       'title': title,
       'description': (description == null || description.trim().isEmpty)
           ? null
           : description.trim(),
-      'image_urls': imageUrls,
+      'media': [
+        for (final m in media)
+          {
+            'url': m.url,
+            'kind': m.kind,
+            'poster': m.poster,
+            'duration': m.duration,
+          },
+      ],
+      'image_urls': imagesOf(media),
     }).eq('id', id);
 
 /// Borra un trabajo propio del portafolio (RLS: dueño) — "mantener presionado
