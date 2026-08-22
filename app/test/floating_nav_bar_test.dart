@@ -642,4 +642,86 @@ void main() {
       expect(find.byType(CenterArcMenu), findsNothing);
     });
   });
+
+  group('centro APAGADO (bug PO 2026-08-22)', () {
+    Widget hostEnabled(bool enabled, {void Function(int)? onSelected}) =>
+        MaterialApp(
+          theme: jayaloTheme(Brightness.light),
+          home: Scaffold(
+            bottomNavigationBar: FloatingNavBar(
+              destinations: dests,
+              currentIndex: kCenterIndex,
+              centerEnabled: enabled,
+              centerLabelOverride: 'En curso',
+              onSelected: onSelected ?? (_) {},
+            ),
+          ),
+        );
+
+    Color circuloDe(WidgetTester t) => t
+        .widgetList<Material>(find.descendant(
+            of: find.bySemanticsLabel('En curso'),
+            matching: find.byType(Material)))
+        .first
+        .color!;
+
+    testWidgets('apagado no avisa por onSelected al tocarlo', (tester) async {
+      final tocados = <int>[];
+      await tester.pumpWidget(hostEnabled(false, onSelected: tocados.add));
+      await tester.tap(find.bySemanticsLabel('En curso'));
+      await tester.pumpAndSettle();
+      expect(tocados, isEmpty);
+    });
+
+    testWidgets('encendido SI avisa (control positivo)', (tester) async {
+      final tocados = <int>[];
+      await tester.pumpWidget(hostEnabled(true, onSelected: tocados.add));
+      await tester.tap(find.bySemanticsLabel('En curso'));
+      await tester.pumpAndSettle();
+      expect(tocados, [kCenterIndex]);
+    });
+
+    testWidgets('apagado cambia el PAR entero, no solo el glifo',
+        (tester) async {
+      await tester.pumpWidget(hostEnabled(false));
+      final iconoApagado = iconFor(tester, 'En curso').color!;
+      final circuloApagado = circuloDe(tester);
+      final elevacionApagada = tester
+          .widgetList<Material>(find.descendant(
+              of: find.bySemanticsLabel('En curso'),
+              matching: find.byType(Material)))
+          .first
+          .elevation;
+      await tester.pumpWidget(hostEnabled(true));
+      final iconoEncendido = iconFor(tester, 'En curso').color!;
+      final circuloEncendido = circuloDe(tester);
+
+      // Esta es la DECISION que fija el test: apagar solo el glifo dejando el
+      // disco violeta a plena saturacion daba 1.98:1 y se leia ROTO, no
+      // apagado. Se atenua el contenedor tambien (tratamiento M3 de inactivo).
+      expect(iconoApagado, isNot(iconoEncendido));
+      expect(circuloApagado, isNot(circuloEncendido));
+      expect(elevacionApagada, 0);
+    });
+
+    testWidgets('apagado no es activable por lector de pantalla',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(hostEnabled(false));
+      final data =
+          tester.getSemantics(find.bySemanticsLabel('En curso')).getSemanticsData();
+      // La accion de activar es lo portante: con excludeSemantics el nodo de
+      // fuera es el UNICO que un lector de pantalla ve del boton central.
+      expect(data.hasAction(SemanticsAction.tap), isFalse);
+      // Control positivo: encendido SI expone la accion.
+      await tester.pumpWidget(hostEnabled(true));
+      expect(
+          tester
+              .getSemantics(find.bySemanticsLabel('En curso'))
+              .getSemanticsData()
+              .hasAction(SemanticsAction.tap),
+          isTrue);
+      handle.dispose();
+    });
+  });
 }

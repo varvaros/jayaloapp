@@ -121,6 +121,30 @@ const _serviceFrequencyOptions = [
 /// Valor centinela de la opción "Otra": NO se guarda, abre el campo de texto.
 const kServiceFrequencyOther = '__otra__';
 
+/// Cómo se pinta el botón central de la barra según en qué punto va la
+/// solicitud. Función PURA y de nivel de fichero para que tenga test propio:
+/// la pantalla necesita Supabase vivo, así que su `build` no es testeable, y
+/// sin esto el estado del botón se quedaría sin una sola aserción.
+({IconData icon, String label, bool enabled}) centerStateForCreate({
+  required bool started,
+  required bool submitted,
+}) {
+  // Publicada: la pantalla de éxito se queda hasta que el usuario toque «Ver
+  // mis solicitudes», y ahí el ＋ tampoco lleva a ningún sitio.
+  if (submitted) return (icon: Icons.add, label: 'Publicada', enabled: false);
+  // Conversación en marcha: apagado. Antes aquí se SOLTABA el botón, y eso
+  // devolvía el «＋ Nueva solicitud» del shell pintado ENCENDIDO, cuyo toque se
+  // come el guard de `pushCreateRequestOnce` — un no-op silencioso (bug PO
+  // 2026-08-22).
+  if (started) return (icon: Icons.add, label: 'En curso', enabled: false);
+  // Componiendo: la cámara manda (pedido PO 2026-07-28).
+  return (
+    icon: Icons.photo_camera_outlined,
+    label: 'Añadir foto',
+    enabled: true,
+  );
+}
+
 /// Foto pendiente de una solicitud: el `dataUrl` base64 viaja a la IA en cada
 /// turno — YA achicado a 768 px por `aiPhotoDataUrl` (F2), no es la original —
 /// mientras la ruta local (`file.path`), a calidad completa, se sube a
@@ -241,20 +265,41 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         _input.text.trim() != _seedTitle.trim();
   }
 
+  /// Estado del botón central de la barra, sincronizado desde `build` (mismo
+  /// patrón que la pantalla de la oferta del proveedor).
+  ///
+  /// Los tres estados, y por qué se decide AQUÍ y no en `_send`/`_submit`:
+  /// - **compositor** → cámara «Añadir foto» viva (pedido PO 2026-07-28: el ＋
+  ///   no hace nada dentro de esta pantalla, así que se lo queda la cámara);
+  /// - **conversación en marcha** → APAGADO (PO 2026-08-20: pasada la
+  ///   composición lo principal es contestar, y una cámara presidiendo la
+  ///   pantalla invita a otra cosa). Antes aquí se SOLTABA el botón, y soltarlo
+  ///   devolvía el «＋ Nueva solicitud» del shell pintado encendido cuyo toque
+  ///   se traga el guard de `pushCreateRequestOnce`: un no-op silencioso (bug
+  ///   PO 2026-08-22);
+  /// - **publicada** → APAGADO: la pantalla de éxito se queda hasta que el
+  ///   usuario toque «Ver mis solicitudes», y el ＋ seguía igual de inerte.
+  ///
+  /// Decidirlo desde `build` y no en los cuatro puntos donde el estado cambia
+  /// (`_send`, `_submit`, y los DOS `catch` que revierten al compositor si el
+  /// primer turno falla) es lo que impide que el próximo camino nuevo se
+  /// olvide de mantenerlo. `takeCenterAction` es idempotente, así que
+  /// llamarlo en cada frame no repinta la barra.
+  void _syncCenter(bool started) {
+    final s = centerStateForCreate(started: started, submitted: _submitted);
+    takeCenterAction(
+      owner: _centerCamera,
+      icon: s.icon,
+      label: s.label,
+      route: kCreateRequestRoute,
+      action: s.enabled ? _centerCamera : null,
+      enabled: s.enabled,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
-    // El ＋ de la barra no hace nada dentro de esta pantalla (home_shell no
-    // apila una segunda copia de la ruta en la que ya estás), así que se lo
-    // queda la cámara — pedido PO 2026-07-28. Se suelta al publicar y en
-    // dispose.
-    takeCenterAction(
-      owner: _centerCamera,
-      icon: Icons.photo_camera_outlined,
-      label: 'Añadir foto',
-      route: kCreateRequestRoute,
-      action: _centerCamera,
-    );
     // Cualquier salida — atrás del sistema (BackGuard), cambio de pestaña
     // (home_shell) o la flecha del header — pregunta antes de tirar el
     // trabajo. La función se registra una vez; la suciedad se evalúa al salir.
@@ -334,20 +379,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     // Mismo pulso que el chat entre personas: acá el usuario también le está
     // MANDANDO algo a alguien (la IA que arma la solicitud).
     JayaloHaptics.sent();
-    // Arrancada la conversación, el ＋ deja de ser «Añadir foto» (PO
-    // 2026-08-20). La cámara se lo queda mientras se COMPONE la solicitud,
-    // que es cuando adjuntar una foto es la acción principal; a partir de la
-    // primera pregunta lo principal es contestar, y un botón de cámara
-    // presidiendo la pantalla invita a otra cosa.
-    //
-    // No se pierde nada: el único punto del flujo donde hace falta otra foto
-    // es el turno `image_request`, y ese trae sus propios botones dentro del
+    // El estado del botón central lo decide `_syncCenter` desde `build` (la
+    // cámara deja de mandar en cuanto arranca la conversación, PO 2026-08-20).
+    // No se pierde nada: el único punto del flujo donde hace falta otra foto es
+    // el turno `image_request`, y ese trae sus propios botones dentro del
     // contenido («Tomar otra foto» / «Seguir sin foto»).
-    //
-    // `releaseCenterAction` compara por identidad y sale si ya no es el dueño,
-    // así que llamarlo en cada turno es inofensivo — y hace que el estado sea
-    // correcto aunque se entre por un camino que no pase por el compositor.
-    releaseCenterAction(_centerCamera);
     setState(() {
       _busy = true;
       _showOther = false;
@@ -840,9 +876,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             : null,
       );
       if (!mounted) return;
-      // Publicada: ya no hay a qué adjuntarle una foto, así que el botón
-      // central vuelve a ser el ＋ de siempre mientras se ve el éxito.
-      releaseCenterAction(_centerCamera);
+      // El botón central pasa a «Publicada» apagado en el `build` siguiente
+      // (`_syncCenter`): soltarlo aquí devolvía el ＋ encendido del shell, que
+      // en esta ruta no navega a ningún sitio.
+      //
       // Publicada: nada que perder — que ninguna salida pregunte.
       releaseUnsavedGuard(this);
       setState(() => _submitted = true);
@@ -878,6 +915,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   @override
   Widget build(BuildContext context) {
     final started = _messages.isNotEmpty;
+    _syncCenter(started);
     return Scaffold(
       body: Column(
         children: [

@@ -269,6 +269,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                   centerActionRoute,
                   centerActionLabel,
                   centerActionMenu,
+                  centerActionEnabled,
                 ]),
                 builder: (context, _) {
                   // El guard por ubicación sigue existiendo por la misma razón
@@ -292,6 +293,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                     centerIconOverride: tomado ? centerActionIcon.value : null,
                     centerLabelOverride: tomado ? centerActionLabel.value : null,
                     centerMenuItems: tomado ? centerActionMenu.value : null,
+                    // El `: true` es lo que garantiza que ninguna pantalla que
+                    // no pida el estado nuevo herede un apagado ajeno.
+                    centerEnabled: tomado ? centerActionEnabled.value : true,
                     // Badges de la barra: "Solicitudes" (índice 0, significado por
                     // rol) y "Mensajes" (mensajes de chat sin leer, pedido PO
                     // 2026-07-21). Cada pantalla mantiene su contador al día.
@@ -319,6 +323,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                         // encima de la oferta a medio llenar, que es justo el bug
                         // que esta feature viene a eliminar.
                         if (tomado && centerActionMenu.value != null) return;
+                        // Tomado y APAGADO: la barra ya no cablea el toque,
+                        // esto es la red por si algún camino se colara.
+                        if (tomado && !centerActionEnabled.value) return;
                         final taken = centerAction.value;
                         if (taken != null && tomado) {
                           taken();

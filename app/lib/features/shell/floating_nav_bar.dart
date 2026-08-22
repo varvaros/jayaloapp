@@ -75,6 +75,7 @@ class FloatingNavBar extends StatelessWidget {
     this.centerIconOverride,
     this.centerLabelOverride,
     this.centerMenuItems,
+    this.centerEnabled = true,
   });
 
   final List<NavDestination> destinations;
@@ -108,6 +109,11 @@ class FloatingNavBar extends StatelessWidget {
   /// saber qué hace cada ítem: solo lo pinta y lo avisa, igual que con los
   /// badges. Quien lo dibuja es `center_arc_menu.dart`.
   final List<CenterMenuItem>? centerMenuItems;
+
+  /// `false` = el centro se pinta ATENUADO y su toque no avisa por
+  /// [onSelected]. Mismo vocabulario que un [CenterMenuItem] apagado del arco.
+  /// Default `true`: ninguna pantalla que no lo pida cambia de conducta.
+  final bool centerEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -169,6 +175,7 @@ class FloatingNavBar extends StatelessWidget {
                     iconOverride: centerIconOverride,
                     labelOverride: centerLabelOverride,
                     menuItems: centerMenuItems,
+                    enabled: centerEnabled,
                     onTap: () => onSelected(kCenterIndex),
                   ),
                 ),
@@ -418,6 +425,7 @@ class _CenterButton extends StatefulWidget {
     this.iconOverride,
     this.labelOverride,
     this.menuItems,
+    this.enabled = true,
   });
 
   final NavDestination destination;
@@ -430,6 +438,9 @@ class _CenterButton extends StatefulWidget {
 
   /// No-nulo = tocar el botón DESPLIEGA en vez de avisar por [onTap].
   final List<CenterMenuItem>? menuItems;
+
+  /// Ver [FloatingNavBar.centerEnabled].
+  final bool enabled;
 
   @override
   State<_CenterButton> createState() => _CenterButtonState();
@@ -470,9 +481,10 @@ class _CenterButtonState extends State<_CenterButton>
   @override
   void didUpdateWidget(_CenterButton old) {
     super.didUpdateWidget(old);
-    // La pantalla soltó el botón (envió la oferta, salió) con el arco abierto:
-    // cerrarlo sin animación, porque lo que lo justificaba ya no existe.
-    if (widget.menuItems == null && _open) {
+    // La pantalla soltó el botón (envió la oferta, salió) —o lo APAGÓ— con el
+    // arco abierto: cerrarlo sin animación, porque lo que lo justificaba ya no
+    // existe.
+    if ((widget.menuItems == null || !widget.enabled) && _open) {
       _anim.value = 0;
       _portal.hide();
     }
@@ -485,6 +497,9 @@ class _CenterButtonState extends State<_CenterButton>
   }
 
   void _toggle() {
+    // Guarda defensiva: la barra ya no cablea el toque estando apagado, pero
+    // este es el único punto por el que se dispara la acción del centro.
+    if (!widget.enabled) return;
     final items = widget.menuItems;
     if (items == null || items.isEmpty) {
       widget.onTap();
@@ -534,12 +549,27 @@ class _CenterButtonState extends State<_CenterButton>
     // La etiqueta activa se queda en `onPrimaryContainer` (violeta oscuro),
     // legible sobre la píldora lila igual que las etiquetas laterales — un
     // violeta primario pequeño sobre lila no llegaría al 4.5:1 de texto.
-    final circleColor = cs.primary;
+    // Apagado: tratamiento estándar de Material 3 para un control inactivo —
+    // contenedor `onSurface` al 12%, contenido al 38%, sin elevación.
+    //
+    // ⚠️ NO basta con atenuar el GLIFO dejando el disco violeta a plena
+    // saturación (que es lo que hace el arco con sus satélites): medido, el
+    // glifo quedaba a 1.98:1 sobre el violeta, y un disco vivo con un símbolo
+    // casi invisible no se lee «apagado», se lee ROTO. En el arco funciona
+    // porque hay satélites encendidos al lado que dan la referencia; el botón
+    // central está solo. WCAG 1.4.11 exime a los controles inactivos, así que
+    // lo que manda aquí es que se LEA como apagado.
+    final circleColor =
+        widget.enabled ? cs.primary : cs.onSurface.withValues(alpha: .12);
     final label = widget.labelOverride ?? widget.destination.label;
     return Semantics(
       label: label,
       button: true,
       selected: widget.active,
+      // ⚠️ Apagar solo el `InkWell` NO basta: con `excludeSemantics: true` la
+      // única acción que ve un lector de pantalla es la de ESTE nodo, así que
+      // TalkBack seguiría activando un botón que la vista pinta apagado.
+      enabled: widget.enabled,
       excludeSemantics: true,
       // `_toggle` ya cae a `widget.onTap` cuando no hay menú (ver más abajo):
       // apuntar la acción semántica ahí, no a `widget.onTap` directo, porque
@@ -548,7 +578,7 @@ class _CenterButtonState extends State<_CenterButton>
       // ÚNICA acción de "activar" que un lector de pantalla expone para el
       // botón. Con `widget.onTap` aquí, TalkBack/VoiceOver navegaba en vez de
       // abrir el arco: nunca podían alcanzar el menú.
-      onTap: _toggle,
+      onTap: widget.enabled ? _toggle : null,
       child: OverlayPortal(
         controller: _portal,
         overlayChildBuilder: (context) => BackButtonListener(
@@ -619,10 +649,15 @@ class _CenterButtonState extends State<_CenterButton>
               child: Material(
                 color: circleColor,
                 shape: const CircleBorder(),
-                elevation: 6,
+                // Sin sombra apagado: un control inactivo no flota.
+                elevation: widget.enabled ? 6 : 0,
                 shadowColor: cs.shadow.withValues(alpha: .35),
                 child: InkWell(
-                  onTap: _toggle,
+                  // Apagado: sin `onTap` no hay splash ni acción. El toque
+                  // queda INERTE a propósito (sin toast): lo que apaga el
+                  // botón es un estado en curso que la etiqueta ya nombra —
+                  // misma doctrina que un satélite apagado por `busy`.
+                  onTap: widget.enabled ? _toggle : null,
                   customBorder: const CircleBorder(),
                   child: SizedBox(
                     width: _centerSize,
@@ -652,7 +687,12 @@ class _CenterButtonState extends State<_CenterButton>
                               ? Icons.close
                               : (widget.iconOverride ??
                                     widget.destination.icon),
-                          color: cs.onPrimary,
+                          // El GLIFO no cambia (un símbolo distinto diría «otro
+                          // botón», no «este botón, apagado»); lo que cambia es
+                          // el par contenedor/contenido, ver `circleColor`.
+                          color: widget.enabled
+                              ? cs.onPrimary
+                              : cs.onSurface.withValues(alpha: .38),
                           size: 28,
                         ),
                       ),

@@ -102,6 +102,17 @@ final ValueNotifier<String?> centerActionLabel = ValueNotifier(null);
 /// Destinos del menú. No-nulo = el centro DESPLIEGA en vez de actuar.
 final ValueNotifier<List<CenterMenuItem>?> centerActionMenu = ValueNotifier(null);
 
+/// `false` = el centro está TOMADO pero APAGADO: se pinta atenuado y su toque
+/// no dispara nada. Es el mismo concepto de [CenterMenuItem.enabled], para el
+/// botón de acción única.
+///
+/// Existe porque SOLTAR el botón no es lo mismo que apagarlo (bug PO
+/// 2026-08-22): al soltarlo, el shell vuelve a pintar su destino por defecto
+/// —«＋ Nueva solicitud», encendido— y ese toque, estando ya dentro de crear
+/// solicitud, lo come el guard de `pushCreateRequestOnce` sin hacer nada. Un
+/// botón encendido que se traga el toque en silencio es peor que uno apagado.
+final ValueNotifier<bool> centerActionEnabled = ValueNotifier(true);
+
 /// Toma el botón central.
 ///
 /// Idempotente: volver a llamarlo con lo mismo no notifica a nadie. Los
@@ -115,14 +126,20 @@ void takeCenterAction({
   String? route,
   VoidCallback? action,
   List<CenterMenuItem>? menu,
+  bool enabled = true,
 }) {
   // `menu: []` (no-nulo pero VACÍO) es un estado ambiguo, no uno útil: la
   // barra lo trata exactamente como `menu: null` (`_CenterButton._toggle`
   // cae a `widget.onTap` con cualquiera de los dos), así que dejar pasar la
   // lista vacía aquí solo escondería, en quien llama, el mismo error de
   // "tomé el botón y no le di nada que hacer" que este assert ya vigila.
-  assert(action != null || (menu != null && menu.isNotEmpty),
-      'Un botón tomado que no hace nada es justo el estado que esto viene a eliminar.');
+  //
+  // El invariante que esto protege NO es «tomado ⇒ tiene qué hacer», sino
+  // «se pinta ENCENDIDO ⇒ tiene qué hacer». `enabled: false` es esa misma
+  // vaciedad, pero declarada y PINTADA: el usuario ve que está apagado, que es
+  // justo lo contrario del accidente que el assert vigila.
+  assert(!enabled || action != null || (menu != null && menu.isNotEmpty),
+      'Un botón ENCENDIDO que no hace nada es justo el estado que esto viene a eliminar.');
   _applySafely(() {
     // Todo lo que el shell LEE se asigna antes que `centerAction`/
     // `centerActionMenu`, que son los que disparan el repintado: así cuando la
@@ -132,8 +149,12 @@ void takeCenterAction({
     centerActionLabel.value = label;
     centerActionRoute.value = route;
     centerActionOwner.value = owner;
+    centerActionEnabled.value = enabled;
     if (!listEquals(centerActionMenu.value, menu)) centerActionMenu.value = menu;
-    centerAction.value = action;
+    // Apagado ⇒ SIN acción, aunque quien llame haya pasado una: así el estado
+    // «apagado pero con algo colgando» no existe aguas abajo y ningún camino
+    // del shell puede dispararla por accidente.
+    centerAction.value = enabled ? action : null;
   });
 }
 
@@ -182,4 +203,9 @@ void releaseCenterAction(Object owner) => _applySafely(() {
       centerActionLabel.value = null;
       centerActionRoute.value = null;
       centerActionMenu.value = null;
+      // ⚠️ SIN ESTA LÍNEA, una pantalla que se va estando APAGADA deja el
+      // botón central muerto en TODA la app: el shell solo mira
+      // `centerActionEnabled` cuando alguien tiene el botón, pero el default
+      // de la barra lo lee igual y nadie lo volvería a encender.
+      centerActionEnabled.value = true;
     });

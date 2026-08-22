@@ -18,6 +18,39 @@ void main() {
     centerActionRoute.value = null;
     centerActionLabel.value = null;
     centerActionMenu.value = null;
+    centerActionEnabled.value = true;
+  });
+
+  group('apagado (bug PO 2026-08-22)', () {
+    test('tomar apagado deja el centro TOMADO pero con enabled en false', () {
+      void owner() {}
+      takeCenterAction(
+          owner: owner, icon: Icons.add, label: 'En curso', enabled: false);
+      expect(centerActionEnabled.value, isFalse);
+      expect(centerActionOwner.value, same(owner));
+      expect(centerActionLabel.value, 'En curso');
+      // Apagado NO necesita accion: es justo lo que lo distingue de un boton
+      // encendido sin nada que hacer (que el assert sigue prohibiendo).
+      expect(centerAction.value, isNull);
+    });
+
+    test('soltar RESETEA enabled a true', () {
+      // Sin esto, una pantalla que se va estando apagada dejaria el boton
+      // central muerto en TODA la app.
+      void owner() {}
+      takeCenterAction(owner: owner, icon: Icons.add, enabled: false);
+      expect(centerActionEnabled.value, isFalse);
+      releaseCenterAction(owner);
+      expect(centerActionEnabled.value, isTrue);
+    });
+
+    test('un take posterior ENCENDIDO limpia el apagado del anterior', () {
+      void a() {}
+      void b() {}
+      takeCenterAction(owner: a, icon: Icons.add, enabled: false);
+      takeCenterAction(owner: b, icon: Icons.photo_camera_outlined, action: b);
+      expect(centerActionEnabled.value, isTrue);
+    });
   });
 
   group('store', () {

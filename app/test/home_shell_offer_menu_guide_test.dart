@@ -29,6 +29,7 @@ void main() {
     centerActionRoute.value = null;
     centerActionLabel.value = null;
     centerActionMenu.value = null;
+    centerActionEnabled.value = true;
   });
 
   GoRouter router() => GoRouter(

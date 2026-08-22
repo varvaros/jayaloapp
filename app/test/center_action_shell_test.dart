@@ -22,6 +22,7 @@ void main() {
     centerActionRoute.value = null;
     centerActionLabel.value = null;
     centerActionMenu.value = null;
+    centerActionEnabled.value = true;
   });
 
   /// Pantalla que se apropia del centro en `initState` y lo suelta en
