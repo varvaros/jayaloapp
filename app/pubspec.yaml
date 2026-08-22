@@ -55,6 +55,10 @@ dependencies:
   # Recorte de la foto tras tomarla/elegirla (pedido PO: al solicitar aparece
   # un crop). Requiere la UCropActivity en el AndroidManifest.
   image_cropper: ^9.1.0
+  # Recompresión Dart-pura de la foto que viaja a la IA (768 px, F2). Ya
+  # estaba resuelta como transitiva de flutter_launcher_icons: promoverla es
+  # cero descarga y cero código nativo.
+  image: ^4.8.0
   shared_preferences: ^2.5.2
   # Versión/build number de la app para el campo `release` del reporte de
   # errores (task 12, reporter Flutter → /api/public/hooks/report-error).

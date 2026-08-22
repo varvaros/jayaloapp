@@ -14,6 +14,7 @@ import '../../core/center_action.dart';
 import '../../core/create_request_nav.dart';
 import '../../core/unsaved_guard.dart';
 import '../../data/repos.dart';
+import '../../domain/ai_image.dart';
 import '../../domain/ai_question_options.dart';
 import '../../domain/ai_turns.dart';
 import '../../domain/catalog.dart';
@@ -121,7 +122,9 @@ const _serviceFrequencyOptions = [
 const kServiceFrequencyOther = '__otra__';
 
 /// Foto pendiente de una solicitud: el `dataUrl` base64 viaja a la IA en cada
-/// turno; la ruta local (`file.path`) se sube a Storage al enviar.
+/// turno — YA achicado a 768 px por `aiPhotoDataUrl` (F2), no es la original —
+/// mientras la ruta local (`file.path`), a calidad completa, se sube a
+/// Storage al enviar.
 class _PendingPhoto {
   _PendingPhoto(this.file, this.dataUrl);
   final XFile file;
@@ -292,14 +295,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     try {
       final bytes = await http.readBytes(Uri.parse(url));
       final png = url.toLowerCase().contains('.png');
-      final mime = png ? 'image/png' : 'image/jpeg';
       final ext = png ? 'png' : 'jpg';
       final f = File(
         '${Directory.systemTemp.path}/seed_'
         '${DateTime.now().millisecondsSinceEpoch}.$ext',
       );
       await f.writeAsBytes(bytes);
-      final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
+      // Antes viajaban los bytes CRUDOS de Storage (una foto histórica podía
+      // ser enorme) con el mime adivinado por la extensión. La versión IA los
+      // achica a 768 px y detecta el mime por bytes mágicos (F2).
+      final dataUrl = await aiPhotoDataUrl(bytes);
       if (!mounted) return;
       setState(() {
         _photos.add(_PendingPhoto(XFile(f.path), dataUrl));
@@ -432,8 +437,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _toast(res.message);
       return false;
     }
-    final dataUrl =
-        'data:${_imageMime(cropped.path)};base64,${base64Encode(bytes)}';
+    // La IA recibe la versión de 768 px (F2); `cropped` conserva la original
+    // para Storage y previews.
+    final dataUrl = await aiPhotoDataUrl(bytes);
     if (mounted) {
       setState(() {
         if (replaceLast && _photos.isNotEmpty) _photos.removeLast();
@@ -541,15 +547,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     if (source != null) await _pickPhoto(source);
   }
 
-  String _imageMime(String path) {
-    final dot = path.lastIndexOf('.');
-    final ext = dot == -1 ? '' : path.substring(dot + 1).toLowerCase();
-    return switch (ext) {
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      _ => 'image/jpeg',
-    };
-  }
 
   Future<void> _handleTurn(AiTurn turn) async {
     switch (turn) {
