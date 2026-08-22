@@ -5,6 +5,7 @@ import '../../shared/jayalo_loader.dart';
 import '../../shared/onboarding_guide.dart';
 import '../../shared/onboarding_copy.dart';
 import '../../../core/motion.dart';
+import 'bubbles.dart' show chatPalette;
 
 enum PlusAction {
   sendAddress,
@@ -169,54 +170,105 @@ class _ChatComposerState extends State<ChatComposer> {
             ])));
   }
 
+  /// Boton de icono compacto para el interior de la pildora: sin el area de
+  /// 48 px de `IconButton`, que en la barra de WhatsApp/Telegram partiria el
+  /// alto del campo. 40 px sigue siendo blanco de toque valido.
+  Widget _pillIcon(IconData icon, VoidCallback onTap, Color color,
+      {String? tooltip}) {
+    return IconButton(
+      onPressed: onTap,
+      icon: Icon(icon, size: 22),
+      color: color,
+      tooltip: tooltip,
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // El chat vive en un Scaffold ANIDADO dentro del shell, que conserva una
-    // bottomNavigationBar animada aunque esté oculta en la conversación: en esa
-    // combinación el `padding.bottom` del MediaQuery del cuerpo puede quedar
-    // recortado, así que un `SafeArea` normal no repone el inset y el composer
+    // bottomNavigationBar animada aunque este oculta en la conversacion: en esa
+    // combinacion el `padding.bottom` del MediaQuery del cuerpo puede quedar
+    // recortado, asi que un `SafeArea` normal no repone el inset y el composer
     // quedaba "muy debajo", pegado a la barra de gestos (pedido PO 2026-07-21:
-    // subirlo). Se usa el `viewPadding` CRUDO (que el Scaffold no recorta) más
-    // un respiro fijo; con el teclado abierto ese inset físico ya no aplica
-    // (el teclado ocupa esa zona) → se colapsa para que el campo quede justo
+    // subirlo). Se usa el `viewPadding` CRUDO (que el Scaffold no recorta) mas
+    // un respiro fijo; con el teclado abierto ese inset fisico ya no aplica
+    // (el teclado ocupa esa zona) -> se colapsa para que el campo quede justo
     // encima del teclado sin hueco muerto.
     final mq = MediaQuery.of(context);
     final keyboardUp = mq.viewInsets.bottom > 0;
     final bottomGap = 8.0 + (keyboardUp ? 0.0 : mq.viewPadding.bottom);
+    // Pildora unica al estilo WhatsApp/Telegram (referencia del PO
+    // 2026-08-22): los accesorios viven DENTRO de la barra de mensaje —
+    // emoji a la izquierda, adjuntos a la derecha — y solo el envio queda
+    // fuera, como circulo de accion. Antes los tres iconos comian el ancho
+    // por la izquierda y el campo de texto quedaba estrangulado.
+    final pal = chatPalette(context);
+    final iconColor = pal.ink.withValues(alpha: .60);
     return Padding(
-      padding: EdgeInsets.fromLTRB(4, 4, 8, bottomGap),
+      padding: EdgeInsets.fromLTRB(8, 6, 8, bottomGap),
       child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        IconButton(onPressed: _openPlusMenu, icon: const Icon(Icons.add)),
-        IconButton(onPressed: _openEmojis, icon: const Icon(Icons.emoji_emotions_outlined)),
-        OnboardingGuide(
-          guideKey: 'chat.quick_replies.v1',
-          steps: onboardingCopy['chat.quick_replies.v1']!,
-          order: 2,
-          child: IconButton(
-              onPressed: _openQuickList,
-              // Burbuja con rayo = respuestas rápidas. NO `auto_awesome`: las
-              // chispitas son el ícono universal de IA y este botón abre
-              // mensajes preguardados, no una IA.
-              icon: const Icon(Icons.quickreply_outlined)),
-        ),
         Expanded(
-          child: TextField(
-            controller: _ctrl,
-            // Borrar también cuenta como "estoy escribiendo": el usuario sigue
-            // trabajando en el mensaje. Por eso el aviso va en `onChanged` y no
-            // condicionado a que el texto crezca.
-            onChanged: (_) => widget.onTyping?.call(),
-            maxLines: 4,
-            minLines: 1,
-            maxLength: maxMessageLen,
-            buildCounter: (_, {required currentLength, required isFocused, maxLength}) =>
-                currentLength >= maxMessageLen * 0.8
-                    ? Text('$currentLength/$maxLength', style: const TextStyle(fontSize: 10))
-                    : null,
-            decoration: const InputDecoration(
-                hintText: 'Escribe un mensaje…',
-                isDense: true,
-                border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(20)))),
+          child: Container(
+            key: const Key('chat.composer.pill'),
+            decoration: BoxDecoration(
+              color: pal.peer,
+              borderRadius: BorderRadius.circular(26),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              _pillIcon(Icons.emoji_emotions_outlined, _openEmojis, iconColor,
+                  tooltip: 'Emojis'),
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  // Borrar tambien cuenta como "estoy escribiendo": el usuario
+                  // sigue trabajando en el mensaje. Por eso el aviso va en
+                  // `onChanged` y no condicionado a que el texto crezca.
+                  onChanged: (_) => widget.onTyping?.call(),
+                  maxLines: 4,
+                  minLines: 1,
+                  maxLength: maxMessageLen,
+                  style: TextStyle(fontSize: 15, color: pal.ink),
+                  cursorColor: Theme.of(context).colorScheme.primary,
+                  buildCounter: (_,
+                          {required currentLength,
+                          required isFocused,
+                          maxLength}) =>
+                      currentLength >= maxMessageLen * 0.8
+                          ? Text('$currentLength/$maxLength',
+                              style: const TextStyle(fontSize: 10))
+                          : null,
+                  decoration: InputDecoration(
+                    hintText: 'Escribe un mensaje…',
+                    hintStyle: TextStyle(fontSize: 15, color: iconColor),
+                    isDense: true,
+                    // Sin marco: el marco ahora es la pildora que envuelve
+                    // campo + iconos.
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
+                  ),
+                ),
+              ),
+              OnboardingGuide(
+                guideKey: 'chat.quick_replies.v1',
+                steps: onboardingCopy['chat.quick_replies.v1']!,
+                order: 2,
+                // Burbuja con rayo = respuestas rapidas. NO `auto_awesome`: las
+                // chispitas son el icono universal de IA y este boton abre
+                // mensajes preguardados, no una IA.
+                child: _pillIcon(
+                    Icons.quickreply_outlined, _openQuickList, iconColor,
+                    tooltip: 'Mensajes predeterminados'),
+              ),
+              _pillIcon(Icons.add, _openPlusMenu, iconColor,
+                  tooltip: 'Adjuntar'),
+            ]),
           ),
         ),
         const SizedBox(width: 6),
