@@ -148,6 +148,63 @@ abstract final class JayaloMotion {
   /// Escala de una superficie mientras está presionada.
   static const pressedScale = .98;
 
+  // ── El SALUDO del borde de "sin ver" (PO 2026-08-19/20) ───────────────
+  //
+  // El borde violeta que marca una oferta/solicitud que aún no has abierto
+  // ya no aparece de golpe: RESPIRA unas cuantas veces y se detiene en el
+  // borde lleno, que es la marca de siempre. El movimiento saluda; el borde
+  // quieto es el estado — por eso lo PERMANENTE (una oferta aceptada) lleva
+  // su borde de estado sin animar, y nunca este.
+  //
+  // Es finito A PROPÓSITO. Un latido perpetuo habría sido la primera
+  // animación en bucle de la app —todo lo demás aquí es de una sola pasada—
+  // y habría costado repintar la tarjeta mientras estuviera en pantalla, en
+  // una LISTA. Con un número de respiros el controlador corre unos segundos
+  // y se apaga.
+  //
+  // CUÁNDO saluda (decisión PO: opción "a"): cada vez que la tarjeta se
+  // CONSTRUYE, más la vez en que pasa a estar "sin ver" sin cambiar de sitio.
+  // En un `ListView.builder` eso significa que saluda otra vez al volver a
+  // entrar en pantalla; se aceptó ese parpadeo a cambio de no llevar
+  // contabilidad de qué tarjeta ya saludó. Lo que NO hace es re-saludar en
+  // cada reconstrucción del padre: eso sería un parpadeo en cada `setState`
+  // de la lista, que es bastante peor que lo que se aceptó.
+
+  /// Cuánto dura UN respiro. 👉 LA PALANCA de la velocidad del saludo.
+  static const pulseCycle = Duration(milliseconds: 1600);
+
+  /// Cuántos respiros da antes de quedarse quieto. Con [pulseCycle] en 1600
+  /// el saludo completo dura 4.8 s.
+  static const pulseBreaths = 3;
+
+  /// Opacidad del borde en lo más hondo del PRIMER respiro.
+  static const pulseDepth = .30;
+
+  /// Y en lo más hondo del ÚLTIMO. Que no sea 1 es lo que hace que el último
+  /// respiro se note apenas, en vez de no existir.
+  static const pulseDepthLast = .92;
+
+  /// Opacidad del borde en el instante [t] (0..1 del saludo completo).
+  ///
+  /// Cada respiro es un valle de coseno —suave en los dos extremos, sin
+  /// esquinas— y cada uno se apaga MENOS que el anterior, así el saludo se
+  /// asienta en vez de cortarse. En t=0 y en t=1 vale exactamente 1: la
+  /// tarjeta entra y se queda con el borde lleno.
+  ///
+  /// Vive aquí y no en el widget porque es la CURVA del movimiento, y en
+  /// este archivo es donde viven las curvas.
+  static double pulseOpacity(double t) {
+    if (pulseBreaths <= 0) return 1;
+    final u = t.clamp(0.0, 1.0) * pulseBreaths;
+    final i = math.min(u.floor(), pulseBreaths - 1); // respiro en curso
+    final valle = (1 - math.cos(2 * math.pi * (u - i))) / 2; // 0 → 1 → 0
+    final fondo = pulseBreaths == 1
+        ? pulseDepth
+        : pulseDepth +
+            (pulseDepthLast - pulseDepth) * (i / (pulseBreaths - 1));
+    return 1 - valle * (1 - fondo);
+  }
+
   /// Mantener presionado para confirmar una decisión definitiva (aceptar una
   /// oferta, desbloquear un contacto). PO 2026-07-22: 2.5 s — barrera
   /// deliberada pero no eterna; evita aceptaciones/cobros por reflejo.

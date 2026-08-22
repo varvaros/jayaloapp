@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Postura de red EXPLÍCITA (hallazgo de Aikido, 2026-08-19).
+
+  Con targetSdk 36 y minSdk 24 Android ya aplica esto por defecto: el tráfico
+  en claro está prohibido desde targetSdk 28, y las CAs que instala el usuario
+  dejaron de ser de confianza en minSdk 24 — que es justo lo que frena el MITM
+  con un proxy y su certificado puesto a mano.
+
+  Este fichero no cambia el comportamiento: lo CONGELA. Sin él, basta con que
+  una dependencia fusione `usesCleartextTraffic="true"` en su manifest, o con
+  que alguien lo añada para depurar y se le olvide quitarlo, para que el
+  tráfico en claro vuelva a estar permitido sin que nadie se entere. Con él,
+  este fichero manda sobre lo que digan los manifests fusionados.
+
+  SIN pinning de certificado, a propósito. Los endpoints son Supabase
+  (certificados de AWS) y jayalo.com (Cloudflare); ambos rotan certificados y
+  CAs sin avisar. Un pin va quemado en el APK y solo se cambia publicando una
+  versión nueva, que tarda días en pasar revisión de Play: el día de la
+  rotación, la app queda muerta para TODOS los usuarios instalados hasta que
+  Google apruebe. Es cambiar un riesgo hipotético por una caída probable.
+
+  SIN <debug-overrides>: los builds de debug y profile no se publican, y
+  añadir ahí confianza en CAs de usuario solo sirve para inspeccionar el
+  tráfico con un proxy. Si algún día hace falta para depurar, va aquí y solo
+  aplica cuando android:debuggable=true.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

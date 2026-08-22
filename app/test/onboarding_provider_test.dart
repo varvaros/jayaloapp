@@ -15,8 +15,8 @@ void main() {
     await t.pumpWidget(MaterialApp(
       home: Scaffold(
         body: OnboardingGuide(
-          guideKey: 'provider.make_offer.v1',
-          steps: onboardingCopy['provider.make_offer.v1']!,
+          guideKey: 'provider.make_offer.v2',
+          steps: onboardingCopy['provider.make_offer.v2']!,
           child: const SizedBox(width: 160, height: 48, child: Text('Hacer oferta')),
         ),
       ),
@@ -25,6 +25,6 @@ void main() {
     expect(find.byKey(const Key('onboardingCard')), findsOneWidget);
     await t.tap(find.text('Entendido'));
     await t.pumpAndSettle();
-    expect(onboardingStore.isDone('provider.make_offer.v1'), isTrue);
+    expect(onboardingStore.isDone('provider.make_offer.v2'), isTrue);
   });
 }

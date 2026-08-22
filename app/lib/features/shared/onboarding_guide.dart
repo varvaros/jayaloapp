@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/motion.dart';
@@ -56,6 +58,10 @@ class OnboardingGuide extends StatefulWidget {
   State<OnboardingGuide> createState() => _OnboardingGuideState();
 }
 
+/// Menos espacio que esto a un lado del hueco no da ni para el texto ni para
+/// los botones: la guía se centra en vez de espachurrarse contra el borde.
+const double _kMinCardSpace = 150;
+
 class _OnboardingGuideState extends State<OnboardingGuide>
     with SingleTickerProviderStateMixin {
   final _portal = OverlayPortalController();
@@ -72,11 +78,20 @@ class _OnboardingGuideState extends State<OnboardingGuide>
   late final Animation<double> _fade;
 
   Rect? _anchorRect; // rect GLOBAL del elemento a resaltar (para el hueco)
+
+  /// Scroll que contiene al ancla, mientras la guía espera a que el ancla
+  /// entre en pantalla. Ver [_watchScroll].
+  ScrollPosition? _watched;
+  bool _scrollCheckQueued = false;
+
   bool _done = false;
   bool _closing = false; // cerrando con animación (evita doble _complete)
   bool _measureFailed = false;
   bool _acquired = false;
   int _step = 0;
+
+  /// Última generación de "Reiniciar tutorial" vista por esta guía.
+  int _seenReset = onboardingStore.resetGeneration;
 
   bool get _shouldShow =>
       widget.enabled && !_done && !onboardingStore.isDone(widget.guideKey);
@@ -120,6 +135,7 @@ class _OnboardingGuideState extends State<OnboardingGuide>
   @override
   void dispose() {
     onboardingStore.removeListener(_onStore);
+    _watched?.removeListener(_onScroll);
     _releaseIfHeld();
     _anim.dispose();
     super.dispose();
@@ -134,6 +150,17 @@ class _OnboardingGuideState extends State<OnboardingGuide>
 
   void _onStore() {
     if (!mounted) return;
+    // "Reiniciar tutorial" (Ajustes): la guía vuelve a estar pendiente aunque
+    // ya se hubiera completado EN ESTA sesión, sin desmontar la pantalla. Se
+    // mira el CONTADOR de reinicios y no `isDone`, porque entre cerrar una
+    // guía y persistirla hay un frame en que el store todavía no la tiene —
+    // ahí `isDone` diría "pendiente" y la guía resucitaría sola.
+    if (onboardingStore.resetGeneration != _seenReset) {
+      _seenReset = onboardingStore.resetGeneration;
+      _done = false;
+      _closing = false;
+      _step = 0;
+    }
     if (!_shouldShow) {
       if (_portal.isShowing) _hideAnimated();
       _releaseIfHeld();
@@ -155,6 +182,36 @@ class _OnboardingGuideState extends State<OnboardingGuide>
     return box.localToGlobal(Offset.zero) & box.size;
   }
 
+  /// Franja de pantalla que el usuario VE de verdad: sin la zona del sistema
+  /// de arriba y sin lo que tape el teclado. Fuera de aquí no hay guía que
+  /// valga — ni el hueco se ve ni la tarjeta se lee.
+  ///
+  /// Se lee de [View] y NO de [MediaQuery]: el `Scaffold` que redimensiona con
+  /// el teclado le QUITA los `viewInsets` al MediaQuery de su cuerpo, así que
+  /// desde dentro de una pantalla el teclado parece no existir — y un ancla
+  /// tapada por el teclado se daría por visible.
+  Rect _viewport(BuildContext context) {
+    final view = View.of(context);
+    final dpr = view.devicePixelRatio;
+    final size = view.physicalSize / dpr;
+    return Rect.fromLTRB(
+      0,
+      view.padding.top / dpr,
+      size.width,
+      size.height - view.viewInsets.bottom / dpr,
+    );
+  }
+
+  /// ¿El ancla está lo bastante dentro de la pantalla como para resaltarla?
+  /// Exige que se vea al menos el 60% de su alto: media docena de píxeles
+  /// asomando por el borde no es "visible", y anclar ahí deja la tarjeta
+  /// pegada al canto.
+  bool _anchorVisible(Rect r, Rect vp) {
+    final visibleHeight =
+        math.min(r.bottom, vp.bottom) - math.max(r.top, vp.top);
+    return visibleHeight >= r.height * .6 && r.left < vp.right && r.right > vp.left;
+  }
+
   void _measureAndMaybeShow() {
     if (!mounted || !_shouldShow) return;
     if (widget.mode == OnboardingMode.welcome) {
@@ -164,6 +221,17 @@ class _OnboardingGuideState extends State<OnboardingGuide>
     final rect = _measureAnchor();
     if (rect != null) {
       setState(() => _anchorRect = rect);
+      // El ancla existe pero está FUERA de la pantalla (el caso del botón de
+      // enviar la oferta, al final de un formulario largo: el `RenderBox` está
+      // dispuesto y se mide, solo que 1.200 px más abajo del borde). Mostrar
+      // ahí pintaba el velo con el hueco y la tarjeta fuera de cuadro — el
+      // usuario veía la pantalla oscura y sin texto, y al tocar para salir la
+      // guía se marcaba como vista PARA SIEMPRE (bug PO 2026-08-22). Ahora se
+      // ESPERA: ni se pide turno ni se quema; cuando el ancla entra en
+      // pantalla al hacer scroll, la guía aparece sobre ella.
+      if (!_anchorVisible(rect, _viewport(context)) && _watchScroll()) {
+        return; // hay scroll: se espera a que el ancla suba a la pantalla
+      }
       _tryShow();
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -171,12 +239,45 @@ class _OnboardingGuideState extends State<OnboardingGuide>
         final retry = _measureAnchor();
         if (retry != null) {
           setState(() => _anchorRect = retry);
+          if (!_anchorVisible(retry, _viewport(context)) && _watchScroll()) {
+            return;
+          }
           _tryShow();
         } else {
           setState(() => _measureFailed = true); // fallback: hijo en línea
         }
       });
     }
+  }
+
+  /// Se engancha al scroll que contiene al ancla para volver a intentarlo
+  /// cuando el elemento entre en pantalla. Sin esto, una guía cuyo botón nace
+  /// bajo el pliegue no se mostraría nunca: un scroll no reconstruye a la guía,
+  /// así que ningún `post-frame` la despertaría.
+  /// Devuelve `false` si el ancla NO vive dentro de ningún scroll: ahí no hay
+  /// nada que esperar, así que la guía se muestra igual — con la tarjeta
+  /// centrada y sin hueco (ver [_buildOverlay]). Perder una guía por callada
+  /// sería peor que enseñarla sin foco.
+  bool _watchScroll() {
+    final ctx = (widget.anchorKey ?? _anchorKey).currentContext;
+    final pos = ctx == null ? null : Scrollable.maybeOf(ctx)?.position;
+    if (identical(pos, _watched)) return _watched != null;
+    _watched?.removeListener(_onScroll);
+    _watched = pos;
+    _watched?.addListener(_onScroll);
+    return pos != null;
+  }
+
+  /// Reintento al asentarse el frame (el scroll notifica muchas veces por
+  /// gesto; una sola comprobación por frame basta).
+  void _onScroll() {
+    if (!mounted || _scrollCheckQueued || !_shouldShow) return;
+    if (_portal.isShowing || onboardingStore.isActive(widget.guideKey)) return;
+    _scrollCheckQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollCheckQueued = false;
+      if (mounted) _measureAndMaybeShow();
+    });
   }
 
   void _tryShow() {
@@ -197,6 +298,13 @@ class _OnboardingGuideState extends State<OnboardingGuide>
   void _syncPortal() {
     if (!mounted) return;
     if (onboardingStore.isActive(widget.guideKey) && !_portal.isShowing) {
+      // Re-medir AHORA: entre la medición y el turno pueden pasar frames (la
+      // guía espera en cola detrás de otra, o el ancla venía animando su
+      // entrada), y abrir con un rect viejo deja el foco desalineado.
+      if (widget.mode == OnboardingMode.anchored) {
+        final fresh = _measureAnchor();
+        if (fresh != null) _anchorRect = fresh;
+      }
       _portal.show();
       _anim.duration =
           JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base;
@@ -243,8 +351,16 @@ class _OnboardingGuideState extends State<OnboardingGuide>
     final content =
         wrap ? KeyedSubtree(key: _anchorKey, child: widget.child) : widget.child;
 
+    // `rootOverlay`: el velo y la tarjeta se pintan por ENCIMA de todo,
+    // incluida la barra flotante del shell. Sin esto, una guía declarada dentro
+    // de una pantalla entra en el Overlay del Navigator ANIDADO —que el
+    // `Scaffold` del shell pinta DEBAJO de su `bottomNavigationBar`— y con el
+    // ancla baja la barra le tapaba los botones «Saltar/Entendido» (visto en
+    // device, PO 2026-08-22). Las guías del propio shell nunca lo sufrieron
+    // porque ya nacían en el Overlay raíz.
     return OverlayPortal(
       controller: _portal,
+      overlayLocation: OverlayChildLocation.rootOverlay,
       overlayChildBuilder: _buildOverlay,
       child: content,
     );
@@ -281,33 +397,61 @@ class _OnboardingGuideState extends State<OnboardingGuide>
       ),
     );
 
-    final hole = widget.mode == OnboardingMode.anchored ? _anchorRect : null;
-    final screenH = MediaQuery.of(context).size.height;
-    // Con el ancla en la mitad INFERIOR, la tarjeta va ENCIMA del hueco (si no,
-    // lo taparía — p. ej. el botón `+` o el ✨ del composer); con el ancla en la
-    // mitad superior, va DEBAJO (p. ej. el ⋮ del header). Siempre PEGADA al
-    // hueco para que el texto se lea junto al resaltado.
-    final anchorLow = hole != null && hole.center.dy >= screenH / 2;
+    final vp = _viewport(context);
+    final view = View.of(context);
+    final screenH = view.physicalSize.height / view.devicePixelRatio;
+    // Solo se recorta el hueco si el ancla se ve de verdad. Si no (rect viejo,
+    // teclado que la tapó, pantalla que cambió entre medir y abrir), la guía
+    // degrada a tarjeta centrada: mejor el texto sin foco que una pantalla
+    // oscura y muda.
+    final measured = widget.mode == OnboardingMode.anchored ? _anchorRect : null;
+    final hole =
+        measured != null && _anchorVisible(measured, vp) ? measured : null;
+
+    // La tarjeta va al lado del hueco donde QUEPA — con el ancla abajo va
+    // encima (si no, la taparía: el `+` de la barra, el ✨ del composer) y con
+    // el ancla arriba va debajo (el ⋮ del header). Se elige por espacio real y
+    // no por "mitad de pantalla": el botón de enviar la oferta puede quedar a
+    // 20 px del borde inferior con el teclado abierto, y ahí la regla vieja
+    // empujaba la tarjeta fuera de cuadro.
+    final spaceBelow = hole == null ? 0.0 : vp.bottom - (hole.bottom + 8);
+    final spaceAbove = hole == null ? 0.0 : (hole.top - 8) - vp.top;
+    final below = spaceBelow >= spaceAbove;
+    final space = math.max(spaceBelow, spaceAbove);
 
     // Tarjeta con leve deslizamiento hacia el hueco al entrar.
     final slidCard = SlideTransition(
       position: Tween<Offset>(
-        begin: Offset(0, anchorLow ? .06 : -.06),
+        begin: Offset(0, below ? -.06 : .06),
         end: Offset.zero,
       ).animate(_fade),
       child: card,
     );
 
     final Widget placedCard;
-    if (hole == null) {
-      placedCard = Align(alignment: Alignment.center, child: SafeArea(child: slidCard));
+    if (hole == null || space < _kMinCardSpace) {
+      // Sin hueco visible, o con el hueco comiéndose la pantalla entera: la
+      // tarjeta al centro, acotada a la franja visible.
+      placedCard = Positioned.fill(
+        child: Padding(
+          padding: EdgeInsets.only(top: vp.top, bottom: screenH - vp.bottom),
+          child: Center(
+            child: SingleChildScrollView(child: slidCard),
+          ),
+        ),
+      );
     } else {
       placedCard = Positioned(
         left: 0,
         right: 0,
-        top: anchorLow ? null : hole.bottom + 8,
-        bottom: anchorLow ? (screenH - hole.top) + 8 : null,
-        child: slidCard,
+        top: below ? hole.bottom + 8 : null,
+        bottom: below ? null : (screenH - hole.top) + 8,
+        // Acotada al hueco libre: un copy largo en una pantalla corta hacía
+        // desbordar la tarjeta por el borde en vez de recortarse.
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: space),
+          child: SingleChildScrollView(child: slidCard),
+        ),
       );
     }
 

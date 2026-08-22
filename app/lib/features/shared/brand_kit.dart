@@ -100,6 +100,11 @@ StatusTone toneFor(BuildContext context, RequestPhase phase) {
   };
 }
 
+/// La capa que pinta el borde mientras SALUDA. Tiene clave propia porque es la
+/// única manera de distinguirla, en los tests de contrato del movimiento, del
+/// `DecoratedBox` que el `AnimatedContainer` monta por debajo.
+const kPulseBorderKey = ValueKey<String>('jayalo.pulseBorder');
+
 /// La tarjeta que respira: radius 16, margen 16×4, transición de color suave
 /// (así el paso de "viva" a neutra se desvanece, nunca salta).
 /// [tint] nulo = tarjeta neutra sobre la superficie de card.
@@ -116,6 +121,7 @@ class JayaloCard extends StatefulWidget {
     this.onLongPress,
     this.tint,
     this.border,
+    this.pulseBorder = false,
     this.padding = const EdgeInsets.all(12),
     this.margin = const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
   });
@@ -130,9 +136,19 @@ class JayaloCard extends StatefulWidget {
   final Color? tint;
 
   /// Borde opcional. Por defecto la tarjeta va SIN borde (flota solo por la
-  /// sombra cálida); se pasa uno para destacarla — p. ej. una solicitud con
-  /// ofertas nuevas sin ver, que va con borde grueso oscuro + punto rojo.
+  /// sombra cálida, doctrina estética 2026-07-19); se pasa uno para destacarla
+  /// — hoy, lo que aún no has abierto y lo que ya aceptaste.
   final BoxBorder? border;
+
+  /// El borde SALUDA al aparecer: respira [JayaloMotion.pulseBreaths] veces,
+  /// cada respiro menos hondo, y se queda quieto en el borde lleno (PO
+  /// 2026-08-19). Solo para marcar "sin ver" — un estado permanente lleva su
+  /// borde quieto, porque lo que se mueve es lo que todavía no has visto.
+  ///
+  /// Se ignora si [border] es null o no es un [Border] uniforme, y con
+  /// "reducir animaciones" el borde aparece lleno de una vez: la marca es
+  /// información, no adorno, así que se apaga el movimiento, nunca el borde.
+  final bool pulseBorder;
   final EdgeInsetsGeometry padding;
 
   /// Margen exterior estándar de lista; pásalo en cero cuando la tarjeta vive
@@ -143,13 +159,153 @@ class JayaloCard extends StatefulWidget {
   State<JayaloCard> createState() => _JayaloCardState();
 }
 
-class _JayaloCardState extends State<JayaloCard> {
+// TickerProviderStateMixin y NO el `Single`: el saludo se recrea cuando la
+// tarjeta cambia de estado o de color (el borde es `cs.primary`, que cambia al
+// pasar a modo oscuro). `SingleTickerProviderStateMixin` prohíbe un segundo
+// ticker AUNQUE el primero esté disposed — nunca limpia su `_ticker` —, así que
+// esa combinación reventaba con "multiple tickers were created" en un camino
+// bien vivo: cambiar a oscuro con una tarjeta saludando en pantalla.
+class _JayaloCardState extends State<JayaloCard>
+    with TickerProviderStateMixin {
   bool _pressed = false;
+
+  /// El saludo del borde. Null = esta tarjeta no saluda (no le pidieron
+  /// `pulseBorder`, o el borde no es un [Border] uniforme que se pueda
+  /// desvanecer).
+  AnimationController? _saludo;
+  bool _arrancado = false;
+
+  /// El borde solo se puede desvanecer si es uniforme: de un [BoxBorder]
+  /// cualquiera (p. ej. `BorderDirectional`) no se puede sacar un color y un
+  /// grosor sin inventar. En ese caso se pinta tal cual, quieto.
+  Border? get _uniforme =>
+      widget.border is Border ? widget.border as Border : null;
+
+  @override
+  void initState() {
+    super.initState();
+    _creaSaludo();
+  }
+
+  void _creaSaludo() {
+    _saludo?.dispose();
+    _saludo = (widget.pulseBorder && _uniforme != null)
+        ? AnimationController(
+            vsync: this,
+            duration: JayaloMotion.pulseCycle * JayaloMotion.pulseBreaths,
+          )
+        : null;
+    _arrancado = false;
+  }
+
+  /// Lanza el saludo. Necesita `context` (para leer "reducir animaciones" del
+  /// MediaQuery), así que NUNCA se llama desde `initState`.
+  void _arranca() {
+    final c = _saludo;
+    if (c == null || _arrancado) return;
+    _arrancado = true;
+    if (JayaloMotion.reduced(context)) {
+      c.value = 1; // borde lleno de una vez, sin movimiento
+    } else {
+      c.forward(from: 0);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Primer arranque. `_arrancado` evita que un cambio de tema o de tamaño lo
+    // relance a media respiración.
+    _arranca();
+  }
+
+  @override
+  void didUpdateWidget(JayaloCard old) {
+    super.didUpdateWidget(old);
+    if (widget.pulseBorder != old.pulseBorder || widget.border != old.border) {
+      _creaSaludo();
+      // Y se arranca AQUÍ. `didChangeDependencies` no se vuelve a llamar en una
+      // actualización en sitio, así que sin esto el controlador nuevo se
+      // quedaba en 0 para siempre: sin defecto visible (`pulseOpacity(0)` es 1,
+      // o sea borde lleno) pero sin saludo justo cuando una fila PASA a estar
+      // sin ver con la lista ya montada, que es cuando más quieres que salude.
+      _arranca();
+    }
+  }
+
+  @override
+  void dispose() {
+    _saludo?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final pressable = widget.onTap != null && !JayaloMotion.reduced(context);
+    final saludo = _saludo;
+
+    Widget fondo(BoxBorder? borde) => AnimatedContainer(
+          duration: JayaloMotion.page,
+          curve: Curves.easeOut,
+          padding: widget.padding,
+          decoration: BoxDecoration(
+            color: widget.tint ?? cs.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(kCardRadius),
+            // Por defecto sin borde (flota solo por la sombra cálida); con
+            // `border` se destaca (lo que aún no has abierto, lo que aceptaste).
+            border: borde,
+            boxShadow: jayaloCardShadow(context),
+          ),
+          child: widget.child,
+        );
+
+    // Sin saludo, el árbol es EXACTAMENTE el de siempre: ni Stack ni capas.
+    // Envolver siempre en `Stack` fue una regresión global — su `StackFit.loose`
+    // afloja las constraints y las tarjetas cuyo hijo no estira por sí mismo
+    // (un `Column` de textos, sin `Row(max)` ni `Expanded`) encogían contra su
+    // texto: medido, 368px → 38px en un host de 400. Lo pagaban las 31
+    // tarjetas de la app, no solo las dos que saludan.
+    final Widget cuerpo;
+    if (saludo == null) {
+      cuerpo = fondo(widget.border);
+    } else {
+      final uniforme = _uniforme!;
+      cuerpo = Stack(
+        // `passthrough` pasa las constraints del padre TAL CUAL al hijo no
+        // posicionado; con el `loose` por defecto también encogía la tarjeta
+        // que sí saluda, y el borde quedaba flotando ancho alrededor de un
+        // fondo estrecho.
+        fit: StackFit.passthrough,
+        children: [
+          // Mientras saluda, el borde de abajo va TRANSPARENTE. El grosor se
+          // conserva para que el contenido no se mueva ni un píxel al terminar;
+          // lo que no puede quedarse es el COLOR, porque este AnimatedContainer
+          // lo interpolaría en 300ms y pelearía con el cuadro a cuadro.
+          fondo(Border.all(color: Colors.transparent, width: uniforme.top.width)),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedBuilder(
+                animation: saludo,
+                builder: (_, _) => DecoratedBox(
+                  key: kPulseBorderKey,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(kCardRadius),
+                    border: Border.all(
+                      color: uniforme.top.color.withValues(
+                        alpha: JayaloMotion.pulseOpacity(saludo.value),
+                      ),
+                      width: uniforme.top.width,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return Padding(
       padding: widget.margin,
       child: AnimatedScale(
@@ -166,20 +322,7 @@ class _JayaloCardState extends State<JayaloCard> {
             // señal más temprana que da InkWell, sin retrasar el onTap.
             onHighlightChanged:
                 pressable ? (v) => setState(() => _pressed = v) : null,
-            child: AnimatedContainer(
-              duration: JayaloMotion.page,
-              curve: Curves.easeOut,
-              padding: widget.padding,
-              decoration: BoxDecoration(
-                color: widget.tint ?? cs.surfaceContainerLowest,
-                borderRadius: BorderRadius.circular(kCardRadius),
-                // Por defecto sin borde (flota solo por la sombra cálida); con
-                // `border` se destaca (solicitud con ofertas nuevas sin ver).
-                border: widget.border,
-                boxShadow: jayaloCardShadow(context),
-              ),
-              child: widget.child,
-            ),
+            child: cuerpo,
           ),
         ),
       ),
@@ -655,10 +798,18 @@ class HoldToConfirmButton extends StatefulWidget {
       required this.onConfirmed,
       this.tone = HoldToConfirmTone.paid,
       this.label,
-      this.progress});
+      this.progress,
+      this.duration});
 
   final Future<void> Function() onConfirmed;
   final HoldToConfirmTone tone;
+
+  /// Cuánto hay que sostener. `null` = [JayaloMotion.holdConfirm] (2,5 s), que
+  /// es lo correcto para aceptar una oferta o desbloquear un contacto. Se
+  /// alarga SOLO donde el error no tiene vuelta atrás: borrar la cuenta pide
+  /// 5 s (pedido PO 2026-08-22). Se pasa por parámetro y no subiendo la
+  /// constante global para no volver lentos los holds que sí son reversibles.
+  final Duration? duration;
 
   /// Copy del botón; si es null cae al texto por defecto del [tone].
   final String? label;
@@ -680,8 +831,8 @@ class HoldToConfirmButton extends StatefulWidget {
 
 class _HoldToConfirmButtonState extends State<HoldToConfirmButton>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: JayaloMotion.holdConfirm)
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: widget.duration ?? JayaloMotion.holdConfirm)
         ..addListener(() => widget.progress?.value = _c.value)
         ..addStatusListener((s) {
           if (s == AnimationStatus.completed) widget.onConfirmed();

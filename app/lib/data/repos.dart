@@ -723,6 +723,9 @@ Future<Map<String, dynamic>?> requestById(String id) async => await supa
       // cliente en el panel ámbar (igual que el detalle del cliente). Sin
       // estas columnas el panel SIEMPRE caía al ícono — "llegan sin imágenes".
       'id,user_id,title,description,bullets,kind,status,urgency,zone,is_wholesale,created_at,image_url,image_urls,budget_min,budget_max,wholesale_quantity,wholesale_split,wholesale_packaging,wholesale_note,offers_count,accepted_offers_count'
+      // target_categories: decide si la oferta pregunta por los materiales
+      // (un abogado no los tiene) — ver `domain/offer_materials.dart`.
+      ',target_categories'
       ',$requestRequirementCols',
     )
     .eq('id', id)
@@ -2120,6 +2123,56 @@ Future<void> markChatNotificationsRead(String convId) async {
         .eq('link', '/messages/$convId')
         .isFilter('read_at', null),
   ]);
+}
+
+/// Ids de OFERTA cuya notificación `offer_accepted` sigue SIN LEER: las ofertas
+/// que te aceptaron y todavía no has abierto. Alimenta el borde de "nuevo" en
+/// Mis ofertas del proveedor (pedido PO 2026-08-21).
+///
+/// Espejo exacto de lo que el CLIENTE hace con `offer_new`
+/// (`_loadUnreadOffers` en `request_status_screen.dart`): la novedad vive en la
+/// notificación, no en la oferta, así que no hace falta ninguna columna nueva
+/// ni tocar el esquema. El `entity_id` de `offer_accepted` ES el id de la
+/// oferta.
+///
+/// Best-effort: si la consulta falla se devuelve vacío — el borde es una marca
+/// de más, nunca puede tumbar la lista.
+Future<Set<String>> unseenAcceptedOfferIds() async {
+  final uid = supa.auth.currentUser?.id;
+  if (uid == null) return {};
+  try {
+    final notifs = List<Map<String, dynamic>>.from(
+      await supa
+          .from('notifications')
+          .select('entity_id')
+          .eq('user_id', uid)
+          .eq('kind', 'offer_accepted')
+          .isFilter('read_at', null),
+    );
+    return notifs
+        .map((n) => n['entity_id'] as String?)
+        .whereType<String>()
+        .toSet();
+  } catch (_) {
+    return {};
+  }
+}
+
+/// Al ABRIR la oferta queda vista: marca su `offer_accepted` leída. Gemela de
+/// `_markOfferSeen` del cliente. Best-effort por lo mismo que la de arriba: la
+/// pantalla ya quitó el borde de forma optimista antes de llamar acá.
+Future<void> markAcceptedOfferSeen(String offerId) async {
+  final uid = supa.auth.currentUser?.id;
+  if (uid == null) return;
+  try {
+    await supa
+        .from('notifications')
+        .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('user_id', uid)
+        .eq('kind', 'offer_accepted')
+        .eq('entity_id', offerId)
+        .isFilter('read_at', null);
+  } catch (_) {}
 }
 
 /// Foto del chat → bucket **privado** `chat-media`, carpeta por conversación.

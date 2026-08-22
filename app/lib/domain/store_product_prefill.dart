@@ -1,4 +1,5 @@
 import 'offer_defaults.dart';
+import 'offer_duration.dart';
 
 /// Resultado puro del prellenado de la oferta al elegir un ítem de "De mi
 /// tienda" (Task 9). Cada campo `null` (o, para `colorsToAdd`, una lista
@@ -46,7 +47,22 @@ class StoreProductPrefill {
   final String? hourlyRate;
   final String? estimatedHours;
   final String? availability;
-  final String? duration;
+
+  /// Duración YA SANEADA: número + unidad, nunca texto libre.
+  ///
+  /// El jsonb `offer_defaults.duration` es un canal SIN PUERTA — no tiene
+  /// pre-chequeo en pantalla, ni `payloadHasContactInfo` en `updateStoreItem`,
+  /// ni trigger de BD (`enforce_no_contact_info` vigila `provider_products` en
+  /// name/description/brand/warranty/color/tags, NO en `offer_defaults`). Su
+  /// única salida es reinyectarse en `provider_offers.estimated_duration`, que
+  /// sí está vigilada. Por eso se sanea AQUÍ, en la LECTURA: arreglar solo el
+  /// editor dejaría vivos los moldes ya guardados.
+  ///
+  /// `null` = ausente **o** ilegible, y las dos cosas significan lo mismo para
+  /// quien llama: NO TOCAR el formulario. Es el único sitio del sistema donde
+  /// tratar el `null` de [parseOfferDuration] como «no hacer nada» no pierde
+  /// dato, porque el original sigue vivo en `provider_products`.
+  final ({int value, OfferDurationUnit unit})? duration;
   final String? shippingPrice;
   final String? installationPrice;
   final String? evaluationPrice;
@@ -159,7 +175,11 @@ StoreProductPrefill computeStoreProductPrefill(
         d == null ? null : _asFieldText(d[OfferDefaults.estimatedHours]),
     availability:
         d == null ? null : _asFieldText(d[OfferDefaults.availability]),
-    duration: d == null ? null : _asFieldText(d[OfferDefaults.duration]),
+    // Saneada, no copiada: un molde con texto libre ilegible ("d", "A definir
+    // según evaluación") devuelve `null` y NO reinyecta nada en el formulario.
+    duration: d == null
+        ? null
+        : parseOfferDuration(_asFieldText(d[OfferDefaults.duration])),
     shippingPrice:
         d == null ? null : _asFieldText(d[OfferDefaults.shippingPrice]),
     installationPrice:

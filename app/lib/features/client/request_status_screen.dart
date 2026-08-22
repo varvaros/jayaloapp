@@ -873,10 +873,29 @@ class _OfferCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final message = offer['message'] as String? ?? '';
+    // El borde dice UNA de dos cosas, nunca las dos a la vez (PO 2026-08-19):
+    //   violeta = no la has abierto — y SALUDA al aparecer, se apaga al tocarla
+    //   verde   = la aceptaste — estado permanente, por eso va QUIETO
+    // Si coincidieran manda el violeta: "sin ver" pide una acción; "aceptada"
+    // ya la tomaste tú.
+    //
+    // `completed` cuenta como aceptada (decisión PO 2026-08-20): una oferta
+    // completada es una que aceptaste y además llegó al final, así que pierde
+    // la marca solo si nunca la elegiste.
+    final st = offer['status'];
+    final aceptada = st == 'accepted' || st == 'completed';
+    final verde = offerBadgeTone(context, 'accepted').ink;
     return JayaloCard(
       onTap: onTap,
       padding: const EdgeInsets.all(10),
-      border: unread ? Border.all(color: cs.primary, width: 2) : null,
+      // 1 px y no 2 (PO 2026-08-21, "50% más sutil"), en las dos ramas: el
+      // grosor es del BORDE como marca, no de lo que cada color significa.
+      border: unread
+          ? Border.all(color: cs.primary, width: 1)
+          : aceptada
+              ? Border.all(color: verde, width: 1)
+              : null,
+      pulseBorder: unread,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

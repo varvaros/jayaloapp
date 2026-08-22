@@ -47,6 +47,8 @@ class MyOffersScreen extends StatefulWidget {
     this.fetchOffers = myOffers,
     this.fetchBalance = walletBalance,
     this.fetchReviewed = customerReviewsFor,
+    this.fetchUnseen = unseenAcceptedOfferIds,
+    this.markSeen = markAcceptedOfferSeen,
     this.leading = const HeaderAvatar(),
     this.actions = const [HeaderBell()],
   });
@@ -57,6 +59,11 @@ class MyOffersScreen extends StatefulWidget {
   final Future<List<Map<String, dynamic>>> Function() fetchOffers;
   final Future<int?> Function() fetchBalance;
   final Future<Set<String>> Function(List<String> offerIds) fetchReviewed;
+
+  /// Las ofertas que te aceptaron y aún no has abierto (= las que llevan
+  /// borde), y cómo marcar una como vista. Ver [unseenAcceptedOfferIds].
+  final Future<Set<String>> Function() fetchUnseen;
+  final Future<void> Function(String offerId) markSeen;
 
   /// Inyectables (mismo patrón que `ProviderInboxView.leading`/`.actions`):
   /// `HeaderAvatar`/`HeaderBell` tocan Supabase en su `initState` (vía
@@ -77,6 +84,20 @@ class _MyOffersScreenState extends State<MyOffersScreen>
 
   /// Ofertas de esta tanda que ya tienen reseña del cliente (una sola consulta).
   Set<String> _reviewed = {};
+
+  /// Ofertas ACEPTADAS que todavía no has abierto (su `offer_accepted` sigue
+  /// sin leer). Son las únicas que llevan borde: el borde marca lo NUEVO, no el
+  /// estado (pedido PO 2026-08-21). Se vacía por oferta al tocarla.
+  Set<String> _unseen = {};
+
+  /// Las que YA marcaste vistas en esta sesión de pantalla. Existe por una
+  /// carrera real: al tocar una oferta se navega al detalle y, al volver,
+  /// `_refetch` vuelve a preguntarle al servidor quién sigue sin ver. Si el
+  /// UPDATE de `read_at` todavía no había llegado —volver de inmediato es un
+  /// gesto normal— el servidor la devolvía como no vista y **el borde
+  /// reaparecía**, que es exactamente lo que el PO reportó. Restarlas hace la
+  /// marca monótona: vista una vez, vista para siempre.
+  final Set<String> _yaVistas = {};
 
   /// Segmento activo: 0 = Mis ofertas (lo que vendo), 1 = Mis pedidos (lo que
   /// compro). Arranca en ofertas — es el motivo principal por el que un
@@ -108,20 +129,37 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     final results =
         await Future.wait([widget.fetchOffers(), widget.fetchBalance()]);
     final offers = results[0] as List<Map<String, dynamic>>;
-    // En lote, no por tarjeta. Best-effort: sin esto solo se pierde el botón.
-    var reviewed = <String>{};
-    try {
-      reviewed = await widget.fetchReviewed(
-        offers.map((o) => o['id'] as String).toList(),
-      );
-    } catch (_) {}
+    // En lote, no por tarjeta, y las dos en paralelo: no dependen entre sí.
+    // Best-effort las dos (`onError` por consulta y no un try/catch alrededor
+    // del `.wait`): si falla una, la otra sigue valiendo. Sin la primera solo
+    // se pierde el botón de calificar; sin la segunda, el borde de "nuevo".
+    final (reviewed, unseen) = await (
+      widget
+          .fetchReviewed(offers.map((o) => o['id'] as String).toList())
+          .onError((_, _) => <String>{}),
+      widget.fetchUnseen().onError((_, _) => <String>{}),
+    ).wait;
     if (!mounted) return;
     setState(() {
       _offers = offers;
       _balance = results[1] as int?;
       _reviewed = reviewed;
+      _unseen = unseen.difference(_yaVistas);
       _loading = false;
     });
+  }
+
+  /// Al ABRIR una oferta queda vista: le quita el borde al instante (optimista)
+  /// y marca su `offer_accepted` leída en el servidor. Gemela de
+  /// `_markOfferSeen` del cliente — sin esto el borde no se quitaba NUNCA, que
+  /// es justo lo que reportó el PO (2026-08-21).
+  void _markSeen(String offerId) {
+    if (!_unseen.contains(offerId)) return;
+    _yaVistas.add(offerId);
+    setState(() => _unseen = {..._unseen}..remove(offerId));
+    // Sin await: la navegación no espera al servidor. `markSeen` ya se traga
+    // sus propios errores, así que no hay futuro colgando sin dueño.
+    widget.markSeen(offerId);
   }
 
   /// Verde para el SALDO de créditos: el crédito disponible es algo positivo,
@@ -276,9 +314,20 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     final title = (o['request_title'] as String? ?? '').trim();
     final cost = estimatedUnlockCost(o);
     final price = offerPriceLabel(o);
+    final nuevo = _unseen.contains(o['id']);
     return JayaloCard(
       // Fondo BLANCO (pedido PO 2026-07-22): antes la tarjeta iba teñida de
       // verde; ahora solo el botón lleva el verde.
+      //
+      // El BORDE verde no revive aquel tinte: marca que ESTO ES NUEVO. Solo
+      // aparece mientras no hayas abierto la oferta y se va al tocarla (PO
+      // 2026-08-21: "no se quita el borde que indica que es nuevo"). Antes iba
+      // siempre puesto, porque marcaba el ESTADO "te aceptaron" (PO
+      // 2026-08-19) — y un estado no se puede quitar de encima.
+      //
+      // 1 px y no 2: el PO lo quiso "50% más sutil". La marca tiene que
+      // llamar la atención, no gritar.
+      border: nuevo ? Border.all(color: tone.ink, width: 1) : null,
       onTap: () => _openOffer(o),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -408,8 +457,24 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     final cs = Theme.of(context).colorScheme;
     // La oferta pendiente se puede editar/borrar.
     final pending = st == 'pending';
+    // Borde verde de "te aceptaron y no lo has visto", igual que en
+    // `_acceptedCard`. Aquí llegan las aceptadas que YA desbloqueaste (esas
+    // salen de la sección "¡Te aceptaron!" y caen en Historial) y las
+    // completadas; en la práctica casi todas llegan ya vistas, y por eso el
+    // Historial se ve limpio.
+    //
+    // Antes la condición era `st == 'accepted' || st == 'completed'` a secas,
+    // o sea el ESTADO: el borde no se quitaba nunca (PO 2026-08-21). Ahora
+    // manda `_unseen`, igual que arriba. Nota: esto es una divergencia
+    // DELIBERADA con la hoja del cliente, donde el verde sigue marcando la
+    // oferta aceptada de forma permanente.
+    final nuevo = _unseen.contains(o['id']);
     return JayaloCard(
       onTap: () => _openOffer(o),
+      border: nuevo
+          ? Border.all(
+              color: offerBadgeTone(context, 'accepted').ink, width: 1)
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -512,6 +577,10 @@ class _MyOffersScreenState extends State<MyOffersScreen>
   void _openOffer(Map<String, dynamic> o) {
     final st = o['status'] as String;
     final unlocked = o['unlocked_at'] != null;
+    // Abrirla = verla, vaya a donde vaya después. Va ANTES del reparto para
+    // que los tres caminos (editar, desbloquear, historial) la marquen igual:
+    // el borde dice "no lo has visto", no "no lo has desbloqueado".
+    _markSeen(o['id'] as String);
     if (st == 'pending') {
       // Aún sin aceptar: abrir el formulario para editar o borrar la oferta.
       // push (no go): apila el detalle para que el ATRÁS vuelva aquí (el go

@@ -6,7 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/core/session_state.dart';
+import 'package:jayalo_app/features/shared/onboarding_store.dart';
 import 'package:jayalo_app/features/shared/profile_avatar_button.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// El avatar del AppBar (spec iteración 2 §5): junto a la campana en las 6
 /// pantallas raíz. Al tocarlo abre un menú por rol — cliente ve solo
@@ -15,10 +17,18 @@ import 'package:jayalo_app/features/shared/profile_avatar_button.dart';
 /// con la app real: cada test los deja en un estado conocido para no
 /// arrastrar datos de un test a otro.
 void main() {
-  setUp(() {
+  setUp(() async {
     roleStore.value = RoleState.consumer;
     profileStore.avatarUrl = null;
     profileStore.firstName = null;
+    // La guía nueva del avatar (`profile.menu.v1`, PO 2026-08-22) tapa el
+    // botón con su velo la PRIMERA vez y se come ese toque — como todas las
+    // guías. Estos tests miden el MENÚ, no la guía, así que aquí se parte de
+    // un usuario que ya la vio. Que la guía salga lo cubre
+    // `onboarding_botones_nuevos_test.dart`.
+    SharedPreferences.setMockInitialValues({});
+    onboardingStore.reset();
+    await onboardingStore.markDone('profile.menu.v1');
   });
 
   GoRouter routerWithHome(Widget child) => GoRouter(
@@ -65,6 +75,21 @@ void main() {
 
     expect(find.text('Ajustes'), findsOneWidget);
     expect(find.text('Estadísticas'), findsNothing);
+  });
+
+  testWidgets('"Cerrar sesión" vive al FINAL del menú (PO 2026-08-22)',
+      (tester) async {
+    roleStore.value = RoleState.consumer;
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+    await abrirMenu(tester);
+
+    expect(find.text('Cerrar sesión'), findsOneWidget,
+        reason: 'se mudó desde Ajustes: tiene que estar aquí');
+    // Último de la lista: por debajo de Ajustes. (No se toca: cerrar sesión
+    // llama a Supabase, que en un test no está inicializado.)
+    expect(tester.getCenter(find.text('Cerrar sesión')).dy,
+        greaterThan(tester.getCenter(find.text('Ajustes')).dy));
   });
 
   testWidgets('proveedor: el menú ofrece Estadísticas y Ajustes', (tester) async {

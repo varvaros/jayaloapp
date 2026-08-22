@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../shared/network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -13,6 +14,7 @@ import '../../core/safe_image_picker.dart';
 import '../../domain/contact_info.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/money.dart';
+import '../../domain/offer_duration.dart';
 import '../../domain/offer_edit.dart';
 import '../../domain/offer_form_gate.dart';
 import '../../domain/offer_materials.dart';
@@ -102,7 +104,38 @@ class _ProviderRequestDetailScreenState
   final _hourly = TextEditingController();
   final _hours = TextEditingController();
   final _availability = TextEditingController();
-  final _duration = TextEditingController();
+
+  /// Duración de la oferta: NÚMERO + UNIDAD, nunca texto libre (ver
+  /// `domain/offer_duration.dart`). Se compone a una sola etiqueta ("3 días"),
+  /// que es lo que se guarda en `estimated_duration` y lo que ve el cliente.
+  final _durationValue = TextEditingController();
+  OfferDurationUnit _durationUnit = kOfferDurationDefaultUnit;
+
+  /// Valor histórico que [parseOfferDuration] no supo leer al prellenar
+  /// ("8 horas (1 día laboral)", "A definir según evaluación", "d" — este
+  /// último existe DE VERDAD en producción).
+  ///
+  /// NO es "vacío": se conserva y se vuelve a escribir tal cual mientras el
+  /// campo numérico esté en blanco, porque `null` de `parseOfferDuration`
+  /// significa «no lo sé leer». Sin esto, entrar a una oferta vieja a cambiar
+  /// el precio le borraría al proveedor una duración que sí tenía, sin aviso y
+  /// sin que ningún test lo viera.
+  ///
+  /// Se vacía por dos vías, las dos deliberadas del proveedor: teclear un
+  /// número (lo reemplaza) o pulsar «Quitar» (lo borra). El botón hace falta
+  /// porque la duración es OPCIONAL — sin él, "dejarla en blanco" sería
+  /// inalcanzable para un valor ilegible.
+  String _durationLegacy = '';
+
+  /// Lo que viaja a `estimated_duration` y al mensaje. Un solo sitio para los
+  /// cuatro consumidores (mensaje, anti-elusión, `updateOffer`, `makeOffer`):
+  /// si cada uno lo compusiera por su cuenta, bastaría con olvidar el legado en
+  /// uno para volver a borrar el dato.
+  String get _durationForSave => durationForSave(
+        typed: _durationValue.text,
+        unit: _durationUnit,
+        legacy: _durationLegacy,
+      );
   // Producto: envío / instalación / evaluación (paridad web).
   bool _offersShipping = false;
   final _shipping = TextEditingController();
@@ -144,7 +177,12 @@ class _ProviderRequestDetailScreenState
   /// se pueden tocar, pero en creacion si.
   String _formSnapshot() => [
         _price.text, _min.text, _max.text, _hourly.text, _hours.text,
-        _availability.text, _duration.text,
+        _availability.text,
+        // Los TRES controles de la duración. La unidad cuenta (pasar de
+        // "3 días" a "3 semanas" es un cambio real) y el legado también: el
+        // botón «Quitar» lo borra sin tocar el campo numérico, y sin esta
+        // entrada la instantánea no vería ese borrado.
+        _durationValue.text, _durationUnit.name, _durationLegacy,
         _shipping.text, _installation.text, _evaluation.text,
         _brand.text, _warranty.text, _delivery.text,
         _condition,
@@ -292,6 +330,15 @@ class _ProviderRequestDetailScreenState
   static const _svcModes = ['fixed', 'range', 'hourly', 'needs_evaluation'];
 
   bool get _isService => _req?['kind'] == 'servicio';
+
+  /// ¿El oficio de ESTA solicitud trabaja con materiales? Un abogado o un
+  /// diseñador gráfico no, y preguntarles «¿incluye los materiales?» solo
+  /// confunde (pedido PO 2026-08-22). Se decide por las categorías objetivo
+  /// que el ruteo le puso a la solicitud.
+  bool get _serviceUsesMaterials => categoriesUseMaterials(
+        ((_req?['target_categories'] as List?) ?? const [])
+            .whereType<String>(),
+      );
   // Cupos de finalista (modelo de hasta 3): finalistas ya seleccionados y
   // ofertas activas de la solicitud (columnas materializadas en la BD).
   int get _acceptedCount => (_req?['accepted_offers_count'] as num?)?.toInt() ?? 0;
@@ -426,7 +473,14 @@ class _ProviderRequestDetailScreenState
     _hourly.text = miles(o['hourly_rate']);
     _hours.text = txt(o['estimated_hours']);
     _availability.text = (o['availability_note'] as String?) ?? '';
-    _duration.text = (o['estimated_duration'] as String?) ?? '';
+    // `null` de parseOfferDuration = "no lo sé leer", NUNCA "está vacío": lo
+    // que no se reconoce se conserva en [_durationLegacy] en vez de perderse.
+    // El reparto vive en `domain/offer_duration.dart` para que TENGA test:
+    // esta pantalla no se puede montar en un widget test.
+    final dur = durationFieldsFromRaw(o['estimated_duration'] as String?);
+    _durationValue.text = dur.typed;
+    _durationUnit = dur.unit;
+    _durationLegacy = dur.legacy;
     _offersShipping = o['offers_shipping'] == true;
     _shipping.text = miles(o['shipping_price']);
     _offersInstallation = o['offers_installation'] == true;
@@ -472,7 +526,7 @@ class _ProviderRequestDetailScreenState
     releaseUnsavedGuard(this);
     for (final c in [
       _price, _min, _max, _hourly, _hours,
-      _availability, _duration, _shipping, _installation, _evaluation,
+      _availability, _durationValue, _shipping, _installation, _evaluation,
       _brand, _warranty, _delivery,
     ]) {
       c.dispose();
@@ -726,7 +780,14 @@ class _ProviderRequestDetailScreenState
       if (prefill.availability != null) {
         _availability.text = prefill.availability!;
       }
-      if (prefill.duration != null) _duration.text = prefill.duration!;
+      // Ya viene saneada (número + unidad): un molde con texto libre ilegible
+      // llega como `null` y no reinyecta nada. El molde manda, así que también
+      // descarta cualquier legado que hubiera de una oferta vieja.
+      if (prefill.duration != null) {
+        _durationValue.text = '${prefill.duration!.value}';
+        _durationUnit = prefill.duration!.unit;
+        _durationLegacy = '';
+      }
       if (prefill.shippingPrice != null) {
         _shipping.text = miles(prefill.shippingPrice!);
       }
@@ -800,6 +861,7 @@ class _ProviderRequestDetailScreenState
     if (materialsChoiceRequired(
           isService: isService,
           offersInstallation: _offersInstallation,
+          serviceUsesMaterials: _serviceUsesMaterials,
         ) &&
         _includesMaterials == null) {
       return _toast('Elige si la oferta incluye los materiales.');
@@ -833,6 +895,7 @@ class _ProviderRequestDetailScreenState
     final materialsForPayload = materialsValueForPayload(
       isService: isService,
       offersInstallation: isService ? false : _offersInstallation,
+      serviceUsesMaterials: _serviceUsesMaterials,
       includesMaterials: _includesMaterials,
     );
     final message = composeOfferMessage(
@@ -845,7 +908,7 @@ class _ProviderRequestDetailScreenState
       evaluationPrice: parseMiles(_evaluation.text)?.toDouble(),
       includesMaterials: materialsForPayload,
       availabilityNote: _availability.text,
-      estimatedDuration: _duration.text,
+      estimatedDuration: _durationForSave,
       brand: isService ? '' : _brand.text,
       colors: isService ? const [] : _colors,
       warranty: isService ? '' : _warranty.text,
@@ -867,7 +930,7 @@ class _ProviderRequestDetailScreenState
     final contactCheckValues = <String>[
       message,
       isService ? _availability.text.trim() : '',
-      isService ? _duration.text.trim() : '',
+      isService ? _durationForSave : '',
       isService ? '' : _brand.text.trim(),
       isService ? '' : _warranty.text.trim(),
       isService ? '' : _delivery.text.trim(),
@@ -908,7 +971,7 @@ class _ProviderRequestDetailScreenState
           hourlyRate: hr,
           estimatedHours: hrs,
           availabilityNote: isService ? _availability.text.trim() : '',
-          estimatedDuration: isService ? _duration.text.trim() : '',
+          estimatedDuration: isService ? _durationForSave : '',
           productBrand: isService ? '' : _brand.text.trim(),
           productColors: isService ? const [] : _colors,
           productWarranty: isService ? '' : _warranty.text.trim(),
@@ -988,7 +1051,7 @@ class _ProviderRequestDetailScreenState
         hourlyRate: hr,
         estimatedHours: hrs,
         availabilityNote: isService ? _availability.text.trim() : '',
-        estimatedDuration: isService ? _duration.text.trim() : '',
+        estimatedDuration: isService ? _durationForSave : '',
         productBrand: isService ? '' : _brand.text.trim(),
         productColors: isService ? const [] : _colors,
         productWarranty: isService ? '' : _warranty.text.trim(),
@@ -1403,10 +1466,104 @@ class _ProviderRequestDetailScreenState
         decoration: filledField(context, label),
       );
 
-  Widget _textField(TextEditingController c, String label) => TextField(
-        controller: c,
-        decoration: filledField(context, label),
-      );
+  // `_textField` (TextField pelado) vivía aquí: su ÚNICO uso era la duración
+  // estimada, que ya no es texto libre. Queda borrado en vez de quedarse
+  // muerto esperando a que alguien lo reutilice para otro campo libre.
+
+  /// Duración: cantidad + unidad, y —solo cuando lo hay— el aviso del valor
+  /// histórico conservado.
+  ///
+  /// Los `inputFormatters` NO son cosméticos: son la mitad del tope de 3
+  /// dígitos, que es de SEGURIDAD (ver la cabecera de
+  /// `domain/offer_duration.dart`). Sin ellos se teclea un teléfono entero,
+  /// `formatOfferDuration` devuelve `''` y la duración se pierde en silencio.
+  List<Widget> _durationFields(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+          width: 96,
+          child: TextField(
+            controller: _durationValue,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(kOfferDurationMaxDigits),
+            ],
+            // Teclear un número VÁLIDO reemplaza al valor histórico: a partir
+            // de ahí manda lo nuevo. El `setState` también refresca el aviso.
+            //
+            // Se exige que componga de verdad, no solo que haya texto: con
+            // «hay texto» a secas, teclear `0` borraba el legado y acto
+            // seguido `formatOfferDuration('0')` devolvía '' — o sea, la
+            // duración histórica desaparecía sin que el proveedor hubiera
+            // pulsado «Quitar». Justo el borrado silencioso que este
+            // mecanismo existe para impedir.
+            onChanged: (v) => setState(() {
+              if (formatOfferDuration(v, _durationUnit).isNotEmpty) {
+                _durationLegacy = '';
+              }
+            }),
+            decoration: filledField(context, 'Cantidad'),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final u in OfferDurationUnit.values)
+              GestureDetector(
+                // A diferencia de `_chipSelect`, tocar el activo NO
+                // deselecciona: siempre tiene que haber una unidad.
+                onTap: () => setState(() => _durationUnit = u),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: _durationUnit == u
+                        ? cs.primary
+                        : cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(u.label,
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color:
+                              _durationUnit == u ? cs.onPrimary : cs.onSurface)),
+                ),
+              ),
+          ]),
+        ),
+      ]),
+      // Solo aparece editando una oferta cuya duración no se sabe leer. Decir
+      // que se conserva es la mitad del arreglo; la otra mitad es poder
+      // quitarla, porque la duración es opcional y sin el botón "dejarla en
+      // blanco" sería inalcanzable para estos valores.
+      if (_durationLegacy.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: Text(
+              'Duración guardada: «$_durationLegacy». Se conserva tal cual si no la tocas.',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => setState(() => _durationLegacy = ''),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+              child: Text('Quitar',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: cs.primary)),
+            ),
+          ),
+        ]),
+      ],
+    ];
+  }
 
   /// Campos de precio, ramificados por kind: producto = fijo/rango; servicio =
   /// 4 modos (fijo/rango/por hora/a evaluar), paridad con la web.
@@ -1452,10 +1609,15 @@ class _ProviderRequestDetailScreenState
       ];
 
   List<Widget> _servicePricing(BuildContext context) => [
-        PillSegmented(
-          options: const ['Fijo', 'Rango', 'Por hora', 'A evaluar'],
-          index: _svcMode,
-          onChanged: (i) => setState(() => _svcMode = i),
+        OnboardingGuide(
+          guideKey: 'provider.offer_price_mode.v1',
+          steps: onboardingCopy['provider.offer_price_mode.v1']!,
+          order: 4,
+          child: PillSegmented(
+            options: const ['Fijo', 'Rango', 'Por hora', 'A evaluar'],
+            index: _svcMode,
+            onChanged: (i) => setState(() => _svcMode = i),
+          ),
         ),
         const SizedBox(height: 12),
         ..._svcModeFields(context),
@@ -2075,15 +2237,19 @@ class _ProviderRequestDetailScreenState
           const SizedBox(height: 8),
           ..._pricingFields(context),
           if (_isService) ...[
-            const SizedBox(height: 14),
-            _materialsChoice(context),
+            if (_serviceUsesMaterials) ...[
+              const SizedBox(height: 14),
+              _materialsChoice(context),
+            ],
             const SizedBox(height: 14),
             _sectionLabel('Disponibilidad'),
             const SizedBox(height: 8),
             _chipSelect(_availabilityDays, _availability.text,
                 (v) => setState(() => _availability.text = v)),
             const SizedBox(height: 12),
-            _textField(_duration, 'Duración estimada (ej: 2 días)'),
+            _sectionLabel('Duración estimada'),
+            const SizedBox(height: 8),
+            ..._durationFields(context),
           ] else ...[
             const SizedBox(height: 12),
             ..._productExtras(context),
@@ -2160,25 +2326,30 @@ class _ProviderRequestDetailScreenState
           // (pedido PO 2026-07-21): "De mi tienda" trae fotos + autocompleta;
           // "Trabajos anteriores" trae fotos del portafolio.
           if (_businessId != null && _photoCount < _maxOfferPhotos)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _busy ? null : _pickFromStore,
-                    icon: const Icon(Icons.storefront_outlined),
-                    label: const Text('De mi tienda'),
+            OnboardingGuide(
+              guideKey: 'provider.offer_reuse_photos.v1',
+              steps: onboardingCopy['provider.offer_reuse_photos.v1']!,
+              order: 5,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _busy ? null : _pickFromStore,
+                      icon: const Icon(Icons.storefront_outlined),
+                      label: const Text('De mi tienda'),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _busy ? null : _pickFromPortfolio,
-                    icon: const Icon(Icons.collections_bookmark_outlined),
-                    label: const Text('Trabajos'),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _busy ? null : _pickFromPortfolio,
+                      icon: const Icon(Icons.collections_bookmark_outlined),
+                      label: const Text('Trabajos'),
+                    ),
                   ),
-                ),
-              ]),
+                ]),
+              ),
             ),
           const SizedBox(height: 12),
           if (_estimatedCost > 0)
@@ -2202,8 +2373,8 @@ class _ProviderRequestDetailScreenState
             }),
           const SizedBox(height: 12),
           OnboardingGuide(
-            guideKey: 'provider.make_offer.v1',
-            steps: onboardingCopy['provider.make_offer.v1']!,
+            guideKey: 'provider.make_offer.v2',
+            steps: onboardingCopy['provider.make_offer.v2']!,
             child: FilledButton(
                 onPressed:
                     _busy || (!_editing && isClosedToOffers(_acceptedCount))

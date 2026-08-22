@@ -231,6 +231,114 @@ void main() {
       // I-1: garantía SÍ se muestra para servicio (paridad con producto).
       expect(find.text('Garantía'), findsOneWidget);
       expect(find.text('Sin garantía'), findsOneWidget); // kWarrantyOptions
+
+      // La duración dejó de ser texto libre: cantidad + las 4 unidades.
+      expect(find.byKey(const Key('campo-duracion-unidad')), findsOneWidget);
+      for (final u in ['minutos', 'horas', 'días', 'semanas']) {
+        expect(find.text(u), findsOneWidget);
+      }
+    });
+
+    testWidgets('la duración viaja compuesta al offer_defaults, no como texto '
+        'libre', (tester) async {
+      Map<String, dynamic>? captured;
+      Future<void> captureSave({
+        required String businessId,
+        required String name,
+        required String description,
+        required String categoryId,
+        required String rubro,
+        required String kind,
+        String color = '',
+        double? price,
+        double? priceMin,
+        double? priceMax,
+        List<String> imageUrls = const [],
+        String? condition,
+        bool offersShipping = false,
+        bool offersInstallation = false,
+        bool requiresEvaluation = false,
+        String? brand,
+        String? warranty,
+        Map<String, dynamic>? offerDefaults,
+      }) async {
+        captured = {'offerDefaults': offerDefaults};
+      }
+
+      setTallPhoneSize(tester);
+      await tester.pumpWidget(host(AddStoreItemScreen(
+        kind: 'servicio',
+        businessId: 'biz-1',
+        saveProduct: captureSave,
+        updateItem: noopUpdate,
+        savePortfolio: noopPortfolio,
+        fetchCatRubro: fakeCatRubro,
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).first, 'Instalación');
+      await tester.enterText(find.byKey(const Key('campo-precio')), '2500');
+      await tester.enterText(find.byKey(const Key('campo-duracion')), '3');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('semanas'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(captured, isNotNull);
+      expect((captured!['offerDefaults'] as Map)['duration'], '3 semanas');
+    });
+
+    testWidgets('el campo de duración solo admite dígitos y tope de 3',
+        (tester) async {
+      setTallPhoneSize(tester);
+      await tester.pumpWidget(host(AddStoreItemScreen(
+        kind: 'servicio',
+        businessId: 'biz-1',
+        saveProduct: noopSave,
+        updateItem: noopUpdate,
+        savePortfolio: noopPortfolio,
+        fetchCatRubro: fakeCatRubro,
+      )));
+      await tester.pumpAndSettle();
+
+      // El tope NO es cosmético: sin los inputFormatters el campo vuelve a
+      // poder transportar un número marcable (ver `domain/offer_duration.dart`).
+      final campo = find.byKey(const Key('campo-duracion'));
+      await tester.enterText(campo, '8095551234');
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(campo).controller!.text, '809');
+
+      await tester.enterText(campo, '2 días');
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(campo).controller!.text, '2');
+    });
+
+    testWidgets('un molde con duración ilegible abre el campo vacío',
+        (tester) async {
+      setTallPhoneSize(tester);
+      await tester.pumpWidget(host(AddStoreItemScreen(
+        kind: 'servicio',
+        businessId: 'biz-1',
+        initial: const {
+          'id': 'it-1',
+          'name': 'Instalación',
+          'kind': 'servicio',
+          'offer_defaults': {'duration': 'A definir según evaluación'},
+        },
+        saveProduct: noopSave,
+        updateItem: noopUpdate,
+        savePortfolio: noopPortfolio,
+        fetchCatRubro: fakeCatRubro,
+      )));
+      await tester.pumpAndSettle();
+
+      // Consecuencia aceptada y documentada: esta pantalla es el ÚNICO
+      // escritor de la clave (censo 2026-08-19 en prod: 0 filas la tienen),
+      // así que no hay mecanismo de legado como en el formulario de oferta.
+      final campo = find.byKey(const Key('campo-duracion'));
+      expect(tester.widget<TextField>(campo).controller!.text, '');
     });
 
     // Fix round 1 (Critical 2): caso exacto de revisión — un servicio

@@ -191,6 +191,217 @@ void main() {
         expect(find.byType(ShaderMask), findsNothing);
       }
     });
+
+    // ── El SALUDO del borde de "sin ver" (PO 2026-08-19/20) ────────────
+    //
+    // El contrato que fijan estos tests es lo que hace que la marca signifique
+    // algo: el borde ARRANCA y TERMINA lleno (nunca desaparece, porque es
+    // información), respira un número FINITO de veces (un bucle sería la única
+    // animación perpetua de la app, y encima dentro de una lista) y cada
+    // respiro se apaga menos que el anterior — se asienta, no se corta.
+
+    test('pulseOpacity arranca y termina en el borde LLENO', () {
+      expect(JayaloMotion.pulseOpacity(0), 1);
+      expect(JayaloMotion.pulseOpacity(1), closeTo(1, 1e-9));
+      // Fuera de rango tampoco se rompe: la marca sigue entera.
+      expect(JayaloMotion.pulseOpacity(-1), 1);
+      expect(JayaloMotion.pulseOpacity(2), closeTo(1, 1e-9));
+    });
+
+    test('pulseOpacity: el borde nunca se apaga del todo', () {
+      for (var i = 0; i <= 200; i++) {
+        final o = JayaloMotion.pulseOpacity(i / 200);
+        expect(o, greaterThanOrEqualTo(JayaloMotion.pulseDepth - 1e-9),
+            reason: 'en t=${i / 200} el borde bajó del suelo');
+        expect(o, lessThanOrEqualTo(1 + 1e-9));
+      }
+    });
+
+    test('pulseOpacity: cada respiro se apaga MENOS que el anterior', () {
+      // El fondo de cada valle cae en el centro de su respiro.
+      final fondos = [
+        for (var i = 0; i < JayaloMotion.pulseBreaths; i++)
+          JayaloMotion.pulseOpacity((i + 0.5) / JayaloMotion.pulseBreaths),
+      ];
+      expect(fondos.first, closeTo(JayaloMotion.pulseDepth, 1e-9),
+          reason: 'el primer respiro es el más hondo');
+      expect(fondos.last, closeTo(JayaloMotion.pulseDepthLast, 1e-9),
+          reason: 'el último apenas se nota, pero se nota');
+      for (var i = 1; i < fondos.length; i++) {
+        expect(fondos[i], greaterThan(fondos[i - 1]),
+            reason: 'el respiro $i debe apagarse menos que el anterior');
+      }
+    });
+
+    /// Opacidad del borde que está saludando en este preciso frame.
+    double pulseAlpha(WidgetTester tester) {
+      final box = tester.widget<DecoratedBox>(find.byKey(kPulseBorderKey));
+      return ((box.decoration as BoxDecoration).border! as Border).top.color.a;
+    }
+
+    Widget tarjeta({
+      required bool saluda,
+      Widget? hijo,
+      Key? key,
+      Color color = const Color(0xFF7147F2),
+    }) =>
+        JayaloCard(
+          key: key,
+          border: Border.all(color: color, width: 2),
+          pulseBorder: saluda,
+          child: hijo ?? const SizedBox(width: 200, height: 60),
+        );
+
+    testWidgets('JayaloCard saluda: el borde respira y acaba lleno',
+        (tester) async {
+      await tester.pumpWidget(host(tarjeta(saluda: true)));
+      expect(pulseAlpha(tester), closeTo(1, 1e-3),
+          reason: 'entra con el borde lleno');
+
+      var masTenue = 1.0;
+      const paso = Duration(milliseconds: 80);
+      final pasos = (JayaloMotion.pulseCycle * JayaloMotion.pulseBreaths)
+              .inMilliseconds ~/
+          paso.inMilliseconds;
+      for (var i = 0; i < pasos; i++) {
+        await tester.pump(paso);
+        final a = pulseAlpha(tester);
+        if (a < masTenue) masTenue = a;
+        expect(a, greaterThanOrEqualTo(JayaloMotion.pulseDepth - 1e-3),
+            reason: 'el borde no puede desaparecer: es información');
+      }
+      expect(masTenue, lessThan(.5),
+          reason: 'si nunca se apagó de verdad, no respiró');
+
+      await tester.pumpAndSettle();
+      expect(pulseAlpha(tester), closeTo(1, 1e-3),
+          reason: 'aterriza en el borde lleno de siempre');
+    });
+
+    testWidgets('el saludo NO desplaza el contenido ni un píxel',
+        (tester) async {
+      // El borde visible se pinta en una capa ENCIMA, pero el grosor se
+      // reserva igual abajo. Lo que hay que medir es el TAMAÑO de la tarjeta
+      // contra una que no saluda.
+      //
+      // TRES formulaciones que parecían obvias y NO sirven — las tres
+      // comprobadas por mutación, pasando con el bug puesto:
+      //  1. medir "durante" contra "después" en la misma tarjeta: el grosor
+      //     reservado es constante en el tiempo, no hay nada que cambie;
+      //  2. mirar la esquina del hijo: el `Center` del host desplaza la
+      //     tarjeta media diferencia y cancela exactamente los 2 px;
+      //  3. remontar sin `key`: se reusa el elemento y el `AnimatedContainer`
+      //     sigue interpolando la decoración vieja 300 ms, así que devuelve el
+      //     tamaño anterior.
+      Future<Size> tamano({required bool saluda, required String k}) async {
+        await tester
+            .pumpWidget(host(tarjeta(saluda: saluda, key: ValueKey(k))));
+        return tester.getSize(find.byType(JayaloCard));
+      }
+
+      final quieta = await tamano(saluda: false, k: 'quieta');
+      final saludando = await tamano(saluda: true, k: 'saludando');
+      expect(saludando, quieta,
+          reason: 'el grosor debe reservarse abajo, o el contenido salta 2px');
+    });
+
+    testWidgets('el saludo NO estrecha la tarjeta (ni a las que no saludan)',
+        (tester) async {
+      // La regresión que esto vigila fue GLOBAL y ningún test la veía: envolver
+      // siempre en `Stack` hacía que su `StackFit.loose` aflojara las
+      // constraints, y toda tarjeta cuyo hijo no estira por sí mismo (un
+      // `Column` de textos, sin `Row(max)` ni `Expanded`) encogía contra su
+      // texto — medido, 368px → 38px. Lo pagaban las 31 tarjetas de la app.
+      const hijo = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [Text('x'), Text('un poco más largo')],
+      );
+      // OJO con qué caja se mide: `find.byType(JayaloCard)` es el `Padding`
+      // exterior, que recibe constraints AJUSTADAS del `SizedBox` y devuelve
+      // 400 siempre — pasa en verde con el bug puesto (comprobado por
+      // mutación). Lo que encoge es el FONDO pintado, o sea el
+      // `AnimatedContainer` de dentro.
+      Future<double> anchoDelFondo(
+          {required bool saluda, required String k}) async {
+        await tester.pumpWidget(host(SizedBox(
+          width: 400,
+          child: tarjeta(saluda: saluda, hijo: hijo, key: ValueKey(k)),
+        )));
+        return tester
+            .getSize(find.descendant(
+              of: find.byType(JayaloCard),
+              matching: find.byType(AnimatedContainer),
+            ))
+            .width;
+      }
+
+      // 400 menos el margen horizontal de 16×2 de la tarjeta.
+      expect(await anchoDelFondo(saluda: false, k: 'a'), 368,
+          reason: 'la tarjeta quieta ocupa su ranura');
+      expect(await anchoDelFondo(saluda: true, k: 'b'), 368,
+          reason: 'la que saluda también: el Stack no puede aflojar el ancho');
+    });
+
+    testWidgets('cambiar de tema con una tarjeta saludando no revienta',
+        (tester) async {
+      // `SingleTickerProviderStateMixin` prohíbe un segundo ticker aunque el
+      // primero esté disposed, y el borde es `cs.primary`, que CAMBIA al pasar
+      // a oscuro → `didUpdateWidget` recrea el controlador → reventaba con
+      // "multiple tickers were created". Camino bien vivo, no hipotético.
+      await tester.pumpWidget(host(tarjeta(saluda: true)));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpWidget(host(
+        tarjeta(saluda: true, color: const Color(0xFF845EF5)),
+        brightness: Brightness.dark,
+      ));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('pasar a "sin ver" con la lista montada SÍ saluda',
+        (tester) async {
+      // `didChangeDependencies` no se vuelve a llamar en una actualización en
+      // sitio, así que el controlador nuevo se quedaba en 0 para siempre: sin
+      // defecto visible (borde lleno) pero sin saludo justo cuando una fila
+      // PASA a estar sin ver, que es cuando más quieres que salude.
+      await tester.pumpWidget(host(tarjeta(saluda: false)));
+      expect(find.byKey(kPulseBorderKey), findsNothing);
+
+      await tester.pumpWidget(host(tarjeta(saluda: true)));
+      await tester.pump(const Duration(milliseconds: 16));
+      var masTenue = 1.0;
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 80));
+        final a = pulseAlpha(tester);
+        if (a < masTenue) masTenue = a;
+      }
+      expect(masTenue, lessThan(.9),
+          reason: 'el controlador nuevo tiene que arrancar, no quedarse en 0');
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('con "reducir animaciones" el borde aparece lleno y quieto',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: jayaloTheme(Brightness.light),
+        home: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: Scaffold(body: tarjeta(saluda: true)),
+        ),
+      ));
+      // Se apaga el MOVIMIENTO, nunca el borde: la marca es información.
+      for (var i = 0; i < 20; i++) {
+        expect(pulseAlpha(tester), closeTo(1, 1e-3));
+        await tester.pump(const Duration(milliseconds: 250));
+      }
+    });
+
+    testWidgets('sin pulseBorder no se monta la capa del saludo',
+        (tester) async {
+      await tester.pumpWidget(host(tarjeta(saluda: false)));
+      expect(find.byKey(kPulseBorderKey), findsNothing);
+    });
   });
 
   group('HoldToConfirmButton', () {

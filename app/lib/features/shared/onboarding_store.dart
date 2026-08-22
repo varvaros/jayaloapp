@@ -15,6 +15,11 @@ abstract class OnboardingRepo {
   String? get currentUserId;
   Future<Set<String>> fetchCompleted();
   Future<void> markCompleted(String key);
+
+  /// Borra TODAS las guías vistas del usuario. Lo usa "Reiniciar tutorial"
+  /// (Ajustes): sin esto, limpiar el cache local no serviría de nada — el
+  /// siguiente `fetchCompleted` volvería a traerlas del backend.
+  Future<void> clearCompleted();
 }
 
 /// Implementación real contra la tabla `user_onboarding_guides` (RLS filtra por
@@ -41,6 +46,15 @@ class SupabaseOnboardingRepo implements OnboardingRepo {
       onConflict: 'user_id,guide_key',
       ignoreDuplicates: true,
     );
+  }
+
+  @override
+  Future<void> clearCompleted() async {
+    final uid = supa.auth.currentUser?.id;
+    if (uid == null) return;
+    // El `eq` es redundante con la política de RLS (`user_id = auth.uid()`),
+    // pero PostgREST rechaza un DELETE sin filtro: hay que nombrarlo igual.
+    await supa.from('user_onboarding_guides').delete().eq('user_id', uid);
   }
 }
 
@@ -138,6 +152,39 @@ class OnboardingStore extends ChangeNotifier {
     } catch (_) {/* el cache local ya evita re-mostrar en este device */}
   }
 
+  /// Cuántas veces se ha reiniciado el tutorial en esta sesión. Las guías lo
+  /// miran para distinguir "el store ya no me tiene por vista" (que también
+  /// pasa por un instante entre cerrar una guía y persistirla) de "el usuario
+  /// pidió empezar de cero". Sin esta distinción, una guía recién descartada
+  /// resucitaba sola en ese hueco.
+  int get resetGeneration => _resetGeneration;
+  int _resetGeneration = 0;
+
+  /// "Reiniciar tutorial" (Ajustes): olvida TODAS las guías vistas — backend,
+  /// cache local y memoria — para que la ayuda de cada botón vuelva a salir
+  /// desde cero. Las guías montadas ahora mismo se enteran por el
+  /// `notifyListeners` y vuelven a pedir turno sin salir de la pantalla.
+  ///
+  /// El borrado remoto va PRIMERO y sin tragar el error: si falla, no se
+  /// limpia nada — un reinicio que solo borra el cache local revive al
+  /// siguiente `fetchCompleted` y el usuario creería que la app le mintió.
+  Future<void> resetAll() async {
+    await _repo.clearCompleted();
+    _resetGeneration++;
+    _done.clear();
+    _suppressed = false;
+    _active = null;
+    _candidates.clear();
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_cacheKey);
+      // También el flag viejo del gesto de mantener pulsado: si sobreviviera,
+      // `_importOldHoldFlag` volvería a marcar esas guías como vistas.
+      await p.remove(_oldHoldKey);
+    } catch (_) {/* el borrado remoto ya es la fuente de verdad */}
+    notifyListeners();
+  }
+
   /// Recarga pública (p. ej. al iniciar sesión otro usuario). Limpia el estado y
   /// vuelve a leer del backend. `_importFlag` en prefs evita re-importar el flag
   /// viejo del gesto. Limpia `_active` también: si una guía había quedado
@@ -205,13 +252,18 @@ class OnboardingStore extends ChangeNotifier {
   /// "Terminé de mostrarme": alias de [withdraw] para la guía activa.
   void release(String key) => withdraw(key);
 
+  /// Igual que [resetAll] pero sin backend ni prefs: para tests. Sube la
+  /// generación por la misma razón que [resetAll] — una guía ya montada tiene
+  /// que volver a estar pendiente.
   @visibleForTesting
   void reset() {
+    _resetGeneration++;
     _done.clear();
     _loaded = false;
     _suppressed = false;
     _active = null;
     _candidates.clear();
+    notifyListeners(); // como `resetAll`: las guías montadas deben enterarse
   }
 }
 

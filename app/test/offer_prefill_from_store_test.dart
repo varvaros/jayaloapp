@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jayalo_app/domain/offer_duration.dart';
 import 'package:jayalo_app/domain/store_product_prefill.dart';
 
 /// Task 9: prellenado extendido de la oferta al elegir "De mi tienda".
@@ -113,7 +114,44 @@ void main() {
       expect(r.hourlyRate, '450');
       expect(r.estimatedHours, '3');
       expect(r.availability, 'Fin de semana');
-      expect(r.duration, '2 días');
+      // Ya no es texto libre: llega partida en número + unidad.
+      expect(r.duration, (value: 2, unit: OfferDurationUnit.dias));
+    });
+  });
+
+  group('computeStoreProductPrefill — el molde no reinyecta texto libre', () {
+    // El jsonb `offer_defaults.duration` es un canal SIN PUERTA (sin
+    // pre-chequeo en pantalla, sin `payloadHasContactInfo`, sin trigger de BD)
+    // y su única salida es `provider_offers.estimated_duration`, que sí está
+    // vigilada. Se sanea en la LECTURA para que los moldes YA guardados
+    // tampoco puedan meter basura por la puerta de atrás.
+    StoreProductPrefill conDuracion(String d) => computeStoreProductPrefill(
+          {
+            'offers_shipping': false,
+            'offers_installation': false,
+            'requires_evaluation': false,
+            'offer_defaults': {'duration': d},
+          },
+          isService: true,
+          svcModes: _svcModes,
+          existingColors: const [],
+        );
+
+    test('una duración ilegible llega como null y no toca el formulario', () {
+      expect(conDuracion('A definir según evaluación').duration, isNull);
+      expect(conDuracion('8 horas (1 día laboral)').duration, isNull);
+      expect(conDuracion('d').duration, isNull);
+      expect(conDuracion('809 555 1234').duration, isNull);
+      expect(conDuracion('').duration, isNull);
+    });
+
+    test('una duración legible sí pasa, con y sin tilde', () {
+      expect(conDuracion('3 semanas').duration,
+          (value: 3, unit: OfferDurationUnit.semanas));
+      expect(conDuracion('30 minutos').duration,
+          (value: 30, unit: OfferDurationUnit.minutos));
+      expect(conDuracion('1 dia').duration,
+          (value: 1, unit: OfferDurationUnit.dias));
     });
   });
 

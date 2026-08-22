@@ -18,7 +18,11 @@ void main() {
       'client.request_wholesale.v1',
       'client.catalog.v1',
       'chat.quick_replies.v1',
-      'chat.report.v1',
+      'chat.menu.provider.v1',
+      'chat.menu.client.v1',
+      'provider.make_offer.v2',
+      'provider.offer_menu.v1',
+      'wallet.credits.v1',
     ];
     for (final k in keys) {
       expect(onboardingCopy.containsKey(k), isTrue, reason: 'falta $k');
@@ -26,6 +30,13 @@ void main() {
       expect(onboardingCopy[k]!.first.message.trim(), isNotEmpty,
           reason: '$k con mensaje vacío');
     }
+  });
+
+  test('la guía de enviar oferta subió a v2 y la v1 ya no existe', () {
+    // La v1 quedó marcada como vista en el backend sin que nadie llegara a
+    // leerla (se pintaba fuera de la pantalla). Si la v1 sobreviviera, esos
+    // usuarios nunca verían la guía arreglada.
+    expect(onboardingCopy.containsKey('provider.make_offer.v1'), isFalse);
   });
 
   test('la guía de crear solicitud lleva el copy nuevo del PO y ya no la v1', () {

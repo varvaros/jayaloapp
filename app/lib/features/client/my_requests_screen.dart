@@ -885,9 +885,26 @@ class _RequestCard extends StatelessWidget {
     if (unseen && phase == RequestPhase.withOffers) {
       label = offerCount == 1 ? '1 oferta nueva' : '$offerCount ofertas nuevas';
     }
+    // Mismo borde violeta que ya llevaba cada OFERTA sin abrir en la hoja,
+    // ahora también en la solicitud que las contiene (PO 2026-08-19), y con el
+    // saludo: respira tres veces y se queda quieto.
+    //
+    // Va atado a `withOffers`, la MISMA condición que vuelve verde el chip, y
+    // no a `unseen` a secas. `_unseenReqIds` no filtra por fase, así que una
+    // solicitud ya COMPLETADA con una `offer_new` que nunca abriste saldría con
+    // el borde violeta respirando alrededor de la banda violeta "Completado":
+    // justo lo contrario de la regla (se mueve lo que no has visto; lo
+    // permanente va quieto), y encima con el mismo `cs.primary` a los dos lados.
+    final saluda = unseen && phase == RequestPhase.withOffers;
     return JayaloCard(
       onTap: onTap,
       tint: bg,
+      // 1 px y no 2 (PO 2026-08-21, "50% más sutil"): el mismo grosor en las
+      // cuatro tarjetas que llevan marca, para que la marca se lea igual en
+      // los dos lados. `JayaloCard` saca de aquí el grosor del borde que
+      // respira, así que no hay ningún 2 escondido en `brand_kit`.
+      border: saluda ? Border.all(color: cs.primary, width: 1) : null,
+      pulseBorder: saluda,
       // Sin padding propio: el cuerpo lo pone y el riel llega a los bordes.
       padding: EdgeInsets.zero,
       margin: margin ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 4),

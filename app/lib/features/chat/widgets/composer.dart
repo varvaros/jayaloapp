@@ -88,6 +88,11 @@ class _ChatComposerState extends State<ChatComposer> {
     if (!ok && mounted) _ctrl.text = raw;
   }
 
+  /// Guia del `+`, por rol: el menu no trae lo mismo para cada uno.
+  String get _attachGuideKey => widget.isProvider
+      ? 'chat.attach.provider.v1'
+      : 'chat.attach.client.v1';
+
   void _openPlusMenu() {
     final items = plusMenuItems(isProvider: widget.isProvider);
     showModalBottomSheet<void>(
@@ -266,8 +271,13 @@ class _ChatComposerState extends State<ChatComposer> {
                     Icons.quickreply_outlined, _openQuickList, iconColor,
                     tooltip: 'Mensajes predeterminados'),
               ),
-              _pillIcon(Icons.add, _openPlusMenu, iconColor,
-                  tooltip: 'Adjuntar'),
+              OnboardingGuide(
+                guideKey: _attachGuideKey,
+                steps: onboardingCopy[_attachGuideKey]!,
+                order: 4,
+                child: _pillIcon(Icons.add, _openPlusMenu, iconColor,
+                    tooltip: 'Adjuntar'),
+              ),
             ]),
           ),
         ),

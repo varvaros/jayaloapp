@@ -1213,8 +1213,10 @@ class _ChatScreenState extends State<ChatScreen> {
           peerName: _peerName, isProvider: _isProvider),
       actions: [
         OnboardingGuide(
-          guideKey: 'chat.report.v1',
-          steps: onboardingCopy['chat.report.v1']!,
+          // Clave por rol: el menú NO trae lo mismo para cliente y proveedor.
+          key: ValueKey(_chatMenuGuideKey),
+          guideKey: _chatMenuGuideKey,
+          steps: onboardingCopy[_chatMenuGuideKey]!,
           order: 3,
           enabled: _conv != null,
           child: PopupMenuButton<String>(
@@ -1304,6 +1306,10 @@ class _ChatScreenState extends State<ChatScreen> {
       ],
     );
   }
+
+  /// Guía del ⋮, por rol (ver `onboarding_copy.dart`).
+  String get _chatMenuGuideKey =>
+      _isProvider ? 'chat.menu.provider.v1' : 'chat.menu.client.v1';
 
   /// Banner de cerrado, o composer si la conversación sigue abierta.
   Widget _buildBottom(Map<String, dynamic> conv) {

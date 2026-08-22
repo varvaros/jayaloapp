@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -14,6 +15,7 @@ import '../../domain/contact_info.dart' show contactInfoMessage, isContactInfoEr
 import '../../domain/image_pick.dart';
 import '../../domain/money.dart' show parseMiles;
 import '../../domain/offer_defaults.dart';
+import '../../domain/offer_duration.dart';
 import '../shared/brand_kit.dart';
 import '../shared/network_image.dart';
 import '../shared/offer_field_options.dart';
@@ -171,7 +173,19 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
 
   // Servicio: disponibilidad + duración.
   final _availability = TextEditingController();
-  final _duration = TextEditingController();
+
+  /// Duración del molde: NÚMERO + UNIDAD, nunca texto libre (ver
+  /// `domain/offer_duration.dart`). Se guarda compuesta ("3 días") en la misma
+  /// clave `offer_defaults.duration`, que sigue siendo `String`.
+  ///
+  /// Aquí NO hay mecanismo de «legado» como en `request_detail_screen.dart`, y
+  /// es a propósito: esta pantalla es el ÚNICO escritor de esa clave en todo el
+  /// sistema (la web no toca `offer_defaults`), así que el conjunto de valores
+  /// ilegibles está vacío y cerrado — censo en producción el 2026-08-19: 6
+  /// productos, 0 con la clave `duration`. Consecuencia aceptada: si algún día
+  /// apareciera un molde ilegible, el siguiente guardado lo deja sin duración.
+  final _durationValue = TextEditingController();
+  OfferDurationUnit _durationUnit = kOfferDurationDefaultUnit;
 
   // Producto: envío / instalación / evaluación (paridad con la oferta).
   bool _offersShipping = false;
@@ -304,7 +318,13 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
       final hrs = defaults[OfferDefaults.estimatedHours];
       if (hrs != null) _hours.text = '$hrs';
       _availability.text = (defaults[OfferDefaults.availability] as String?) ?? '';
-      _duration.text = (defaults[OfferDefaults.duration] as String?) ?? '';
+      // Ilegible = campo vacío, sin conservar el original. Ver la nota de
+      // `_durationValue`: esta pantalla es la única que escribe esa clave.
+      final dur = parseOfferDuration(defaults[OfferDefaults.duration] as String?);
+      if (dur != null) {
+        _durationValue.text = '${dur.value}';
+        _durationUnit = dur.unit;
+      }
       // Hallazgo I-1 (revisión final): `warranty` es columna REAL también
       // para un servicio (paridad con la web) — mismo criterio que la rama
       // de producto de abajo, la columna real gana sobre el jsonb.
@@ -369,7 +389,7 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
     _hourly.dispose();
     _hours.dispose();
     _availability.dispose();
-    _duration.dispose();
+    _durationValue.dispose();
     _shipping.dispose();
     _installation.dispose();
     _evaluation.dispose();
@@ -392,7 +412,11 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
     _hourly.text,
     _hours.text,
     _availability.text,
-    _duration.text,
+    // Los DOS controles de la duración: cambiar solo la unidad (de "3 días" a
+    // "3 semanas") es un cambio real y sin esta segunda entrada el aviso de
+    // "salir sin guardar" no lo vería.
+    _durationValue.text,
+    _durationUnit.name,
     _shipping.text,
     _installation.text,
     _evaluation.text,
@@ -510,7 +534,11 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
     hourlyRate: _pricingMode == 'hourly' ? _hourlyValue : null,
     estimatedHours: _pricingMode == 'hourly' ? _hoursValue : null,
     availability: _isService ? _availability.text : null,
-    duration: _isService ? _duration.text : null,
+    // Compuesta ("3 días") o vacía: `buildOfferDefaults` omite la clave si
+    // queda vacía, así que un molde sin duración no la escribe.
+    duration: _isService
+        ? formatOfferDuration(_durationValue.text, _durationUnit)
+        : null,
     shippingPrice:
         _isService ? null : _gatedCost(_offersShipping, parseStoreItemPrice(_shipping.text)?.toDouble()),
     installationPrice: _isService
@@ -917,8 +945,9 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
         _txtField(_availability, 'Ej: Fin de semana, a coordinar',
             key: const Key('campo-disponibilidad')),
         const SizedBox(height: 12),
-        _txtField(_duration, 'Duración estimada (ej: 2 días)',
-            key: const Key('campo-duracion')),
+        _sectionLabel('Duración estimada'),
+        const SizedBox(height: 8),
+        _durationRow(),
         const SizedBox(height: 14),
         // Hallazgo I-1 (revisión final): la web permite garantía en
         // servicios (`productOnly: false`), pero este editor solo la
@@ -978,6 +1007,66 @@ class _AddStoreItemScreenState extends State<AddStoreItemScreen> {
         onChanged: (_) => setState(() {}),
         decoration: filledField(context, label),
       );
+
+  /// Duración: cantidad + unidad. Mismo control que en el formulario de oferta
+  /// (`request_detail_screen.dart`), menos el aviso de legado — ver la nota de
+  /// [_durationValue] sobre por qué aquí no hace falta.
+  ///
+  /// Los `inputFormatters` NO son cosméticos: son la mitad del tope de 3
+  /// dígitos. Sin ellos se puede teclear un teléfono entero,
+  /// `formatOfferDuration` devuelve `''` y la duración se pierde en silencio.
+  Widget _durationRow() {
+    final cs = Theme.of(context).colorScheme;
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(
+        width: 96,
+        child: TextField(
+          key: const Key('campo-duracion'),
+          controller: _durationValue,
+          keyboardType: TextInputType.number,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(kOfferDurationMaxDigits),
+          ],
+          onChanged: (_) => setState(() {}),
+          decoration: filledField(context, 'Cantidad'),
+        ),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Wrap(
+          key: const Key('campo-duracion-unidad'),
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final u in OfferDurationUnit.values)
+              GestureDetector(
+                // A diferencia de `_chipSelect`, tocar el activo NO
+                // deselecciona: siempre tiene que haber una unidad.
+                onTap: () => setState(() => _durationUnit = u),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: _durationUnit == u
+                        ? cs.primary
+                        : cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(u.label,
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: _durationUnit == u
+                              ? cs.onPrimary
+                              : cs.onSurface)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ]);
+  }
 
   Widget _txtField(TextEditingController c, String label, {Key? key}) =>
       TextField(key: key, controller: c, decoration: filledField(context, label));

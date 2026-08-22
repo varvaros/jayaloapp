@@ -8,6 +8,7 @@ class FakeRepo implements OnboardingRepo {
     this.throwOnFetch = false,
     this.loggedIn = true,
     this.currentUserId = 'u1',
+    this.throwOnClear = false,
   });
   Set<String> remote;
   bool throwOnFetch;
@@ -15,6 +16,8 @@ class FakeRepo implements OnboardingRepo {
   @override
   String? currentUserId;
   final List<String> marked = [];
+  int cleared = 0;
+  bool throwOnClear;
 
   @override
   bool get isLoggedIn => loggedIn;
@@ -30,10 +33,62 @@ class FakeRepo implements OnboardingRepo {
     marked.add(key);
     remote = {...remote, key};
   }
+
+  @override
+  Future<void> clearCompleted() async {
+    if (throwOnClear) throw Exception('network');
+    cleared++;
+    remote = {};
+  }
 }
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  group('Reiniciar tutorial (resetAll)', () {
+    test('olvida las guías del backend, del cache local y de memoria', () async {
+      SharedPreferences.setMockInitialValues({
+        'onboarding_guides_u1': ['b'],
+        'hold_tutorial_done': ['accept'],
+      });
+      final repo = FakeRepo(remote: {'a'});
+      final store = OnboardingStore.forTest(repo);
+      await store.ensureLoaded();
+      expect(store.isDone('a'), isTrue);
+
+      await store.resetAll();
+
+      expect(repo.cleared, 1, reason: 'no borró en el backend');
+      expect(store.isDone('a'), isFalse);
+      expect(store.isDone('b'), isFalse);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getStringList('onboarding_guides_u1'), isNull);
+      expect(prefs.getStringList('hold_tutorial_done'), isNull,
+          reason: 'el flag viejo del gesto revivirá las guías al reimportarse');
+    });
+
+    test('levanta la supresión: tras un fallo de red, reiniciar vuelve a mostrar',
+        () async {
+      final repo = FakeRepo(throwOnFetch: true);
+      final store = OnboardingStore.forTest(repo);
+      await store.ensureLoaded();
+      expect(store.isDone('cualquiera'), isTrue); // suprimido
+
+      await store.resetAll();
+      expect(store.isDone('cualquiera'), isFalse);
+    });
+
+    test('si el borrado remoto falla, propaga y NO limpia nada', () async {
+      final repo = FakeRepo(remote: {'a'}, throwOnClear: true);
+      final store = OnboardingStore.forTest(repo);
+      await store.ensureLoaded();
+
+      await expectLater(store.resetAll(), throwsException);
+      // Limpiar solo el cache local sería mentir: el próximo arranque las
+      // vuelve a traer del backend.
+      expect(store.isDone('a'), isTrue);
+    });
+  });
 
   test('merge de backend y cache local persistido', () async {
     SharedPreferences.setMockInitialValues({'onboarding_guides_u1': ['b']});

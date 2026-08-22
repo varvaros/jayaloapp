@@ -10,7 +10,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../auth/sign_out.dart';
 import 'network_image.dart';
+import 'onboarding_copy.dart';
+import 'onboarding_guide.dart';
 
 import '../../core/motion.dart';
 import '../../core/safe_image_picker.dart';
@@ -109,6 +112,9 @@ final profileStore = ProfileStore();
 /// Resultado especial del menú: "Recargar créditos" no es una ruta del router
 /// sino la tienda de créditos IN-APP (Play Billing sustituyó al link-out
 /// externo de ADR-0031).
+/// Sentinela de "cerrar sesión" en el menú. Como el del monedero: el menú
+/// devuelve una ruta y esto NO es una ruta, es una acción.
+const _kLogoutAction = '__logout__';
 const _kWalletAction = '__wallet__';
 
 /// Abre el menú de perfil (role-aware). Proveedor: encabezado con nombre +
@@ -269,6 +275,18 @@ Future<void> openProfileMenu(BuildContext context,
                   title: const Text('Ajustes'),
                   onTap: () => Navigator.pop(ctx, '/settings'),
                 ),
+                // "Cerrar sesión" AL FINAL del menú (pedido PO 2026-08-22).
+                // Antes vivía enterrado en Ajustes: salir de la app es lo
+                // último que uno busca, y este menú es de donde se sale.
+                const Divider(height: 1),
+                Builder(builder: (ctx2) {
+                  final err = Theme.of(ctx2).colorScheme.error;
+                  return ListTile(
+                    leading: Icon(Icons.logout, color: err),
+                    title: Text('Cerrar sesión', style: TextStyle(color: err)),
+                    onTap: () => Navigator.pop(ctx, _kLogoutAction),
+                  );
+                }),
               ]),
             ),
           ),
@@ -279,6 +297,12 @@ Future<void> openProfileMenu(BuildContext context,
   if (route == null || !context.mounted) return;
   if (route == _kWalletAction) {
     await openExternalWallet(context);
+    return;
+  }
+  if (route == _kLogoutAction) {
+    await signOutJayalo();
+    // No hace falta navegar: el router escucha la sesión (`_AuthNotifier`) y
+    // su `redirect` manda a /login en cuanto deja de haberla.
     return;
   }
   context.push(route);
@@ -553,14 +577,23 @@ class _ProfileAvatarButtonState extends State<ProfileAvatarButton> {
         listenable: _store,
         builder: (context, _) {
           final url = _store.avatarUrl;
-          return IconButton(
-            tooltip: 'Tu perfil',
-            onPressed: _openMenu,
-            icon: CircleAvatar(
-              radius: 16,
-              backgroundImage:
-                  url != null ? jayaloAvatarImage(url, 32, context) : null,
-              child: url == null ? Text(_store.initial) : null,
+          // La guía va DENTRO del botón (no en cada una de las 6 pantallas
+          // raíz que lo hospedan): así el copy y el orden viven en un solo
+          // sitio. `order` alto a propósito — primero se explica la pantalla
+          // en la que está el usuario, y este menú al final.
+          return OnboardingGuide(
+            guideKey: 'profile.menu.v1',
+            steps: onboardingCopy['profile.menu.v1']!,
+            order: 7,
+            child: IconButton(
+              tooltip: 'Tu perfil',
+              onPressed: _openMenu,
+              icon: CircleAvatar(
+                radius: 16,
+                backgroundImage:
+                    url != null ? jayaloAvatarImage(url, 32, context) : null,
+                child: url == null ? Text(_store.initial) : null,
+              ),
             ),
           );
         },

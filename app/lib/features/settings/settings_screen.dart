@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/account_deletion_client.dart';
 import '../../core/brand.dart';
-import '../../core/config.dart';
 import '../../core/session_state.dart';
 import '../../core/theme_store.dart';
 import '../../data/repos.dart';
-import '../../push/push_service.dart';
 import '../chat/widgets/bubbles.dart' show chatPalette;
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../auth/sign_out.dart';
+import '../shared/onboarding_store.dart';
 import '../shared/violet_header.dart';
 import '../verification/id_doc_sheet.dart';
 import '../verification/otp_sheet.dart';
@@ -29,6 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasIdDoc = false;
   bool? _waReveal; // preferencia de contacto (WhatsApp vs solo chat)
   bool _savingWa = false;
+  bool _resettingGuides = false;
 
   @override
   void initState() {
@@ -134,6 +134,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// "Reiniciar tutorial": olvida las guías vistas para que la ayuda de cada
+  /// botón vuelva a salir. El borrado remoto manda — si falla, no se toca nada
+  /// y se avisa, en vez de fingir un reinicio que el próximo arranque deshace.
+  Future<void> _resetGuides() async {
+    if (!await confirmResetGuides(context) || !mounted) return;
+
+    setState(() => _resettingGuides = true);
+    try {
+      await onboardingStore.resetAll();
+      if (!mounted) return;
+      _snack('Listo. La ayuda de cada botón volverá a salir.');
+    } catch (_) {
+      if (!mounted) return;
+      _snack('No se pudo reiniciar el tutorial. Intenta de nuevo.');
+    } finally {
+      if (mounted) setState(() => _resettingGuides = false);
+    }
+  }
+
   void _snack(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
@@ -149,28 +168,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// en silencio → el siguiente login entraba con la MISMA cuenta y no se podía
   /// cambiar de usuario (en un teléfono compartido, además, "cerrar sesión" no
   /// protegía nada). Verificado en el device 2026-07-17.
-  Future<void> _signOut() async {
-    await deleteCurrentToken(); // best-effort (ya trae su try/catch)
-    try {
-      await GoogleSignIn(serverClientId: AppConfig.googleWebClientId).signOut();
-    } catch (e) {
-      // Si Google falla, la sesión de Supabase debe cerrarse igual.
-      debugPrint('GoogleSignIn.signOut falló (no bloqueante): $e');
-    }
-    try {
-      // `local` EXPLÍCITO (ya era el default de supabase_flutter, pero el de
-      // supabase-js es `global` → los dos lados hacían cosas opuestas sin que
-      // nadie lo decidiera). Cerrar sesión aquí no debe sacar al usuario de la
-      // web ni de otro teléfono; para eso haría falta una acción propia
-      // "cerrar sesión en todos mis dispositivos" (`SignOutScope.global`).
-      await Supabase.instance.client.auth.signOut(scope: SignOutScope.local);
-    } catch (e) {
-      // El signOut local ya limpió la sesión antes de la llamada de red; si esa
-      // falla (p.ej. "connection reset" al perder señal) NO es un error real.
-      debugPrint('auth.signOut red falló (no bloqueante): $e');
-    }
-  }
-
   /// Eliminar la cuenta — requisito de Google Play (camino in-app; la URL
   /// pública equivalente es AppConfig.deleteAccountUrl).
   ///
@@ -185,13 +182,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final cs = Theme.of(context).colorScheme;
     final confirmado = await showModalBottomSheet<bool>(
           context: context,
+          // Al Navigator RAÍZ: sin esto la hoja nace DENTRO del shell y la
+          // barra flotante se le pinta encima, partiendo el botón de mantener
+          // pulsado y dejando "Cancelar" medio fuera (visto en device, PO
+          // 2026-08-22). Es lo que ya hacen las hojas de aceptar oferta y
+          // desbloquear contacto.
+          useRootNavigator: true,
           isScrollControlled: true,
           showDragHandle: true,
           builder: (ctx) => Padding(
             padding: EdgeInsets.only(
               left: 20,
               right: 20,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+              // `viewPadding.bottom` además del respiro fijo: al subir la hoja
+              // al Navigator raíz deja de haber barra flotante debajo, y
+              // "Cancelar" caía justo sobre la zona de gestos del sistema —
+              // tocarlo competía con el deslizar-para-salir.
+              bottom: MediaQuery.of(ctx).viewInsets.bottom +
+                  MediaQuery.of(ctx).viewPadding.bottom +
+                  24,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -237,9 +246,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ]),
                   ),
                 ],
+                const SizedBox(height: 16),
+                // Advertencia SIEMPRE visible (pedido PO 2026-08-22): la de
+                // arriba solo salía con saldo sin gastar, y lo irreversible no
+                // depende de que tengas créditos.
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cs.errorContainer.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: cs.error, width: 1.5),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.report_gmailerrorred_outlined, color: cs.error),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Esto es IRREVERSIBLE. No se puede deshacer, y no hay '
+                        'forma de recuperar la cuenta ni sus datos.',
+                        style: TextStyle(
+                            color: cs.onErrorContainer,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ]),
+                ),
                 const SizedBox(height: 20),
                 HoldToConfirmButton(
-                  label: 'Mantener para eliminar mi cuenta',
+                  // 5 s, no los 2,5 s del resto: aquí el error no tiene vuelta
+                  // atrás. El copy dice el tiempo para que sostener no se
+                  // sienta un botón roto.
+                  duration: const Duration(seconds: 5),
+                  label: 'Mantén pulsado 5 segundos para eliminar mi cuenta',
                   onConfirmed: () async => Navigator.pop(ctx, true),
                 ),
                 const SizedBox(height: 8),
@@ -269,7 +307,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await AccountDeletionClient().deleteAccount(accessToken: token);
       // La cuenta ya no existe: cerrar sesión en local y salir al login.
-      await _signOut();
+      await signOutJayalo();
       if (!mounted) return;
       context.go('/login');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -419,6 +457,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           subtitle: 'Edita, agrega o reordena tus mensajes predeterminados',
           onTap: () => context.push('/settings/quick-replies'),
         ),
+        const SectionHeader(text: 'Ayuda'),
+        _SettingsRow(
+          icon: Icons.school_outlined,
+          title: 'Reiniciar tutorial',
+          subtitle: _resettingGuides
+              ? 'Reiniciando…'
+              : 'Vuelve a mostrar la ayuda de cada botón, desde cero',
+          onTap: _resettingGuides ? null : _resetGuides,
+        ),
         const SectionHeader(text: 'Información'),
         _SettingsRow(
           icon: Icons.description_outlined,
@@ -426,14 +473,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onTap: () => launchUrl(Uri.parse('https://jayalo.com/terminos'),
               mode: LaunchMode.externalApplication),
         ),
-        const SectionHeader(text: 'Sesión'),
-        _SettingsRow(
-          icon: Icons.logout,
-          iconColor: cs.error,
-          titleColor: cs.error,
-          title: 'Cerrar sesión',
-          onTap: _signOut,
-        ),
+        // "Cerrar sesión" ya no vive aquí: se mudó al final del menú del
+        // avatar (pedido PO 2026-08-22), que es de donde se sale de verdad.
         // Google Play exige un camino de eliminación de cuenta DENTRO de la
         // app. Va al final y en tono de error: es irreversible.
         const SectionHeader(text: 'Tu cuenta'),
@@ -638,3 +679,36 @@ class _SettingsRow extends StatelessWidget {
     );
   }
 }
+
+/// Confirmación de "Reiniciar tutorial" (pedido PO 2026-08-22).
+///
+/// Vive fuera de la pantalla —como `confirmMarkLost`— por dos razones: el copy
+/// de una acción molesta de deshacer no debe ser propiedad de un widget, y
+/// `SettingsScreen` no se puede montar en un test (su `build` toca
+/// `Supabase.instance`), así que dentro de ella el diálogo no tendría cobertura
+/// posible.
+///
+/// No es destructivo —no se pierde nada— pero sí cuesta: hay que volver a
+/// pasar por TODAS las guías, una por una.
+Future<bool> confirmResetGuides(BuildContext context) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Reiniciar el tutorial?'),
+        content: const Text(
+          'Volverás a ver la ayuda de cada botón desde el principio, como si '
+          'acabaras de instalar la app.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Sí, reiniciar'),
+          ),
+        ],
+      ),
+    ) ??
+    false;

@@ -9,6 +9,7 @@
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:enableOnBackInvokedCallback="false"><!--
         allowBackup=false a propósito (auditoría 2026-07-30): sin declararlo,
         el default de Android es TRUE y Auto Backup sube shared_prefs/ al Drive
@@ -29,7 +30,13 @@
         de los navigators anidados, por eso las rutas del shell sí funcionaban).
         En el camino legacy, Activity.onBackPressed → framework → PopScope
         (BackGuard) se dispara SIEMPRE y navega bien en todas las rutas. Se
-        pierde solo la animación de "peek" del predictive-back (cosmético). -->
+        pierde solo la animación de "peek" del predictive-back (cosmético). --><!--
+        networkSecurityConfig (hallazgo de Aikido 2026-08-19): con targetSdk 36
+        y minSdk 24 Android YA prohíbe el tráfico en claro y YA desconfía de las
+        CAs que instala el usuario. El fichero no cambia nada: congela esa
+        postura para que no la abra por accidente un manifest fusionado de una
+        dependencia. El porqué completo — y por qué NO hay pinning — vive en
+        res/xml/network_security_config.xml. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
