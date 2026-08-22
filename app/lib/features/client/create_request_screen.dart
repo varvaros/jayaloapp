@@ -584,7 +584,19 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         // En paralelo al auto-"ok": el catálogo debe estar listo cuando se pinte
         // el formulario final, tanto si la IA sugirió rubros como si no.
         unawaited(_loadRubroCatalog());
-        await _send('ok', force: true);
+        if (r.readyNext case final rn?) {
+          // F3: el servidor ya adjuntó el ready — el POST del auto-«ok» (que
+          // re-subía la foto entera) se ahorra. El historial queda IGUAL que
+          // por el camino lento: el mismo 'ok' + el ready serializado con el
+          // mismo `_turnToJson` — las correcciones tras la ficha dependen de
+          // esa coherencia.
+          _messages.add(const AiMessage('user', 'ok'));
+          _messages.add(AiMessage('assistant', jsonEncode(_turnToJson(rn))));
+          await _handleTurn(rn);
+        } else {
+          // Servidor viejo o readyNext omitido: el camino de siempre.
+          await _send('ok', force: true);
+        }
       case AiReady rd:
         setState(() {
           _ready = rd;

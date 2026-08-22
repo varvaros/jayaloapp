@@ -45,6 +45,48 @@ void main() {
   test('type desconocido lanza', () {
     expect(() => parseAiTurn({'type': 'sorpresa'}), throwsFormatException);
   });
+  test('routing con readyNext valido lo trae parseado (F3)', () {
+    final r = parseAiTurn({
+      'type': 'routing',
+      'message': 'Voy a enviar tu solicitud a:',
+      'categories': ['hogar'],
+      'rubros': ['uuid-1'],
+      'readyNext': {
+        'type': 'ready',
+        'title': 'Ramo de rosas',
+        'bullets': ['Empaque conico'],
+        'wholesale': false,
+      },
+    }) as AiRouting;
+    expect(r.readyNext, isNotNull);
+    expect(r.readyNext!.title, 'Ramo de rosas');
+    expect(r.readyNext!.bullets, ['Empaque conico']);
+  });
+  test('routing sin readyNext o con uno malformado degrada a null (F3)', () {
+    final sin = parseAiTurn({
+      'type': 'routing',
+      'message': 'm',
+      'categories': <String>[],
+      'rubros': <String>[],
+    }) as AiRouting;
+    expect(sin.readyNext, isNull);
+    final tipoMalo = parseAiTurn({
+      'type': 'routing',
+      'message': 'm',
+      'categories': <String>[],
+      'rubros': <String>[],
+      'readyNext': {'type': 'question', 'question': 'q'},
+    }) as AiRouting;
+    expect(tipoMalo.readyNext, isNull);
+    final basura = parseAiTurn({
+      'type': 'routing',
+      'message': 'm',
+      'categories': <String>[],
+      'rubros': <String>[],
+      'readyNext': 'no soy un mapa',
+    }) as AiRouting;
+    expect(basura.readyNext, isNull);
+  });
   test('ready parsea condition solo con valores validos (ADR web parity)', () {
     final con = parseAiTurn({
       'type': 'ready',

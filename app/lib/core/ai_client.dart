@@ -70,6 +70,12 @@ class AiClient {
             'imageDataUrl': ?imageDataUrl,
             'imageDataUrl2': ?imageDataUrl2,
             'aiTicket': ?_ticket,
+            // F3: pide el `ready` adjunto al routing (ahorra el POST del
+            // auto-«ok»). Va en TODOS los turnos porque el cliente no puede
+            // predecir cuál será routing; el servidor solo actúa ahí, y un
+            // servidor viejo descarta la clave sin enterarse (fijado por test
+            // en la web: chatStreamBody.test.ts).
+            'wantReadyNext': true,
           }),
         )
         .timeout(_timeout);

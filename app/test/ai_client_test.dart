@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:jayalo_app/core/ai_client.dart';
+import 'package:jayalo_app/domain/ai_turns.dart';
 
 /// El servidor emite un `aiTicket` HMAC en cada respuesta y lo EXIGE en los
 /// turnos 2+ (cierra el bypass del historial inventado, `aiTicket.server.ts`
@@ -38,6 +39,41 @@ void main() {
     // Primer turno: sin ticket (aún no existe). Segundo: el emitido.
     expect(sent[0].containsKey('aiTicket'), isFalse);
     expect(sent[1]['aiTicket'], 'tkt-1');
+  });
+
+  test('todo POST pide el readyNext del routing (F3, opt-in wantReadyNext)',
+      () async {
+    final sent = <Map<String, dynamic>>[];
+    final c = AiClient(inner: MockClient((req) async {
+      sent.add(bodyOf(req));
+      return turnWithTicket();
+    }));
+    await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+    expect(sent[0]['wantReadyNext'], isTrue);
+  });
+
+  test('un routing con readyNext llega parseado hasta el caller (F3)',
+      () async {
+    final c = AiClient(inner: MockClient((req) async {
+      return http.Response(
+          jsonEncode({
+            'type': 'routing',
+            'message': 'Voy a enviar tu solicitud a:',
+            'categories': ['hogar'],
+            'rubros': ['u1'],
+            'readyNext': {
+              'type': 'ready',
+              'title': 'Silla de oficina',
+              'bullets': ['Con ruedas'],
+            },
+          }),
+          200);
+    }));
+    final turn =
+        await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+    final r = turn as AiRouting;
+    expect(r.readyNext, isNotNull);
+    expect(r.readyNext!.title, 'Silla de oficina');
   });
 
   test('una respuesta sin ticket NO borra el que ya se tenía', () async {

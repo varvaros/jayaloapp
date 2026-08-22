@@ -21,10 +21,19 @@ class AiImageRequest extends AiTurn {
 
 class AiRouting extends AiTurn {
   const AiRouting(
-      {required this.message, required this.categories, required this.rubros});
+      {required this.message,
+      required this.categories,
+      required this.rubros,
+      this.readyNext});
   final String message;
   final List<String> categories;
   final List<String> rubros; // UUIDs — los añade el servidor al post-procesar
+
+  /// F3: el `ready` que el servidor adjunta al routing cuando se le pide
+  /// (`wantReadyNext`), para ahorrarse el POST del auto-«ok» — que re-subía
+  /// la(s) foto(s) en base64 enteras. null = servidor viejo o `readyNext`
+  /// omitido (timeout/formato/oferta pura): se cae al auto-«ok» de siempre.
+  final AiReady? readyNext;
 }
 
 class AiReady extends AiTurn {
@@ -54,6 +63,18 @@ class AiKindSwitch extends AiTurn {
 List<String> _strs(dynamic v) =>
     (v is List) ? v.map((e) => e.toString()).toList() : const [];
 
+/// Parsea el `readyNext` adjunto a un routing. Cualquier malformación degrada
+/// a null (= fallback al auto-«ok»), nunca rompe el turno que lo trae.
+AiReady? _readyNextOf(dynamic v) {
+  if (v is! Map<String, dynamic> || v['type'] != 'ready') return null;
+  try {
+    final turn = parseAiTurn(v);
+    return turn is AiReady ? turn : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 AiTurn parseAiTurn(Map<String, dynamic> json) => switch (json['type']) {
       'question' => AiQuestion(
           question: json['question'] as String? ?? '',
@@ -65,7 +86,8 @@ AiTurn parseAiTurn(Map<String, dynamic> json) => switch (json['type']) {
       'routing' => AiRouting(
           message: json['message'] as String? ?? '',
           categories: _strs(json['categories']),
-          rubros: _strs(json['rubros'])),
+          rubros: _strs(json['rubros']),
+          readyNext: _readyNextOf(json['readyNext'])),
       'ready' => AiReady(
           title: json['title'] as String? ?? '',
           bullets: _strs(json['bullets']),
