@@ -41,6 +41,7 @@ import '../../core/unsaved_guard.dart';
 import 'offer_center_menu.dart';
 import 'offer_requirements_warning.dart';
 import 'unlock_flow.dart';
+import 'opened_requests.dart';
 
 const _maxOfferPhotos = 5;
 
@@ -350,6 +351,10 @@ class _ProviderRequestDetailScreenState
   @override
   void initState() {
     super.initState();
+    // Abrir el detalle ES haberla visto: sale del badge de "Solicitudes"
+    // (pedido PO 2026-08-22). Va AQUI y no en el `onTap` de la bandeja para
+    // que tambien cuente al llegar desde un push o un enlace directo.
+    openedRequestsStore.markOpened(widget.requestId);
     // Antes que nada: `_editing` se consulta más abajo, en esta misma función.
     _editOfferId = widget.editOfferId;
     requestById(widget.requestId).then((r) {

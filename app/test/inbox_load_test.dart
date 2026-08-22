@@ -123,6 +123,37 @@ void main() {
       );
     });
 
+    test('el badge NO cuenta las solicitudes que YA ABRISTE', () async {
+      // Pedido PO 2026-08-22: "solicitudes tiene una notificacion de 3, ya abri
+      // todas las ventanas y sigue ahi". El badge del PROVEEDOR contaba el
+      // INVENTARIO de "Para ti" (`items.length`), no la novedad, asi que no
+      // habia forma de apagarlo: nada marcaba nada como visto. Ahora cuenta
+      // solo lo que este dispositivo todavia no ha abierto.
+      final data = await loadInboxData(
+        fetchItems: () async => [req('a'), req('b'), req('c')],
+        fetchOfferedOpen: null,
+        openedIds: const {'a', 'b'},
+        fetchStatuses: (_) async => {},
+        fetchCounts: (_) async => {},
+        fetchRequirements: (_) async => {},
+      );
+      expect(data.badgeCount, 1, reason: 'solo "c" queda sin abrir');
+      expect(data.items.length, 3,
+          reason: 'abrirlas NO las saca de la bandeja, solo del badge');
+    });
+
+    test('abiertas todas, el badge se APAGA', () async {
+      final data = await loadInboxData(
+        fetchItems: () async => [req('a'), req('b')],
+        fetchOfferedOpen: null,
+        openedIds: const {'a', 'b'},
+        fetchStatuses: (_) async => {},
+        fetchCounts: (_) async => {},
+        fetchRequirements: (_) async => {},
+      );
+      expect(data.badgeCount, 0);
+    });
+
     test(
       'el merge no duplica lo que ya venía y ordena por fecha desc',
       () async {

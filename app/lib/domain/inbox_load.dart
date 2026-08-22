@@ -21,6 +21,11 @@ typedef InboxData = ({
   Map<String, String> statuses,
   Map<String, int> counts,
   Map<String, RequestRequirements> requirements,
+  /// Ids que PUEDEN contar para el badge (marketplace, antes del merge), SIN
+  /// filtrar por abiertas. La pantalla lo guarda para poder recalcular el badge
+  /// al vuelo cuando se abre una solicitud, sin volver a la red.
+  Set<String> badgeIds,
+  /// Lo que se pinta: [badgeIds] menos las ya abiertas.
   int badgeCount,
 });
 
@@ -35,6 +40,9 @@ typedef InboxData = ({
 Future<InboxData> loadInboxData({
   required Future<List<Map<String, dynamic>>> Function() fetchItems,
   required Future<List<Map<String, dynamic>>> Function()? fetchOfferedOpen,
+  /// Solicitudes que este dispositivo YA ABRIO: salen del badge, no de la
+  /// bandeja. Vacio = todo cuenta como sin abrir.
+  Set<String> openedIds = const {},
   required Future<Map<String, String>> Function(List<String>) fetchStatuses,
   required Future<Map<String, int>> Function(List<String>) fetchCounts,
   required Future<Map<String, RequestRequirements>> Function(List<String>)
@@ -63,7 +71,17 @@ Future<InboxData> loadInboxData({
   // El badge se calcula ANTES del merge a propósito: dar seguimiento a una
   // oferta propia en otro rubro no es una alerta pendiente y no debe inflar el
   // contador de la pestaña "Solicitudes".
-  final badgeCount = items.where((r) => r['source'] != 'store').length;
+  //
+  // Y cuenta lo que NO HAS ABIERTO, no cuántas hay (pedido PO 2026-08-22: "ya
+  // abrí todas las ventanas y sigue ahí"). Antes era `items.length` a secas —
+  // el INVENTARIO —, así que la píldora roja no se podía apagar: en todo este
+  // camino no había nada que marcara una solicitud como vista. Abrirlas las
+  // saca del badge, nunca de la bandeja.
+  final badgeIds = {
+    for (final r in items)
+      if (r['source'] != 'store') r['id'] as String,
+  };
+  final badgeCount = badgeIds.difference(openedIds).length;
 
   if (offeredFuture != null) {
     final have = {for (final r in items) r['id']};
@@ -103,6 +121,7 @@ Future<InboxData> loadInboxData({
     statuses: await statusesFuture,
     counts: await countsFuture,
     requirements: await requirementsFuture,
+    badgeIds: badgeIds,
     badgeCount: badgeCount,
   );
 }

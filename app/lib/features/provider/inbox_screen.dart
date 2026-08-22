@@ -17,6 +17,7 @@ import '../shared/onboarding_guide.dart';
 import '../shared/swipe_to_actions.dart';
 import '../shared/violet_header.dart';
 import 'hidden_requests_store.dart';
+import 'opened_requests.dart';
 
 /// Signature de las fuentes de datos del inbox: `providerInbox` (Para ti,
 /// filtra por rubro del proveedor) y `allOpenRequests` (Todas, cualquier
@@ -128,6 +129,26 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     // (el hide y el «Deshacer» del toast notifican al instante).
     hiddenRequestsStore.ensureLoaded();
     hiddenRequestsStore.addListener(_onHiddenChanged);
+    // Abiertas: alimentan el badge de "Solicitudes". Se escucha para que al
+    // volver del detalle el numero YA este bajado, sin esperar recarga.
+    openedRequestsStore.ensureLoaded().then((_) => _syncBadge());
+    openedRequestsStore.addListener(_onOpenedChanged);
+  }
+
+  /// Ids que pueden contar para el badge en la ultima carga. Se guarda para
+  /// recalcular sin volver a la red cuando se abre una solicitud.
+  Set<String> _badgeIds = const {};
+
+  void _onOpenedChanged() {
+    if (mounted) setState(_syncBadge);
+  }
+
+  /// El badge = lo que queda SIN ABRIR. En "Todas" no se toca: ese conteo no es
+  /// una alerta accionable, es exploracion.
+  void _syncBadge() {
+    if (!mounted || _todas) return;
+    solicitudesBadge.value =
+        _badgeIds.difference(openedRequestsStore.ids).length;
   }
 
   void _onHiddenChanged() {
@@ -137,6 +158,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   @override
   void dispose() {
     hiddenRequestsStore.removeListener(_onHiddenChanged);
+    openedRequestsStore.removeListener(_onOpenedChanged);
     _openRow.dispose();
     super.dispose();
   }
@@ -155,12 +177,14 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
       fetchOfferedOpen: _todas
           ? null
           : () => myOfferedOpenRequests(kind: _kind),
+      openedIds: openedRequestsStore.ids,
       fetchStatuses: myOfferedRequestStatuses,
       fetchCounts: offerCountsForRequests,
       fetchRequirements: requirementsForRequests,
     );
     // En "Todas" no se toca el badge: ese conteo no es una alerta accionable,
     // es exploración.
+    _badgeIds = data.badgeIds;
     if (mounted && !_todas) solicitudesBadge.value = data.badgeCount;
     _offeredStatuses = data.statuses;
     _offerCounts = data.counts;
