@@ -19,8 +19,10 @@ void main() {
 
   final pill = find.byKey(const Key('chat.composer.pill'));
 
-  Future<void> pumpComposer(WidgetTester tester) async {
+  Future<void> pumpComposer(WidgetTester tester,
+      {Brightness brillo = Brightness.light}) async {
     await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(brightness: brillo),
       home: Scaffold(
         body: Align(
           alignment: Alignment.bottomCenter,
@@ -93,5 +95,37 @@ void main() {
     // Solo el círculo de enviar y los márgenes salen de la barra.
     expect(barra, greaterThan(ancho * 0.80),
         reason: 'la barra de mensaje es la protagonista, no los iconos');
+  });
+
+  testWidgets('la barra es BLANCA y con tinta oscura, en claro Y en oscuro',
+      (tester) async {
+    // Pedido PO 2026-08-22: "donde dice escribir mensaje, ponle fondo blanco".
+    // El PO lo vio en su telefono, que esta en modo OSCURO: alli la pildora
+    // tomaba `pal.peer` (#565080, lila apagado) porque el color salia de la
+    // paleta del chat. Ahora es blanca fija — y por eso la tinta tambien tiene
+    // que serlo, o en oscuro `pal.ink` (#EDEAFB) pintaria texto casi blanco
+    // sobre fondo blanco.
+    for (final brillo in Brightness.values) {
+      await pumpComposer(tester, brillo: brillo);
+
+      final caja = tester.widget<Container>(pill);
+      final fondo = (caja.decoration! as BoxDecoration).color;
+      expect(fondo, Colors.white, reason: 'la barra va blanca en $brillo');
+
+      final campo = tester.widget<TextField>(find.byType(TextField));
+
+      final tinta = campo.style!.color!;
+      expect(tinta.computeLuminance(), lessThan(0.2),
+          reason: 'tinta oscura para que se lea sobre el blanco, en $brillo');
+
+      // Y el campo NO pinta relleno propio. El tema global de la app trae
+      // `filled: true` con `surfaceContainerHighest` (gris), que se pintaba
+      // ENCIMA de la pildora blanca: eso era lo que el PO veia gris.
+      //
+      // LECCION: comprobar solo el color de la pildora daba VERDE con el gris
+      // puesto — la caja equivocada. Lo que manda es la ultima capa pintada.
+      expect(campo.decoration!.filled, isFalse,
+          reason: 'el fondo lo pone la pildora, el campo no rellena ($brillo)');
+    }
   });
 }

@@ -5,7 +5,6 @@ import '../../shared/jayalo_loader.dart';
 import '../../shared/onboarding_guide.dart';
 import '../../shared/onboarding_copy.dart';
 import '../../../core/motion.dart';
-import 'bubbles.dart' show chatPalette;
 
 enum PlusAction {
   sendAddress,
@@ -210,8 +209,17 @@ class _ChatComposerState extends State<ChatComposer> {
     // emoji a la izquierda, adjuntos a la derecha — y solo el envio queda
     // fuera, como circulo de accion. Antes los tres iconos comian el ancho
     // por la izquierda y el campo de texto quedaba estrangulado.
-    final pal = chatPalette(context);
-    final iconColor = pal.ink.withValues(alpha: .60);
+    // Fondo BLANCO siempre (pedido PO 2026-08-22). Antes la pildora tomaba
+    // `pal.peer`, que solo es blanco en claro: en OSCURO caia a un lila
+    // apagado (#565080) y el PO la quiere blanca en los dos modos, como la
+    // referencia de WhatsApp.
+    //
+    // Al fijar el fondo hay que fijar TAMBIEN la tinta: `pal.ink` en oscuro es
+    // casi blanco (#EDEAFB), asi que el texto habria quedado invisible sobre
+    // el blanco. Se usa el gris violaceo de la doctrina estetica, nunca negro.
+    const pillColor = Colors.white;
+    const pillInk = Color(0xFF4A4458);
+    final iconColor = pillInk.withValues(alpha: .60);
     return Padding(
       padding: EdgeInsets.fromLTRB(8, 6, 8, bottomGap),
       child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -219,7 +227,7 @@ class _ChatComposerState extends State<ChatComposer> {
           child: Container(
             key: const Key('chat.composer.pill'),
             decoration: BoxDecoration(
-              color: pal.peer,
+              color: pillColor,
               borderRadius: BorderRadius.circular(26),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -236,7 +244,7 @@ class _ChatComposerState extends State<ChatComposer> {
                   maxLines: 4,
                   minLines: 1,
                   maxLength: maxMessageLen,
-                  style: TextStyle(fontSize: 15, color: pal.ink),
+                  style: const TextStyle(fontSize: 15, color: pillInk),
                   cursorColor: Theme.of(context).colorScheme.primary,
                   buildCounter: (_,
                           {required currentLength,
@@ -250,6 +258,13 @@ class _ChatComposerState extends State<ChatComposer> {
                     hintText: 'Escribe un mensaje…',
                     hintStyle: TextStyle(fontSize: 15, color: iconColor),
                     isDense: true,
+                    // ESTE era el gris que veia el PO. El tema global de la app
+                    // trae `filled: true` + `fillColor: surfaceContainerHighest`
+                    // ("F1 · Rellenos suaves"), asi que el TextField pintaba un
+                    // rectangulo gris DENTRO de la pildora blanca. Quitar el
+                    // borde no basta: hay que apagar el relleno para que se vea
+                    // el blanco de la pildora. Pasa en claro y en oscuro.
+                    filled: false,
                     // Sin marco: el marco ahora es la pildora que envuelve
                     // campo + iconos.
                     border: InputBorder.none,
