@@ -18,6 +18,7 @@ import 'onboarding_guide.dart';
 import '../../core/motion.dart';
 import '../../core/safe_image_picker.dart';
 import '../../core/session_state.dart';
+import 'moneda.dart';
 import '../../core/router.dart' show openCreditShop;
 import '../../data/repos.dart'
     show myProfile, walletBalance, updateMyAvatar, isAdmin;
@@ -497,6 +498,8 @@ class _ProfileMenuHeaderState extends State<_ProfileMenuHeader> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Row(children: [
+                    const MonedaJayalo(size: 22),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         _balance != null ? '$_balance créditos' : 'Créditos',

@@ -1,0 +1,104 @@
+<div class="frame">
+__BAND__
+  <div class="shop" style="background:
+       radial-gradient(120% 60% at 50% 0%, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 60%),
+       linear-gradient(180deg, #7A4CF5 0%, #5A2ED8 58%, #47189E 100%);">
+
+    <!-- Patrón tenue del fondo: la 'J' de la moneda, repetida y casi invisible -->
+    <svg width="360" height="576" style="position:absolute; inset:0; opacity:.07" aria-hidden="true">
+      <g fill="none" stroke="#FFFFFF" stroke-width="2">
+        <circle cx="34" cy="60" r="15"></circle>
+        <circle cx="322" cy="132" r="21"></circle>
+        <circle cx="26" cy="248" r="11"></circle>
+        <circle cx="334" cy="330" r="15"></circle>
+        <circle cx="40" cy="430" r="19"></circle>
+        <circle cx="318" cy="486" r="12"></circle>
+      </g>
+    </svg>
+
+    <!-- Tarjeta enfocada del carrusel (Popular · 55 créditos) -->
+    <div style="position: absolute; left: 8px; top: 18px; width: 279px; height: 396px;
+                background: radial-gradient(circle at 50% 30%, #FFF7E2 0%, #FFFFFF 58%);
+                border-radius: 22px; box-shadow: 0 14px 34px rgba(30, 8, 80, .34);
+                display: flex; flex-direction: column; align-items: center;
+                padding: 18px 18px 20px;">
+
+      <div style="background: #7147F2; color: #FCFCFC; font-size: 12.5px; font-weight: 700;
+                  padding: 6px 14px; border-radius: 999px;">Popular</div>
+
+      <svg width="176" height="104" viewBox="0 0 150 90" style="margin-top: 6px">
+        <ellipse cx="75" cy="76" rx="58" ry="9" fill="#3E3560" opacity=".10"></ellipse>
+        <use href="#moneda" x="20" y="46" width="34" height="34"></use>
+        <use href="#moneda" x="58" y="46" width="34" height="34"></use>
+        <use href="#moneda" x="96" y="46" width="34" height="34"></use>
+        <use href="#moneda" x="39" y="20" width="34" height="34"></use>
+        <use href="#moneda" x="77" y="20" width="34" height="34"></use>
+      </svg>
+
+      <div style="display: flex; align-items: baseline; gap: 7px; margin-top: 2px">
+        <span style="font-size: 44px; font-weight: 800; color: #3E3560; line-height: 1">55</span>
+        <span style="font-size: 16px; font-weight: 700; color: #3E3560">créditos</span>
+      </div>
+
+      <div style="font-size: 13px; color: #847D8F; margin-top: 6px; text-align: center">
+        Hasta 55 clientes desbloqueados
+      </div>
+
+      <div style="flex-grow: 1"></div>
+
+      <div style="font-size: 22px; font-weight: 700; color: #3E3560">US$50.00</div>
+
+      <div style="margin-top: 12px; width: 100%; height: 48px; border-radius: 24px;
+                  background: #7147F2; color: #FCFCFC; font-size: 15.5px; font-weight: 700;
+                  display: flex; align-items: center; justify-content: center;
+                  box-shadow: 0 6px 14px rgba(60, 21, 144, .28);">Comprar</div>
+
+      <!-- Sello de ahorro: sale del borde, como el ejemplo -->
+      <div style="position: absolute; right: -8px; top: 20px; background:
+                  linear-gradient(180deg, #FFD75E 0%, #F2B705 100%);
+                  color: #6B3E00; font-size: 13px; font-weight: 800; letter-spacing: .2px;
+                  padding: 7px 12px 7px 14px; border-radius: 8px 4px 4px 8px;
+                  box-shadow: 0 4px 10px rgba(30, 8, 80, .28);">
+        Ahorras 9%
+      </div>
+    </div>
+
+    <!-- Siguiente tarjeta asomando (Pro · 110): es lo que invita a deslizar -->
+    <div style="position: absolute; left: 303px; top: 18px; width: 279px; height: 396px;
+                background: #FFFFFF; border-radius: 22px;
+                box-shadow: 0 14px 34px rgba(30, 8, 80, .34);
+                display: flex; flex-direction: column; align-items: center;
+                padding: 18px 18px 20px;">
+      <div style="background: #E2D6FB; color: #3C1590; font-size: 12.5px; font-weight: 700;
+                  padding: 6px 14px; border-radius: 999px;">Pro</div>
+      <svg width="176" height="104" viewBox="0 0 150 90" style="margin-top: 6px">
+        <ellipse cx="75" cy="76" rx="58" ry="9" fill="#3E3560" opacity=".10"></ellipse>
+        <use href="#moneda" x="10" y="46" width="34" height="34"></use>
+        <use href="#moneda" x="48" y="46" width="34" height="34"></use>
+        <use href="#moneda" x="86" y="46" width="34" height="34"></use>
+      </svg>
+    </div>
+
+    <!-- Indicador de página del carrusel -->
+    <div style="position: absolute; left: 0; right: 0; top: 428px;
+                display: flex; justify-content: center; gap: 7px;">
+      <div style="width: 7px; height: 7px; border-radius: 4px; background: rgba(255,255,255,.42)"></div>
+      <div style="width: 20px; height: 7px; border-radius: 4px; background: #FFFFFF"></div>
+      <div style="width: 7px; height: 7px; border-radius: 4px; background: rgba(255,255,255,.42)"></div>
+      <div style="width: 7px; height: 7px; border-radius: 4px; background: rgba(255,255,255,.42)"></div>
+    </div>
+
+    <!-- Sello de pago seguro (mismo texto de hoy, tinta clara sobre violeta) -->
+    <div style="position: absolute; left: 0; right: 0; top: 452px;
+                display: flex; align-items: center; justify-content: center; gap: 6px;
+                color: rgba(255,255,255,.86); font-size: 12.5px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="10" width="16" height="11" rx="2"></rect>
+        <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+      </svg>
+      <span>Pago seguro con Google Play</span>
+    </div>
+  </div>
+__NAV__
+</div>

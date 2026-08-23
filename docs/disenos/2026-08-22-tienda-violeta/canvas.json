@@ -1,0 +1,47 @@
+{
+  "artboards": [
+    { "file": "Hoy.dc.html", "title": "Antes", "x": 0, "y": 0, "w": 360, "h": 740 },
+    { "file": "Main.dc.html", "title": "Después · lo que quedó en la app", "x": 440, "y": 0, "w": 360, "h": 740 },
+    { "file": "DosPorPantalla.dc.html", "title": "2 por pantalla (probada y descartada)", "x": 960, "y": 0, "w": 360, "h": 740 },
+    { "file": "Arcade.dc.html", "title": "B · arcade (descartada)", "x": 1400, "y": 0, "w": 360, "h": 740 },
+    { "file": "Lista.dc.html", "title": "C · lista (descartada)", "x": 1840, "y": 0, "w": 360, "h": 740 }
+  ],
+  "annotations": [
+    {
+      "id": "antes",
+      "x": 0,
+      "y": -230,
+      "w": 340,
+      "text": "ANTES\nFondo arena, tarjeta blanca y el ahorro como una línea verde de 13 px que se perdía entre las demás.\n\nLa banda de arriba (Jayi + lluvia de monedas) es la misma en las cinco: no se tocó."
+    },
+    {
+      "id": "despues",
+      "x": 440,
+      "y": -230,
+      "w": 340,
+      "text": "DESPUÉS — YA ESTÁ EN LA APP (1.0.4+72)\nFondo violeta de marca, pila de monedas (la MISMA moneda que cae en la banda: más monedas = paquete más grande) y el ahorro como sello dorado que se sale del borde. Una tarjeta por pantalla y la siguiente asomando, como antes.\n\nMás lo que pediste después: el contador de saldo en el AppBar (moneda + número) y fuera el «Más popular» que repetía al chip — ahora el chip del paquete popular va en violeta lleno.\n\nInicial no lleva sello: su ahorro es 0 % de verdad, es el precio base con el que se comparan los demás."
+    },
+    {
+      "id": "descartada-2",
+      "x": 960,
+      "y": -230,
+      "w": 340,
+      "text": "PROBADA Y DESCARTADA\nSe llegó a compilar y probar en el teléfono con dos tarjetas por pantalla (1.0.4+68). Veredicto del PO: «se siente muy pesado» — dos tarjetas llenas de números a la vez no dejan mirar ninguna.\nSe queda aquí como registro."
+    },
+    {
+      "id": "descartadas",
+      "x": 1400,
+      "y": -230,
+      "w": 340,
+      "text": "LAS OTRAS DOS DIRECCIONES\nEl arcade 2x2 (lo más cercano al ejemplo de tienda de juego) y la lista comparable. Ninguna se llevó a código."
+    },
+    {
+      "id": "datos",
+      "x": 440,
+      "y": 800,
+      "w": 780,
+      "text": "DATOS\nSon los reales de producción: 10 / 55 / 110 / 200 créditos, con ahorros de 0 %, 9 %, 9 % y 10 %. El precio lo pone Google Play ya localizado — en el teléfono del PO sale en US$ y con impuesto (US$11.77 los 10 créditos), no el USD de la base de datos."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

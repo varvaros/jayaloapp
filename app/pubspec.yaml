@@ -145,6 +145,8 @@ flutter:
     # el canal de Android, no estos assets (ver MainActivity.kt).
     - assets/sounds/mensaje_en_chat.mp3
     - assets/sounds/mensaje_nuevo.mp3
+    # Ting-ting-ting de la acreditacion de creditos (lo trajo el PO, 08-23).
+    - assets/sounds/monedas_acreditadas.mp3
     # Animaciones Lottie de Jayi celebrando (violeta para fondos claros; blanca
     # para el fondo violeta de la celebración a pantalla completa).
     - assets/anim/jayi_celebrando.json

@@ -1,0 +1,111 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;800&family=Nunito:wght@700;800;900&display=swap">
+  <style>
+    body { margin: 0; background: #EDE7F6; font-family: Roboto, "Helvetica Neue", Arial, sans-serif; }
+    a { color: #7147F2; } a:hover { color: #5B2FD6; }
+    * { box-sizing: border-box; }
+
+    /* ---- Marco de pantalla: 360x740 logicos, sin barra de estado falsa ---- */
+    .frame { width: 360px; height: 740px; position: relative; overflow: hidden;
+             background: #F8F4EC; color: #4A4458; }
+
+    /* ---- AppBar M3 tal como la pinta hoy la app (surface = arena) ---- */
+    .appbar { position: relative; z-index: 3; height: 56px; display: flex;
+              align-items: center; background: #F8F4EC; }
+    .appbar .back { width: 48px; height: 48px; margin-left: 4px; display: flex;
+                    align-items: center; justify-content: center; }
+    .appbar .title { font-size: 22px; font-weight: 400; color: #4A4458; margin-left: 8px; }
+
+    /* ---- Banda blanca del Jayi: NO SE TOCA (animacion aprobada) ---- */
+    .band { position: relative; z-index: 2; height: 108px; background: #FFFFFF;
+            box-shadow: 0 6px 18px rgba(93, 72, 38, .07); overflow: visible; }
+    .band-text { position: absolute; left: 20px; bottom: 16px; right: 150px;
+                 font-size: 15px; font-weight: 600; line-height: 1.25; color: #3E3560; }
+    .jayi { position: absolute; right: 8px; bottom: -2px; width: 150px; height: 196px; }
+
+    /* Jayi se agacha con cada impacto (ciclo 4,2 s, golpes en 15/45/75 %) */
+    .jayi-body { animation: agacho 4.2s linear infinite; transform-origin: 75px 184px; }
+    @keyframes agacho {
+      0%,11%   { transform: scale(1, 1); }
+      15%      { transform: scale(1.05, .93); }
+      19%,41%  { transform: scale(1, 1); }
+      45%      { transform: scale(1.05, .93); }
+      49%,71%  { transform: scale(1, 1); }
+      75%      { transform: scale(1.05, .93); }
+      79%,100% { transform: scale(1, 1); }
+    }
+    .jayi-eye { animation: pestaneo 4.2s linear infinite; transform-origin: 45px 44px; }
+    @keyframes pestaneo {
+      0%,13%   { transform: scaleY(1); }
+      15%      { transform: scaleY(.12); }
+      17%,43%  { transform: scaleY(1); }
+      45%      { transform: scaleY(.12); }
+      47%,73%  { transform: scaleY(1); }
+      75%      { transform: scaleY(.12); }
+      77%,100% { transform: scaleY(1); }
+    }
+    /* Caida -> rebote en la cabeza -> sale girando. Un solo tramo del ciclo,
+       reusado por las tres monedas con distinto delay. */
+    .coin-fall { animation: cae 4.2s linear infinite; transform-origin: center; }
+    .coin-fall.left { animation-name: cae-izq; }
+    @keyframes cae {
+      0%    { transform: translate(0, -110px) rotate(0deg); opacity: 1; }
+      10%   { transform: translate(0, -82px) rotate(94deg); opacity: 1; }
+      15%   { transform: translate(0, 0) rotate(149deg); opacity: 1; }
+      16.7% { transform: translate(24px, -30px) rotate(270deg); opacity: 1; }
+      19.5% { transform: translate(38px, -18px) rotate(340deg); opacity: 1; }
+      22%   { transform: translate(44px, 30px) rotate(401deg); opacity: 0; }
+      100%  { transform: translate(44px, 30px) rotate(401deg); opacity: 0; }
+    }
+    @keyframes cae-izq {
+      0%    { transform: translate(0, -110px) rotate(0deg); opacity: 1; }
+      10%   { transform: translate(0, -82px) rotate(94deg); opacity: 1; }
+      15%   { transform: translate(0, 0) rotate(149deg); opacity: 1; }
+      16.7% { transform: translate(-24px, -30px) rotate(270deg); opacity: 1; }
+      19.5% { transform: translate(-38px, -18px) rotate(340deg); opacity: 1; }
+      22%   { transform: translate(-44px, 30px) rotate(401deg); opacity: 0; }
+      100%  { transform: translate(-44px, 30px) rotate(401deg); opacity: 0; }
+    }
+    .chispa { animation: chispa-der 4.2s linear infinite; transform-origin: center; }
+    .chispa.izq { animation-name: chispa-izq; }
+    @keyframes chispa-der {
+      0%,14%   { transform: scale(0); opacity: 0; }
+      15.5%    { transform: scale(1); opacity: 1; }
+      17%,74%  { transform: scale(0); opacity: 0; }
+      75.5%    { transform: scale(1); opacity: 1; }
+      77%,100% { transform: scale(0); opacity: 0; }
+    }
+    @keyframes chispa-izq {
+      0%,44%   { transform: scale(0); opacity: 0; }
+      45.5%    { transform: scale(1); opacity: 1; }
+      47%,100% { transform: scale(0); opacity: 0; }
+    }
+
+    /* ---- Zona de compra (lo que se rediseña) ---- */
+    .shop { position: absolute; left: 0; right: 0; top: 164px; bottom: 0;
+            overflow: hidden; }
+
+    /* ---- Barra flotante del shell (pildora lila + boton central) ---- */
+    .navbar { position: absolute; left: 0; right: 0; bottom: 0; height: 92px; z-index: 4; }
+    .pill { position: absolute; left: 12px; right: 12px; bottom: 0; height: 64px;
+            background: #E2D6FB; border-radius: 32px;
+            box-shadow: 0 6px 18px rgba(38, 49, 67, .18);
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 18px; }
+    .navitem { display: flex; flex-direction: column; align-items: center; gap: 3px;
+               width: 58px; color: #847D8F; font-size: 10.5px; line-height: 1.1; }
+    .navitem.on { color: #3C1590; font-weight: 700; }
+    .center-btn { position: absolute; left: 50%; bottom: 36px; width: 56px; height: 56px;
+                  margin-left: -28px; border-radius: 28px; background: #7147F2;
+                  box-shadow: 0 6px 16px rgba(113, 71, 242, .45);
+                  display: flex; align-items: center; justify-content: center; }
+  </style>
+</helmet>

@@ -1,0 +1,160 @@
+<div class="frame">
+__BAND__
+  <div class="shop" style="background:
+       radial-gradient(120% 55% at 50% 0%, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 62%),
+       linear-gradient(180deg, #7A4CF5 0%, #5A2ED8 58%, #47189E 100%);">
+
+    <svg width="360" height="576" style="position:absolute; inset:0; opacity:.07" aria-hidden="true">
+      <g fill="none" stroke="#FFFFFF" stroke-width="2">
+        <circle cx="28" cy="66" r="14"></circle>
+        <circle cx="332" cy="176" r="19"></circle>
+        <circle cx="22" cy="300" r="11"></circle>
+        <circle cx="338" cy="404" r="15"></circle>
+      </g>
+    </svg>
+
+    <div style="position: absolute; left: 12px; right: 12px; top: 14px;
+                display: flex; flex-direction: column; gap: 12px;">
+
+      <!-- Inicial · 10 · sin ahorro (es el precio base) -->
+      <div style="display: flex; align-items: center; gap: 12px; background: #FFFFFF;
+                  border-radius: 18px; padding: 12px 14px; height: 96px;
+                  box-shadow: 0 8px 20px rgba(30, 8, 80, .30);">
+        <svg width="86" height="62" viewBox="0 0 100 72">
+          <ellipse cx="50" cy="66" rx="30" ry="5" fill="#3E3560" opacity=".10"></ellipse>
+          <use href="#moneda" x="28" y="40" width="22" height="22"></use>
+          <use href="#moneda" x="50" y="40" width="22" height="22"></use>
+          <use href="#moneda" x="39" y="22" width="22" height="22"></use>
+        </svg>
+        <div style="flex-grow: 1">
+          <div style="display: flex; align-items: baseline; gap: 6px">
+            <span style="font-size: 22px; font-weight: 800; color: #3E3560">10</span>
+            <span style="font-size: 14px; font-weight: 700; color: #3E3560">créditos</span>
+          </div>
+          <div style="font-size: 12px; color: #847D8F; margin-top: 2px">
+            Hasta 10 clientes desbloqueados
+          </div>
+        </div>
+        <div style="text-align: right">
+          <div style="font-size: 17px; font-weight: 700; color: #3E3560">US$10.00</div>
+        </div>
+      </div>
+
+      <!-- Popular · 55 -->
+      <div style="display: flex; align-items: center; gap: 12px; background: #FFFFFF;
+                  border-radius: 18px; padding: 12px 14px; height: 96px;
+                  box-shadow: 0 8px 20px rgba(30, 8, 80, .30);">
+        <svg width="86" height="62" viewBox="0 0 100 72">
+          <ellipse cx="50" cy="66" rx="34" ry="5" fill="#3E3560" opacity=".10"></ellipse>
+          <use href="#moneda" x="17" y="40" width="22" height="22"></use>
+          <use href="#moneda" x="39" y="40" width="22" height="22"></use>
+          <use href="#moneda" x="61" y="40" width="22" height="22"></use>
+          <use href="#moneda" x="28" y="22" width="22" height="22"></use>
+          <use href="#moneda" x="50" y="22" width="22" height="22"></use>
+        </svg>
+        <div style="flex-grow: 1">
+          <div style="display: flex; align-items: baseline; gap: 6px">
+            <span style="font-size: 22px; font-weight: 800; color: #3E3560">55</span>
+            <span style="font-size: 14px; font-weight: 700; color: #3E3560">créditos</span>
+          </div>
+          <div style="font-size: 12px; color: #847D8F; margin-top: 2px">
+            Hasta 55 clientes desbloqueados
+          </div>
+          <div style="display: inline-block; margin-top: 6px; background: #E2D6FB; color: #3C1590;
+                      font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px;">
+            Más popular
+          </div>
+        </div>
+        <div style="text-align: right">
+          <div style="font-size: 17px; font-weight: 700; color: #3E3560">US$50.00</div>
+          <div style="display: inline-block; margin-top: 6px; background: #D0FAE6; color: #005D3F;
+                      font-size: 11.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px;">
+            Ahorras 9%
+          </div>
+        </div>
+      </div>
+
+      <!-- Pro · 110 -->
+      <div style="display: flex; align-items: center; gap: 12px; background: #FFFFFF;
+                  border-radius: 18px; padding: 12px 14px; height: 96px;
+                  box-shadow: 0 8px 20px rgba(30, 8, 80, .30);">
+        <svg width="86" height="62" viewBox="0 0 100 72">
+          <ellipse cx="50" cy="66" rx="38" ry="5" fill="#3E3560" opacity=".10"></ellipse>
+          <use href="#moneda" x="6" y="40" width="22" height="22"></use>
+          <use href="#moneda" x="28" y="40" width="22" height="22"></use>
+          <use href="#moneda" x="50" y="40" width="22" height="22"></use>
+          <use href="#moneda" x="72" y="40" width="22" height="22"></use>
+          <use href="#moneda" x="17" y="22" width="22" height="22"></use>
+          <use href="#moneda" x="39" y="22" width="22" height="22"></use>
+          <use href="#moneda" x="61" y="22" width="22" height="22"></use>
+        </svg>
+        <div style="flex-grow: 1">
+          <div style="display: flex; align-items: baseline; gap: 6px">
+            <span style="font-size: 22px; font-weight: 800; color: #3E3560">110</span>
+            <span style="font-size: 14px; font-weight: 700; color: #3E3560">créditos</span>
+          </div>
+          <div style="font-size: 12px; color: #847D8F; margin-top: 2px">
+            Hasta 110 clientes desbloqueados
+          </div>
+        </div>
+        <div style="text-align: right">
+          <div style="font-size: 17px; font-weight: 700; color: #3E3560">US$100.00</div>
+          <div style="display: inline-block; margin-top: 6px; background: #D0FAE6; color: #005D3F;
+                      font-size: 11.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px;">
+            Ahorras 9%
+          </div>
+        </div>
+      </div>
+
+      <!-- Max · 200 · mejor precio -->
+      <div style="position: relative; display: flex; align-items: center; gap: 12px;
+                  background: #FFFFFF; border-radius: 18px; padding: 12px 14px; height: 96px;
+                  box-shadow: 0 10px 24px rgba(30, 8, 80, .38);
+                  outline: 3px solid #F2B705; outline-offset: -1px;">
+        <div style="position: absolute; left: 14px; top: -11px; background: #F2B705;
+                    color: #4A2E00; font-size: 11px; font-weight: 800; letter-spacing: .2px;
+                    padding: 3px 10px; border-radius: 999px;">MEJOR PRECIO</div>
+        <svg width="86" height="62" viewBox="0 0 100 72">
+          <ellipse cx="50" cy="66" rx="40" ry="5" fill="#3E3560" opacity=".10"></ellipse>
+          <use href="#moneda" x="6" y="42" width="22" height="22"></use>
+          <use href="#moneda" x="28" y="42" width="22" height="22"></use>
+          <use href="#moneda" x="50" y="42" width="22" height="22"></use>
+          <use href="#moneda" x="72" y="42" width="22" height="22"></use>
+          <use href="#moneda" x="17" y="25" width="22" height="22"></use>
+          <use href="#moneda" x="39" y="25" width="22" height="22"></use>
+          <use href="#moneda" x="61" y="25" width="22" height="22"></use>
+          <use href="#moneda" x="28" y="8" width="22" height="22"></use>
+          <use href="#moneda" x="50" y="8" width="22" height="22"></use>
+        </svg>
+        <div style="flex-grow: 1">
+          <div style="display: flex; align-items: baseline; gap: 6px">
+            <span style="font-size: 22px; font-weight: 800; color: #3E3560">200</span>
+            <span style="font-size: 14px; font-weight: 700; color: #3E3560">créditos</span>
+          </div>
+          <div style="font-size: 12px; color: #847D8F; margin-top: 2px">
+            Hasta 200 clientes desbloqueados
+          </div>
+        </div>
+        <div style="text-align: right">
+          <div style="font-size: 17px; font-weight: 700; color: #3E3560">US$180.00</div>
+          <div style="display: inline-block; margin-top: 6px; background: #D0FAE6; color: #005D3F;
+                      font-size: 11.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px;">
+            Ahorras 10%
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="position: absolute; left: 0; right: 0; top: 452px;
+                display: flex; align-items: center; justify-content: center; gap: 6px;
+                color: rgba(255,255,255,.86); font-size: 12.5px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="10" width="16" height="11" rx="2"></rect>
+        <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+      </svg>
+      <span>Pago seguro con Google Play</span>
+    </div>
+  </div>
+__NAV__
+</div>

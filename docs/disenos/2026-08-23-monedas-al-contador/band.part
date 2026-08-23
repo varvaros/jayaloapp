@@ -1,0 +1,85 @@
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="cuerpo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7E56F5"></stop>
+      <stop offset="1" stop-color="#6438E8"></stop>
+    </linearGradient>
+    <radialGradient id="oro" cx="38%" cy="32%" r="72%">
+      <stop offset="0" stop-color="#FFEDB0"></stop>
+      <stop offset=".55" stop-color="#F2B705"></stop>
+      <stop offset="1" stop-color="#C98A00"></stop>
+    </radialGradient>
+    <symbol id="moneda" viewBox="0 0 28 28">
+      <circle cx="14" cy="14" r="13.4" fill="#F2B705" opacity=".22"></circle>
+      <circle cx="14" cy="14" r="12" fill="url(#oro)"></circle>
+      <circle cx="14" cy="14" r="8.6" fill="none" stroke="#FFE9A8" stroke-width="1.6"></circle>
+      <text x="14" y="18.3" text-anchor="middle" font-family="Roboto, Arial, sans-serif"
+            font-size="12" font-weight="600" fill="#8A5E00">J</text>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="appbar">
+  <div class="back">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4A4458"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19 12H5"></path><path d="m12 19-7-7 7-7"></path>
+    </svg>
+  </div>
+  <div class="title">Recargar créditos</div>
+  <div class="contador">
+    <div class="brillo"></div>
+    <svg width="20" height="20" viewBox="0 0 28 28"><use href="#moneda" width="28" height="28"></use></svg>
+    <span class="num"></span>
+  </div>
+</div>
+
+<div class="band">
+  <div class="band-text">Recarga y sigue desbloqueando clientes</div>
+  <svg class="jayi" viewBox="0 0 150 196" fill="none">
+    <g class="jayi-body">
+      <g transform="translate(26.62,114) scale(.82)">
+        <g stroke="#6B40EE" stroke-width="5" stroke-linecap="round" fill="none">
+          <path d="M47 22 C43 14 35 11 30 14"></path>
+          <path d="M65 21 C69 13 77 10 82 13"></path>
+        </g>
+        <rect x="22" y="20" width="70" height="66" rx="22" fill="url(#cuerpo)"></rect>
+        <g class="jayi-eye">
+          <circle cx="45" cy="44" r="14" fill="#FFFFFF"></circle>
+          <circle cx="50" cy="47" r="5.2" fill="#6438E8"></circle>
+        </g>
+        <g stroke="#6B40EE" stroke-width="7" stroke-linecap="round" fill="none">
+          <path d="M24 60 C16 66 15 75 21 80"></path>
+          <path d="M94 60 C102 66 103 75 97 80"></path>
+        </g>
+        <circle cx="21" cy="81" r="5.5" fill="#7E56F5"></circle>
+        <circle cx="97" cy="81" r="5.5" fill="#7E56F5"></circle>
+      </g>
+    </g>
+
+    <g fill="#F2B705">
+      <path class="chispa" transform="translate(89.36,114.4)"
+            d="M0,-6 L1.68,-1.68 L6,0 L1.68,1.68 L0,6 L-1.68,1.68 L-6,0 L-1.68,-1.68 Z"></path>
+      <path class="chispa" transform="translate(80.36,105.4)"
+            d="M0,-4.2 L1.18,-1.18 L4.2,0 L1.18,1.18 L0,4.2 L-1.18,1.18 L-4.2,0 L-1.18,-1.18 Z"></path>
+      <path class="chispa izq" transform="translate(57.36,114.4)"
+            d="M0,-6 L1.68,-1.68 L6,0 L1.68,1.68 L0,6 L-1.68,1.68 L-6,0 L-1.68,-1.68 Z"></path>
+      <path class="chispa izq" transform="translate(66.36,105.4)"
+            d="M0,-4.2 L1.18,-1.18 L4.2,0 L1.18,1.18 L0,4.2 L-1.18,1.18 L-4.2,0 L-1.18,-1.18 Z"></path>
+    </g>
+
+    <g transform="translate(73.36,118.4)">
+      <g class="coin-fall"><use href="#moneda" x="-14" y="-14" width="28" height="28"></use></g>
+    </g>
+    <g transform="translate(73.36,118.4)">
+      <g class="coin-fall left" style="animation-delay: 1.26s">
+        <use href="#moneda" x="-14" y="-14" width="28" height="28"></use>
+      </g>
+    </g>
+    <g transform="translate(73.36,118.4)">
+      <g class="coin-fall" style="animation-delay: 2.52s">
+        <use href="#moneda" x="-14" y="-14" width="28" height="28"></use>
+      </g>
+    </g>
+  </svg>
+</div>

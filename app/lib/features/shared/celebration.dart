@@ -393,11 +393,19 @@ class JayiCelebration extends StatelessWidget {
     this.onViolet = false,
     this.size = 160,
     this.semanticsLabel,
+    this.repeat = true,
   });
 
   final bool onViolet;
   final double size;
   final String? semanticsLabel;
+
+  /// Si la mascota vuelve a empezar al terminar. Las celebraciones que se
+  /// AUTO-CIERRAN la dejan en bucle (nunca llega a dar dos vueltas). La de
+  /// recarga, que se queda en pantalla hasta que el proveedor decide, la pasa
+  /// UNA vez y la deja en su pose: un salto perpetuo durante minutos cansa, y
+  /// además deja el árbol animándose para siempre (`pumpAndSettle` no asienta).
+  final bool repeat;
 
   @override
   Widget build(BuildContext context) {
@@ -413,7 +421,7 @@ class JayiCelebration extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.contain,
-        repeat: !reduced,
+        repeat: repeat && !reduced,
         animate: !reduced,
       ),
     );
@@ -1128,12 +1136,21 @@ class _OfferSentOverlayState extends State<_OfferSentOverlay> {
   }
 }
 
-/// Confeti propio (sin dependencias) para fondos CLAROS: UNA explosión desde el
-/// centro con física real ([_ConfettiField], paleta [_cardBits]) que cae hasta
-/// salir del área, sin desvanecerse. Se usa en la tarjeta de "oferta enviada" y
-/// en el éxito de crear solicitud.
+/// Confeti propio (sin dependencias): UNA explosión desde el centro con física
+/// real ([_ConfettiField]) que cae hasta SALIR del área, sin desvanecerse en el
+/// aire. Se usa en la tarjeta de "oferta enviada", en el éxito de crear
+/// solicitud y en la celebración de recarga.
+///
+/// [onViolet] elige la paleta con el mismo criterio que [JayiCelebration]:
+///   • `false` (por defecto) → [_cardBits], para fondos CLAROS.
+///   • `true` → [_celebBits] + destello inicial, la misma mezcla que la
+///     celebración a pantalla completa (sobre el violeta de marca, el violeta
+///     del confeti desaparecería).
 class ConfettiBurst extends StatefulWidget {
-  const ConfettiBurst({super.key});
+  const ConfettiBurst({super.key, this.onViolet = false});
+
+  final bool onViolet;
+
   @override
   State<ConfettiBurst> createState() => _ConfettiBurstState();
 }
@@ -1159,7 +1176,8 @@ class _ConfettiBurstState extends State<ConfettiBurst>
     builder: (context, _) => CustomPaint(
       painter: _ConfettiField(
         seconds: (_c.lastElapsedDuration ?? Duration.zero).inMicroseconds / 1e6,
-        bits: _cardBits,
+        bits: widget.onViolet ? _celebBits : _cardBits,
+        flash: widget.onViolet,
       ),
       size: Size.infinite,
     ),

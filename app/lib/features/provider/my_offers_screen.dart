@@ -17,6 +17,7 @@ import '../shared/onboarding_guide.dart';
 import '../shared/onboarding_copy.dart';
 import '../chat/widgets/rating_form.dart';
 import 'unlock_flow.dart';
+import '../shared/moneda.dart';
 
 /// ¿Toca calificar al cliente por esta oferta? Completada + cliente conocido +
 /// sin reseña previa.
@@ -50,7 +51,7 @@ class MyOffersScreen extends StatefulWidget {
     this.fetchUnseen = unseenOfferIds,
     this.markSeen = markOfferSeen,
     this.leading = const HeaderAvatar(),
-    this.actions = const [HeaderBell()],
+    this.actions = const [HeaderSaldo(), HeaderBell()],
   });
 
   /// Inyectables (mismo patrón que `MyBusinessView.pickImage`/`updateCover`):
@@ -433,7 +434,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                       foregroundColor: Colors.white,
                       visualDensity: VisualDensity.compact,
                     ),
-                    icon: const Icon(Icons.lock_open, size: 16),
+                    icon: const MonedaJayalo(size: 17),
                     label: Text(
                       'Conversar · $cost crédito${cost == 1 ? '' : 's'}',
                     ),
@@ -690,13 +691,19 @@ class _WalletCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${balance ?? '—'} crédito${balance == 1 ? '' : 's'}',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w600,
-                    color: zero ? tone.ink : jayaloHead(context),
-                  ),
+                Row(
+                  children: [
+                    const MonedaJayalo(size: 20),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${balance ?? '—'} crédito${balance == 1 ? '' : 's'}',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w600,
+                        color: zero ? tone.ink : jayaloHead(context),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 1),
                 Text(
