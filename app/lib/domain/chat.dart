@@ -126,6 +126,36 @@ String sendFailureMessage({
   return 'No se pudo enviar. Intenta de nuevo.';
 }
 
+/// SQLSTATE de un `RAISE EXCEPTION` de nuestras propias funciones. Todo lo que
+/// levantan `propose_scheduled_date` / `respond_scheduled_date` con este código
+/// ya viene REDACTADO EN ESPAÑOL para el usuario («La fecha debe ser futura»,
+/// «La otra parte es quien confirma la fecha»…).
+const String chatRaiseExceptionCode = 'P0001';
+
+/// Qué mostrarle al usuario cuando rebota una acción de fecha pautada. Mismo
+/// criterio que [sendFailureMessage]: se repite el texto del servidor SOLO
+/// cuando viene de una guarda NUESTRA —[chatRaiseExceptionCode] (las RPCs de la
+/// fecha pautada) y [chatRateLimitCode] (el anti-inundación del chat, que la
+/// tarjeta también consume)—, y para todo lo demás se queda el genérico.
+///
+/// No es cosmética: sin esta reja, un `PGRST202` («Could not find the function
+/// public.propose_scheduled_date in the schema cache» — lo que pasa si un APK
+/// llega al teléfono ANTES de que se aplique la migración, cosa que ya ha
+/// mordido en este repo), un `42501` o un error de JWT le salen al usuario
+/// dominicano en inglés y con tripas del servidor dentro.
+String appointmentFailureMessage({
+  String? code,
+  String? serverMessage,
+  required String fallback,
+}) {
+  final msg = serverMessage?.trim() ?? '';
+  if ((code == chatRaiseExceptionCode || code == chatRateLimitCode) &&
+      msg.isNotEmpty) {
+    return msg;
+  }
+  return fallback;
+}
+
 // ── Imagen ──────────────────────────────────────────────────────────────────
 
 final _dataImg = RegExp(r'^data:image/(png|jpe?g|webp|gif|svg\+xml);base64,', caseSensitive: false);

@@ -138,6 +138,27 @@ void main() {
     expect(find.textContaining('Horario publicado'), findsNothing);
   });
 
+  testWidgets('la hora elegida se marca con ✓ y en la semántica, no solo con '
+      'color', (t) async {
+    // Regla de la casa: nada de estado llevado SOLO por el color. En la web el
+    // `<select>` nativo anuncia la selección a los lectores de pantalla de
+    // balde; estos botones tienen que decirlo a mano.
+    surfaceAlta(t);
+    final semantica = t.ensureSemantics();
+    await t.pumpWidget(host(loadHours: lunesNueveACinco));
+    await abrirYElegirDia(t);
+
+    final f = await hora(t, '10:30');
+    expect(t.getSemantics(f), isSemantics(isSelected: false));
+
+    await t.tap(f);
+    await t.pumpAndSettle();
+    expect(find.text('✓ 10:30'), findsOneWidget);
+    expect(t.getSemantics(find.widgetWithText(OutlinedButton, '✓ 10:30')),
+        isSemantics(isSelected: true));
+    semantica.dispose();
+  });
+
   testWidgets('un asunto prellenado larguísimo se corta al tope de la RPC',
       (t) async {
     surfaceAlta(t);

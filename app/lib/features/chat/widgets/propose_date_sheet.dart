@@ -203,28 +203,44 @@ class _ProposeDateSheetBodyState extends State<ProposeDateSheetBody> {
                     final label =
                         slotLabel(slot, isSlotOutsideHours(slot, dayHours));
                     final selected = _time == slot;
-                    return OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        backgroundColor:
-                            selected ? cs.primary : Colors.transparent,
-                        foregroundColor:
-                            selected ? Colors.white : cs.onSurface,
-                        // Sin estos, Material desvanece el texto a su gris por
-                        // defecto e IGNORA el foreground (ya mordió en las
-                        // burbujas violeta).
-                        disabledBackgroundColor: Colors.transparent,
-                        disabledForegroundColor:
-                            cs.onSurface.withValues(alpha: .38),
-                        side: BorderSide(
-                          color: selected
-                              ? cs.primary
-                              : cs.outlineVariant.withValues(alpha: past ? .4 : 1),
+                    // La hora elegida NO se marca solo con el color (regla de
+                    // la casa): lleva un ✓ visible, como los selectores de la
+                    // burbuja `quick`, y el estado «seleccionado» va también al
+                    // árbol de semántica — en la web eso lo daba gratis el
+                    // `<select>` nativo, aquí hay que decirlo.
+                    // `MergeSemantics` NO es adorno: sin él «seleccionado» se
+                    // queda en un nodo APARTE del nodo del botón (medido en la
+                    // prueba) y el lector de pantalla lee la hora sin decir que
+                    // es la elegida.
+                    return MergeSemantics(
+                      child: Semantics(
+                        selected: selected,
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor:
+                                selected ? cs.primary : Colors.transparent,
+                            foregroundColor:
+                                selected ? Colors.white : cs.onSurface,
+                            // Sin estos, Material desvanece el texto a su gris
+                            // por defecto e IGNORA el foreground (ya mordió en
+                            // las burbujas violeta).
+                            disabledBackgroundColor: Colors.transparent,
+                            disabledForegroundColor:
+                                cs.onSurface.withValues(alpha: .38),
+                            side: BorderSide(
+                              color: selected
+                                  ? cs.primary
+                                  : cs.outlineVariant
+                                      .withValues(alpha: past ? .4 : 1),
+                            ),
+                          ),
+                          onPressed:
+                              past ? null : () => setState(() => _time = slot),
+                          child: Text('${selected ? '✓ ' : ''}$label',
+                              style: const TextStyle(fontSize: 12)),
                         ),
                       ),
-                      onPressed:
-                          past ? null : () => setState(() => _time = slot),
-                      child: Text(label, style: const TextStyle(fontSize: 12)),
                     );
                   },
                 ),

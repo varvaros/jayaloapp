@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/domain/chat.dart';
@@ -21,7 +23,14 @@ ChatMessage _msg(String body, {String? senderId = 'u1'}) => ChatMessage(
 void main() {
   late List<(String, String)> acciones;
 
-  setUp(() => acciones = []);
+  /// Deja la acción EN VUELO hasta que el test la complete, que es como se
+  /// comporta una RPC de verdad. Null = se resuelve al instante.
+  Completer<void>? enVuelo;
+
+  setUp(() {
+    acciones = [];
+    enVuelo = null;
+  });
 
   // En `flutter test` el texto mide ~2× lo que mide en el device: con la
   // superficie por defecto (800×600) la tarjeta se desborda y el test muere en
@@ -48,8 +57,10 @@ void main() {
                 canAnswerQuick: false,
                 isProvider: isProvider,
                 conversationOpen: conversationOpen,
-                onAppointmentAction: (a, action) =>
-                    acciones.add((a.appointmentId, action)),
+                onAppointmentAction: (a, action) async {
+                  acciones.add((a.appointmentId, action));
+                  if (enVuelo != null) await enVuelo!.future;
+                },
               ),
             ),
           ),
@@ -166,6 +177,52 @@ void main() {
     expect(tarjeta, findsNothing);
     expect(find.byType(OutlinedButton), findsNothing);
     expect(find.byType(TextButton), findsNothing);
+  });
+
+  testWidgets('doble toque: la acción NO se dispara dos veces', (t) async {
+    // Sin candado, el segundo toque vuelve a llamar a `respond_scheduled_date`
+    // y el usuario ve «Esta propuesta ya no está activa» DESPUÉS de una acción
+    // que sí funcionó. La web ya tenía este `busy`.
+    final gate = Completer<void>();
+    enVuelo = gate;
+    await t.pumpWidget(host(_msg(_body('proposed')), own: false));
+
+    await t.tap(confirmar);
+    await t.pump();
+    expect(acciones, [('a1', 'confirm')]);
+    // Mientras la RPC está en vuelo, los dos botones quedan apagados.
+    expect(t.widget<OutlinedButton>(confirmar).onPressed, isNull);
+    expect(t.widget<OutlinedButton>(proponerOtra).onPressed, isNull);
+
+    await t.tap(confirmar, warnIfMissed: false);
+    await t.pump();
+    expect(acciones, [('a1', 'confirm')]);
+
+    gate.complete();
+    await t.pumpAndSettle();
+    expect(t.widget<OutlinedButton>(confirmar).onPressed, isNotNull);
+  });
+
+  testWidgets('el candado también apaga «Cancelar la fecha» en vuelo',
+      (t) async {
+    final gate = Completer<void>();
+    enVuelo = gate;
+    await t.pumpWidget(host(_msg(_body('confirmed')), own: false));
+    final cancelar = find.widgetWithText(TextButton, 'Cancelar la fecha');
+
+    await t.tap(cancelar);
+    await t.pump();
+    expect(acciones, [('a1', 'cancel')]);
+    expect(t.widget<TextButton>(cancelar).onPressed, isNull);
+    expect(t.widget<OutlinedButton>(calendario).onPressed, isNull);
+
+    await t.tap(cancelar, warnIfMissed: false);
+    await t.pump();
+    expect(acciones, [('a1', 'cancel')]);
+
+    gate.complete();
+    await t.pumpAndSettle();
+    expect(t.widget<TextButton>(cancelar).onPressed, isNotNull);
   });
 
   testWidgets('body roto: no se pinta nada', (t) async {

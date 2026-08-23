@@ -35,6 +35,60 @@ void main() {
           sanitizeChatText('a' * (maxMessageLen + 500)).length, maxMessageLen);
     });
   });
+  group('appointmentFailureMessage', () {
+    const generico = 'No se pudo proponer la fecha. Intenta de nuevo.';
+
+    test('P0001 de nuestras RPCs: se repite tal cual (ya viene en español)',
+        () {
+      expect(
+          appointmentFailureMessage(
+              code: chatRaiseExceptionCode,
+              serverMessage: 'La fecha debe ser futura',
+              fallback: generico),
+          'La fecha debe ser futura');
+    });
+
+    test('JY429: la tarjeta consume el anti-flood y su aviso también sirve',
+        () {
+      expect(
+          appointmentFailureMessage(
+              code: chatRateLimitCode,
+              serverMessage: 'Vas muy rápido. Espera unos segundos antes de '
+                  'enviar otro mensaje.',
+              fallback: generico),
+          'Vas muy rápido. Espera unos segundos antes de enviar otro mensaje.');
+    });
+
+    test('PGRST202 (APK antes que la migración) NO enseña sus tripas', () {
+      // El caso realista: la función todavía no existe en el esquema. El texto
+      // del servidor es inglés y lleva nombres internos dentro.
+      expect(
+          appointmentFailureMessage(
+              code: 'PGRST202',
+              serverMessage:
+                  'Could not find the function public.propose_scheduled_date'
+                  '(_conversation_id, _starts_at, _subject) in the schema cache',
+              fallback: generico),
+          generico);
+    });
+
+    test('42501, sin código o con mensaje vacío → genérico', () {
+      expect(
+          appointmentFailureMessage(
+              code: '42501',
+              serverMessage: 'permission denied for table',
+              fallback: generico),
+          generico);
+      expect(appointmentFailureMessage(fallback: generico), generico);
+      expect(
+          appointmentFailureMessage(
+              code: chatRaiseExceptionCode,
+              serverMessage: '   ',
+              fallback: generico),
+          generico);
+    });
+  });
+
   group('sendFailureMessage', () {
     test('anti-flood: repite el texto del servidor, no el genérico', () {
       expect(

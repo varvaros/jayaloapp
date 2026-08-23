@@ -690,16 +690,22 @@ class _ChatScreenState extends State<ChatScreen> {
             (conv['request_title'] as String?) ??
             '');
     if (res == null || !mounted) return;
+    const generico = 'No se pudo proponer la fecha. Intenta de nuevo.';
     try {
       await proposeScheduledDate(
           widget.conversationId, res.subject, res.startsAt);
     } on PostgrestException catch (e) {
-      // El servidor manda su mensaje YA en español, tanto los P0001 de la RPC
-      // como el JY429 del anti-flood del chat (la tarjeta cuenta como mensaje).
-      // Mismo criterio que `sendFailureMessage`: no inventar un mapeo propio.
-      if (mounted) _snack(e.message);
+      // Solo se repite el texto del servidor cuando sale de una guarda NUESTRA
+      // (P0001 de la RPC, JY429 del anti-flood: la tarjeta cuenta como
+      // mensaje). Cualquier otro código —PGRST202 si el APK llegó antes que la
+      // migración, 42501, JWT— se queda en el genérico: mismo criterio que
+      // `sendFailureMessage`, que no filtra tripas del servidor.
+      if (mounted) {
+        _snack(appointmentFailureMessage(
+            code: e.code, serverMessage: e.message, fallback: generico));
+      }
     } catch (_) {
-      if (mounted) _snack('No se pudo proponer la fecha. Intenta de nuevo.');
+      if (mounted) _snack(generico);
     }
   }
 
@@ -719,15 +725,19 @@ class _ChatScreenState extends State<ChatScreen> {
                 startsAtUtc: a.startsAtUtc,
                 details: 'Acordada en el chat de Jayalo'));
       default: // 'confirm' | 'cancel'
+        const generico = 'No se pudo completar la acción. Intenta de nuevo.';
         try {
           // El UPDATE del body y el cartel `system` llegan por realtime.
           await respondScheduledDate(a.appointmentId, action);
         } on PostgrestException catch (e) {
-          if (mounted) _snack(e.message);
-        } catch (_) {
+          // Esta RPC no puede dar JY429 (escribe un `system`, exento), pero el
+          // filtro es el mismo: español nuestro sí, tripas del servidor no.
           if (mounted) {
-            _snack('No se pudo completar la acción. Intenta de nuevo.');
+            _snack(appointmentFailureMessage(
+                code: e.code, serverMessage: e.message, fallback: generico));
           }
+        } catch (_) {
+          if (mounted) _snack(generico);
         }
     }
   }
