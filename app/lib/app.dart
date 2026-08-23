@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 // material.dart, a diferencia de `ClampingScrollSimulation`, que vive en
 // widgets. Import explícito.
 import 'package:flutter/physics.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -15,6 +16,27 @@ import 'core/motion.dart';
 import 'data/repos.dart';
 import 'core/theme_store.dart';
 import 'features/shared/onboarding_store.dart';
+
+/// Traducciones de los widgets que trae Material de fábrica.
+///
+/// Hasta 2026-08-23 la app NO declaraba ninguna: toda la interfaz está escrita
+/// en español a mano, pero lo que pinta Flutter por su cuenta salía en INGLÉS
+/// («OK», «Cancel», «Select date», el menú de copiar/pegar…). Se notaba sobre
+/// todo en el `showDatePicker` — queja vieja — y habría sido peor al estrenar
+/// el `showTimePicker` de la fecha pautada.
+///
+/// Se declara UN solo idioma a propósito: con `supportedLocales` de un único
+/// elemento, Flutter resuelve cualquier idioma del teléfono a `es`, así que un
+/// usuario con el móvil en inglés también ve el calendario en español — que es
+/// lo correcto en una app cuyo texto propio es todo español.
+const List<LocalizationsDelegate<Object>> jayaloLocalizationsDelegates = [
+  GlobalMaterialLocalizations.delegate,
+  GlobalWidgetsLocalizations.delegate,
+  GlobalCupertinoLocalizations.delegate,
+];
+
+/// Ver [jayaloLocalizationsDelegates]: uno solo, y a propósito.
+const List<Locale> jayaloSupportedLocales = [Locale('es')];
 
 /// SIN animación en los cambios de sección (PO 2026-07-19, 4ª pasada —
 /// REVIERTE el deslizado de las directrices 07-18/07-19 anteriores):
@@ -288,6 +310,8 @@ class _JayaloAppState extends State<JayaloApp> {
           theme: jayaloTheme(Brightness.light),
           darkTheme: jayaloTheme(Brightness.dark),
           themeMode: mode,
+          localizationsDelegates: jayaloLocalizationsDelegates,
+          supportedLocales: jayaloSupportedLocales,
           scrollBehavior: const JayaloScrollBehavior(),
           // Overlay de rendimiento, apagado salvo que se pida al compilar:
           //

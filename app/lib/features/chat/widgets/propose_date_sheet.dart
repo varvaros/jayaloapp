@@ -74,7 +74,6 @@ String _clampSubject(String raw) {
 class _ProposeDateSheetBodyState extends State<ProposeDateSheetBody> {
   late final TextEditingController _subject =
       TextEditingController(text: _clampSubject(widget.defaultSubject));
-  final _slots = halfHourSlots();
   DateTime? _date;
   String? _time;
   ServiceHours? _hours;
@@ -117,15 +116,57 @@ class _ProposeDateSheetBodyState extends State<ProposeDateSheetBody> {
     // `showDatePicker` tarda lo que el usuario quiera: sin el guard el
     // setState corre sobre un widget que pudo desmontarse.
     if (picked == null || !mounted) return;
-    setState(() {
-      _date = picked;
-      // Cambiar de día puede dejar PASADA la hora ya elegida (p. ej. venía de
-      // mañana y se pasa a hoy). El servidor la rechazaría con «La fecha debe
-      // ser futura»; se suelta aquí en vez de dejar elegido algo imposible.
-      if (_time != null && isSlotInPast(_time!, picked, widget.now)) {
-        _time = null;
-      }
-    });
+    // Cambiar de día puede dejar PASADA la hora ya elegida (p. ej. venía de
+    // mañana y se pasa a hoy). NO se suelta la hora: se conserva y el aviso de
+    // abajo lo dice, igual que cuando la hora pasada se elige en el reloj.
+    // Borrarla en silencio dejaba al usuario mirando un formulario que se
+    // vació solo.
+    setState(() => _date = picked);
+  }
+
+  /// Reloj del sistema, en español y en 12 h.
+  ///
+  /// Cualquier MINUTO vale. La tira de fichas que había antes solo ofrecía
+  /// medias horas; nada río abajo depende de eso (el servidor guarda un
+  /// `timestamptz` cualquiera y los enlaces de calendario ya escriben los
+  /// segundos reales), así que el reloj no redondea nada — un selector que
+  /// corrigiera a escondidas la hora del usuario se sentiría roto.
+  Future<void> _pickTime() async {
+    final hm = _time == null ? null : slotHm(_time!);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: hm == null
+          ? TimeOfDay.fromDateTime(widget.now)
+          : TimeOfDay(hour: hm.hour, minute: hm.minute),
+      helpText: 'Elige la hora',
+      // 12 h de verdad, y en español (pedido PO 2026-08-23).
+      //
+      // 🔴 No basta con localizar la app: `flutter_localizations` declara
+      // `timeOfDayFormat: "H:mm"` (24 h) para TODOS los `es_*` menos `es_US`,
+      // así que un reloj en `es` o `es_DO` saldría en 24 h — justo el formato
+      // que el PO quiere fuera, y el que contradice a la tarjeta del chat
+      // («3:00 p. m.»). `Localizations.override` cambia el idioma SOLO de
+      // este diálogo: los textos siguen siendo los mismos del español
+      // («Cancelar», «ACEPTAR», «a. m.», «p. m.»), lo único que cambia es que
+      // el reloj se pinta de 1 a 12 con AM/PM.
+      //
+      // El `alwaysUse24HourFormat: false` es la otra mitad: si el teléfono
+      // tiene puesto el reloj de 24 h, Material lo impone por encima del
+      // idioma. La tarjeta del chat SIEMPRE se lee en 12 h, así que el
+      // selector tiene que hacer juego pase lo que pase en los ajustes del
+      // aparato.
+      builder: (ctx, child) => Localizations.override(
+        context: ctx,
+        locale: const Locale('es', 'US'),
+        child: MediaQuery(
+          data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: false),
+          child: child!,
+        ),
+      ),
+    );
+    // Igual que con el calendario: el usuario puede tardar lo que quiera.
+    if (picked == null || !mounted) return;
+    setState(() => _time = slotFromHm(picked.hour, picked.minute));
   }
 
   @override
@@ -133,7 +174,13 @@ class _ProposeDateSheetBodyState extends State<ProposeDateSheetBody> {
     final cs = Theme.of(context).colorScheme;
     final dayHours = hoursForDate(_hours, _date);
     final starts = localStartsAt(_date, _time ?? '');
-    final canSend = _subject.text.trim().isNotEmpty && starts != null;
+    // Con un reloj libre no hay nada que «deshabilitar» (las fichas pasadas sí
+    // se podían apagar una a una). Se comprueba DESPUÉS de elegir y se dice en
+    // castellano, sin tirar lo ya elegido: el servidor la rechazaría con «La
+    // fecha debe ser futura» y rebotar contra el servidor algo que la pantalla
+    // ya sabe es de mala educación.
+    final past = _time != null && isSlotInPast(_time!, _date, widget.now);
+    final canSend = _subject.text.trim().isNotEmpty && starts != null && !past;
 
     return SafeArea(
       child: Padding(
@@ -180,71 +227,42 @@ class _ProposeDateSheetBodyState extends State<ProposeDateSheetBody> {
                         '${_date!.month.toString().padLeft(2, '0')}/'
                         '${_date!.year}'),
               ),
-              const SizedBox(height: 12),
-              Text('Hora',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurfaceVariant)),
-              const SizedBox(height: 6),
-              SizedBox(
-                height: 44,
-                child: ListView.separated(
-                  key: const Key('appt.slots'),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _slots.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 6),
-                  itemBuilder: (_, i) {
-                    final slot = _slots[i];
-                    // Fuera de horario = solo una ANOTACIÓN: el horario es una
-                    // sugerencia y se puede pautar igual. Ya pasada = la RPC la
-                    // rechaza, así que se deshabilita de verdad.
-                    final past = isSlotInPast(slot, _date, widget.now);
-                    final label =
-                        slotLabel(slot, isSlotOutsideHours(slot, dayHours));
-                    final selected = _time == slot;
-                    // La hora elegida NO se marca solo con el color (regla de
-                    // la casa): lleva un ✓ visible, como los selectores de la
-                    // burbuja `quick`, y el estado «seleccionado» va también al
-                    // árbol de semántica — en la web eso lo daba gratis el
-                    // `<select>` nativo, aquí hay que decirlo.
-                    // `MergeSemantics` NO es adorno: sin él «seleccionado» se
-                    // queda en un nodo APARTE del nodo del botón (medido en la
-                    // prueba) y el lector de pantalla lee la hora sin decir que
-                    // es la elegida.
-                    return MergeSemantics(
-                      child: Semantics(
-                        selected: selected,
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            backgroundColor:
-                                selected ? cs.primary : Colors.transparent,
-                            foregroundColor:
-                                selected ? Colors.white : cs.onSurface,
-                            // Sin estos, Material desvanece el texto a su gris
-                            // por defecto e IGNORA el foreground (ya mordió en
-                            // las burbujas violeta).
-                            disabledBackgroundColor: Colors.transparent,
-                            disabledForegroundColor:
-                                cs.onSurface.withValues(alpha: .38),
-                            side: BorderSide(
-                              color: selected
-                                  ? cs.primary
-                                  : cs.outlineVariant
-                                      .withValues(alpha: past ? .4 : 1),
-                            ),
-                          ),
-                          onPressed:
-                              past ? null : () => setState(() => _time = slot),
-                          child: Text('${selected ? '✓ ' : ''}$label',
-                              style: const TextStyle(fontSize: 12)),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+              const SizedBox(height: 4),
+              // Un solo control, como el del día: abre el reloj del sistema.
+              // Antes había una tira de 48 fichas de media hora que había que
+              // ARRASTRAR para llegar a la hora buscada (el PO la probó en un
+              // teléfono de verdad y pidió un selector normal).
+              //
+              // La hora elegida se lee en 12 h, igual que la tarjeta del chat,
+              // y con su anotación de «fuera de horario» si toca: el horario
+              // del negocio es una SUGERENCIA, se anota pero no cierra nada.
+              OutlinedButton.icon(
+                key: const Key('appt.time'),
+                onPressed: _pickTime,
+                icon: const Icon(Icons.schedule_outlined, size: 18),
+                label: Text(_time == null
+                    ? 'Elegir la hora'
+                    : 'Hora: ${slotLabel(_time!, isSlotOutsideHours(_time!, dayHours))}'),
               ),
+              if (past) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: cs.errorContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  // La hora elegida NO se borra: sigue puesta en el botón de
+                  // arriba y basta con tocar el reloj (o el día) otra vez.
+                  child: Text(
+                    'Esa hora ya pasó. Elige una más tarde o cambia el día.',
+                    key: const Key('appt.past'),
+                    style: TextStyle(fontSize: 13, color: cs.onErrorContainer),
+                  ),
+                ),
+              ],
               if (dayHours != null) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -254,7 +272,10 @@ class _ProposeDateSheetBodyState extends State<ProposeDateSheetBody> {
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ],
-              if (starts != null) ...[
+              // El eco en hora de RD solo cuando la fecha SE PUEDE proponer:
+              // con una hora pasada, «Se propondrá para…» sería mentira, y ahí
+              // manda el aviso de arriba.
+              if (starts != null && !past) ...[
                 const SizedBox(height: 10),
                 Container(
                   width: double.infinity,

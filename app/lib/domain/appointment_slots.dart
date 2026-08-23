@@ -10,9 +10,19 @@
 /// TODOS los negocios vivos) y «no eres participante», y la RPC toma el negocio
 /// MÁS ANTIGUO del proveedor, que no tiene por qué ser el de este trato. Por eso
 /// aquí solo se ANOTA una hora como «fuera de horario»; nunca se impide
-/// elegirla. Lo que sí se deshabilita son las horas PASADAS, porque esas las
-/// rechaza el servidor.
+/// elegirla. Lo que sí se rechaza son las horas PASADAS, porque esas las
+/// rechaza también el servidor.
+///
+/// ⚠️ Divergencia CONSCIENTE con la web: la app ya no ofrece una lista de
+/// medias horas (el PO pidió un reloj de verdad en vez de la tira de fichas
+/// arrastrable), así que aquí NO existe `halfHourSlots`; la web mantiene su
+/// `<select>` y por tanto su lista. Todo lo demás sigue siendo espejo, y una
+/// hora sigue viajando como el mismo texto `"HH:MM"` en las dos orillas — lo
+/// que cambia es de dónde sale y con cuánta finura (la app admite CUALQUIER
+/// minuto; la web, medias horas).
 library;
+
+import 'chat_time.dart';
 
 /// Tope que valida `propose_scheduled_date` («La fecha no puede pasar de 90
 /// días»).
@@ -28,8 +38,6 @@ const int appointmentMaxDays = 90;
 /// completa del último día cabe siempre dentro del tope. Misma decisión que
 /// `OFFERED_MAX_DAYS` en `src/lib/appointmentSlots.ts`.
 const int offeredMaxDays = appointmentMaxDays - 1;
-
-const int _slotStepMinutes = 30;
 
 /// Claves del `jsonb` de horario, en el orden de la semana. Idénticas a las de
 /// la web (`DAYS` de `src/lib/providerDetails.ts`) y a las que ya usa
@@ -55,11 +63,18 @@ typedef ServiceHours = Map<String, DayHours?>;
 
 String _pad2(int n) => n.toString().padLeft(2, '0');
 
-/// "00:00", "00:30", … "23:30" — el día entero en pasos de media hora.
-List<String> halfHourSlots() => [
-      for (var m = 0; m < 24 * 60; m += _slotStepMinutes)
-        '${_pad2(m ~/ 60)}:${_pad2(m % 60)}',
-    ];
+/// "HH:MM" a partir de las partes que devuelve el reloj del sistema
+/// (`TimeOfDay`). La hora del formulario viaja como TEXTO por todo el módulo
+/// (así el cotejo contra `service_hours`, que también es texto, no necesita
+/// convertir nada), y esta es la única puerta de entrada.
+String slotFromHm(int hour, int minute) => '${_pad2(hour)}:${_pad2(minute)}';
+
+/// Partes de una hora "HH:MM", o `null` si no es una hora del día. Puerta de
+/// SALIDA hacia el reloj del sistema (para reabrirlo en la hora ya elegida).
+({int hour, int minute})? slotHm(String slot) {
+  final at = _minutesOfDay(slot);
+  return at == null ? null : (hour: at ~/ 60, minute: at % 60);
+}
 
 /// Límites del `showDatePicker`: hoy y hoy+89, los dos como fecha LOCAL a
 /// medianoche (ver [offeredMaxDays]).
@@ -141,8 +156,22 @@ bool isSlotOutsideHours(String slot, DayHours? dayHours) {
   return at >= close && at < open;
 }
 
-String slotLabel(String slot, bool outside) =>
-    outside ? '$slot (fuera de horario)' : slot;
+/// Cómo se LEE una hora elegida: 12 h en español, y la anotación de «fuera de
+/// horario» detrás si toca.
+///
+/// El formato sale de [formatTimeHM], el MISMO que pinta la tarjeta del chat;
+/// no hay un segundo formateador. Antes esto devolvía "15:00" mientras la
+/// tarjeta de al lado decía "3:00 p. m." y la app se contradecía sola.
+///
+/// Una hora que no se puede leer se devuelve tal cual: la anotación es
+/// cosmética y quien de verdad frena una hora imposible es [localStartsAt].
+String slotLabel(String slot, bool outside) {
+  final hm = slotHm(slot);
+  final texto = hm == null
+      ? slot
+      : formatTimeHM(DateTime(2000, 1, 1, hm.hour, hm.minute));
+  return outside ? '$texto (fuera de horario)' : texto;
+}
 
 /// ¿Esa media hora del día elegido ya pasó?
 ///

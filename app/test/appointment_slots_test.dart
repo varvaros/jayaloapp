@@ -2,14 +2,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/domain/appointment_slots.dart';
 
 void main() {
-  group('halfHourSlots', () {
-    test('cubre el día entero en pasos de media hora', () {
-      final slots = halfHourSlots();
-      expect(slots.length, 48);
-      expect(slots.first, '00:00');
-      expect(slots[1], '00:30');
-      expect(slots[19], '09:30');
-      expect(slots.last, '23:30');
+  group('slotFromHm / slotHm', () {
+    test('van y vuelven entre "HH:MM" y las partes que da el reloj', () {
+      // El `showTimePicker` habla en `TimeOfDay`; el resto del módulo (pasada,
+      // fuera de horario, instante) habla en "HH:MM". Estos dos son la única
+      // frontera entre ambos, y por eso se prueban aquí y no en el widget.
+      expect(slotFromHm(9, 5), '09:05');
+      expect(slotFromHm(0, 0), '00:00');
+      expect(slotFromHm(23, 59), '23:59');
+      expect(slotHm('09:05'), (hour: 9, minute: 5));
+      expect(slotHm('9:05'), (hour: 9, minute: 5));
+    });
+
+    test('slotHm es null cuando la hora no es una hora del día', () {
+      expect(slotHm(''), isNull);
+      expect(slotHm('25:00'), isNull);
+      expect(slotHm('10:70'), isNull);
+      expect(slotHm('diez'), isNull);
     });
   });
 
@@ -120,9 +129,28 @@ void main() {
     });
   });
 
-  test('slotLabel anota solo lo que está fuera de horario', () {
-    expect(slotLabel('09:00', false), '09:00');
-    expect(slotLabel('09:00', true), '09:00 (fuera de horario)');
+  group('slotLabel', () {
+    test('pinta la hora en 12 h español, igual que la tarjeta', () {
+      // Antes devolvía "09:00" mientras la tarjeta del chat decía
+      // "9:00 a. m.": la app se contradecía a sí misma. Ahora las dos salen
+      // del MISMO `formatTimeHM`.
+      expect(slotLabel('09:00', false), '9:00 a. m.');
+      expect(slotLabel('15:00', false), '3:00 p. m.');
+      expect(slotLabel('00:00', false), '12:00 a. m.');
+      expect(slotLabel('12:30', false), '12:30 p. m.');
+      expect(slotLabel('23:45', false), '11:45 p. m.');
+    });
+
+    test('anota solo lo que está fuera de horario', () {
+      expect(slotLabel('09:00', true), '9:00 a. m. (fuera de horario)');
+    });
+
+    test('una hora que no se puede leer se devuelve tal cual', () {
+      // No debe reventar: la anotación es cosmética y el bloqueo real de una
+      // hora imposible lo hace `localStartsAt` devolviendo null.
+      expect(slotLabel('', false), '');
+      expect(slotLabel('25:00', true), '25:00 (fuera de horario)');
+    });
   });
 
   group('isSlotInPast', () {
