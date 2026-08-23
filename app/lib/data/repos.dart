@@ -1971,10 +1971,27 @@ Future<void> improveOfferPrice(String convId, num newPrice) async =>
 /// Task 5) y se convierte a UTC real recién aquí, al armar el parámetro —
 /// nunca antes, para no perder la zona con la que el usuario eligió la hora.
 ///
-/// Lanza `PostgrestException` con `code == 'P0001'` (mensaje en español ya
-/// listo para mostrar) o `JY429` (anti-flood del chat) — mismo patrón que
-/// [sendFailureMessage] en `domain/chat.dart`: no inventar un mapeo propio,
-/// mostrar `e.message` tal cual.
+/// Lanza `PostgrestException` con `code == 'P0001'` — validado contra
+/// `supabase/migrations/20260823071753_fecha_pautada_nucleo.sql`, la RPC solo
+/// puede levantar: 'No autenticado', 'Conversación no encontrada', 'No
+/// participas en esta conversación', 'Esta conversación está cerrada',
+/// 'Indica para qué es la fecha', 'El motivo no puede pasar de 60
+/// caracteres', 'El motivo no puede incluir datos de contacto', 'La fecha
+/// debe ser futura', 'La fecha no puede pasar de 90 días' o 'Espera unos
+/// segundos antes de proponer otra fecha' (cooldown propio de 30 s por
+/// conversación y proponente, DISTINTO del anti-flood de abajo).
+///
+/// TAMBIÉN puede lanzar `code == 'JY429'` (anti-flood del chat,
+/// `chatRateLimitCode` en `domain/chat.dart`): esta RPC inserta la tarjeta
+/// como un mensaje `kind='appointment'`, y el trigger
+/// `enforce_chat_message_rate_limit` solo exime `('system','audit')` — la
+/// tarjeta consume el cupo de 10 mensajes/30 s del proponente igual que
+/// cualquier mensaje de chat. `respondScheduledDate` (abajo) NO comparte
+/// este riesgo: inserta `kind='system'`, que SÍ está exento.
+///
+/// Mismo patrón que [sendFailureMessage] en `domain/chat.dart`: no inventar
+/// un mapeo propio, mostrar `e.message` tal cual (ambos códigos ya traen
+/// texto en español listo para el usuario).
 Future<void> proposeScheduledDate(
   String convId,
   String subject,
@@ -1986,11 +2003,25 @@ Future<void> proposeScheduledDate(
       '_starts_at': startsAt.toUtc().toIso8601String(),
     });
 
-/// Responde (confirma/cancela/etc.) una fecha pautada propuesta.
-/// `_action` la valida la RPC server-side (`respond_scheduled_date`); ver
-/// `src/components/marketplace/AppointmentBubble.tsx` (web) para el mismo
-/// llamado — hoy usa 'confirm'/'cancel'; Task 5 (app) añade 'propose_again'
-/// y 'calendar' como acciones locales que NO llaman a esta RPC.
+/// Responde (confirma/cancela) una fecha pautada propuesta. `_action` solo
+/// acepta 'confirm'/'cancel' server-side — 'propose_again' y 'calendar' que
+/// menciona Task 5 son acciones LOCALES de la app que nunca llegan a esta
+/// RPC (ver `src/components/marketplace/AppointmentBubble.tsx`, mismo
+/// contrato en la web).
+///
+/// Lanza `PostgrestException` con `code == 'P0001'` — validado contra la
+/// misma migración, esta RPC solo puede levantar: 'No autenticado', 'Acción
+/// inválida', 'Fecha pautada no encontrada', 'No participas en esta
+/// conversación', 'Esta conversación está cerrada', 'Esta propuesta ya no
+/// está activa' (al confirmar), 'La otra parte es quien confirma la fecha'
+/// (quien propuso no puede autoconfirmarse) o 'Esta fecha ya no está
+/// activa' (al cancelar).
+///
+/// NUNCA `JY429`: el aviso que deja esta RPC en el chat es `kind='system'`
+/// ("📅 Fecha pautada confirmada…" / "Fecha pautada cancelada…"), y
+/// `enforce_chat_message_rate_limit` exime exactamente `('system','audit')`
+/// — a diferencia de `proposeScheduledDate` arriba, que sí puede tropezar
+/// con el anti-flood porque inserta `kind='appointment'`.
 Future<void> respondScheduledDate(String appointmentId, String action) async =>
     supa.rpc('respond_scheduled_date', params: {
       '_appointment_id': appointmentId,

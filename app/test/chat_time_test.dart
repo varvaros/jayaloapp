@@ -33,5 +33,15 @@ void main() {
         messagePreview('quick', '{"question":"¿Es nuevo?","options":[]}'), '¿Es nuevo?'));
     test('quick corrupto', () => expect(messagePreview('quick', 'no-json'), 'Pregunta'));
     test('texto', () => expect(messagePreview('text', 'hola'), 'hola'));
+    // Fija el `case 'appointment':` de verdad, no solo appointmentPreview()
+    // por su cuenta: si esa rama se borrara, messagePreview caería al
+    // `default` y devolvería el body crudo (un blob JSON), no esta cadena.
+    test(
+        'fecha pautada',
+        () => expect(
+              messagePreview('appointment',
+                  '{"appointment_id":"a1","subject":"la entrega","starts_at":"2026-08-26T19:00:00Z","status":"proposed"}'),
+              '📅 Fecha pautada: la entrega',
+            ));
   });
 }

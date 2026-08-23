@@ -19,7 +19,7 @@ class AppointmentPayload {
   const AppointmentPayload({
     required this.appointmentId,
     required this.subject,
-    required this.startsAt,
+    required this.startsAtUtc,
     required this.status,
     this.proposedBy,
     this.doneCustomer,
@@ -30,16 +30,17 @@ class AppointmentPayload {
   final String subject;
 
   /// Instante REAL en UTC (`isUtc == true`) — `starts_at` parseado tal cual,
-  /// SIN corrimiento de zona. A propósito NO se usa `.toLocal()` (dependería
-  /// del huso del dispositivo, que puede no coincidir con el de RD) y
-  /// tampoco se pre-corre aquí a hora de pared de RD (eso dejaría un
-  /// `DateTime` marcado `isUtc == true` mintiendo sobre serlo — justo el
-  /// contrato que esta corrección de zona evita). Para MOSTRAR la hora al
-  /// usuario, pasar este valor a [formatAppointmentDate], que aplica el
-  /// corrimiento fijo de RD internamente. Para el enlace de Google Calendar,
-  /// pasarlo TAL CUAL a [googleCalendarUrl] (ya es UTC verdadero, no hace
-  /// falta ni daña volver a llamar `.toUtc()`).
-  final DateTime startsAt;
+  /// SIN corrimiento de zona. El nombre lo dice a propósito: NO es hora de
+  /// RD. A propósito NO se usa `.toLocal()` (dependería del huso del
+  /// dispositivo, que puede no coincidir con el de RD) y tampoco se
+  /// pre-corre aquí a hora de pared de RD (eso dejaría un `DateTime`
+  /// marcado `isUtc == true` mintiendo sobre serlo — justo el contrato que
+  /// esta corrección de zona evita). Para MOSTRAR la hora al usuario, pasar
+  /// este valor a [formatAppointmentDate], que aplica el corrimiento fijo
+  /// de RD internamente. Para el enlace de Google Calendar, pasarlo TAL
+  /// CUAL a [googleCalendarUrl] (ya es UTC verdadero, no hace falta ni daña
+  /// volver a llamar `.toUtc()`).
+  final DateTime startsAtUtc;
   final String status;
   final String? proposedBy;
   final bool? doneCustomer;
@@ -63,7 +64,7 @@ AppointmentPayload? parseAppointment(String body) {
     return AppointmentPayload(
       appointmentId: id,
       subject: subject,
-      startsAt: DateTime.parse(starts).toUtc(),
+      startsAtUtc: DateTime.parse(starts).toUtc(),
       status: status,
       proposedBy: m['proposed_by'] as String?,
       doneCustomer: m['done_customer'] as bool?,
@@ -90,7 +91,7 @@ const _rdOffset = Duration(hours: 4);
 
 /// "26 ago, 3:00 p. m." — SIEMPRE en la zona fija de RD (UTC-4), nunca la
 /// del dispositivo. [utc] debe ser un instante UTC real, como
-/// [AppointmentPayload.startsAt].
+/// [AppointmentPayload.startsAtUtc].
 String formatAppointmentDate(DateTime utc) {
   final rd = utc.toUtc().subtract(_rdOffset);
   return '${rd.day} ${_mesesCortos[rd.month - 1]}, ${formatTimeHM(rd)}';

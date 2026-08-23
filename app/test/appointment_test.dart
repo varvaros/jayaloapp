@@ -11,12 +11,12 @@ void main() {
     expect(p.status, 'proposed');
     expect(p.proposedBy, 'u1');
     // Contrato de zona (corrección de la tarea sobre el brief original):
-    // startsAt es el instante UTC VERDADERO — NUNCA `.toLocal()`, que
+    // startsAtUtc es el instante UTC VERDADERO — NUNCA `.toLocal()`, que
     // dependería del huso del dispositivo y podría no ser el de RD. La hora
     // de pared en RD (fija UTC-4) se obtiene con formatAppointmentDate, no
     // leyendo los campos de este DateTime directamente.
-    expect(p.startsAt.isUtc, isTrue);
-    expect(p.startsAt, DateTime.utc(2026, 8, 26, 19, 0));
+    expect(p.startsAtUtc.isUtc, isTrue);
+    expect(p.startsAtUtc, DateTime.utc(2026, 8, 26, 19, 0));
   });
 
   test('null ante JSON roto o incompleto', () {
