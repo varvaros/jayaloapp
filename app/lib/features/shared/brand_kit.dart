@@ -22,6 +22,7 @@ import '../../domain/phase.dart';
 import '../shell/floating_nav_bar.dart';
 import 'onboarding_store.dart';
 import 'jayalo_loader.dart';
+import 'moneda.dart';
 
 // Re-exporta el loader para que cualquier pantalla que ya importa el kit pueda
 // usar `JayaloLoaderBlock` (la mascota) en sus estados de carga sin un import
@@ -363,11 +364,16 @@ class StatusChip extends StatelessWidget {
     required this.label,
     required this.tone,
     this.icon,
+    this.leading,
   });
 
   final String label;
   final StatusTone tone;
   final IconData? icon;
+
+  /// Símbolo propio en lugar del glifo de Material — hoy solo la moneda de
+  /// Jayalo en los chips de costo en créditos. Cuando viene, [icon] no se pinta.
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -379,7 +385,10 @@ class StatusChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (icon != null) ...[
+            if (leading != null) ...[
+              leading!,
+              const SizedBox(width: 4),
+            ] else if (icon != null) ...[
               Icon(icon, size: 14, color: tone.ink),
               const SizedBox(width: 4),
             ],
@@ -438,11 +447,17 @@ class MetricTile extends StatelessWidget {
     required this.value,
     required this.label,
     this.extra,
+    this.leading,
   });
 
   final IconData icon;
   final String value;
   final String label;
+
+  /// Sustituye al ícono cuando la métrica tiene su propio símbolo dibujado —
+  /// hoy solo los créditos, que se cuentan en monedas de Jayalo y no en un
+  /// glifo de Material. Cuando viene, [icon] no se pinta.
+  final Widget? leading;
 
   /// Ranura opcional entre el valor y la etiqueta. Existe para la tarjeta de
   /// calificación, que además del número enseña las estrellas (`StarScore`).
@@ -455,7 +470,7 @@ class MetricTile extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
-        Icon(icon, color: cs.primary, size: 22),
+        leading ?? Icon(icon, color: cs.primary, size: 22),
         const SizedBox(height: 6),
         // Los números aparecen ya en su valor. Hubo un conteo animado
         // (`CountUpText`, 2026-07-30) y el PO lo retiró tras verlo en device:
@@ -903,7 +918,14 @@ class _HoldToConfirmButtonState extends State<HoldToConfirmButton>
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(icon, size: 19, color: Colors.white),
+                            // En el hold PAGADO el símbolo es la moneda: lo
+                            // que se sostiene es un cobro en créditos, no un
+                            // candado genérico. El gratuito (aceptar) sigue
+                            // con su check.
+                            if (free)
+                              Icon(icon, size: 19, color: Colors.white)
+                            else
+                              const MonedaJayalo(size: 20),
                             const SizedBox(width: 8),
                             Flexible(
                               child: Text(label,

@@ -1,0 +1,62 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "D · Enjambre cometa",
+      "x": 0,
+      "y": 0,
+      "w": 360,
+      "h": 812
+    },
+    {
+      "file": "Enjambre.dc.html",
+      "title": "C · Enjambre",
+      "x": 520,
+      "y": 0,
+      "w": 360,
+      "h": 740
+    },
+    {
+      "file": "Cometa.dc.html",
+      "title": "B · Cometa",
+      "x": 960,
+      "y": 0,
+      "w": 360,
+      "h": 740
+    },
+    {
+      "file": "Arco.dc.html",
+      "title": "A · Arco",
+      "x": 1400,
+      "y": 0,
+      "w": 360,
+      "h": 740
+    }
+  ],
+  "annotations": [
+    {
+      "id": "elegida",
+      "x": 0,
+      "y": -320,
+      "w": 400,
+      "text": "D · ENJAMBRE COMETA — la mezcla que pediste\n\nLas cinco estallan a la vez sobre la tarjeta y flotan un instante (eso es C), y de ahí salen disparadas UNA A UNA con estela dorada hasta el contador (eso es B). El número rueda mientras van entrando, el contador da un golpecito con cada una y remata con el destello grande.\n\nDura 1,25 s: el estallido 320 ms, un respiro de 180 ms y los cinco tiros de 380 ms cada 90 ms.\n\nSe repite en bucle para que la mires; en la app pasaría una sola vez.\n\nCON SONIDO: el botón «Ver con sonido» bajo el teléfono reinicia la animación y suelta el ting-ting-ting que trajiste justo cuando las monedas empiezan a aterrizar (el navegador no deja sonar nada sin un toque, por eso el bucle va mudo)."
+    },
+    {
+      "id": "originales",
+      "x": 520,
+      "y": -320,
+      "w": 340,
+      "text": "LAS TRES DE ANTES\nSe quedan a mano por si quieres comparar algún detalle: C (estallido y tragado), B (recto con estela y número rodando) y A (arcos uno a uno, número de 11 en 11)."
+    },
+    {
+      "id": "para-implementar",
+      "x": 0,
+      "y": 800,
+      "w": 780,
+      "text": "LO QUE HAY QUE RESOLVER AL LLEVARLO A LA APP\n\n1) Con «reducir animaciones» activado (JayaloMotion.reduced) las monedas NO deben volar: el número salta a 93 y ya. Igual que el Jayi, que ahí se queda quieto.\n2) El contador vive en el AppBar de la tienda Y en las cabeceras violeta de Solicitudes, Mis ofertas y Mi negocio. Si la compra se acredita estando en otra pantalla, ahí no hay monedas de dónde salir: propongo que solo pulse el contador y suba el número, sin vuelo.\n3) ¿Cinco monedas siempre, o una por cada X créditos? Cinco fijas es más fácil de leer y no depende del paquete.\n4) ¿Se queda el aviso de abajo? Si el número sube a la vista, ese texto ya sobra — pero dice «Listo» y eso tranquiliza. Tú decides.\n5) El sonido en la app debe respetar el silencio del teléfono y apagarse junto con la animación en «reducir animaciones».\n\nLos números son los reales: 38 créditos + el paquete Popular (55) = 93."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

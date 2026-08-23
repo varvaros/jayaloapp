@@ -36,6 +36,7 @@ import '../../domain/recharge.dart';
 import '../shared/brand_kit.dart';
 import '../shared/celebration.dart';
 import '../shared/onboarding_store.dart';
+import '../shared/moneda.dart';
 
 /// Costo estimado (en créditos) de desbloquear una oferta. El server lo
 /// recalcula e IGNORA lo enviado (regla de seguridad del proyecto).
@@ -143,9 +144,18 @@ Future<void> startUnlockFlow(
                 textAlign: TextAlign.center,
                 style: Theme.of(ctx).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text(
-                'Costo: $cost crédito${cost == 1 ? '' : 's'} · Tu saldo: ${balance ?? 0}',
-                textAlign: TextAlign.center),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const MonedaJayalo(size: 17),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                      'Costo: $cost crédito${cost == 1 ? '' : 's'} · Tu saldo: ${balance ?? 0}',
+                      textAlign: TextAlign.center),
+                ),
+              ],
+            ),
             const SizedBox(height: 20),
             if (needsRecharge)
               FilledButton(

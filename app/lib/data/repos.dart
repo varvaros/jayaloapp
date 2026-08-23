@@ -1091,7 +1091,16 @@ void _syncWalletCache(int? newBalance) {
   } else {
     AppCaches.wallet.clear();
   }
+  onWalletBalanceChanged?.call(newBalance);
 }
+
+/// Hueco para avisar de que el saldo cambió; lo rellena el contador de las
+/// cabeceras (`saldoStore`). Vive aquí como función suelta a propósito: la capa
+/// de datos avisa, pero no conoce a la UI ni la importa.
+///
+/// `null` = "cambió y no sé a cuánto" (la RPC no devolvió el saldo): quien
+/// escuche tiene que ir a releerlo, nunca quedarse con el número viejo.
+void Function(int? nuevoSaldo)? onWalletBalanceChanged;
 
 Future<({String? firstName, String? phone})> unlockedContact(
   String offerId,

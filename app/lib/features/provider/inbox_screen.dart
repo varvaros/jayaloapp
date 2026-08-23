@@ -18,6 +18,7 @@ import '../shared/swipe_to_actions.dart';
 import '../shared/violet_header.dart';
 import 'hidden_requests_store.dart';
 import 'opened_requests.dart';
+import '../shared/moneda.dart';
 
 /// Signature de las fuentes de datos del inbox: `providerInbox` (Para ti,
 /// filtra por rubro del proveedor) y `allOpenRequests` (Todas, cualquier
@@ -56,7 +57,7 @@ class ProviderInboxView extends StatefulWidget {
     super.key,
     required this.fetch,
     this.leading = const HeaderAvatar(),
-    this.actions = const [HeaderBell()],
+    this.actions = const [HeaderSaldo(), HeaderBell()],
   });
 
   final InboxFetch fetch;
@@ -780,7 +781,7 @@ class _InterestCard extends StatelessWidget {
                       StatusChip(
                         label: '$productInterestUnlockCost crédito'
                             '${productInterestUnlockCost == 1 ? '' : 's'}',
-                        icon: Icons.lock_outline,
+                        leading: const MonedaJayalo(size: 14),
                         tone: offerBadgeTone(context, 'pending'),
                       ),
                   ],

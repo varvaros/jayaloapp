@@ -16,7 +16,9 @@ import 'package:go_router/go_router.dart';
 import '../../core/motion.dart';
 import '../../domain/notifications.dart' show badgeLabel;
 import '../notifications/notification_bell.dart' show notifCountStore;
+import 'moneda.dart';
 import 'profile_avatar_button.dart';
+import 'saldo_store.dart';
 
 /// Alineación del título dentro del header.
 enum HeaderTitleAlign { start, center, end }
@@ -425,6 +427,86 @@ class _HeaderBellState extends State<HeaderBell> with WidgetsBindingObserver {
           onTap: () => context.push('/notifications'),
         ),
       );
+}
+
+/// Contador de créditos del header (pedido PO 2026-08-22: «que se vea en todas
+/// las pantallas relevantes»): la moneda de la tienda + el saldo, y al tocarlo
+/// se abre la recarga.
+///
+/// Solo en las pantallas del PROVEEDOR: el cliente no gasta créditos y un
+/// contador ahí no querría decir nada.
+///
+/// No se pinta hasta saber el número: en una cabecera, un «0» falso es peor que
+/// no enseñar nada.
+class HeaderSaldo extends StatefulWidget {
+  const HeaderSaldo({super.key});
+  @override
+  State<HeaderSaldo> createState() => _HeaderSaldoState();
+}
+
+class _HeaderSaldoState extends State<HeaderSaldo> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    saldoStore.refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Volver del fondo es justo cuando pudo haber comprado créditos fuera.
+    if (state == AppLifecycleState.resumed) saldoStore.refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: saldoStore,
+        builder: (context, _) {
+          final saldo = saldoStore.saldo;
+          if (saldo == null) return const SizedBox.shrink();
+          return Semantics(
+            button: true,
+            label: 'Tienes $saldo créditos. Recargar.',
+            child: ExcludeSemantics(
+              child: Material(
+                color: Colors.white.withValues(alpha: .18),
+                borderRadius: BorderRadius.circular(999),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => context.push('/tienda-creditos'),
+                  child: const Padding(
+                    padding: EdgeInsets.fromLTRB(8, 8, 13, 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        MonedaJayalo(size: 22),
+                        SizedBox(width: 6),
+                        _SaldoTexto(),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+}
+
+/// El número, aparte solo para que la fila de arriba pueda ser `const`.
+class _SaldoTexto extends StatelessWidget {
+  const _SaldoTexto();
+
+  @override
+  Widget build(BuildContext context) => Text('${saldoStore.saldo}',
+      style: const TextStyle(
+          fontSize: 15.5, fontWeight: FontWeight.w800, color: Colors.white));
 }
 
 /// Avatar del header: foto/inicial sobre círculo blanco; abre el mismo menú de

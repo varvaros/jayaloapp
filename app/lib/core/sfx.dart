@@ -28,6 +28,11 @@ abstract final class Sfx {
   /// mismo pop de burbuja que suena con la app cerrada (canal `jayalo_chat_v1`
   /// de Android), para que el aviso se oiga igual esté donde esté el usuario.
   static const messageElsewhere = 'sounds/mensaje_nuevo.mp3';
+
+  /// Ting-ting-ting de monedas al ACREDITARSE una recarga (lo trajo el PO,
+  /// 2026-08-23): suena junto con el vuelo de monedas al contador de la
+  /// tienda de créditos, sincronizado con los aterrizajes.
+  static const coinsCredited = 'sounds/monedas_acreditadas.mp3';
 }
 
 /// Reproduce un SFX empaquetado una sola vez. Nunca lanza.

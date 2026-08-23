@@ -1,0 +1,42 @@
+<div class="frame">
+__BAND__
+  <div class="shop" style="background: #F8F4EC;">
+
+    <!-- Tarjeta enfocada del carrusel, tal como se ve hoy -->
+    <div style="position: absolute; left: 8px; top: 8px; width: 279px; height: 396px;
+                background: #FFFFFF; border: 1px solid #E1E4EA; border-radius: 22px;
+                box-shadow: 0 2px 6px rgba(38, 49, 67, .09);
+                display: flex; flex-direction: column; align-items: center;
+                justify-content: center; gap: 0; padding: 20px 18px;">
+      <div style="background: #E2D6FB; color: #3C1590; font-size: 12.5px; font-weight: 700;
+                  padding: 6px 14px; border-radius: 999px;">Popular</div>
+      <div style="font-size: 12px; font-weight: 700; color: #4A4458; margin-top: 6px">Más popular</div>
+      <div style="font-size: 36px; font-weight: 800; color: #4A4458; margin-top: 10px;
+                  line-height: 1.1;">55</div>
+      <div style="font-size: 14px; color: #4A4458">créditos</div>
+      <div style="font-size: 13px; color: #847D8F; margin-top: 6px">Hasta 55 clientes desbloqueados</div>
+      <div style="font-size: 13px; font-weight: 700; color: #00A159; margin-top: 6px">Ahorras 9%</div>
+      <div style="font-size: 20px; font-weight: 700; color: #4A4458; margin-top: 14px">US$50.00</div>
+      <div style="margin-top: 14px; height: 40px; padding: 0 24px; border-radius: 20px;
+                  background: #7147F2; color: #FCFCFC; font-size: 14px; font-weight: 500;
+                  display: flex; align-items: center; justify-content: center;">Comprar</div>
+    </div>
+
+    <!-- Siguiente tarjeta asomando -->
+    <div style="position: absolute; left: 303px; top: 8px; width: 279px; height: 396px;
+                background: #FFFFFF; border: 1px solid #E1E4EA; border-radius: 22px;
+                box-shadow: 0 2px 6px rgba(38, 49, 67, .09);"></div>
+
+    <div style="position: absolute; left: 0; right: 0; top: 428px;
+                display: flex; align-items: center; justify-content: center; gap: 6px;
+                color: #847D8F; font-size: 12.5px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="10" width="16" height="11" rx="2"></rect>
+        <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+      </svg>
+      <span>Pago seguro con Google Play</span>
+    </div>
+  </div>
+__NAV__
+</div>

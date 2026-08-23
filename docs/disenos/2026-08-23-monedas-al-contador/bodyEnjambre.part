@@ -1,0 +1,77 @@
+<div class="frame enjambre">
+__BAND__
+  <div class="shop" style="background:
+       radial-gradient(120% 60% at 50% 0%, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 60%),
+       linear-gradient(180deg, #7A4CF5 0%, #5A2ED8 58%, #47189E 100%);">
+
+    <div style="position: absolute; left: 8px; top: 16px; width: 279px; height: 372px;
+                background: radial-gradient(circle at 50% 26%, #FFF7E2 0%, #FFFFFF 60%);
+                border-radius: 22px; box-shadow: 0 12px 30px rgba(30, 8, 80, .34);
+                display: flex; flex-direction: column; align-items: center;
+                padding: 18px 18px 18px;">
+      <div style="background: #7147F2; color: #FCFCFC; font-size: 12.5px; font-weight: 700;
+                  padding: 6px 14px; border-radius: 999px;">Popular</div>
+
+      <svg width="176" height="100" viewBox="0 0 150 90" style="margin-top: 6px">
+        <ellipse cx="75" cy="80" rx="44" ry="7" fill="#3E3560" opacity=".10"></ellipse>
+        <use href="#moneda" x="17" y="44" width="34" height="34"></use>
+        <use href="#moneda" x="55" y="44" width="34" height="34"></use>
+        <use href="#moneda" x="93" y="44" width="34" height="34"></use>
+        <use href="#moneda" x="36" y="18" width="34" height="34"></use>
+        <use href="#moneda" x="74" y="18" width="34" height="34"></use>
+      </svg>
+
+      <div style="display: flex; align-items: flex-end; gap: 8px">
+        <span style="font-size: 44px; font-weight: 800; color: #3E3560; line-height: 1">55</span>
+        <span style="font-size: 16px; font-weight: 700; color: #3E3560;
+                     padding-bottom: 5px">créditos</span>
+      </div>
+      <div style="font-size: 13px; color: #847D8F; margin-top: 8px; text-align: center">
+        Hasta 55 clientes desbloqueados
+      </div>
+
+      <div style="flex-grow: 1"></div>
+
+      <div style="font-size: 22px; font-weight: 700; color: #3E3560">US$58.83</div>
+      <div style="margin-top: 14px; width: 100%; height: 48px; border-radius: 24px;
+                  background: #7147F2; color: #FCFCFC; font-size: 15.5px; font-weight: 700;
+                  display: flex; align-items: center; justify-content: center;
+                  box-shadow: 0 6px 14px rgba(60, 21, 144, .28);">Comprar</div>
+
+      <div style="position: absolute; right: -8px; top: 20px;
+                  background: linear-gradient(180deg, #FFD75E 0%, #F2B705 100%);
+                  color: #5C3A00; font-size: 13px; font-weight: 800;
+                  padding: 7px 12px; border-radius: 8px 4px 4px 8px;
+                  box-shadow: 0 4px 10px rgba(30, 8, 80, .30);">Ahorras 9%</div>
+    </div>
+
+    <div style="position: absolute; left: 303px; top: 16px; width: 279px; height: 372px;
+                background: #FFFFFF; border-radius: 22px;
+                box-shadow: 0 12px 30px rgba(30, 8, 80, .34);"></div>
+
+    <div style="position: absolute; left: 16px; right: 16px; bottom: 108px;
+                background: #322B45; color: #F3F0F8; border-radius: 12px;
+                padding: 14px 16px; font-size: 14px;
+                box-shadow: 0 8px 20px rgba(30, 8, 80, .40);">
+      Listo. Tienes 93 créditos.
+    </div>
+  </div>
+__NAV__
+
+  <!-- Las monedas vuelan POR ENCIMA de todo, del carrusel al contador. -->
+      <div class="vuela" style="left: 100px; top: 268px; --bx: -74px; --by: -46px; --dx: 215px; --dy: -240px; animation-delay: 0.35s">
+        <svg viewBox="0 0 28 28"><use href="#moneda" width="28" height="28"></use></svg>
+      </div>
+      <div class="vuela" style="left: 124px; top: 252px; --bx: -38px; --by: -74px; --dx: 191px; --dy: -224px; animation-delay: 0.39s">
+        <svg viewBox="0 0 28 28"><use href="#moneda" width="28" height="28"></use></svg>
+      </div>
+      <div class="vuela" style="left: 147px; top: 268px; --bx: 8px; --by: -86px; --dx: 168px; --dy: -240px; animation-delay: 0.43s">
+        <svg viewBox="0 0 28 28"><use href="#moneda" width="28" height="28"></use></svg>
+      </div>
+      <div class="vuela" style="left: 170px; top: 252px; --bx: 52px; --by: -70px; --dx: 145px; --dy: -224px; animation-delay: 0.47s">
+        <svg viewBox="0 0 28 28"><use href="#moneda" width="28" height="28"></use></svg>
+      </div>
+      <div class="vuela" style="left: 194px; top: 268px; --bx: 88px; --by: -34px; --dx: 121px; --dy: -240px; animation-delay: 0.51s">
+        <svg viewBox="0 0 28 28"><use href="#moneda" width="28" height="28"></use></svg>
+      </div>
+</div>

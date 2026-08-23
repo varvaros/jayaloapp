@@ -7,6 +7,7 @@ import 'package:jayalo_app/core/motion.dart';
 import 'package:jayalo_app/domain/phase.dart';
 import 'package:jayalo_app/features/shared/brand_kit.dart';
 import 'package:jayalo_app/features/shell/floating_nav_bar.dart';
+import 'package:jayalo_app/features/shared/moneda.dart';
 
 /// El kit consolida los patrones visuales aprobados en /notifications; estos
 /// tests fijan el CONTRATO (tonos por fase, estados, tap), no los píxeles.
@@ -439,11 +440,16 @@ void main() {
       expect(confirmed, 0);
     });
 
-    testWidgets('tono pagado (default): candado + copy de desbloqueo',
+    // El tono PAGADO lleva la MONEDA desde el 2026-08-23 (pedido PO: la moneda
+    // donde se dice o se cobra "N créditos"). Sostener este botón es pagar, y
+    // el símbolo de pagar es la moneda, no un candado genérico.
+    testWidgets('tono pagado (default): moneda + copy de desbloqueo',
         (tester) async {
       await tester
           .pumpWidget(host(HoldToConfirmButton(onConfirmed: () async {})));
-      expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+      expect(find.byType(MonedaJayalo), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline_rounded), findsNothing,
+          reason: 'el candado se fue: lo que se sostiene es un cobro');
       expect(find.text('Mantén presionado para desbloquear'), findsOneWidget);
     });
 

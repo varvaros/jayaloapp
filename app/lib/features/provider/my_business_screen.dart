@@ -244,7 +244,7 @@ class _MyBusinessScreenState extends State<MyBusinessScreen> {
           const VioletHeader(
             leading: HeaderAvatar(),
             title: 'Mi negocio',
-            actions: [HeaderBell()],
+            actions: [HeaderSaldo(), HeaderBell()],
           ),
           Expanded(
             child: FutureBuilder<_StoreData>(

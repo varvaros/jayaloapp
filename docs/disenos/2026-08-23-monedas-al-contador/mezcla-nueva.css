@@ -1,0 +1,121 @@
+    /* ═══ D · ENJAMBRE COMETA ═══ Lo de C y lo de B pegados: las cinco
+       estallan a la vez sobre la tarjeta, flotan un instante y salen
+       disparadas UNA A UNA con estela hasta el contador.
+
+       Misma receta que B y C — un solo elemento por moneda y todo en
+       `transform` — pero cada moneda con SUS keyframes (mez-c0..c4): el
+       estallido va a la vez en las cinco y el tiro sale escalonado, cosa que
+       un delay no puede hacer (retrasaría también el estallido). */
+    .mezcla .vuela { animation: mez-c0 4.4s linear infinite; }
+    @keyframes mez-c0 {
+      0%, 7.9% { transform: translate(0, 0) scale(.4); opacity: 0;
+                 animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      9%       { transform: translate(calc(var(--bx) * .18), calc(var(--by) * .18)) scale(.7);
+                 opacity: 1; animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      15.2%    { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.37, 0, .63, 1); }
+      19.3%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
+      28%      { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 1; }
+      29%      { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+      100%     { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+    }
+    @keyframes mez-c1 {
+      0%, 7.9% { transform: translate(0, 0) scale(.4); opacity: 0;
+                 animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      9%       { transform: translate(calc(var(--bx) * .18), calc(var(--by) * .18)) scale(.7);
+                 opacity: 1; animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      15.2%    { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.37, 0, .63, 1); }
+      19.3%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1; }
+      21.4%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
+      30%      { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 1; }
+      31%      { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+      100%     { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+    }
+    @keyframes mez-c2 {
+      0%, 7.9% { transform: translate(0, 0) scale(.4); opacity: 0;
+                 animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      9%       { transform: translate(calc(var(--bx) * .18), calc(var(--by) * .18)) scale(.7);
+                 opacity: 1; animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      15.2%    { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.37, 0, .63, 1); }
+      19.3%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1; }
+      23.4%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
+      32%      { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 1; }
+      33%      { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+      100%     { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+    }
+    @keyframes mez-c3 {
+      0%, 7.9% { transform: translate(0, 0) scale(.4); opacity: 0;
+                 animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      9%       { transform: translate(calc(var(--bx) * .18), calc(var(--by) * .18)) scale(.7);
+                 opacity: 1; animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      15.2%    { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.37, 0, .63, 1); }
+      19.3%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1; }
+      25.5%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
+      34.1%    { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 1; }
+      35.1%    { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+      100%     { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+    }
+    @keyframes mez-c4 {
+      0%, 7.9% { transform: translate(0, 0) scale(.4); opacity: 0;
+                 animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      9%       { transform: translate(calc(var(--bx) * .18), calc(var(--by) * .18)) scale(.7);
+                 opacity: 1; animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      15.2%    { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.37, 0, .63, 1); }
+      19.3%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1; }
+      27.5%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
+      36.1%    { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 1; }
+      37.1%    { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+      100%     { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+    }
+    /* Un golpecito por cada moneda que entra, y el destello grande al final.
+       Los golpes caen JUSTO en los aterrizajes: 28 / 30 / 32 / 34,1 / 36,1 %. */
+    .mezcla .contador { animation: golpes-mezcla 4.4s infinite; }
+    @keyframes golpes-mezcla {
+      0%, 27.4%      { transform: scale(1); }
+      28%            { transform: scale(1.12); }
+      29.3%, 29.4%   { transform: scale(1); }
+      30%            { transform: scale(1.12); }
+      31.3%, 31.4%   { transform: scale(1); }
+      32%            { transform: scale(1.12); }
+      33.3%, 33.5%   { transform: scale(1); }
+      34.1%          { transform: scale(1.12); }
+      35.4%, 35.5%   { transform: scale(1); }
+      36.1%          { transform: scale(1.24); }
+      39%, 100%      { transform: scale(1); }
+    }
+    /* El número rueda mientras van entrando, no de golpe al final. */
+    .mezcla .num { animation: sube-mezcla 4.4s linear infinite; }
+    @keyframes sube-mezcla {
+      0%, 27.9%   { --n: 38; }
+      36.1%, 100% { --n: 93; }
+    }
+    .mezcla .brillo { animation: brillo-mezcla 4.4s ease-out infinite; }
+    @keyframes brillo-mezcla {
+      0%, 35.4% { opacity: 0; transform: scale(.7); }
+      37%       { opacity: .95; transform: scale(1.1); }
+      50%, 100% { opacity: 0; transform: scale(1.7); }
+    }
+    /* La estela del tiro: crece al salir, se apaga al llegar. Su delay inline
+       es la hora del tiro de SU moneda (el delay retrasa igual las
+       repeticiones, así que queda alineada en todos los ciclos). */
+    .mezcla .estela {
+      position: absolute; left: 50%; top: 50%; height: 4px; border-radius: 2px;
+      background: linear-gradient(90deg, rgba(242,183,5,0) 0%, rgba(255,231,150,.95) 100%);
+      transform-origin: 0 50%; opacity: 0; width: 0;
+      animation: estela-d 4.4s linear infinite;
+    }
+    @keyframes estela-d {
+      0%       { opacity: 0; width: 0; }
+      2%       { opacity: .95; width: 50px; }
+      8.6%     { opacity: 0; width: 6px; }
+      9%, 100% { opacity: 0; width: 0; }
+    }

@@ -1,0 +1,172 @@
+<div class="frame">
+__BAND__
+  <div class="shop" style="background:
+       radial-gradient(120% 55% at 50% 0%, rgba(255,255,255,.18) 0%, rgba(255,255,255,0) 62%),
+       linear-gradient(180deg, #7A4CF5 0%, #5A2ED8 58%, #47189E 100%);">
+
+    <svg width="360" height="576" style="position:absolute; inset:0; opacity:.07" aria-hidden="true">
+      <g fill="none" stroke="#FFFFFF" stroke-width="2">
+        <circle cx="30" cy="52" r="14"></circle>
+        <circle cx="330" cy="150" r="20"></circle>
+        <circle cx="24" cy="286" r="11"></circle>
+        <circle cx="336" cy="392" r="15"></circle>
+        <circle cx="36" cy="468" r="18"></circle>
+      </g>
+    </svg>
+
+    <div style="position: absolute; left: 12px; right: 12px; top: 14px;
+                display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+
+      <!-- Inicial · 10 -->
+      <div style="border-radius: 18px; overflow: hidden; background: #FFFFFF;
+                  box-shadow: 0 10px 24px rgba(30, 8, 80, .34);">
+        <div style="height: 32px; background: #6438E8; color: #FFFFFF;
+                    font-family: Nunito, Roboto, sans-serif; font-size: 14px; font-weight: 800;
+                    display: flex; align-items: center; justify-content: center;">Inicial</div>
+        <div style="position: relative; height: 128px;
+                    background: radial-gradient(circle at 50% 34%, #FFF6DC 0%, #F5F1FB 78%);
+                    display: flex; flex-direction: column; align-items: center;
+                    justify-content: center; gap: 4px;">
+          <svg width="112" height="70" viewBox="0 0 120 74">
+            <ellipse cx="60" cy="68" rx="38" ry="6" fill="#3E3560" opacity=".10"></ellipse>
+            <use href="#moneda" x="32" y="40" width="26" height="26"></use>
+            <use href="#moneda" x="62" y="40" width="26" height="26"></use>
+            <use href="#moneda" x="47" y="18" width="26" height="26"></use>
+          </svg>
+          <div style="background: #00A159; color: #FFFFFF; font-family: Nunito, Roboto, sans-serif;
+                      font-size: 17px; font-weight: 800; padding: 3px 16px; border-radius: 999px;
+                      box-shadow: 0 3px 0 rgba(0, 88, 49, .55);">10</div>
+        </div>
+        <div style="height: 44px; background: #7147F2; color: #FFFFFF;
+                    font-family: Nunito, Roboto, sans-serif; font-size: 18px; font-weight: 800;
+                    display: flex; align-items: center; justify-content: center;">US$10.00</div>
+      </div>
+
+      <!-- Popular · 55 -->
+      <div style="position: relative; border-radius: 18px; background: #FFFFFF;
+                  box-shadow: 0 10px 24px rgba(30, 8, 80, .34);">
+        <div style="border-radius: 18px; overflow: hidden;">
+          <div style="height: 32px; background: #6438E8; color: #FFFFFF;
+                      font-family: Nunito, Roboto, sans-serif; font-size: 14px; font-weight: 800;
+                      display: flex; align-items: center; justify-content: center;">Popular</div>
+          <div style="position: relative; height: 128px;
+                      background: radial-gradient(circle at 50% 34%, #FFF6DC 0%, #F5F1FB 78%);
+                      display: flex; flex-direction: column; align-items: center;
+                      justify-content: center; gap: 4px;">
+            <svg width="112" height="70" viewBox="0 0 120 74">
+              <ellipse cx="60" cy="68" rx="44" ry="6" fill="#3E3560" opacity=".10"></ellipse>
+              <use href="#moneda" x="17" y="40" width="26" height="26"></use>
+              <use href="#moneda" x="47" y="40" width="26" height="26"></use>
+              <use href="#moneda" x="77" y="40" width="26" height="26"></use>
+              <use href="#moneda" x="32" y="18" width="26" height="26"></use>
+              <use href="#moneda" x="62" y="18" width="26" height="26"></use>
+            </svg>
+            <div style="background: #00A159; color: #FFFFFF; font-family: Nunito, Roboto, sans-serif;
+                        font-size: 17px; font-weight: 800; padding: 3px 16px; border-radius: 999px;
+                        box-shadow: 0 3px 0 rgba(0, 88, 49, .55);">55</div>
+          </div>
+          <div style="height: 44px; background: #7147F2; color: #FFFFFF;
+                      font-family: Nunito, Roboto, sans-serif; font-size: 18px; font-weight: 800;
+                      display: flex; align-items: center; justify-content: center;">US$50.00</div>
+        </div>
+        <div style="position: absolute; right: -6px; top: 118px;
+                    background: linear-gradient(180deg, #FFD75E 0%, #F2B705 100%);
+                    color: #6B3E00; font-family: Nunito, Roboto, sans-serif;
+                    font-size: 13px; font-weight: 800; padding: 4px 9px; border-radius: 7px;
+                    box-shadow: 0 4px 10px rgba(30, 8, 80, .32);">-9%</div>
+      </div>
+
+      <!-- Pro · 110 -->
+      <div style="position: relative; border-radius: 18px; background: #FFFFFF;
+                  box-shadow: 0 10px 24px rgba(30, 8, 80, .34);">
+        <div style="border-radius: 18px; overflow: hidden;">
+          <div style="height: 32px; background: #6438E8; color: #FFFFFF;
+                      font-family: Nunito, Roboto, sans-serif; font-size: 14px; font-weight: 800;
+                      display: flex; align-items: center; justify-content: center;">Pro</div>
+          <div style="position: relative; height: 128px;
+                      background: radial-gradient(circle at 50% 34%, #FFF6DC 0%, #F5F1FB 78%);
+                      display: flex; flex-direction: column; align-items: center;
+                      justify-content: center; gap: 4px;">
+            <svg width="112" height="70" viewBox="0 0 120 74">
+              <ellipse cx="60" cy="68" rx="50" ry="6" fill="#3E3560" opacity=".10"></ellipse>
+              <use href="#moneda" x="2" y="40" width="26" height="26"></use>
+              <use href="#moneda" x="32" y="40" width="26" height="26"></use>
+              <use href="#moneda" x="62" y="40" width="26" height="26"></use>
+              <use href="#moneda" x="92" y="40" width="26" height="26"></use>
+              <use href="#moneda" x="17" y="18" width="26" height="26"></use>
+              <use href="#moneda" x="47" y="18" width="26" height="26"></use>
+              <use href="#moneda" x="77" y="18" width="26" height="26"></use>
+            </svg>
+            <div style="background: #00A159; color: #FFFFFF; font-family: Nunito, Roboto, sans-serif;
+                        font-size: 17px; font-weight: 800; padding: 3px 16px; border-radius: 999px;
+                        box-shadow: 0 3px 0 rgba(0, 88, 49, .55);">110</div>
+          </div>
+          <div style="height: 44px; background: #7147F2; color: #FFFFFF;
+                      font-family: Nunito, Roboto, sans-serif; font-size: 18px; font-weight: 800;
+                      display: flex; align-items: center; justify-content: center;">US$100.00</div>
+        </div>
+        <div style="position: absolute; right: -6px; top: 118px;
+                    background: linear-gradient(180deg, #FFD75E 0%, #F2B705 100%);
+                    color: #6B3E00; font-family: Nunito, Roboto, sans-serif;
+                    font-size: 13px; font-weight: 800; padding: 4px 9px; border-radius: 7px;
+                    box-shadow: 0 4px 10px rgba(30, 8, 80, .32);">-9%</div>
+      </div>
+
+      <!-- Max · 200 - mejor precio: cabecera dorada y borde de oro -->
+      <div style="position: relative; border-radius: 18px; background: #FFFFFF;
+                  box-shadow: 0 10px 24px rgba(30, 8, 80, .34);
+                  outline: 3px solid #F2B705; outline-offset: -1px;">
+        <div style="border-radius: 18px; overflow: hidden;">
+          <div style="height: 32px; background: #F2B705; color: #4A2E00;
+                      font-family: Nunito, Roboto, sans-serif; font-size: 14px; font-weight: 800;
+                      display: flex; align-items: center; justify-content: center; gap: 5px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 7l4.5 3.5L12 4l4.5 6.5L21 7l-1.8 11H4.8L3 7Z"></path>
+            </svg>
+            Max
+          </div>
+          <div style="position: relative; height: 128px;
+                      background: radial-gradient(circle at 50% 34%, #FFF0C4 0%, #F5F1FB 80%);
+                      display: flex; flex-direction: column; align-items: center;
+                      justify-content: center; gap: 4px;">
+            <svg width="112" height="70" viewBox="0 0 120 74">
+              <ellipse cx="60" cy="68" rx="52" ry="6" fill="#3E3560" opacity=".10"></ellipse>
+              <use href="#moneda" x="2" y="42" width="26" height="26"></use>
+              <use href="#moneda" x="32" y="42" width="26" height="26"></use>
+              <use href="#moneda" x="62" y="42" width="26" height="26"></use>
+              <use href="#moneda" x="92" y="42" width="26" height="26"></use>
+              <use href="#moneda" x="17" y="22" width="26" height="26"></use>
+              <use href="#moneda" x="47" y="22" width="26" height="26"></use>
+              <use href="#moneda" x="77" y="22" width="26" height="26"></use>
+              <use href="#moneda" x="32" y="2" width="26" height="26"></use>
+              <use href="#moneda" x="62" y="2" width="26" height="26"></use>
+            </svg>
+            <div style="background: #00A159; color: #FFFFFF; font-family: Nunito, Roboto, sans-serif;
+                        font-size: 17px; font-weight: 800; padding: 3px 16px; border-radius: 999px;
+                        box-shadow: 0 3px 0 rgba(0, 88, 49, .55);">200</div>
+          </div>
+          <div style="height: 44px; background: #7147F2; color: #FFFFFF;
+                      font-family: Nunito, Roboto, sans-serif; font-size: 18px; font-weight: 800;
+                      display: flex; align-items: center; justify-content: center;">US$180.00</div>
+        </div>
+        <div style="position: absolute; right: -6px; top: 118px;
+                    background: linear-gradient(180deg, #FFD75E 0%, #F2B705 100%);
+                    color: #6B3E00; font-family: Nunito, Roboto, sans-serif;
+                    font-size: 13px; font-weight: 800; padding: 4px 9px; border-radius: 7px;
+                    box-shadow: 0 4px 10px rgba(30, 8, 80, .32);">-10%</div>
+      </div>
+    </div>
+
+    <div style="position: absolute; left: 0; right: 0; top: 452px;
+                display: flex; align-items: center; justify-content: center; gap: 6px;
+                color: rgba(255,255,255,.86); font-size: 12.5px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="10" width="16" height="11" rx="2"></rect>
+        <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+      </svg>
+      <span>Pago seguro con Google Play</span>
+    </div>
+  </div>
+__NAV__
+</div>

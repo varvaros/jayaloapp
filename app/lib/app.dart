@@ -12,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/brand.dart';
 import 'core/play_billing_service.dart';
 import 'core/motion.dart';
+import 'features/shared/saldo_store.dart' show saldoStore;
 import 'data/repos.dart';
 import 'core/theme_store.dart';
 import 'features/shared/onboarding_store.dart';
@@ -200,10 +201,24 @@ class _JayaloAppState extends State<JayaloApp> {
       // El saldo autoritativo lo acaba de devolver el servidor: sembrar el
       // cache evita que el navbar siga ensenando el saldo viejo hasta que
       // caduque el TTL, justo cuando el usuario acaba de pagar.
-      if (e.balance != null) AppCaches.wallet.set(e.balance);
-      // UNICO dueno del aviso de credito: la tienda no pinta el suyo (dos
-      // listeners sobre el mismo ScaffoldMessenger encolaban dos snackbars
-      // de ~9 s por la misma compra).
+      if (e.balance != null) {
+        AppCaches.wallet.set(e.balance!);
+        // Y el contador de las cabeceras, que si no seguiría con el saldo de
+        // antes de pagar hasta que la pantalla se volviera a montar.
+        saldoStore.set(e.balance!);
+      }
+      // Con la tienda EN PANTALLA el aviso lo da ella, y en grande: el vuelo
+      // de monedas al contador y, al terminar, la celebración de la recarga
+      // (mockup B, PO 2026-08-23). Un snackbar además asomaría por debajo del
+      // panel mientras baja y volvería a decir lo mismo al salir de él.
+      //
+      // Fuera de la tienda este listener sigue siendo el UNICO dueno del
+      // aviso: cubre el pago diferido que Google confirma horas despues, con
+      // la tienda ya desmontada y nadie mas mirando.
+      final enLaTienda = widget.router.routerDelegate.currentConfiguration
+          .matches
+          .any((m) => m.matchedLocation == '/tienda-creditos');
+      if (enLaTienda) return;
       _messengerKey.currentState?.showSnackBar(SnackBar(
         content: Text('Listo. Tienes ${e.balance ?? 0} créditos.'),
       ));

@@ -13,6 +13,7 @@ import '../shared/celebration.dart';
 import '../shared/collapsing_photo_panel.dart';
 import '../shared/customer_rep_card.dart';
 import '../shell/floating_nav_bar.dart';
+import '../shared/moneda.dart';
 import 'unlock_flow.dart' show StartChatButton, WhatsappReveal;
 
 /// Detalle de un interés de producto: alguien tocó "Me interesa" en el
@@ -431,10 +432,18 @@ class _ProductInterestDetailViewState extends State<ProductInterestDetailView> {
                           firstName: widget.contactName),
                     ],
                   ] else ...[
-                    Text(
-                      'Costo: ${widget.cost} crédito${widget.cost == 1 ? '' : 's'}'
-                      ' · Tu saldo: ${widget.balance ?? 0}',
-                      style: TextStyle(fontSize: 13, color: cs.onSurface),
+                    Row(
+                      children: [
+                        const MonedaJayalo(size: 16),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            'Costo: ${widget.cost} crédito${widget.cost == 1 ? '' : 's'}'
+                            ' · Tu saldo: ${widget.balance ?? 0}',
+                            style: TextStyle(fontSize: 13, color: cs.onSurface),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 14),
                     if (needsRecharge)

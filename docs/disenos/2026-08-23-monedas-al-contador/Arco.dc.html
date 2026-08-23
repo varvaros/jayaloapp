@@ -1,0 +1,581 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;800&family=Nunito:wght@700;800;900&display=swap">
+  <style>
+    body { margin: 0; background: #EDE7F6; font-family: Roboto, "Helvetica Neue", Arial, sans-serif; }
+    a { color: #7147F2; } a:hover { color: #5B2FD6; }
+    * { box-sizing: border-box; }
+
+    /* ---- Marco de pantalla: 360x740 logicos, sin barra de estado falsa ---- */
+    .frame { width: 360px; height: 740px; position: relative; overflow: hidden;
+             background: #F8F4EC; color: #4A4458; }
+
+    /* ---- AppBar M3 tal como la pinta hoy la app (surface = arena) ---- */
+    .appbar { position: relative; z-index: 3; height: 56px; display: flex;
+              align-items: center; background: #F8F4EC; }
+    .appbar .back { width: 48px; height: 48px; margin-left: 4px; display: flex;
+                    align-items: center; justify-content: center; }
+    .appbar .title { font-size: 22px; font-weight: 400; color: #4A4458; margin-left: 8px; }
+
+    /* ---- Banda blanca del Jayi: NO SE TOCA (animacion aprobada) ---- */
+    .band { position: relative; z-index: 2; height: 108px; background: #FFFFFF;
+            box-shadow: 0 6px 18px rgba(93, 72, 38, .07); overflow: visible; }
+    .band-text { position: absolute; left: 20px; bottom: 16px; right: 150px;
+                 font-size: 15px; font-weight: 600; line-height: 1.25; color: #3E3560; }
+    .jayi { position: absolute; right: 8px; bottom: -2px; width: 150px; height: 196px; }
+
+    /* Jayi se agacha con cada impacto (ciclo 4,2 s, golpes en 15/45/75 %) */
+    .jayi-body { animation: agacho 4.2s linear infinite; transform-origin: 75px 184px; }
+    @keyframes agacho {
+      0%,11%   { transform: scale(1, 1); }
+      15%      { transform: scale(1.05, .93); }
+      19%,41%  { transform: scale(1, 1); }
+      45%      { transform: scale(1.05, .93); }
+      49%,71%  { transform: scale(1, 1); }
+      75%      { transform: scale(1.05, .93); }
+      79%,100% { transform: scale(1, 1); }
+    }
+    .jayi-eye { animation: pestaneo 4.2s linear infinite; transform-origin: 45px 44px; }
+    @keyframes pestaneo {
+      0%,13%   { transform: scaleY(1); }
+      15%      { transform: scaleY(.12); }
+      17%,43%  { transform: scaleY(1); }
+      45%      { transform: scaleY(.12); }
+      47%,73%  { transform: scaleY(1); }
+      75%      { transform: scaleY(.12); }
+      77%,100% { transform: scaleY(1); }
+    }
+    /* Caida -> rebote en la cabeza -> sale girando. Un solo tramo del ciclo,
+       reusado por las tres monedas con distinto delay. */
+    .coin-fall { animation: cae 4.2s linear infinite; transform-origin: center; }
+    .coin-fall.left { animation-name: cae-izq; }
+    @keyframes cae {
+      0%    { transform: translate(0, -110px) rotate(0deg); opacity: 1; }
+      10%   { transform: translate(0, -82px) rotate(94deg); opacity: 1; }
+      15%   { transform: translate(0, 0) rotate(149deg); opacity: 1; }
+      16.7% { transform: translate(24px, -30px) rotate(270deg); opacity: 1; }
+      19.5% { transform: translate(38px, -18px) rotate(340deg); opacity: 1; }
+      22%   { transform: translate(44px, 30px) rotate(401deg); opacity: 0; }
+      100%  { transform: translate(44px, 30px) rotate(401deg); opacity: 0; }
+    }
+    @keyframes cae-izq {
+      0%    { transform: translate(0, -110px) rotate(0deg); opacity: 1; }
+      10%   { transform: translate(0, -82px) rotate(94deg); opacity: 1; }
+      15%   { transform: translate(0, 0) rotate(149deg); opacity: 1; }
+      16.7% { transform: translate(-24px, -30px) rotate(270deg); opacity: 1; }
+      19.5% { transform: translate(-38px, -18px) rotate(340deg); opacity: 1; }
+      22%   { transform: translate(-44px, 30px) rotate(401deg); opacity: 0; }
+      100%  { transform: translate(-44px, 30px) rotate(401deg); opacity: 0; }
+    }
+    .chispa { animation: chispa-der 4.2s linear infinite; transform-origin: center; }
+    .chispa.izq { animation-name: chispa-izq; }
+    @keyframes chispa-der {
+      0%,14%   { transform: scale(0); opacity: 0; }
+      15.5%    { transform: scale(1); opacity: 1; }
+      17%,74%  { transform: scale(0); opacity: 0; }
+      75.5%    { transform: scale(1); opacity: 1; }
+      77%,100% { transform: scale(0); opacity: 0; }
+    }
+    @keyframes chispa-izq {
+      0%,44%   { transform: scale(0); opacity: 0; }
+      45.5%    { transform: scale(1); opacity: 1; }
+      47%,100% { transform: scale(0); opacity: 0; }
+    }
+
+    /* ---- Zona de compra (lo que se rediseña) ---- */
+    .shop { position: absolute; left: 0; right: 0; top: 164px; bottom: 0;
+            overflow: hidden; }
+
+
+    /* ═══ Contador del AppBar: es donde aterrizan las monedas ═══ */
+    .contador { position: relative; transform-origin: center; margin-left: auto;
+                margin-right: 12px; display: flex; align-items: center;
+                gap: 6px; background: #E2D6FB; border-radius: 999px;
+                padding: 5px 12px 5px 8px; }
+    .num { font-size: 15px; font-weight: 800; color: #3C1590; font-variant-numeric: tabular-nums; }
+    .num::after { content: counter(n); }
+
+    /* La moneda que vuela: siempre la MISMA que cae sobre el Jayi y que se
+       apila en las tarjetas. */
+    .vuela { position: absolute; left: 0; top: 0; width: 30px; height: 30px; z-index: 5;
+             margin: -15px 0 0 -15px; opacity: 0; }
+    .vuela svg { width: 100%; height: 100%; display: block; }
+
+    /* ═══ El número del contador: se llena solo, moneda a moneda ═══ */
+    @property --n { syntax: '<integer>'; initial-value: 38; inherits: false; }
+    .num { counter-reset: n var(--n); }
+
+    /* ═══ A · ARCO ═══ Ciclo de 4,6 s: 0,35 s de calma, cinco monedas cada
+       120 ms con vuelo de 620 ms (easeOutCubic, la curva de entrada de la
+       app), y el resto en reposo con el número ya lleno. */
+    .arco .vuela {
+      offset-rotate: 0deg;
+      offset-anchor: 50% 50%;
+      animation: arco 4.6s cubic-bezier(.33, 1, .68, 1) infinite;
+    }
+    @keyframes arco {
+      0%    { offset-distance: 0%;   opacity: 0; scale: 1; }
+      2%    { offset-distance: 0%;   opacity: 1; scale: 1; }
+      13.5% { offset-distance: 100%; opacity: 1; scale: .62; }
+      15%   { offset-distance: 100%; opacity: 0; scale: .5; }
+      100%  { offset-distance: 100%; opacity: 0; scale: .5; }
+    }
+    .arco .contador { animation: golpes 4.6s infinite; }
+    @keyframes golpes {
+      0%, 20.5%       { transform: scale(1); }
+      21.1%           { transform: scale(1.14); }
+      22.6%, 23.1%    { transform: scale(1); }
+      23.7%           { transform: scale(1.14); }
+      25.2%, 25.7%    { transform: scale(1); }
+      26.3%           { transform: scale(1.14); }
+      27.8%, 28.3%    { transform: scale(1); }
+      28.9%           { transform: scale(1.14); }
+      30.4%, 30.9%    { transform: scale(1); }
+      31.5%           { transform: scale(1.2); }
+      34%, 100%       { transform: scale(1); }
+    }
+    /* Cinco saltos de 11 créditos, cada uno EN el aterrizaje de su moneda. */
+    .arco .num { animation: sube 4.6s steps(5) infinite; }
+    @keyframes sube {
+      0%, 18.5%  { --n: 38; }
+      31.5%, 100% { --n: 93; }
+    }
+    /* Destello dorado del contador al recibir la última. */
+    .arco .brillo { animation: brillo 4.6s ease-out infinite; }
+    @keyframes brillo {
+      0%, 31%   { opacity: 0; transform: scale(.7); }
+      33%       { opacity: .85; transform: scale(1); }
+      44%, 100% { opacity: 0; transform: scale(1.5); }
+    }
+
+    /* ═══ B · COMETA ═══ Recto y rápido: vuelo de 420 ms, salidas cada 70 ms
+       y el número rodando como un cuentakilómetros mientras llegan. */
+    .cometa .vuela { animation: cometa 4s cubic-bezier(.33, 1, .68, 1) infinite; }
+    @keyframes cometa {
+      0%    { transform: translate(0, 0) scale(1); opacity: 0; }
+      2%    { transform: translate(0, 0) scale(1); opacity: 1; }
+      10.5% { transform: translate(var(--dx), var(--dy)) scale(.55); opacity: 1; }
+      12%   { transform: translate(var(--dx), var(--dy)) scale(.45); opacity: 0; }
+      100%  { transform: translate(var(--dx), var(--dy)) scale(.45); opacity: 0; }
+    }
+    .cometa .estela {
+      position: absolute; left: 0; top: 0; height: 4px; border-radius: 2px;
+      background: linear-gradient(90deg, rgba(242,183,5,0) 0%, rgba(255,231,150,.9) 100%);
+      transform-origin: 0 50%; opacity: 0;
+      animation: estela 4s cubic-bezier(.33, 1, .68, 1) infinite;
+    }
+    @keyframes estela {
+      0%, 2%  { opacity: 0; width: 0; }
+      5%      { opacity: .9; width: 60px; }
+      10.5%   { opacity: 0; width: 0; }
+      100%    { opacity: 0; width: 0; }
+    }
+    .cometa .contador { animation: golpe-unico 4s infinite; }
+    @keyframes golpe-unico {
+      0%, 25%   { transform: scale(1); }
+      26.3%     { transform: scale(1.22); }
+      30%, 100% { transform: scale(1); }
+    }
+    .cometa .num { animation: sube 4s linear infinite; }
+    .cometa .brillo { animation: brillo 4s ease-out infinite; }
+
+    /* ═══ C · ENJAMBRE ═══ Estallan sobre la tarjeta, flotan un instante y el
+       contador se las traga en espiral. */
+    .enjambre .vuela { animation: enjambre 4.8s infinite; }
+    @keyframes enjambre {
+      0%      { transform: translate(0, 0) scale(.4); opacity: 0; }
+      3%      { transform: translate(0, 0) scale(.4); opacity: 1; }
+      11%     { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1;
+                animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      17%     { transform: translate(var(--bx), calc(var(--by) - 6px)) scale(1); opacity: 1; }
+      22%     { transform: translate(calc(var(--bx) * .6), calc(var(--by) - 2px)) scale(.9);
+                opacity: 1; animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
+      33%     { transform: translate(var(--dx), var(--dy)) scale(.35); opacity: 1; }
+      35%     { transform: translate(var(--dx), var(--dy)) scale(.25); opacity: 0; }
+      100%    { transform: translate(var(--dx), var(--dy)) scale(.25); opacity: 0; }
+    }
+    .enjambre .contador { animation: tragado 4.8s infinite; }
+    @keyframes tragado {
+      0%, 26%   { transform: scale(1); }
+      30%       { transform: scale(1.06); }
+      34%       { transform: scale(1.26); }
+      40%, 100% { transform: scale(1); }
+    }
+    .enjambre .num { animation: sube 4.8s cubic-bezier(.33, 1, .68, 1) infinite; }
+    @keyframes sube-enjambre {
+      0%, 22%   { --n: 38; }
+      34%, 100% { --n: 93; }
+    }
+    .enjambre .num { animation-name: sube-enjambre; }
+    .enjambre .brillo { animation: brillo-enjambre 4.8s ease-out infinite; }
+    @keyframes brillo-enjambre {
+      0%, 32%   { opacity: 0; transform: scale(.7); }
+      35%       { opacity: .95; transform: scale(1.1); }
+      48%, 100% { opacity: 0; transform: scale(1.7); }
+    }
+
+
+    /* ═══ D · ENJAMBRE COMETA ═══ Lo de C y lo de B pegados: las cinco
+       estallan a la vez sobre la tarjeta, flotan un instante y salen
+       disparadas UNA A UNA con estela hasta el contador.
+
+       Misma receta que B y C — un solo elemento por moneda y todo en
+       `transform` — pero cada moneda con SUS keyframes (mez-c0..c4): el
+       estallido va a la vez en las cinco y el tiro sale escalonado, cosa que
+       un delay no puede hacer (retrasaría también el estallido). */
+    .mezcla .vuela { animation: mez-c0 4.4s linear infinite; }
+    @keyframes mez-c0 {
+      0%, 7.9% { transform: translate(0, 0) scale(.4); opacity: 0;
+                 animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      9%       { transform: translate(calc(var(--bx) * .18), calc(var(--by) * .18)) scale(.7);
+                 opacity: 1; animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      15.2%    { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.37, 0, .63, 1); }
+      19.3%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
+      28%      { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 1; }
+      29%      { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+      100%     { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+    }
+    @keyframes mez-c1 {
+      0%, 7.9% { transform: translate(0, 0) scale(.4); opacity: 0;
+                 animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      9%       { transform: translate(calc(var(--bx) * .18), calc(var(--by) * .18)) scale(.7);
+                 opacity: 1; animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      15.2%    { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.37, 0, .63, 1); }
+      19.3%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1; }
+      21.4%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
+      30%      { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 1; }
+      31%      { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+      100%     { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+    }
+    @keyframes mez-c2 {
+      0%, 7.9% { transform: translate(0, 0) scale(.4); opacity: 0;
+                 animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      9%       { transform: translate(calc(var(--bx) * .18), calc(var(--by) * .18)) scale(.7);
+                 opacity: 1; animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      15.2%    { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.37, 0, .63, 1); }
+      19.3%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1; }
+      23.4%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
+      32%      { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 1; }
+      33%      { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+      100%     { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+    }
+    @keyframes mez-c3 {
+      0%, 7.9% { transform: translate(0, 0) scale(.4); opacity: 0;
+                 animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      9%       { transform: translate(calc(var(--bx) * .18), calc(var(--by) * .18)) scale(.7);
+                 opacity: 1; animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      15.2%    { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.37, 0, .63, 1); }
+      19.3%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1; }
+      25.5%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
+      34.1%    { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 1; }
+      35.1%    { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+      100%     { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+    }
+    @keyframes mez-c4 {
+      0%, 7.9% { transform: translate(0, 0) scale(.4); opacity: 0;
+                 animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      9%       { transform: translate(calc(var(--bx) * .18), calc(var(--by) * .18)) scale(.7);
+                 opacity: 1; animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+      15.2%    { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.37, 0, .63, 1); }
+      19.3%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1; }
+      27.5%    { transform: translate(var(--bx), calc(var(--by) - 7px)) scale(1); opacity: 1;
+                 animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
+      36.1%    { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 1; }
+      37.1%    { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+      100%     { transform: translate(var(--dx), var(--dy)) scale(.22); opacity: 0; }
+    }
+    /* Un golpecito por cada moneda que entra, y el destello grande al final.
+       Los golpes caen JUSTO en los aterrizajes: 28 / 30 / 32 / 34,1 / 36,1 %. */
+    .mezcla .contador { animation: golpes-mezcla 4.4s infinite; }
+    @keyframes golpes-mezcla {
+      0%, 27.4%      { transform: scale(1); }
+      28%            { transform: scale(1.12); }
+      29.3%, 29.4%   { transform: scale(1); }
+      30%            { transform: scale(1.12); }
+      31.3%, 31.4%   { transform: scale(1); }
+      32%            { transform: scale(1.12); }
+      33.3%, 33.5%   { transform: scale(1); }
+      34.1%          { transform: scale(1.12); }
+      35.4%, 35.5%   { transform: scale(1); }
+      36.1%          { transform: scale(1.24); }
+      39%, 100%      { transform: scale(1); }
+    }
+    /* El número rueda mientras van entrando, no de golpe al final. */
+    .mezcla .num { animation: sube-mezcla 4.4s linear infinite; }
+    @keyframes sube-mezcla {
+      0%, 27.9%   { --n: 38; }
+      36.1%, 100% { --n: 93; }
+    }
+    .mezcla .brillo { animation: brillo-mezcla 4.4s ease-out infinite; }
+    @keyframes brillo-mezcla {
+      0%, 35.4% { opacity: 0; transform: scale(.7); }
+      37%       { opacity: .95; transform: scale(1.1); }
+      50%, 100% { opacity: 0; transform: scale(1.7); }
+    }
+    /* La estela del tiro: crece al salir, se apaga al llegar. Su delay inline
+       es la hora del tiro de SU moneda (el delay retrasa igual las
+       repeticiones, así que queda alineada en todos los ciclos). */
+    .mezcla .estela {
+      position: absolute; left: 50%; top: 50%; height: 4px; border-radius: 2px;
+      background: linear-gradient(90deg, rgba(242,183,5,0) 0%, rgba(255,231,150,.95) 100%);
+      transform-origin: 0 50%; opacity: 0; width: 0;
+      animation: estela-d 4.4s linear infinite;
+    }
+    @keyframes estela-d {
+      0%       { opacity: 0; width: 0; }
+      2%       { opacity: .95; width: 50px; }
+      8.6%     { opacity: 0; width: 6px; }
+      9%, 100% { opacity: 0; width: 0; }
+    }
+
+    /* Halo dorado detrás del contador (el destello de "ya entró"). */
+    .brillo { position: absolute; inset: -10px; border-radius: 999px;
+              background: radial-gradient(circle, rgba(255,215,94,.9) 0%,
+                          rgba(242,183,5,0) 70%); opacity: 0; pointer-events: none; }
+
+    /* ---- Barra flotante del shell (pildora lila + boton central) ---- */
+    .navbar { position: absolute; left: 0; right: 0; bottom: 0; height: 92px; z-index: 4; }
+    .pill { position: absolute; left: 12px; right: 12px; bottom: 0; height: 64px;
+            background: #E2D6FB; border-radius: 32px;
+            box-shadow: 0 6px 18px rgba(38, 49, 67, .18);
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 18px; }
+    .navitem { display: flex; flex-direction: column; align-items: center; gap: 3px;
+               width: 58px; color: #847D8F; font-size: 10.5px; line-height: 1.1; }
+    .navitem.on { color: #3C1590; font-weight: 700; }
+    .center-btn { position: absolute; left: 50%; bottom: 36px; width: 56px; height: 56px;
+                  margin-left: -28px; border-radius: 28px; background: #7147F2;
+                  box-shadow: 0 6px 16px rgba(113, 71, 242, .45);
+                  display: flex; align-items: center; justify-content: center; }
+  </style>
+</helmet>
+
+<div class="frame arco">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="cuerpo" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#7E56F5"></stop>
+        <stop offset="1" stop-color="#6438E8"></stop>
+      </linearGradient>
+      <radialGradient id="oro" cx="38%" cy="32%" r="72%">
+        <stop offset="0" stop-color="#FFEDB0"></stop>
+        <stop offset=".55" stop-color="#F2B705"></stop>
+        <stop offset="1" stop-color="#C98A00"></stop>
+      </radialGradient>
+      <symbol id="moneda" viewBox="0 0 28 28">
+        <circle cx="14" cy="14" r="13.4" fill="#F2B705" opacity=".22"></circle>
+        <circle cx="14" cy="14" r="12" fill="url(#oro)"></circle>
+        <circle cx="14" cy="14" r="8.6" fill="none" stroke="#FFE9A8" stroke-width="1.6"></circle>
+        <text x="14" y="18.3" text-anchor="middle" font-family="Roboto, Arial, sans-serif"
+              font-size="12" font-weight="600" fill="#8A5E00">J</text>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div class="appbar">
+    <div class="back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4A4458"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 12H5"></path><path d="m12 19-7-7 7-7"></path>
+      </svg>
+    </div>
+    <div class="title">Recargar créditos</div>
+    <div class="contador">
+      <div class="brillo"></div>
+      <svg width="20" height="20" viewBox="0 0 28 28"><use href="#moneda" width="28" height="28"></use></svg>
+      <span class="num"></span>
+    </div>
+  </div>
+
+  <div class="band">
+    <div class="band-text">Recarga y sigue desbloqueando clientes</div>
+    <svg class="jayi" viewBox="0 0 150 196" fill="none">
+      <g class="jayi-body">
+        <g transform="translate(26.62,114) scale(.82)">
+          <g stroke="#6B40EE" stroke-width="5" stroke-linecap="round" fill="none">
+            <path d="M47 22 C43 14 35 11 30 14"></path>
+            <path d="M65 21 C69 13 77 10 82 13"></path>
+          </g>
+          <rect x="22" y="20" width="70" height="66" rx="22" fill="url(#cuerpo)"></rect>
+          <g class="jayi-eye">
+            <circle cx="45" cy="44" r="14" fill="#FFFFFF"></circle>
+            <circle cx="50" cy="47" r="5.2" fill="#6438E8"></circle>
+          </g>
+          <g stroke="#6B40EE" stroke-width="7" stroke-linecap="round" fill="none">
+            <path d="M24 60 C16 66 15 75 21 80"></path>
+            <path d="M94 60 C102 66 103 75 97 80"></path>
+          </g>
+          <circle cx="21" cy="81" r="5.5" fill="#7E56F5"></circle>
+          <circle cx="97" cy="81" r="5.5" fill="#7E56F5"></circle>
+        </g>
+      </g>
+
+      <g fill="#F2B705">
+        <path class="chispa" transform="translate(89.36,114.4)"
+              d="M0,-6 L1.68,-1.68 L6,0 L1.68,1.68 L0,6 L-1.68,1.68 L-6,0 L-1.68,-1.68 Z"></path>
+        <path class="chispa" transform="translate(80.36,105.4)"
+              d="M0,-4.2 L1.18,-1.18 L4.2,0 L1.18,1.18 L0,4.2 L-1.18,1.18 L-4.2,0 L-1.18,-1.18 Z"></path>
+        <path class="chispa izq" transform="translate(57.36,114.4)"
+              d="M0,-6 L1.68,-1.68 L6,0 L1.68,1.68 L0,6 L-1.68,1.68 L-6,0 L-1.68,-1.68 Z"></path>
+        <path class="chispa izq" transform="translate(66.36,105.4)"
+              d="M0,-4.2 L1.18,-1.18 L4.2,0 L1.18,1.18 L0,4.2 L-1.18,1.18 L-4.2,0 L-1.18,-1.18 Z"></path>
+      </g>
+
+      <g transform="translate(73.36,118.4)">
+        <g class="coin-fall"><use href="#moneda" x="-14" y="-14" width="28" height="28"></use></g>
+      </g>
+      <g transform="translate(73.36,118.4)">
+        <g class="coin-fall left" style="animation-delay: 1.26s">
+          <use href="#moneda" x="-14" y="-14" width="28" height="28"></use>
+        </g>
+      </g>
+      <g transform="translate(73.36,118.4)">
+        <g class="coin-fall" style="animation-delay: 2.52s">
+          <use href="#moneda" x="-14" y="-14" width="28" height="28"></use>
+        </g>
+      </g>
+    </svg>
+  </div>
+
+  <div class="shop" style="background:
+       radial-gradient(120% 60% at 50% 0%, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 60%),
+       linear-gradient(180deg, #7A4CF5 0%, #5A2ED8 58%, #47189E 100%);">
+
+    <div style="position: absolute; left: 8px; top: 16px; width: 279px; height: 372px;
+                background: radial-gradient(circle at 50% 26%, #FFF7E2 0%, #FFFFFF 60%);
+                border-radius: 22px; box-shadow: 0 12px 30px rgba(30, 8, 80, .34);
+                display: flex; flex-direction: column; align-items: center;
+                padding: 18px 18px 18px;">
+      <div style="background: #7147F2; color: #FCFCFC; font-size: 12.5px; font-weight: 700;
+                  padding: 6px 14px; border-radius: 999px;">Popular</div>
+
+      <svg width="176" height="100" viewBox="0 0 150 90" style="margin-top: 6px">
+        <ellipse cx="75" cy="80" rx="44" ry="7" fill="#3E3560" opacity=".10"></ellipse>
+        <use href="#moneda" x="17" y="44" width="34" height="34"></use>
+        <use href="#moneda" x="55" y="44" width="34" height="34"></use>
+        <use href="#moneda" x="93" y="44" width="34" height="34"></use>
+        <use href="#moneda" x="36" y="18" width="34" height="34"></use>
+        <use href="#moneda" x="74" y="18" width="34" height="34"></use>
+      </svg>
+
+      <div style="display: flex; align-items: flex-end; gap: 8px">
+        <span style="font-size: 44px; font-weight: 800; color: #3E3560; line-height: 1">55</span>
+        <span style="font-size: 16px; font-weight: 700; color: #3E3560;
+                     padding-bottom: 5px">créditos</span>
+      </div>
+      <div style="font-size: 13px; color: #847D8F; margin-top: 8px; text-align: center">
+        Hasta 55 clientes desbloqueados
+      </div>
+
+      <div style="flex-grow: 1"></div>
+
+      <div style="font-size: 22px; font-weight: 700; color: #3E3560">US$58.83</div>
+      <div style="margin-top: 14px; width: 100%; height: 48px; border-radius: 24px;
+                  background: #7147F2; color: #FCFCFC; font-size: 15.5px; font-weight: 700;
+                  display: flex; align-items: center; justify-content: center;
+                  box-shadow: 0 6px 14px rgba(60, 21, 144, .28);">Comprar</div>
+
+      <div style="position: absolute; right: -8px; top: 20px;
+                  background: linear-gradient(180deg, #FFD75E 0%, #F2B705 100%);
+                  color: #5C3A00; font-size: 13px; font-weight: 800;
+                  padding: 7px 12px; border-radius: 8px 4px 4px 8px;
+                  box-shadow: 0 4px 10px rgba(30, 8, 80, .30);">Ahorras 9%</div>
+    </div>
+
+    <div style="position: absolute; left: 303px; top: 16px; width: 279px; height: 372px;
+                background: #FFFFFF; border-radius: 22px;
+                box-shadow: 0 12px 30px rgba(30, 8, 80, .34);"></div>
+
+    <div style="position: absolute; left: 16px; right: 16px; bottom: 108px;
+                background: #322B45; color: #F3F0F8; border-radius: 12px;
+                padding: 14px 16px; font-size: 14px;
+                box-shadow: 0 8px 20px rgba(30, 8, 80, .40);">
+      Listo. Tienes 93 créditos.
+    </div>
+  </div>
+  <div class="navbar">
+    <div class="pill">
+      <div class="navitem">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h10"></path>
+        </svg>
+        <span>Solicitudes</span>
+      </div>
+      <div class="navitem on">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 7H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1Z"></path>
+          <path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7"></path>
+        </svg>
+        <span>Mis ofertas</span>
+      </div>
+      <div style="width: 56px"></div>
+      <div class="navitem">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4L3 21l1.1-4.6A8.4 8.4 0 1 1 21 11.5Z"></path>
+        </svg>
+        <span>Mensajes</span>
+      </div>
+      <div class="navitem">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 21V9l9-6 9 6v12"></path><path d="M9 21v-6h6v6"></path>
+        </svg>
+        <span>Mi negocio</span>
+      </div>
+    </div>
+    <div class="center-btn">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FCFCFC"
+           stroke-width="2.4" stroke-linecap="round">
+        <path d="M12 5v14"></path><path d="M5 12h14"></path>
+      </svg>
+    </div>
+  </div>
+
+
+  <!-- Las monedas vuelan POR ENCIMA de todo, del carrusel al contador. -->
+      <div class="vuela" style="offset-path: path('M100,268 C134,148 245,68 315,28'); animation-delay: 0.35s">
+        <svg viewBox="0 0 28 28"><use href="#moneda" width="28" height="28"></use></svg>
+      </div>
+      <div class="vuela" style="offset-path: path('M124,252 C158,132 245,68 315,28'); animation-delay: 0.47s">
+        <svg viewBox="0 0 28 28"><use href="#moneda" width="28" height="28"></use></svg>
+      </div>
+      <div class="vuela" style="offset-path: path('M147,268 C181,148 245,68 315,28'); animation-delay: 0.59s">
+        <svg viewBox="0 0 28 28"><use href="#moneda" width="28" height="28"></use></svg>
+      </div>
+      <div class="vuela" style="offset-path: path('M170,252 C204,132 245,68 315,28'); animation-delay: 0.71s">
+        <svg viewBox="0 0 28 28"><use href="#moneda" width="28" height="28"></use></svg>
+      </div>
+      <div class="vuela" style="offset-path: path('M194,268 C228,148 245,68 315,28'); animation-delay: 0.83s">
+        <svg viewBox="0 0 28 28"><use href="#moneda" width="28" height="28"></use></svg>
+      </div>
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

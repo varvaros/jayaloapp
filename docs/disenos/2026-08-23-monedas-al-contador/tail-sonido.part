@@ -1,0 +1,27 @@
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      // Reinicia la animación desde cero (quitar la clase resetea todos los
+      // keyframes; el reflow fuerza el corte) y suelta los tings a los 1,15 s:
+      // la primera moneda aterriza a los 1,23 s del arranque.
+      reproducir: () => {
+        const frame = document.querySelector('.frame');
+        if (!frame) return;
+        frame.classList.remove('mezcla');
+        void frame.offsetWidth;
+        frame.classList.add('mezcla');
+        const a = document.getElementById('ting');
+        if (a) {
+          a.pause();
+          a.currentTime = 0;
+          setTimeout(() => { a.play().catch(() => {}); }, 1150);
+        }
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

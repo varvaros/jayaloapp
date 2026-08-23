@@ -7,6 +7,7 @@ import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/star_score.dart';
 import '../shared/violet_header.dart';
+import '../shared/moneda.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -157,6 +158,7 @@ class _StatsViewState extends State<StatsView> {
             Expanded(
                 child: MetricTile(
                     icon: Icons.toll_outlined,
+                    leading: const MonedaJayalo(size: 22),
                     value: '$points',
                     label: 'créditos invertidos')),
           ]),
