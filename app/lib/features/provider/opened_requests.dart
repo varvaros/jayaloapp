@@ -1,61 +1,84 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Solicitudes que el proveedor YA ABRIÓ en este dispositivo — alimenta el
-/// badge de la pestaña "Solicitudes" (pedido PO 2026-08-22: "ya abrí todas las
-/// ventanas y sigue ahí").
+/// Hasta qué VERSIÓN de cada solicitud llegó el proveedor en este dispositivo.
+/// Alimenta el badge de la pestaña "Solicitudes".
 ///
-/// Antes ese badge contaba el INVENTARIO de "Para ti" (`items.length`), no la
-/// novedad, y no había forma de apagarlo: en todo el camino de la bandeja no
-/// existía nada que marcara una solicitud como vista. Ahora el badge cuenta lo
-/// que queda sin abrir, y este store es quien lo sabe.
+/// Regla del PO (2026-08-22): «debe ser "lo que no has abierto"; si tiene una
+/// actualización que no has abierto, cuenta». Por eso no guarda un simple
+/// conjunto de "ya abiertas" —eso apagaba la marca PARA SIEMPRE, y una
+/// solicitud editada después habría quedado muda— sino el `updated_at` que
+/// tenía la fila cuando la abriste. Hay novedad cuando la fila cambió después.
 ///
-/// Gemelo de [OpenedConversationsStore] (`features/chat/opened_conversations.dart`)
-/// a propósito, hasta en el `ChangeNotifier`: la bandeja lo escucha y el badge
-/// baja AL INSTANTE al abrir una solicitud, sin esperar a que el router
-/// dispare una recarga al volver. SharedPreferences solo persiste el set entre
-/// arranques.
+/// **Se guarda la versión vista, no la hora a la que miraste**, a propósito: el
+/// `updated_at` lo pone el servidor y compararlo contra `DateTime.now()` del
+/// teléfono metería el reloj del dispositivo en la ecuación — con un reloj
+/// atrasado, una solicitud recién abierta volvería a contar como nueva. Así la
+/// comparación es servidor contra servidor.
 ///
-/// Es una pista LOCAL, por dispositivo: si el proveedor entra desde otro
-/// teléfono, esas solicitudes vuelven a contar como sin abrir. Se eligió así
-/// (decisión PO) para no pagar tabla + migración + RLS por un contador.
+/// Sigue siendo una pista LOCAL, por dispositivo (decisión PO: no pagar tabla +
+/// migración + RLS por un contador), y gemelo de `OpenedConversationsStore`.
 class OpenedRequestsStore extends ChangeNotifier {
-  static const _key = 'opened_requests';
-  final Set<String> _ids = {};
+  static const _key = 'opened_requests_v2';
+  final Map<String, DateTime> _seen = {};
   bool _loaded = false;
 
-  /// Vista de solo lectura para quien calcula el badge.
-  Set<String> get ids => Set.unmodifiable(_ids);
+  /// Versión vista de cada solicitud. Solo lectura.
+  Map<String, DateTime> get seen => Map.unmodifiable(_seen);
 
-  bool contains(String id) => _ids.contains(id);
+  /// ¿Le queda algo por ver? Sin abrir nunca, o cambiada desde que la abriste.
+  ///
+  /// [updatedAt] en null = no sabemos si cambió (la consulta best-effort
+  /// falló): se cree lo que se sabe, y una solicitud ya abierta sigue vista.
+  bool hasUnseen(String id, DateTime? updatedAt) {
+    final visto = _seen[id];
+    if (visto == null) return true;
+    if (updatedAt == null) return false;
+    return updatedAt.isAfter(visto);
+  }
 
-  /// Carga el set persistido una vez. Best-effort: si falla, arranca vacío
-  /// (todas cuentan como sin abrir, que es el estado de antes de esta tanda).
+  /// Carga lo persistido una vez. Best-effort: si falla, arranca vacío (todo
+  /// cuenta como sin abrir — el badge exagera, nunca se queda corto).
   Future<void> ensureLoaded() async {
     if (_loaded) return;
     _loaded = true;
     try {
       final p = await SharedPreferences.getInstance();
-      _ids.addAll(p.getStringList(_key) ?? const <String>[]);
+      final raw = p.getString(_key);
+      if (raw != null) {
+        final m = jsonDecode(raw) as Map<String, dynamic>;
+        m.forEach((id, iso) {
+          final t = DateTime.tryParse(iso as String? ?? '');
+          if (t != null) _seen[id] = t.toUtc();
+        });
+      }
       notifyListeners();
     } catch (_) {
       // Sin persistencia se arranca vacío.
     }
   }
 
-  /// Marca una solicitud como abierta (idempotente). Notifica en el acto para
-  /// que el badge baje ya, y persiste en segundo plano.
-  void markOpened(String id) {
-    if (_ids.add(id)) {
-      notifyListeners();
-      _persist();
-    }
+  /// Marca que viste la solicitud [id] tal como estaba en [updatedAt].
+  ///
+  /// Sin `updated_at` (fila incompleta) se guarda el epoch: cuenta como vista
+  /// ahora, y cualquier cambio futuro —que sí traerá fecha— la reactivará.
+  void markSeen(String id, DateTime? updatedAt) {
+    final v = (updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0)).toUtc();
+    final previo = _seen[id];
+    if (previo != null && !v.isAfter(previo)) return; // idempotente
+    _seen[id] = v;
+    notifyListeners();
+    _persist();
   }
 
   Future<void> _persist() async {
     try {
       final p = await SharedPreferences.getInstance();
-      await p.setStringList(_key, _ids.toList());
+      await p.setString(_key, jsonEncode({
+        for (final e in _seen.entries) e.key: e.value.toIso8601String(),
+      }));
     } catch (_) {
       // No bloquea la pantalla; el próximo arranque podría no recordarlo.
     }
@@ -64,7 +87,7 @@ class OpenedRequestsStore extends ChangeNotifier {
   /// Solo para tests: devuelve el store a su estado de recién nacido.
   @visibleForTesting
   void reset() {
-    _ids.clear();
+    _seen.clear();
     _loaded = false;
   }
 }

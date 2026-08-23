@@ -22,9 +22,11 @@ typedef InboxData = ({
   Map<String, int> counts,
   Map<String, RequestRequirements> requirements,
   /// Ids que PUEDEN contar para el badge (marketplace, antes del merge), SIN
-  /// filtrar por abiertas. La pantalla lo guarda para poder recalcular el badge
+  /// filtrar por vistas. La pantalla lo guarda para poder recalcular el badge
   /// al vuelo cuando se abre una solicitud, sin volver a la red.
   Set<String> badgeIds,
+  /// `updated_at` de cada solicitud: con que fila cambio se compara lo visto.
+  Map<String, DateTime> updatedAt,
   /// Lo que se pinta: [badgeIds] menos las ya abiertas.
   int badgeCount,
 });
@@ -40,9 +42,11 @@ typedef InboxData = ({
 Future<InboxData> loadInboxData({
   required Future<List<Map<String, dynamic>>> Function() fetchItems,
   required Future<List<Map<String, dynamic>>> Function()? fetchOfferedOpen,
-  /// Solicitudes que este dispositivo YA ABRIO: salen del badge, no de la
-  /// bandeja. Vacio = todo cuenta como sin abrir.
-  Set<String> openedIds = const {},
+  /// Hasta que version vio este dispositivo cada solicitud. Vacio = todo
+  /// cuenta como sin abrir. Ver `features/provider/opened_requests.dart`.
+  Map<String, DateTime> seen = const {},
+  /// `updated_at` por id. Va en la oleada B, con sus hermanas.
+  Future<Map<String, DateTime>> Function(List<String>)? fetchUpdatedAt,
   required Future<Map<String, String>> Function(List<String>) fetchStatuses,
   required Future<Map<String, int>> Function(List<String>) fetchCounts,
   required Future<Map<String, RequestRequirements>> Function(List<String>)
@@ -81,7 +85,6 @@ Future<InboxData> loadInboxData({
     for (final r in items)
       if (r['source'] != 'store') r['id'] as String,
   };
-  final badgeCount = badgeIds.difference(openedIds).length;
 
   if (offeredFuture != null) {
     final have = {for (final r in items) r['id']};
@@ -110,11 +113,30 @@ Future<InboxData> loadInboxData({
   // Estado, envío…). Se piden aparte porque `get_provider_inbox_unified` no los
   // devuelve; ver `requirementsForRequests` en repos.dart. Best-effort como sus
   // dos hermanas: sin ellos la tarjeta cae a los de su propia fila.
+  final updatedAtFuture =
+      fetchUpdatedAt?.call(ids).then<Map<String, DateTime>>(
+            (v) => v,
+            onError: (Object _, StackTrace _) => <String, DateTime>{},
+          ) ??
+      Future.value(<String, DateTime>{});
   final requirementsFuture = fetchRequirements(ids)
       .then<Map<String, RequestRequirements>>(
         (v) => v,
         onError: (Object _, StackTrace _) => <String, RequestRequirements>{},
       );
+
+  final updatedAt = await updatedAtFuture;
+  // El badge se cierra AQUI y no arriba porque necesita `updated_at`, que llega
+  // en la oleada B. `badgeIds` si se fija antes del merge: dar seguimiento a una
+  // oferta propia en otro rubro no es una alerta pendiente.
+  final badgeCount = badgeIds
+      .where((id) {
+        final visto = seen[id];
+        if (visto == null) return true; // nunca abierta
+        final u = updatedAt[id];
+        return u != null && u.isAfter(visto); // cambio despues de verla
+      })
+      .length;
 
   return (
     items: items,
@@ -122,6 +144,7 @@ Future<InboxData> loadInboxData({
     counts: await countsFuture,
     requirements: await requirementsFuture,
     badgeIds: badgeIds,
+    updatedAt: updatedAt,
     badgeCount: badgeCount,
   );
 }

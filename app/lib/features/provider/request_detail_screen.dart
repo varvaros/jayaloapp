@@ -351,15 +351,23 @@ class _ProviderRequestDetailScreenState
   @override
   void initState() {
     super.initState();
-    // Abrir el detalle ES haberla visto: sale del badge de "Solicitudes"
-    // (pedido PO 2026-08-22). Va AQUI y no en el `onTap` de la bandeja para
-    // que tambien cuente al llegar desde un push o un enlace directo.
-    openedRequestsStore.markOpened(widget.requestId);
     // Antes que nada: `_editing` se consulta más abajo, en esta misma función.
     _editOfferId = widget.editOfferId;
     requestById(widget.requestId).then((r) {
       if (!mounted) return;
       setState(() => _req = r);
+      // Abrir el detalle ES haber visto ESTA VERSION de la solicitud: sale del
+      // badge hasta que la fila vuelva a cambiar (pedido PO 2026-08-22, "si
+      // tiene una actualizacion que no has abierto, cuenta").
+      //
+      // Se marca AQUI, con la fila ya en la mano, y no en el `initState` a
+      // secas: hace falta su `updated_at` para saber QUE version estas viendo.
+      // Y en el detalle, no en el `onTap` de la bandeja, para que cuente
+      // tambien al llegar desde un push o un enlace directo.
+      openedRequestsStore.markSeen(
+        widget.requestId,
+        DateTime.tryParse(r?['updated_at'] as String? ?? '')?.toUtc(),
+      );
       // Reputación del cliente que solicita (best-effort).
       final cid = r?['user_id'] as String?;
       if (cid != null) {

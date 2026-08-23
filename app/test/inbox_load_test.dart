@@ -123,35 +123,70 @@ void main() {
       );
     });
 
-    test('el badge NO cuenta las solicitudes que YA ABRISTE', () async {
-      // Pedido PO 2026-08-22: "solicitudes tiene una notificacion de 3, ya abri
-      // todas las ventanas y sigue ahi". El badge del PROVEEDOR contaba el
-      // INVENTARIO de "Para ti" (`items.length`), no la novedad, asi que no
-      // habia forma de apagarlo: nada marcaba nada como visto. Ahora cuenta
-      // solo lo que este dispositivo todavia no ha abierto.
+    // Pedido PO 2026-08-22: «debe ser "lo que no has abierto"; si tiene una
+    // actualizacion que no has abierto, cuenta». El badge del PROVEEDOR contaba
+    // el INVENTARIO de "Para ti", no la novedad, y no habia forma de apagarlo.
+    // Se guarda la VERSION vista (`updated_at` de la fila al abrirla), no la
+    // hora del telefono: la comparacion es servidor contra servidor.
+    final t1 = DateTime.utc(2026, 8, 22, 10);
+    final t2 = DateTime.utc(2026, 8, 22, 11);
+
+    test('el badge NO cuenta las solicitudes que ya viste', () async {
       final data = await loadInboxData(
         fetchItems: () async => [req('a'), req('b'), req('c')],
         fetchOfferedOpen: null,
-        openedIds: const {'a', 'b'},
+        seen: {'a': t1, 'b': t1},
+        fetchUpdatedAt: (_) async => {'a': t1, 'b': t1, 'c': t1},
         fetchStatuses: (_) async => {},
         fetchCounts: (_) async => {},
         fetchRequirements: (_) async => {},
       );
-      expect(data.badgeCount, 1, reason: 'solo "c" queda sin abrir');
+      expect(data.badgeCount, 1, reason: 'solo "c" queda sin ver');
       expect(data.items.length, 3,
-          reason: 'abrirlas NO las saca de la bandeja, solo del badge');
+          reason: 'verlas NO las saca de la bandeja, solo del badge');
     });
 
-    test('abiertas todas, el badge se APAGA', () async {
+    test('una solicitud ACTUALIZADA despues de verla VUELVE a contar',
+        () async {
       final data = await loadInboxData(
         fetchItems: () async => [req('a'), req('b')],
         fetchOfferedOpen: null,
-        openedIds: const {'a', 'b'},
+        seen: {'a': t1, 'b': t1},
+        // "a" cambio despues de que la vieras; "b" sigue igual.
+        fetchUpdatedAt: (_) async => {'a': t2, 'b': t1},
+        fetchStatuses: (_) async => {},
+        fetchCounts: (_) async => {},
+        fetchRequirements: (_) async => {},
+      );
+      expect(data.badgeCount, 1, reason: '"a" trae algo que no has abierto');
+    });
+
+    test('vistas todas y sin cambios, el badge se APAGA', () async {
+      final data = await loadInboxData(
+        fetchItems: () async => [req('a'), req('b')],
+        fetchOfferedOpen: null,
+        seen: {'a': t2, 'b': t2},
+        fetchUpdatedAt: (_) async => {'a': t1, 'b': t1},
         fetchStatuses: (_) async => {},
         fetchCounts: (_) async => {},
         fetchRequirements: (_) async => {},
       );
       expect(data.badgeCount, 0);
+    });
+
+    test('si updated_at no llega, lo ya visto SIGUE visto', () async {
+      // La consulta es best-effort: al fallar no se puede saber si cambio. Se
+      // cree lo que se sabe — el badge se queda corto, nunca grita de mas.
+      final data = await loadInboxData(
+        fetchItems: () async => [req('a'), req('b')],
+        fetchOfferedOpen: null,
+        seen: {'a': t1},
+        fetchUpdatedAt: (_) async => throw Exception('sin red'),
+        fetchStatuses: (_) async => {},
+        fetchCounts: (_) async => {},
+        fetchRequirements: (_) async => {},
+      );
+      expect(data.badgeCount, 1, reason: 'solo "b", que nunca se abrio');
     });
 
     test(

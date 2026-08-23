@@ -47,8 +47,8 @@ class MyOffersScreen extends StatefulWidget {
     this.fetchOffers = myOffers,
     this.fetchBalance = walletBalance,
     this.fetchReviewed = customerReviewsFor,
-    this.fetchUnseen = unseenAcceptedOfferIds,
-    this.markSeen = markAcceptedOfferSeen,
+    this.fetchUnseen = unseenOfferIds,
+    this.markSeen = markOfferSeen,
     this.leading = const HeaderAvatar(),
     this.actions = const [HeaderBell()],
   });
@@ -61,7 +61,7 @@ class MyOffersScreen extends StatefulWidget {
   final Future<Set<String>> Function(List<String> offerIds) fetchReviewed;
 
   /// Las ofertas que te aceptaron y aún no has abierto (= las que llevan
-  /// borde), y cómo marcar una como vista. Ver [unseenAcceptedOfferIds].
+  /// borde), y cómo marcar una como vista. Ver [unseenOfferIds].
   final Future<Set<String>> Function() fetchUnseen;
   final Future<void> Function(String offerId) markSeen;
 

@@ -2,75 +2,100 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jayalo_app/features/provider/opened_requests.dart';
 
-/// Pedido PO 2026-08-22: "solicitudes tiene una notificación de 3, ya abrí
-/// todas las ventanas y sigue ahí". El badge del proveedor contaba el
-/// INVENTARIO de "Para ti", no la novedad — no existía nada que marcara una
-/// solicitud como vista. Este store es ese "nada" que faltaba.
+/// Regla del PO (2026-08-22): «debe ser "lo que no has abierto"; si tiene una
+/// actualización que no has abierto, cuenta». Por eso el store guarda la
+/// VERSIÓN vista (el `updated_at` de la fila al abrirla) y no un simple "ya
+/// abierta": eso apagaba la marca para siempre.
 void main() {
+  final t1 = DateTime.utc(2026, 8, 22, 10);
+  final t2 = DateTime.utc(2026, 8, 22, 11);
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     openedRequestsStore.reset();
   });
 
-  test('recién nacido no conoce ninguna solicitud', () async {
+  test('nunca abierta = tiene algo sin ver', () async {
     await openedRequestsStore.ensureLoaded();
-    expect(openedRequestsStore.ids, isEmpty);
-    expect(openedRequestsStore.contains('a'), isFalse);
+    expect(openedRequestsStore.hasUnseen('a', t1), isTrue);
   });
 
-  test('marcar abierta avisa AL INSTANTE, sin esperar al disco', () async {
+  test('abierta y sin cambios = vista', () async {
+    await openedRequestsStore.ensureLoaded();
+    openedRequestsStore.markSeen('a', t1);
+    expect(openedRequestsStore.hasUnseen('a', t1), isFalse);
+  });
+
+  test('CAMBIADA después de verla = vuelve a tener algo sin ver', () async {
+    await openedRequestsStore.ensureLoaded();
+    openedRequestsStore.markSeen('a', t1);
+    expect(openedRequestsStore.hasUnseen('a', t2), isTrue,
+        reason: 'esta es la regla entera: una actualización la reactiva');
+  });
+
+  test('y al volver a abrirla se apaga otra vez', () async {
+    await openedRequestsStore.ensureLoaded();
+    openedRequestsStore.markSeen('a', t1);
+    openedRequestsStore.markSeen('a', t2);
+    expect(openedRequestsStore.hasUnseen('a', t2), isFalse);
+  });
+
+  test('sin updated_at no se puede saber: lo visto sigue visto', () async {
+    // La consulta es best-effort. Se cree lo que se sabe.
+    await openedRequestsStore.ensureLoaded();
+    openedRequestsStore.markSeen('a', t1);
+    expect(openedRequestsStore.hasUnseen('a', null), isFalse);
+    expect(openedRequestsStore.hasUnseen('sin_abrir', null), isTrue);
+  });
+
+  test('marcar avisa AL INSTANTE, sin esperar al disco', () async {
     await openedRequestsStore.ensureLoaded();
     var avisos = 0;
     void oyente() => avisos++;
     openedRequestsStore.addListener(oyente);
     addTearDown(() => openedRequestsStore.removeListener(oyente));
 
-    openedRequestsStore.markOpened('a');
+    openedRequestsStore.markSeen('a', t1);
 
-    // Sin `await`: el badge tiene que bajar en el mismo frame en que se abre
-    // la solicitud; persistir va detrás.
-    expect(avisos, 1);
-    expect(openedRequestsStore.contains('a'), isTrue);
+    expect(avisos, 1, reason: 'el badge baja en el mismo frame');
   });
 
-  test('marcar dos veces la misma NO vuelve a avisar', () async {
+  test('remarcar la MISMA versión no vuelve a avisar', () async {
     await openedRequestsStore.ensureLoaded();
-    openedRequestsStore.markOpened('a');
+    openedRequestsStore.markSeen('a', t1);
     var avisos = 0;
     void oyente() => avisos++;
     openedRequestsStore.addListener(oyente);
     addTearDown(() => openedRequestsStore.removeListener(oyente));
 
-    openedRequestsStore.markOpened('a');
+    openedRequestsStore.markSeen('a', t1);
 
     expect(avisos, 0, reason: 'idempotente: repintar de balde es ruido');
-    expect(openedRequestsStore.ids, {'a'});
   });
 
-  test('lo abierto sobrevive al reinicio', () async {
+  test('una versión VIEJA no pisa a una más nueva ya vista', () async {
+    // Dos pantallas compitiendo, o una carga rezagada: lo visto no retrocede.
     await openedRequestsStore.ensureLoaded();
-    openedRequestsStore.markOpened('a');
-    openedRequestsStore.markOpened('b');
-    // Deja que el guardado en segundo plano llegue al disco.
+    openedRequestsStore.markSeen('a', t2);
+    openedRequestsStore.markSeen('a', t1);
+    expect(openedRequestsStore.hasUnseen('a', t2), isFalse);
+  });
+
+  test('lo visto sobrevive al reinicio', () async {
+    await openedRequestsStore.ensureLoaded();
+    openedRequestsStore.markSeen('a', t1);
     await Future<void>.delayed(Duration.zero);
 
     openedRequestsStore.reset();
     await openedRequestsStore.ensureLoaded();
 
-    expect(openedRequestsStore.ids, {'a', 'b'});
+    expect(openedRequestsStore.hasUnseen('a', t1), isFalse);
+    expect(openedRequestsStore.hasUnseen('a', t2), isTrue);
   });
 
-  test('sin persistencia arranca vacío en vez de reventar', () async {
-    // Todas cuentan como sin abrir, que es el estado de antes de esta tanda:
-    // el badge exagera, pero la bandeja nunca se cae.
-    openedRequestsStore.reset();
+  test('la vista de lo visto es de SOLO LECTURA', () async {
     await openedRequestsStore.ensureLoaded();
-    expect(openedRequestsStore.ids, isEmpty);
-  });
-
-  test('la vista de ids es de SOLO LECTURA', () async {
-    await openedRequestsStore.ensureLoaded();
-    openedRequestsStore.markOpened('a');
-    expect(() => openedRequestsStore.ids.add('b'), throwsUnsupportedError);
+    openedRequestsStore.markSeen('a', t1);
+    expect(() => openedRequestsStore.seen['b'] = t1, throwsUnsupportedError);
   });
 }

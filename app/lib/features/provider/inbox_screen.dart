@@ -139,6 +139,10 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   /// recalcular sin volver a la red cuando se abre una solicitud.
   Set<String> _badgeIds = const {};
 
+  /// `updated_at` de esas solicitudes en la ultima carga: es contra esto que se
+  /// compara lo ya visto.
+  Map<String, DateTime> _updatedAt = const {};
+
   void _onOpenedChanged() {
     if (mounted) setState(_syncBadge);
   }
@@ -147,8 +151,9 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   /// una alerta accionable, es exploracion.
   void _syncBadge() {
     if (!mounted || _todas) return;
-    solicitudesBadge.value =
-        _badgeIds.difference(openedRequestsStore.ids).length;
+    solicitudesBadge.value = _badgeIds
+        .where((id) => openedRequestsStore.hasUnseen(id, _updatedAt[id]))
+        .length;
   }
 
   void _onHiddenChanged() {
@@ -177,7 +182,8 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
       fetchOfferedOpen: _todas
           ? null
           : () => myOfferedOpenRequests(kind: _kind),
-      openedIds: openedRequestsStore.ids,
+      seen: openedRequestsStore.seen,
+      fetchUpdatedAt: updatedAtForRequests,
       fetchStatuses: myOfferedRequestStatuses,
       fetchCounts: offerCountsForRequests,
       fetchRequirements: requirementsForRequests,
@@ -185,6 +191,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     // En "Todas" no se toca el badge: ese conteo no es una alerta accionable,
     // es exploración.
     _badgeIds = data.badgeIds;
+    _updatedAt = data.updatedAt;
     if (mounted && !_todas) solicitudesBadge.value = data.badgeCount;
     _offeredStatuses = data.statuses;
     _offerCounts = data.counts;

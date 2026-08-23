@@ -726,6 +726,9 @@ Future<Map<String, dynamic>?> requestById(String id) async => await supa
       // target_categories: decide si la oferta pregunta por los materiales
       // (un abogado no los tiene) — ver `domain/offer_materials.dart`.
       ',target_categories'
+      // updated_at: el detalle lo guarda como "version vista" para el badge de
+      // la bandeja (ver `features/provider/opened_requests.dart`).
+      ',updated_at'
       ',$requestRequirementCols',
     )
     .eq('id', id)
@@ -2125,19 +2128,36 @@ Future<void> markChatNotificationsRead(String convId) async {
   ]);
 }
 
-/// Ids de OFERTA cuya notificación `offer_accepted` sigue SIN LEER: las ofertas
-/// que te aceptaron y todavía no has abierto. Alimenta el borde de "nuevo" en
-/// Mis ofertas del proveedor (pedido PO 2026-08-21).
+/// Kinds de notificación que hablan de UNA OFERTA TUYA: su `entity_id` es el id
+/// de la oferta. Cualquiera de estos sin leer significa "esta oferta tiene algo
+/// que todavía no has visto".
 ///
-/// Espejo exacto de lo que el CLIENTE hace con `offer_new`
-/// (`_loadUnreadOffers` en `request_status_screen.dart`): la novedad vive en la
-/// notificación, no en la oferta, así que no hace falta ninguna columna nueva
-/// ni tocar el esquema. El `entity_id` de `offer_accepted` ES el id de la
-/// oferta.
+/// Se listan explícitamente en vez de filtrar por `like 'offer_%'` para que
+/// añadir un kind nuevo sea una decisión, no un efecto colateral.
+const kOfferUpdateKinds = <String>[
+  'offer_accepted',
+  'offer_rejected',
+  'offer_cancelled_customer',
+  'offer_improved',
+  'offer_unlocked',
+];
+
+/// Ids de OFERTA con AL MENOS UNA notificación sin leer: las que tienen algo
+/// que no has abierto todavía. Alimenta el borde de "nuevo" en Mis ofertas.
 ///
+/// Regla del PO (2026-08-22): "debe ser lo que no has abierto; si una oferta
+/// tiene una actualización que no has abierto, cuenta". Por eso mira TODOS los
+/// kinds de [kOfferUpdateKinds] y no solo `offer_accepted` como al principio:
+/// que te la rechacen o que el cliente la cancele también son novedades, y
+/// antes pasaban mudas.
+///
+/// Se re-arma solo: cada actualización nueva crea su notificación sin leer, así
+/// que el borde vuelve sin necesidad de comparar relojes ni versiones.
+///
+/// La novedad vive en la notificación, no en la oferta: cero columnas nuevas.
 /// Best-effort: si la consulta falla se devuelve vacío — el borde es una marca
 /// de más, nunca puede tumbar la lista.
-Future<Set<String>> unseenAcceptedOfferIds() async {
+Future<Set<String>> unseenOfferIds() async {
   final uid = supa.auth.currentUser?.id;
   if (uid == null) return {};
   try {
@@ -2146,7 +2166,7 @@ Future<Set<String>> unseenAcceptedOfferIds() async {
           .from('notifications')
           .select('entity_id')
           .eq('user_id', uid)
-          .eq('kind', 'offer_accepted')
+          .inFilter('kind', kOfferUpdateKinds)
           .isFilter('read_at', null),
     );
     return notifs
@@ -2158,10 +2178,13 @@ Future<Set<String>> unseenAcceptedOfferIds() async {
   }
 }
 
-/// Al ABRIR la oferta queda vista: marca su `offer_accepted` leída. Gemela de
-/// `_markOfferSeen` del cliente. Best-effort por lo mismo que la de arriba: la
-/// pantalla ya quitó el borde de forma optimista antes de llamar acá.
-Future<void> markAcceptedOfferSeen(String offerId) async {
+/// Al ABRIR la oferta queda vista: marca leídas TODAS sus notificaciones
+/// pendientes, no solo la de aceptación. Si solo se marcara una, el borde
+/// volvería en la siguiente carga por las otras que quedaron sin leer.
+///
+/// Best-effort por lo mismo que su hermana: la pantalla ya quitó el borde de
+/// forma optimista antes de llamar acá.
+Future<void> markOfferSeen(String offerId) async {
   final uid = supa.auth.currentUser?.id;
   if (uid == null) return;
   try {
@@ -2169,10 +2192,35 @@ Future<void> markAcceptedOfferSeen(String offerId) async {
         .from('notifications')
         .update({'read_at': DateTime.now().toUtc().toIso8601String()})
         .eq('user_id', uid)
-        .eq('kind', 'offer_accepted')
+        .inFilter('kind', kOfferUpdateKinds)
         .eq('entity_id', offerId)
         .isFilter('read_at', null);
   } catch (_) {}
+}
+
+/// `updated_at` de cada solicitud, por id. Es la marca de "esta fila cambió"
+/// que la bandeja del proveedor necesita para saber si una solicitud que ya
+/// abriste trae algo nuevo — `get_provider_inbox_unified` NO devuelve esa
+/// columna y ampliar el RPC costaba una migración en producción.
+///
+/// Sale de la MISMA tabla que `requirementsForRequests` y viaja en la misma
+/// oleada concurrente, así que no añade latencia.
+///
+/// Best-effort: sin esto, una solicitud abierta se queda abierta (el badge
+/// puede quedarse corto, nunca de más).
+Future<Map<String, DateTime>> updatedAtForRequests(List<String> ids) async {
+  if (ids.isEmpty) return {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('customer_requests')
+        .select('id,updated_at')
+        .inFilter('id', ids),
+  );
+  return {
+    for (final r in rows)
+      if (DateTime.tryParse(r['updated_at'] as String? ?? '') != null)
+        r['id'] as String: DateTime.parse(r['updated_at'] as String).toUtc(),
+  };
 }
 
 /// Foto del chat → bucket **privado** `chat-media`, carpeta por conversación.

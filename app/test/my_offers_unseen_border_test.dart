@@ -6,6 +6,7 @@ import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/provider/my_offers_screen.dart';
 import 'package:jayalo_app/features/shared/brand_kit.dart';
 import 'package:jayalo_app/features/shared/onboarding_store.dart';
+import 'package:jayalo_app/data/repos.dart' show kOfferUpdateKinds;
 
 /// Pedido PO 2026-08-21: en Mis ofertas (proveedor) el borde de la tarjeta
 /// marca lo NUEVO, no el estado. O sea: aparece mientras la notificación
@@ -265,5 +266,20 @@ void main() {
     await tester.tap(find.text(titulo));
     await tester.pumpAndSettle();
     expect(fake.marcadas, isEmpty);
+  });
+
+  group('que cuenta como "sin ver" en una oferta', () {
+    test('NO es solo la aceptacion: cualquier actualizacion cuenta', () {
+      // Regla del PO 2026-08-22: «si una oferta tiene una actualizacion que no
+      // has abierto, cuenta». Al principio el borde miraba SOLO
+      // `offer_accepted`, asi que un rechazo o una cancelacion del cliente
+      // pasaban mudos. Este test existe para que nadie lo vuelva a estrechar
+      // sin darse cuenta.
+      expect(kOfferUpdateKinds, contains('offer_accepted'));
+      expect(kOfferUpdateKinds, contains('offer_rejected'));
+      expect(kOfferUpdateKinds, contains('offer_cancelled_customer'));
+      expect(kOfferUpdateKinds.length, greaterThan(1),
+          reason: 'un solo kind es justo el bug que esto vigila');
+    });
   });
 }
