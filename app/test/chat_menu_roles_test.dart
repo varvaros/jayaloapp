@@ -64,14 +64,17 @@ void main() {
         ['Mi ubicación actual', 'Mi dirección guardada']));
   });
 
-  test('«Fecha pautada» está en el menú de LAS DOS partes', () {
+  test('«Pautar fecha» está PRIMERA en el menú de LAS DOS partes', () {
     // Cualquiera de los dos puede proponerla: `propose_scheduled_date` solo
     // exige ser participante de la conversación, así que no es de un rol.
+    // Pedido PO 2026-08-23: va de primero y se lee como acción («Pautar
+    // fecha»), no como sustantivo («Fecha pautada»).
     for (final isProvider in [true, false]) {
       final items = plusMenuItems(isProvider: isProvider);
       expect(items.map((i) => i.$1), contains(PlusAction.proposeDate));
+      expect(items.first.$1, PlusAction.proposeDate);
       expect(items.firstWhere((i) => i.$1 == PlusAction.proposeDate).$3,
-          'Fecha pautada');
+          'Pautar fecha');
     }
   });
 

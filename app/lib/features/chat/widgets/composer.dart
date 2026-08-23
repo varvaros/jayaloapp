@@ -22,21 +22,24 @@ enum PlusAction {
 List<(PlusAction, IconData, String)> plusMenuItems({required bool isProvider}) =>
     isProvider
         ? const [
+            // Pedido PO 2026-08-23: «Pautar fecha» va PRIMERA en los dos
+            // roles y se dibuja como botón (ver `_openPlusMenu`), no como
+            // ListTile — de ahí que el orden de esta lista importe.
+            (PlusAction.proposeDate, Icons.event_outlined, 'Pautar fecha'),
             // Foto del dispositivo + artículos de la tienda (pedido PO
             // 2026-07-21): el proveedor muestra su mercancía en el chat.
             (PlusAction.sendPhoto, Icons.add_photo_alternate_outlined, 'Enviar foto'),
-            (PlusAction.sendStoreItem, Icons.storefront_outlined, 'De mi tienda'),
+            (PlusAction.sendStoreItem, Icons.storefront_outlined,
+                'Poner artículo de mi tienda'),
             (PlusAction.sendAddress, Icons.place_outlined, 'Enviar dirección del local'),
-            // Coordinar la entrega/visita es lo que sigue a la dirección.
-            (PlusAction.proposeDate, Icons.event_outlined, 'Fecha pautada'),
             (PlusAction.improveOffer, Icons.bolt_outlined, 'Mejorar oferta (bajar precio)'),
           ]
         : const [
+            (PlusAction.proposeDate, Icons.event_outlined, 'Pautar fecha'),
             (PlusAction.sendContact, Icons.badge_outlined, 'Enviar mis datos de contacto'),
-            // La ubicación del MOMENTO va primero: es el caso que motivó la
-            // tanda (el cliente que no está en su casa).
+            // La ubicación del MOMENTO va primero (tras «Pautar fecha»): es
+            // el caso que motivó la tanda (el cliente que no está en su casa).
             (PlusAction.sendCurrentLocation, Icons.my_location, 'Mi ubicación actual'),
-            (PlusAction.proposeDate, Icons.event_outlined, 'Fecha pautada'),
             (PlusAction.sendLocation, Icons.place_outlined, 'Mi dirección guardada'),
             (PlusAction.sendPhoto, Icons.add_photo_alternate_outlined, 'Enviar foto'),
           ];
@@ -97,21 +100,57 @@ class _ChatComposerState extends State<ChatComposer> {
       : 'chat.attach.client.v1';
 
   void _openPlusMenu() {
+    // `plusMenuItems` trae «Pautar fecha» de PRIMERO en los dos roles
+    // (pedido PO 2026-08-23): se dibuja como botón de letras grises, el
+    // resto sigue como ListTile normal.
     final items = plusMenuItems(isProvider: widget.isProvider);
+    final first = items.first;
+    final rest = items.skip(1);
     showModalBottomSheet<void>(
         sheetAnimationStyle: JayaloMotion.sheetMenu,
         context: context,
-        builder: (ctx) => SafeArea(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-              for (final (action, icon, label) in items)
-                ListTile(
-                    leading: Icon(icon),
-                    title: Text(label),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      widget.onPlusAction(action);
-                    }),
-            ])));
+        builder: (ctx) {
+          void act(PlusAction action) {
+            Navigator.of(ctx).pop();
+            widget.onPlusAction(action);
+          }
+
+          // Gris de texto secundario del tema (nunca un hex fijo): es el
+          // mismo tono que ya usa este archivo para "(responderá con
+          // botones)" y el rótulo "Mensajes predeterminados", y está
+          // pensado por Material 3 para leerse sobre `surface` (el fondo de
+          // esta hoja). Se fija TAMBIÉN el color deshabilitado: si este
+          // botón llega a deshabilitarse alguna vez, Material apaga el
+          // `foregroundColor` y grisa el texto con OTRO tono por su cuenta.
+          final grey = Theme.of(ctx).colorScheme.onSurfaceVariant;
+          return SafeArea(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => act(first.$1),
+                  icon: Icon(first.$2, size: 20),
+                  label: Text(first.$3),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: grey,
+                    disabledForegroundColor: grey,
+                    side: BorderSide(color: grey.withValues(alpha: .5)),
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                  ),
+                ),
+              ),
+            ),
+            for (final (action, icon, label) in rest)
+              ListTile(
+                  leading: Icon(icon),
+                  title: Text(label),
+                  onTap: () => act(action)),
+          ]));
+        });
   }
 
   void _openEmojis() {
@@ -159,10 +198,34 @@ class _ChatComposerState extends State<ChatComposer> {
                   title: Text(item.question, style: const TextStyle(fontSize: 14)),
                   subtitle: item.options.isEmpty
                       ? null
-                      : Wrap(spacing: 4, children: [
+                      : Wrap(spacing: 4, runSpacing: 4, children: [
                           for (final o in item.options)
-                            Chip(label: Text(o, style: const TextStyle(fontSize: 11)),
-                                visualDensity: VisualDensity.compact),
+                            // Espejo del pill de la web (mismo popover
+                            // «Mensajes predeterminados»): borde y letra en
+                            // el violeta del tema — nunca un hex fijo — con
+                            // un fondo apenas teñido, igual que
+                            // `border-primary/30 bg-primary/5 text-primary`
+                            // en messages.$conversationId.tsx.
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                    color: Theme.of(ctx)
+                                        .colorScheme
+                                        .primary
+                                        .withValues(alpha: .3)),
+                                color: Theme.of(ctx)
+                                    .colorScheme
+                                    .primary
+                                    .withValues(alpha: .05),
+                              ),
+                              child: Text(o,
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: Theme.of(ctx).colorScheme.primary)),
+                            ),
                           Text('(responderá con botones)',
                               style: TextStyle(
                                   fontSize: 11,
