@@ -131,13 +131,20 @@ class _ProposeDateSheetBodyState extends State<ProposeDateSheetBody> {
   /// `timestamptz` cualquiera y los enlaces de calendario ya escriben los
   /// segundos reales), así que el reloj no redondea nada — un selector que
   /// corrigiera a escondidas la hora del usuario se sentiría roto.
+  ///
+  /// Lo que SÍ se elige es DÓNDE ABRIRLO la primera vez: en la siguiente media
+  /// hora ([nextHalfHour]), no en la hora de ahora. Abrirlo en ahora dejaba al
+  /// usuario del camino más común («hoy, un rato más tarde») encima de un valor
+  /// ya pasado, y aceptarlo tal cual le sacaba el aviso rojo sin haber hecho
+  /// nada raro. Esto solo mueve la posición INICIAL: si ya hay una hora
+  /// elegida se reabre en ella, incluso si esa hora pasó, porque respetar lo
+  /// que el usuario puso manda sobre proponerle nada.
   Future<void> _pickTime() async {
     final hm = _time == null ? null : slotHm(_time!);
+    final inicio = hm ?? nextHalfHour(widget.now);
     final picked = await showTimePicker(
       context: context,
-      initialTime: hm == null
-          ? TimeOfDay.fromDateTime(widget.now)
-          : TimeOfDay(hour: hm.hour, minute: hm.minute),
+      initialTime: TimeOfDay(hour: inicio.hour, minute: inicio.minute),
       helpText: 'Elige la hora',
       // 12 h de verdad, y en español (pedido PO 2026-08-23).
       //
@@ -260,10 +267,23 @@ class _ProposeDateSheetBodyState extends State<ProposeDateSheetBody> {
                   ),
                   // La hora elegida NO se borra: sigue puesta en el botón de
                   // arriba y basta con tocar el reloj (o el día) otra vez.
-                  child: Text(
-                    'Esa hora ya pasó. Elige una más tarde o cambia el día.',
-                    key: const Key('appt.past'),
-                    style: TextStyle(fontSize: 13, color: cs.onErrorContainer),
+                  //
+                  // `liveRegion`: este aviso APARECE de golpe, lejos del foco
+                  // (el usuario acaba de cerrar el reloj) y es la única razón
+                  // por la que el botón de proponer está apagado. Sin él, con
+                  // TalkBack no se entera nadie: el aviso es un `Text` normal y
+                  // un `Text` que nace no se anuncia solo. Las fichas que había
+                  // antes daban esto gratis —una ficha deshabilitada anuncia su
+                  // estado al tocarla—, así que al cambiarlas por un reloj se
+                  // perdió sin que se notara.
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      'Esa hora ya pasó. Elige una más tarde o cambia el día.',
+                      key: const Key('appt.past'),
+                      style:
+                          TextStyle(fontSize: 13, color: cs.onErrorContainer),
+                    ),
                   ),
                 ),
               ],

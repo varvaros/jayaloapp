@@ -157,6 +157,56 @@ void main() {
     });
   });
 
+  group('nextHalfHour', () {
+    // Es la hora con la que se ABRE el reloj cuando aún no hay ninguna elegida.
+    // Lo que se está fijando es que ese valor de arranque SIEMPRE sea futuro:
+    // antes se abría en la hora de ahora, que `isSlotInPast` cuenta como
+    // pasada (corte <=), y el usuario del camino más común se llevaba el aviso
+    // rojo sin haber hecho nada raro.
+    ({int hour, int minute}) f(int h, int m, [int s = 0]) =>
+        nextHalfHour(DateTime(2026, 8, 24, h, m, s));
+
+    test('sube SIEMPRE de tramo, también en la media hora clavada', () {
+      // El caso que de verdad importa: a las 10:00:00 devolver las 10:00 sería
+      // repetir el bug —la RPC exige futuro ESTRICTO—, así que se va a las
+      // 10:30. Las dos fronteras del tramo, por parejas.
+      expect(f(10, 0), (hour: 10, minute: 30));
+      expect(f(10, 29), (hour: 10, minute: 30));
+      expect(f(10, 30), (hour: 11, minute: 0));
+      expect(f(10, 31), (hour: 11, minute: 0));
+      expect(f(10, 59), (hour: 11, minute: 0));
+    });
+
+    test('los segundos no cambian el resultado', () {
+      // Subiendo siempre de tramo, el resultado ya queda por delante de `now`
+      // con o sin segundos: si algún día se miraran, esto lo diría.
+      expect(f(10, 0, 59), (hour: 10, minute: 30));
+      expect(f(10, 29, 59), (hour: 10, minute: 30));
+    });
+
+    test('lo que sale es SIEMPRE posterior a la hora que entró', () {
+      // La propiedad, sobre las horas de pared del día: no hay ni un minuto en
+      // el que el reloj se abra sobre algo que ya pasó. El único hueco es la
+      // vuelta a medianoche, y lo fija el caso de abajo.
+      for (var m = 0; m < 24 * 60 - 30; m++) {
+        final r = f(m ~/ 60, m % 60);
+        expect(r.hour * 60 + r.minute, greaterThan(m),
+            reason: 'a las ${m ~/ 60}:${m % 60} devolvió $r');
+      }
+    });
+
+    test('DA LA VUELTA a medianoche: es la limitación conocida', () {
+      // A partir de las 23:30 ya no queda media hora en el día, así que sale
+      // 00:00 — que con el día puesto en HOY vuelve a ser pasada. Se acepta
+      // porque a esa hora CUALQUIER hora de hoy está pasada y no hay respuesta
+      // buena; el aviso (ahora anunciado al lector de pantalla) lo cubre.
+      expect(f(23, 0), (hour: 23, minute: 30));
+      expect(f(23, 30), (hour: 0, minute: 0));
+      expect(f(23, 59), (hour: 0, minute: 0));
+      expect(f(0, 0), (hour: 0, minute: 30));
+    });
+  });
+
   group('isSlotInPast', () {
     final now = DateTime(2026, 8, 24, 10, 0);
 

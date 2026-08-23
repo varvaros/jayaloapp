@@ -76,6 +76,36 @@ String slotFromHm(int hour, int minute) => '${_pad2(hour)}:${_pad2(minute)}';
   return at == null ? null : (hour: at ~/ 60, minute: at % 60);
 }
 
+/// Hora con la que ABRIR el reloj cuando todavía no hay ninguna elegida:
+/// la siguiente media hora en punto.
+///
+/// Antes se abría en `TimeOfDay.fromDateTime(now)`, o sea en la hora de AHORA
+/// —que ya pasó—. En el camino más común («hoy, un rato más tarde») el usuario
+/// se encontraba el reloj puesto sobre un valor inválido y, si lo aceptaba tal
+/// cual, se llevaba el aviso rojo de «Esa hora ya pasó» sin haber hecho nada
+/// raro. Abrirlo en la siguiente media hora deja el reloj sobre algo que SÍ se
+/// puede proponer, y de paso en un valor redondo, que es como la gente pauta.
+///
+/// El redondeo es ESTRICTO hacia arriba: a las 15:00:00 clavadas devuelve las
+/// 15:30, no las 15:00. Si devolviera la hora ya alineada estaríamos otra vez
+/// donde empezamos —un instante que deja de ser futuro en cuanto pasa un
+/// segundo—, que es justo el bug que esto arregla.
+///
+/// ⚠️ DA LA VUELTA A MEDIANOCHE, y es una limitación conocida: a las 23:45
+/// devuelve las 00:00, que con el día todavía puesto en HOY vuelve a ser una
+/// hora pasada. No se arrastra el día porque esta función solo sabe de horas
+/// —el día lo elige otro control— y porque a las 23:45 CUALQUIER hora de hoy
+/// está pasada: no hay respuesta buena que dar. Para ese caso sigue estando el
+/// aviso de «Esa hora ya pasó», que además se anuncia al lector de pantalla.
+({int hour, int minute}) nextHalfHour(DateTime now) {
+  // `+ 1` sobre el tramo actual: es lo que hace el redondeo estricto. Los
+  // segundos no se miran porque no hacen falta — subiendo siempre de tramo, el
+  // resultado queda por delante de `now` con o sin ellos.
+  final tramo = (now.hour * 60 + now.minute) ~/ 30 + 1;
+  final enElDia = (tramo * 30) % (24 * 60);
+  return (hour: enElDia ~/ 60, minute: enElDia % 60);
+}
+
 /// Límites del `showDatePicker`: hoy y hoy+89, los dos como fecha LOCAL a
 /// medianoche (ver [offeredMaxDays]).
 ///

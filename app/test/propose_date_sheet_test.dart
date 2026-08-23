@@ -171,6 +171,71 @@ void main() {
     expect(resultado?.startsAt.isUtc, isFalse);
   });
 
+  testWidgets('el reloj se abre en la SIGUIENTE media hora, no en la de ahora',
+      (t) async {
+    // EL CAMINO MÁS COMÚN, y el que estaba roto: «hoy, un rato más tarde». El
+    // reloj se abría en `TimeOfDay.fromDateTime(now)` —las 10:00— y aceptarlo
+    // TAL CUAL, sin tocar nada, sacaba el aviso rojo: `isSlotInPast` corta con
+    // `<=` porque la RPC exige futuro estricto. O sea que la pantalla ponía al
+    // usuario encima de un valor inválido y luego le reñía por aceptarlo.
+    //
+    // Se acepta sin tocar nada A PROPÓSITO: es lo que hace que este caso mida
+    // la hora de ARRANQUE. Con el bug puesto sale «Hora: 10:00 de la mañana» y
+    // el aviso, así que las tres expectativas de abajo caen a la vez.
+    surfaceAlta(t);
+    await t.pumpWidget(host(loadHours: lunesNueveACinco));
+    await abrir(t);
+    await elegirDia(t); // hoy, 24/08/2026, con el reloj de la hoja en las 10:00
+
+    await t.tap(find.byKey(const Key('appt.time')));
+    await t.pumpAndSettle();
+    await t.tap(find.text('ACEPTAR'));
+    await t.pumpAndSettle();
+
+    expect(find.text('Hora: 10:30 de la mañana'), findsOneWidget);
+    expect(find.byKey(const Key('appt.past')), findsNothing);
+    expect(t.widget<FilledButton>(botonProponer()).onPressed, isNotNull);
+  });
+
+  testWidgets('el aviso de hora pasada se ANUNCIA al lector de pantalla',
+      (t) async {
+    // El aviso APARECE de golpe, lejos del foco (se acaba de cerrar el reloj) y
+    // es la única razón por la que «Proponer fecha» está apagado. Como `Text`
+    // pelado no se anuncia solo: con TalkBack el usuario se quedaba con el
+    // botón muerto y sin explicación. Las fichas que había antes daban esto
+    // gratis —una ficha deshabilitada anuncia su estado—, así que al cambiarlas
+    // por un reloj se perdió sin que se notara.
+    surfaceAlta(t);
+    final semantica = t.ensureSemantics();
+    await t.pumpWidget(host(loadHours: lunesNueveACinco));
+    await abrir(t);
+    await elegirDia(t);
+    await elegirHora(t, hora: '9', minuto: '30', periodo: 'a.m.');
+
+    expect(
+      t.getSemantics(find.byKey(const Key('appt.past'))),
+      matchesSemantics(
+        label: 'Esa hora ya pasó. Elige una más tarde o cambia el día.',
+        isLiveRegion: true,
+      ),
+    );
+
+    // Y el CONTROL, sin el cual lo de arriba solo diría «hay una bandera
+    // puesta»: el eco de «Se propondrá para…» NO es región viva. Marcar todo
+    // como live region es tan inútil como no marcar nada — el lector
+    // interrumpiría a cada tecla. Aquí se ve que la bandera es una elección.
+    await elegirHora(t, hora: '10', minuto: '30', periodo: 'a.m.');
+    expect(
+      t
+          .getSemantics(find.textContaining('Se propondrá para'))
+          .getSemanticsData()
+          .flagsCollection
+          .isLiveRegion,
+      isFalse,
+    );
+    semantica.dispose();
+  });
+
   testWidgets('una hora YA PASADA no se puede proponer, y no se pierde',
       (t) async {
     // Con un reloj libre no se puede «apagar» una hora como se apagaba una

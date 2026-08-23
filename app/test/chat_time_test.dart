@@ -14,6 +14,15 @@ void main() {
     // ⚠️ Este formateador es SOLO para la prosa de la fecha pautada. El sello
     // de cada burbuja del chat sigue con `formatTimeHM` a propósito: ver el
     // comentario de las dos funciones en `domain/chat_time.dart`.
+    //
+    // 🔴 Y HAY UN TERCER ESPEJO, que no es de código sino de SQL: los textos de
+    // las notificaciones (push y bandeja) los escribe `hora_rd_en_prosa` en la
+    // base de datos, y su caso 4.16 de `scripts/verify-fecha-pautada.sql`
+    // pincha EXACTAMENTE estas mismas cadenas. Es lo que impide que la
+    // notificación y la tarjeta digan cosas distintas en la misma pantalla — la
+    // queja del PO que abrió toda esta tanda. Si se cambia una cadena de aquí,
+    // hay que cambiarla ahí; si no, ese caso se pone rojo (que es lo que se
+    // quiere).
     String f(int h, int m) =>
         formatTimeWithDayPart(DateTime(2026, 7, 17, h, m));
 
