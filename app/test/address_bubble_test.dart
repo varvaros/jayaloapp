@@ -15,6 +15,8 @@ Widget _host(ChatMessage m) => MaterialApp(
             onImageTap: (_) {},
             onQuickAnswer: (_, _) {},
             canAnswerQuick: false,
+            onAppointmentAction: (_, _) {},
+            isProvider: false,
           ),
         ),
       ),

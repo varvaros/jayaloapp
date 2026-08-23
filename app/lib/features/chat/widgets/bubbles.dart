@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../shared/network_image.dart';
+import '../../../domain/appointment.dart';
 import '../../../domain/chat.dart';
 import '../../../domain/chat_time.dart';
 import '../../../domain/geo.dart';
@@ -41,6 +42,24 @@ Widget buildBubble(
   required void Function(String src) onImageTap,
   required void Function(ChatMessage, String) onQuickAnswer,
   required bool canAnswerQuick,
+
+  /// Acción tocada en una tarjeta de fecha pautada. `action` ∈ 'confirm' |
+  /// 'cancel' | 'propose_again' | 'calendar'; las dos primeras van a la RPC
+  /// `respond_scheduled_date`, las otras dos son LOCALES de la app (abrir la
+  /// hoja de proponer / abrir Google Calendar).
+  required void Function(AppointmentPayload, String) onAppointmentAction,
+
+  /// ¿Quien mira es el PROVEEDOR de esta conversación? La tarjeta de
+  /// seguimiento («¿se realizó?») la escribe el servidor con `sender_id` NULL,
+  /// así que `own` es false para las DOS partes y es el único dato que
+  /// distingue quién responde. Se pide ya (Task 5) para no cambiar la firma —
+  /// y con ella todos los llamadores— otra vez en la Task 12.
+  required bool isProvider,
+
+  /// Conversación abierta: con ella cerrada no se pinta ninguna acción que
+  /// escriba (el servidor las rechazaría con «Esta conversación está cerrada»).
+  bool conversationOpen = true,
+
   /// URLs firmadas de las fotos guardadas en el bucket privado, indexadas por su
   /// marcador `chat-media:`. Vacío mientras la firma está en vuelo.
   Map<String, String> signedChatImages = const {},
@@ -125,6 +144,100 @@ Widget buildBubble(
         ),
       );
     }
+  } else if (m.kind == 'appointment') {
+    // El body es JSON que escribe SOLO el servidor (RPCs de
+    // `20260823071753_fecha_pautada_nucleo`): aquí se lee y se pinta, nunca se
+    // escribe a mano. Una acción llama a la RPC y el propio servidor reescribe
+    // el body; el repintado llega por el UPDATE de realtime.
+    final a = parseAppointment(m.body);
+    if (a == null) return const SizedBox.shrink();
+    final apBg = own ? cs.primary : pal.peer;
+    final apInk = own ? Colors.white : pal.ink;
+    // Estados terminales: la tarjeta sigue ahí (es historia del trato) pero
+    // baja de peso, como en la web.
+    final spent = a.status == 'superseded' ||
+        a.status == 'cancelled' ||
+        a.status == 'expired';
+    inner = Opacity(
+      opacity: spent ? .7 : 1,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+        ),
+        decoration: BoxDecoration(
+          color: apBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: (own ? Colors.white : cs.primary).withValues(alpha: .35),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (a.status == 'followup')
+              // Task 12 enciende los botones «Sí / No» (y ahí entra
+              // `isProvider`, que dice cuál de las dos partes contesta). Por
+              // ahora solo la pregunta: un botón que no hace nada es peor que
+              // su ausencia.
+              Text(
+                '¿Se realizó «${a.subject}»?',
+                style: TextStyle(fontWeight: FontWeight.w600, color: apInk),
+              )
+            else ...[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.event_outlined, size: 15, color: apInk),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      'Fecha pautada para ${a.subject}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: apInk,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              // SIEMPRE por el formateador: aplica el huso fijo de RD (UTC-4)
+              // por dentro. Nunca corregir la zona aquí.
+              Text(
+                formatAppointmentDate(a.startsAtUtc),
+                style: TextStyle(fontSize: 14.5, color: apInk),
+              ),
+              const SizedBox(height: 8),
+              ..._appointmentActions(
+                a,
+                cs: cs,
+                own: own,
+                ink: apInk,
+                open: conversationOpen,
+                // El proponente solo se puede COTEJAR con quien mira a través
+                // de `own`, que sale de `sender_id`. Si la tarjeta no tiene
+                // remitente, el proponente es DESCONOCIDO: dar por hecho «no
+                // es mía» le enseñaría «Confirmar» a las DOS partes y una se
+                // comería el «La otra parte es quien confirma la fecha» del
+                // servidor. Misma reja que `canRespond` en
+                // `AppointmentBubble.tsx`.
+                proposerKnown: m.senderId != null,
+                onAction: onAppointmentAction,
+              ),
+            ],
+            Text(
+              timeStr,
+              style: TextStyle(
+                fontSize: 10,
+                color: own ? Colors.white.withValues(alpha: .7) : stampColor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   } else if (m.kind == 'quick') {
     final p = parseQuick(m.body);
     if (p == null) return const SizedBox.shrink();
@@ -308,6 +421,127 @@ Widget buildBubble(
           : [avatar, const SizedBox(width: 6), Flexible(child: inner)],
     ),
   );
+}
+
+/// Botón de una tarjeta de fecha pautada, con los MISMOS colores de estado que
+/// la rama `quick`: sin `disabledForegroundColor`/`disabledBackgroundColor`
+/// explícitos, Material desvanece el texto a su gris por defecto (onSurface
+/// .38) e IGNORA el foreground — sobre la burbuja violeta eso deja la acción
+/// ilegible. Ya mordió antes en este proyecto, así que se fijan siempre aunque
+/// hoy ningún botón de la tarjeta nazca deshabilitado.
+Widget _apButton(
+  String label, {
+  required bool primary,
+  required bool own,
+  required Color ink,
+  required ColorScheme cs,
+  required VoidCallback onPressed,
+  IconData? icon,
+}) {
+  final bg = primary
+      ? (own ? Colors.white : cs.primary)
+      : Colors.transparent;
+  final fg = primary ? (own ? cs.primary : Colors.white) : ink;
+  final style = OutlinedButton.styleFrom(
+    visualDensity: VisualDensity.compact,
+    side: BorderSide(color: ink.withValues(alpha: own ? .6 : .5)),
+    backgroundColor: bg,
+    foregroundColor: fg,
+    disabledBackgroundColor: bg,
+    disabledForegroundColor: fg.withValues(alpha: .55),
+  );
+  final text = Text(label, style: const TextStyle(fontSize: 12));
+  return icon == null
+      ? OutlinedButton(style: style, onPressed: onPressed, child: text)
+      : OutlinedButton.icon(
+          style: style,
+          onPressed: onPressed,
+          icon: Icon(icon, size: 15),
+          label: text,
+        );
+}
+
+/// Los hijos de la tarjeta que dependen del estado. Lista (no un widget) para
+/// que la columna de la burbuja siga controlando el espaciado.
+List<Widget> _appointmentActions(
+  AppointmentPayload a, {
+  required ColorScheme cs,
+  required bool own,
+  required Color ink,
+  required bool open,
+  required bool proposerKnown,
+  required void Function(AppointmentPayload, String) onAction,
+}) {
+  final noteStyle = TextStyle(fontSize: 11.5, color: ink.withValues(alpha: .7));
+  Widget cancelLink(String label) => TextButton(
+        style: TextButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          foregroundColor: ink.withValues(alpha: .85),
+          disabledForegroundColor: ink.withValues(alpha: .55),
+        ),
+        onPressed: () => onAction(a, 'cancel'),
+        child: Text(label, style: const TextStyle(fontSize: 12)),
+      );
+
+  switch (a.status) {
+    case 'proposed':
+      // `own` es lo que discrimina: quien propuso ESPERA, la otra parte
+      // RESPONDE. (Cotejar `proposedBy` contra `senderId`, como pedía el
+      // borrador de la tarea, siempre da true — el proponente ES el remitente.)
+      if (own) {
+        return [
+          Text('Esperando respuesta…', style: noteStyle),
+          if (open) cancelLink('Cancelar'),
+        ];
+      }
+      if (!proposerKnown || !open) return const [];
+      return [
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            _apButton('Confirmar',
+                primary: true,
+                own: own,
+                ink: ink,
+                cs: cs,
+                onPressed: () => onAction(a, 'confirm')),
+            _apButton('Proponer otra',
+                primary: false,
+                own: own,
+                ink: ink,
+                cs: cs,
+                onPressed: () => onAction(a, 'propose_again')),
+          ],
+        ),
+      ];
+    case 'confirmed':
+      return [
+        Text('✅ Confirmada',
+            style: TextStyle(fontWeight: FontWeight.w600, color: ink)),
+        const SizedBox(height: 6),
+        _apButton('Añadir a Google Calendar',
+            icon: Icons.calendar_month_outlined,
+            primary: false,
+            own: own,
+            ink: ink,
+            cs: cs,
+            onPressed: () => onAction(a, 'calendar')),
+        // Cancelar una fecha YA confirmada lo puede hacer cualquiera de las dos
+        // partes (la RPC no mira quién propuso para 'cancel'), así que aquí no
+        // aplica la reja del proponente desconocido.
+        if (open) cancelLink('Cancelar la fecha'),
+      ];
+    case 'superseded':
+      return [Text('Superada por una nueva propuesta', style: noteStyle)];
+    case 'cancelled':
+      return [Text('Cancelada', style: noteStyle)];
+    case 'expired':
+      return [Text('Expiró sin respuesta', style: noteStyle)];
+    default:
+      return const [];
+  }
 }
 
 /// Abre el enlace del mapa en la app externa (o el navegador si no hay

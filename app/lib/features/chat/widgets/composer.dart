@@ -14,6 +14,7 @@ enum PlusAction {
   sendCurrentLocation,
   sendPhoto,
   sendStoreItem,
+  proposeDate,
 }
 
 /// Acciones del menu «+», por rol. Funcion pura y de nivel superior para poder
@@ -26,6 +27,8 @@ List<(PlusAction, IconData, String)> plusMenuItems({required bool isProvider}) =
             (PlusAction.sendPhoto, Icons.add_photo_alternate_outlined, 'Enviar foto'),
             (PlusAction.sendStoreItem, Icons.storefront_outlined, 'De mi tienda'),
             (PlusAction.sendAddress, Icons.place_outlined, 'Enviar dirección del local'),
+            // Coordinar la entrega/visita es lo que sigue a la dirección.
+            (PlusAction.proposeDate, Icons.event_outlined, 'Fecha pautada'),
             (PlusAction.improveOffer, Icons.bolt_outlined, 'Mejorar oferta (bajar precio)'),
           ]
         : const [
@@ -33,6 +36,7 @@ List<(PlusAction, IconData, String)> plusMenuItems({required bool isProvider}) =
             // La ubicación del MOMENTO va primero: es el caso que motivó la
             // tanda (el cliente que no está en su casa).
             (PlusAction.sendCurrentLocation, Icons.my_location, 'Mi ubicación actual'),
+            (PlusAction.proposeDate, Icons.event_outlined, 'Fecha pautada'),
             (PlusAction.sendLocation, Icons.place_outlined, 'Mi dirección guardada'),
             (PlusAction.sendPhoto, Icons.add_photo_alternate_outlined, 'Enviar foto'),
           ];

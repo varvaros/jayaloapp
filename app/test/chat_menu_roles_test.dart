@@ -64,6 +64,17 @@ void main() {
         ['Mi ubicación actual', 'Mi dirección guardada']));
   });
 
+  test('«Fecha pautada» está en el menú de LAS DOS partes', () {
+    // Cualquiera de los dos puede proponerla: `propose_scheduled_date` solo
+    // exige ser participante de la conversación, así que no es de un rol.
+    for (final isProvider in [true, false]) {
+      final items = plusMenuItems(isProvider: isProvider);
+      expect(items.map((i) => i.$1), contains(PlusAction.proposeDate));
+      expect(items.firstWhere((i) => i.$1 == PlusAction.proposeDate).$3,
+          'Fecha pautada');
+    }
+  });
+
   test('el proveedor NO ve las acciones de ubicacion personal', () {
     // El proveedor manda la direccion de su LOCAL, que es otra accion.
     final acciones = plusMenuItems(isProvider: true).map((i) => i.$1).toList();

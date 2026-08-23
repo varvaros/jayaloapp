@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/geocode_client.dart';
 import '../../data/location_body.dart';
 import '../../data/repos.dart';
+import '../../domain/appointment.dart';
 import '../../domain/chat.dart';
 import '../../domain/chat_session.dart';
 import '../../domain/chat_time.dart';
@@ -22,12 +23,14 @@ import '../../domain/image_pick.dart';
 import '../../domain/improve_offer_error.dart';
 import '../../domain/money.dart';
 import 'widgets/bubbles.dart';
+import 'widgets/calendar_link.dart';
 import 'widgets/chat_dialogs.dart';
 import 'widgets/conversation_actions.dart';
 import 'funnel_status_store.dart';
 import 'opened_conversations.dart';
 import '../shared/brand_kit.dart';
 import 'widgets/composer.dart';
+import 'widgets/propose_date_sheet.dart';
 import 'widgets/rating_form.dart';
 import 'widgets/typing_indicator.dart';
 import '../shared/jayalo_loader.dart';
@@ -668,8 +671,64 @@ class _ChatScreenState extends State<ChatScreen> {
         await _pickAndSendPhoto();
       case PlusAction.sendStoreItem:
         await _pickAndSendStoreItem();
+      case PlusAction.proposeDate:
+        await _openProposeDate();
       case PlusAction.improveOffer:
         _openImproveOffer(); // Task 10
+    }
+  }
+
+  /// Abre la hoja de proponer fecha y manda lo elegido a la RPC. La tarjeta
+  /// llega por el INSERT de realtime: no hay nada optimista que pintar.
+  Future<void> _openProposeDate({String? subject}) async {
+    final conv = _conv;
+    if (conv == null || !_isOpen) return;
+    final res = await showProposeDateSheet(context,
+        convId: widget.conversationId,
+        defaultSubject: subject ??
+            (conv['product_name'] as String?) ??
+            (conv['request_title'] as String?) ??
+            '');
+    if (res == null || !mounted) return;
+    try {
+      await proposeScheduledDate(
+          widget.conversationId, res.subject, res.startsAt);
+    } on PostgrestException catch (e) {
+      // El servidor manda su mensaje YA en español, tanto los P0001 de la RPC
+      // como el JY429 del anti-flood del chat (la tarjeta cuenta como mensaje).
+      // Mismo criterio que `sendFailureMessage`: no inventar un mapeo propio.
+      if (mounted) _snack(e.message);
+    } catch (_) {
+      if (mounted) _snack('No se pudo proponer la fecha. Intenta de nuevo.');
+    }
+  }
+
+  /// Acción tocada en una tarjeta de fecha pautada. 'confirm' y 'cancel' van a
+  /// la RPC; 'propose_again' y 'calendar' son locales de la app.
+  Future<void> _onAppointmentAction(AppointmentPayload a, String action) async {
+    switch (action) {
+      case 'propose_again':
+        await _openProposeDate(subject: a.subject);
+      case 'calendar':
+        // `startsAtUtc` ya es UTC verdadero: se pasa TAL CUAL, sin corregir
+        // ningún huso a mano.
+        await openCalendarLink(
+            context,
+            googleCalendarUrl(
+                subject: a.subject,
+                startsAtUtc: a.startsAtUtc,
+                details: 'Acordada en el chat de Jayalo'));
+      default: // 'confirm' | 'cancel'
+        try {
+          // El UPDATE del body y el cartel `system` llegan por realtime.
+          await respondScheduledDate(a.appointmentId, action);
+        } on PostgrestException catch (e) {
+          if (mounted) _snack(e.message);
+        } catch (_) {
+          if (mounted) {
+            _snack('No se pudo completar la acción. Intenta de nuevo.');
+          }
+        }
     }
   }
 
@@ -1152,6 +1211,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         onImageTap: _openLightbox,
                         onQuickAnswer: _answerQuick,
                         canAnswerQuick: _isOpen,
+                        onAppointmentAction: _onAppointmentAction,
+                        isProvider: _isProvider,
+                        conversationOpen: _isOpen,
                         signedChatImages: _signedChatImages);
                     if (!needsDaySep(ms, i)) return bubble;
                     return Column(children: [

@@ -53,6 +53,11 @@ void main() {
       'lib/features/onboarding/consumer_onboarding_screen.dart', // términos y privacidad
       'lib/features/settings/settings_screen.dart', // términos y privacidad
       'lib/features/chat/widgets/bubbles.dart', // mapas
+      // «Añadir a Google Calendar» de una fecha pautada. El destino es
+      // calendar.google.com/calendar/render: plantilla de evento, sin token de
+      // sesión y sin ninguna vía de pago. Está en su propio fichero justo para
+      // no tener que meter `chat_screen.dart` entero en esta lista.
+      'lib/features/chat/widgets/calendar_link.dart',
       'lib/features/shared/open_in_maps_button.dart', // mapas (Task 11)
       'lib/features/provider/unlock_flow.dart', // wa.me del contacto desbloqueado
       // El editor del negocio. Su destino lleva `?embed=app`, que hace que la
