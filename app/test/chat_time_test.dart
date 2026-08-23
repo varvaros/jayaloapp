@@ -9,6 +9,45 @@ void main() {
     test('medianoche', () => expect(formatTimeHM(DateTime(2026, 7, 17, 0, 30)), '12:30 a. m.'));
     test('mediodia', () => expect(formatTimeHM(DateTime(2026, 7, 17, 12, 0)), '12:00 p. m.'));
   });
+
+  group('formatTimeWithDayPart', () {
+    // ⚠️ Este formateador es SOLO para la prosa de la fecha pautada. El sello
+    // de cada burbuja del chat sigue con `formatTimeHM` a propósito: ver el
+    // comentario de las dos funciones en `domain/chat_time.dart`.
+    String f(int h, int m) =>
+        formatTimeWithDayPart(DateTime(2026, 7, 17, h, m));
+
+    // Las CUATRO fronteras, por parejas: es exactamente donde vive un
+    // desplazamiento de una hora, y donde una traducción ingenua de
+    // «a. m.→mañana / p. m.→tarde» diría la franja equivocada.
+    test('madrugada → mañana (05:59 / 06:00)', () {
+      expect(f(5, 59), '5:59 de la madrugada');
+      expect(f(6, 0), '6:00 de la mañana');
+    });
+
+    test('mañana → tarde (11:59 / 12:00)', () {
+      expect(f(11, 59), '11:59 de la mañana');
+      expect(f(12, 0), '12:00 de la tarde');
+    });
+
+    test('tarde → noche (18:59 / 19:00)', () {
+      expect(f(18, 59), '6:59 de la tarde');
+      expect(f(19, 0), '7:00 de la noche');
+    });
+
+    test('noche → madrugada (23:59 / 00:00)', () {
+      expect(f(23, 59), '11:59 de la noche');
+      expect(f(0, 0), '12:00 de la madrugada');
+    });
+
+    test('las 9 de la noche NO son «9:00 tarde»', () {
+      // El caso que motiva las cuatro franjas: con el reparto de dos mitades
+      // de «a. m./p. m.» esto habría salido como «tarde».
+      expect(f(21, 0), '9:00 de la noche');
+      expect(f(3, 0), '3:00 de la madrugada');
+      expect(f(15, 0), '3:00 de la tarde');
+    });
+  });
   group('dayKey', () {
     test('mismo dia distinta hora', () => expect(
         dayKey(DateTime(2026, 7, 17, 1)), dayKey(DateTime(2026, 7, 17, 23))));

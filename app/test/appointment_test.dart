@@ -39,14 +39,14 @@ void main() {
       'formatAppointmentDate fija RD (UTC-4) cruzando el día — no puede '
       'coincidir por casualidad con el huso de la máquina que corre el test',
       () {
-    // 2026-08-27T02:00:00Z en UTC-4 (RD) es 2026-08-26 22:00 (10:00 p. m.):
+    // 2026-08-27T02:00:00Z en UTC-4 (RD) es 2026-08-26 22:00 (10 de la noche):
     // día calendario Y meridiano distintos del UTC crudo. Si el corrimiento
     // de -4h se borrara, o se reintrodujera `.toLocal()` (que aquí no
     // depende del reloj del SO en absoluto, así que no hay huso de máquina
     // que pueda hacer coincidir el resultado por accidente), saldría
-    // "27 ago, 2:00 a. m." — una cadena totalmente distinta.
+    // "27 ago, 2:00 de la madrugada" — una cadena totalmente distinta.
     final utc = DateTime.utc(2026, 8, 27, 2, 0);
-    expect(formatAppointmentDate(utc), '26 ago, 10:00 p. m.');
+    expect(formatAppointmentDate(utc), '26 ago, 10:00 de la noche');
   });
 
   test('googleCalendarUrl arma el render link con fechas UTC básicas', () {

@@ -130,19 +130,23 @@ void main() {
   });
 
   group('slotLabel', () {
-    test('pinta la hora en 12 h español, igual que la tarjeta', () {
+    test('pinta la hora en prosa, igual que la tarjeta', () {
       // Antes devolvía "09:00" mientras la tarjeta del chat decía
-      // "9:00 a. m.": la app se contradecía a sí misma. Ahora las dos salen
-      // del MISMO `formatTimeHM`.
-      expect(slotLabel('09:00', false), '9:00 a. m.');
-      expect(slotLabel('15:00', false), '3:00 p. m.');
-      expect(slotLabel('00:00', false), '12:00 a. m.');
-      expect(slotLabel('12:30', false), '12:30 p. m.');
-      expect(slotLabel('23:45', false), '11:45 p. m.');
+      // "9:00 de la mañana": la app se contradecía a sí misma. Ahora las dos
+      // salen del MISMO `formatTimeWithDayPart`.
+      expect(slotLabel('09:00', false), '9:00 de la mañana');
+      expect(slotLabel('15:00', false), '3:00 de la tarde');
+      expect(slotLabel('00:00', false), '12:00 de la madrugada');
+      expect(slotLabel('12:30', false), '12:30 de la tarde');
+      expect(slotLabel('23:45', false), '11:45 de la noche');
+      // Las cuatro fronteras están fijadas en `chat_time_test.dart`; aquí solo
+      // se comprueba que el selector usa ESE formateador y no otro.
+      expect(slotLabel('05:59', false), '5:59 de la madrugada');
+      expect(slotLabel('19:00', false), '7:00 de la noche');
     });
 
     test('anota solo lo que está fuera de horario', () {
-      expect(slotLabel('09:00', true), '9:00 a. m. (fuera de horario)');
+      expect(slotLabel('09:00', true), '9:00 de la mañana (fuera de horario)');
     });
 
     test('una hora que no se puede leer se devuelve tal cual', () {

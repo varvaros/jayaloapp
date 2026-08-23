@@ -156,12 +156,16 @@ bool isSlotOutsideHours(String slot, DayHours? dayHours) {
   return at >= close && at < open;
 }
 
-/// Cómo se LEE una hora elegida: 12 h en español, y la anotación de «fuera de
-/// horario» detrás si toca.
+/// Cómo se LEE una hora elegida: en prosa y con la franja del día, más la
+/// anotación de «fuera de horario» detrás si toca.
 ///
-/// El formato sale de [formatTimeHM], el MISMO que pinta la tarjeta del chat;
-/// no hay un segundo formateador. Antes esto devolvía "15:00" mientras la
-/// tarjeta de al lado decía "3:00 p. m." y la app se contradecía sola.
+/// El formato sale de [formatTimeWithDayPart], el MISMO que pinta la tarjeta
+/// del chat (vía `formatAppointmentDate`); no hay un segundo formateador.
+/// Antes esto devolvía "15:00" mientras la tarjeta de al lado decía
+/// "3:00 p. m." y la app se contradecía sola.
+///
+/// La fecha del ancla es irrelevante y nunca sale de aquí: la hora del
+/// formulario es una hora de PARED, no un instante.
 ///
 /// Una hora que no se puede leer se devuelve tal cual: la anotación es
 /// cosmética y quien de verdad frena una hora imposible es [localStartsAt].
@@ -169,7 +173,7 @@ String slotLabel(String slot, bool outside) {
   final hm = slotHm(slot);
   final texto = hm == null
       ? slot
-      : formatTimeHM(DateTime(2000, 1, 1, hm.hour, hm.minute));
+      : formatTimeWithDayPart(DateTime(2000, 1, 1, hm.hour, hm.minute));
   return outside ? '$texto (fuera de horario)' : texto;
 }
 

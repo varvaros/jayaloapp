@@ -7,12 +7,52 @@ import 'appointment.dart';
 
 const _months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 
-/// "3:45 p. m." — hora 12h como es-DO.
+/// "3:45 p. m." — hora 12h como es-DO, COMPACTA.
+///
+/// Es el sello de tiempo de la interfaz: va en cada burbuja del chat (a 10 px),
+/// en la lista de conversaciones y en «Publicada: …». Ahí lo que se quiere es
+/// algo corto que se lea de un vistazo, no una frase.
+///
+/// ⚠️ NO unificar con [formatTimeWithDayPart]: son dos registros distintos a
+/// propósito, y el motivo está escrito en el comentario de esa otra función.
 String formatTimeHM(DateTime d) {
   final h12 = ((d.hour + 11) % 12) + 1;
   final mm = d.minute.toString().padLeft(2, '0');
   final suffix = d.hour < 12 ? 'a. m.' : 'p. m.';
   return '$h12:$mm $suffix';
+}
+
+/// Franja del día en el habla dominicana, para una hora de 0 a 23.
+///
+/// 🔴 Son CUATRO, no dos. «a. m./p. m.» parte el día por la mitad; las franjas
+/// del español NO. Traducir «a. m.→de la mañana / p. m.→de la tarde» diría la
+/// hora MAL: las 21:00 no son «las 9 de la tarde» sino de la NOCHE, y las 03:00
+/// no son «las 3 de la mañana» sino de la MADRUGADA. Los cortes son los del uso
+/// dominicano y están fijados por pruebas en las cuatro fronteras.
+String dayPartLabel(int hour) {
+  if (hour < 6) return 'de la madrugada';
+  if (hour < 12) return 'de la mañana';
+  if (hour < 19) return 'de la tarde';
+  return 'de la noche';
+}
+
+/// "3:45 de la tarde" — hora 12h EN PROSA, con la franja del día.
+///
+/// Pedido del PO (2026-08-23) tras ver el reloj en el teléfono. Es el registro
+/// de la «fecha pautada», donde la hora se LEE como una frase («Se propondrá
+/// para 26 ago, 3:00 de la tarde»), y por eso se puede permitir ser larga.
+///
+/// ⚠️ Vive SOLO en cuatro sitios, y la lista es corta a propósito: la línea de
+/// fecha y hora de la tarjeta de fecha pautada, el botón del reloj de la hoja
+/// de proponer, el eco en hora de RD de esa hoja, y las etiquetas del selector
+/// de hora de la web. Todo lo demás sigue con [formatTimeHM]: un sello de
+/// mensaje pintado a 10 px no puede cuadruplicar de largo, y nadie lee la hora
+/// de un mensaje como prosa. Si alguien viene a «unificar» las dos, esta es la
+/// razón de que sean dos.
+String formatTimeWithDayPart(DateTime d) {
+  final h12 = ((d.hour + 11) % 12) + 1;
+  final mm = d.minute.toString().padLeft(2, '0');
+  return '$h12:$mm ${dayPartLabel(d.hour)}';
 }
 
 /// Clave de agrupación por día calendario.

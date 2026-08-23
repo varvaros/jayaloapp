@@ -89,12 +89,17 @@ const _mesesCortos = [
 /// romperían juntas del mismo modo — quien edite una debe revisar la otra.
 const _rdOffset = Duration(hours: 4);
 
-/// "26 ago, 3:00 p. m." — SIEMPRE en la zona fija de RD (UTC-4), nunca la
-/// del dispositivo. [utc] debe ser un instante UTC real, como
+/// "26 ago, 3:00 de la tarde" — SIEMPRE en la zona fija de RD (UTC-4), nunca
+/// la del dispositivo. [utc] debe ser un instante UTC real, como
 /// [AppointmentPayload.startsAtUtc].
+///
+/// La hora va EN PROSA, con la franja del día, vía [formatTimeWithDayPart]
+/// (pedido del PO 2026-08-23). Aquí cabe porque esta línea se lee como una
+/// frase; el sello de 10 px de cada burbuja sigue con `formatTimeHM`.
 String formatAppointmentDate(DateTime utc) {
   final rd = utc.toUtc().subtract(_rdOffset);
-  return '${rd.day} ${_mesesCortos[rd.month - 1]}, ${formatTimeHM(rd)}';
+  return '${rd.day} ${_mesesCortos[rd.month - 1]}, '
+      '${formatTimeWithDayPart(rd)}';
 }
 
 String appointmentPreview(String body) {

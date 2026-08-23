@@ -91,8 +91,8 @@ void main() {
       (t) async {
     await t.pumpWidget(host(_msg(_body('proposed')), own: false));
     expect(tarjeta, findsOneWidget);
-    // La hora sale SIEMPRE en RD (UTC-4): 19:00Z = 3:00 p. m.
-    expect(find.text('26 ago, 3:00 p. m.'), findsOneWidget);
+    // La hora sale SIEMPRE en RD (UTC-4): 19:00Z = 3:00 de la tarde.
+    expect(find.text('26 ago, 3:00 de la tarde'), findsOneWidget);
     expect(confirmar, findsOneWidget);
     expect(proponerOtra, findsOneWidget);
     expect(find.text('Esperando respuesta…'), findsNothing);
@@ -198,7 +198,7 @@ void main() {
       // Misma fecha que el resto de la tarjeta (RD, UTC-4): con varias
       // propuestas en la conversación el asunto solo no basta para saber a
       // cuál responde el seguimiento.
-      expect(find.text('26 ago, 3:00 p. m.'), findsOneWidget);
+      expect(find.text('26 ago, 3:00 de la tarde'), findsOneWidget);
       expect(tarjeta, findsNothing);
       expect(si, findsOneWidget);
       expect(no, findsOneWidget);

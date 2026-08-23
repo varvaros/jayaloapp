@@ -145,10 +145,14 @@ class _ProposeDateSheetBodyState extends State<ProposeDateSheetBody> {
       // `timeOfDayFormat: "H:mm"` (24 h) para TODOS los `es_*` menos `es_US`,
       // así que un reloj en `es` o `es_DO` saldría en 24 h — justo el formato
       // que el PO quiere fuera, y el que contradice a la tarjeta del chat
-      // («3:00 p. m.»). `Localizations.override` cambia el idioma SOLO de
-      // este diálogo: los textos siguen siendo los mismos del español
-      // («Cancelar», «ACEPTAR», «a. m.», «p. m.»), lo único que cambia es que
+      // («3:00 de la tarde»). `Localizations.override` cambia el idioma SOLO
+      // de este diálogo: los textos siguen siendo los mismos del español
+      // («Cancelar», «ACEPTAR», «a.m.», «p.m.»), lo único que cambia es que
       // el reloj se pinta de 1 a 12 con AM/PM.
+      //
+      // El conmutador del diálogo dice «a.m./p.m.» y NO las cuatro franjas:
+      // eso es lo que trae Material y no hay gancho para cambiarlo. El texto
+      // que se queda en pantalla —el botón de aquí abajo— sí las usa.
       //
       // El `alwaysUse24HourFormat: false` es la otra mitad: si el teléfono
       // tiene puesto el reloj de 24 h, Material lo impone por encima del

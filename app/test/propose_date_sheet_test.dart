@@ -156,12 +156,13 @@ void main() {
     // `timestamptz` que le llegue).
     await elegirHora(t, hora: '3', minuto: '45', periodo: 'p.m.');
     // La hora elegida se LEE en 12 h, igual que la tarjeta del chat. Antes el
-    // selector decía "15:45" y la tarjeta de al lado "3:45 p. m.".
-    expect(find.text('Hora: 3:45 p. m.'), findsOneWidget);
+    // selector decía "15:45" y la tarjeta de al lado "3:45 de la tarde".
+    expect(find.text('Hora: 3:45 de la tarde'), findsOneWidget);
     // El instante elegido se devuelve en hora de RD ANTES de mandarlo, para
     // que un teléfono con otro huso enseñe el desfase aquí y no en la tarjeta.
     expect(find.textContaining('hora de República Dominicana.'), findsOneWidget);
-    expect(find.textContaining('3:45 p. m.'), findsNWidgets(2)); // botón + eco
+    expect(find.textContaining('3:45 de la tarde'),
+        findsNWidgets(2)); // botón + eco
 
     await t.tap(botonProponer());
     await t.pumpAndSettle();
@@ -187,7 +188,7 @@ void main() {
         findsOneWidget);
     expect(t.widget<FilledButton>(botonProponer()).onPressed, isNull);
     // Lo elegido NO se borra: sigue en el botón, listo para corregirlo.
-    expect(find.text('Hora: 9:30 a. m.'), findsOneWidget);
+    expect(find.text('Hora: 9:30 de la mañana'), findsOneWidget);
     // Y no se anuncia una propuesta que no se puede hacer.
     expect(find.textContaining('Se propondrá para'), findsNothing);
 
@@ -213,7 +214,7 @@ void main() {
     await elegirDia(t, dia: 24); // hoy, con el reloj de la hoja en las 10:00
     expect(find.byKey(const Key('appt.past')), findsOneWidget);
     expect(t.widget<FilledButton>(botonProponer()).onPressed, isNull);
-    expect(find.text('Hora: 9:30 a. m.'), findsOneWidget); // no se perdió
+    expect(find.text('Hora: 9:30 de la mañana'), findsOneWidget); // no se perdió
   });
 
   testWidgets('lo fuera de horario solo se ANOTA: se puede proponer igual',
@@ -226,7 +227,8 @@ void main() {
     await elegirDia(t);
 
     await elegirHora(t, hora: '6', minuto: '00', periodo: 'p.m.');
-    expect(find.text('Hora: 6:00 p. m. (fuera de horario)'), findsOneWidget);
+    expect(find.text('Hora: 6:00 de la tarde (fuera de horario)'),
+        findsOneWidget);
     expect(t.widget<FilledButton>(botonProponer()).onPressed, isNotNull);
     expect(find.textContaining('Horario publicado ese día: 09:00 a 17:00'),
         findsOneWidget);
@@ -245,7 +247,7 @@ void main() {
 
     await elegirHora(t, hora: '6', minuto: '00', periodo: 'p.m.');
     expect(t.takeException(), isNull);
-    expect(find.text('Hora: 6:00 p. m.'), findsOneWidget);
+    expect(find.text('Hora: 6:00 de la tarde'), findsOneWidget);
     expect(find.textContaining('(fuera de horario)'), findsNothing);
     expect(find.textContaining('Horario publicado'), findsNothing);
     expect(t.widget<FilledButton>(botonProponer()).onPressed, isNotNull);
