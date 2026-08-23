@@ -986,7 +986,12 @@ class _SectionJump extends StatelessWidget {
                         fontSize: 12,
                         // Pesos ligeros, doctrina estética: nada de 700+.
                         fontWeight: FontWeight.w600,
-                        color: cs.primary,
+                        // Gris, no violeta (pedido PO 2026-08-22). Y el MISMO
+                        // gris que `SectionHeader` (`onSurfaceVariant`): la
+                        // tira y los títulos a los que lleva hablan igual. El
+                        // violeta se reserva para la acción, y esto es
+                        // navegación.
+                        color: cs.onSurfaceVariant,
                       ),
                     ),
                   ),
