@@ -162,6 +162,13 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     widget.markSeen(offerId);
   }
 
+  // Anclas de las tres secciones, para el salto rápido de abajo del
+  // segmentado. Son `GlobalKey` porque `Scrollable.ensureVisible` necesita el
+  // `BuildContext` YA MONTADO del encabezado al que se salta.
+  final _kAceptadas = GlobalKey();
+  final _kPendientes = GlobalKey();
+  final _kHistorial = GlobalKey();
+
   /// Verde para el SALDO de créditos: el crédito disponible es algo positivo,
   /// no una advertencia (pedido PO: "los créditos en verde; amarillo/naranja =
   /// advertencia"). El ámbar se reserva para "te aceptaron, desbloquea".
@@ -189,6 +196,13 @@ class _MyOffersScreenState extends State<MyOffersScreen>
               (o['status'] == 'accepted' && o['unlocked_at'] != null),
         )
         .toList();
+    // Las secciones que EXISTEN ahora mismo: no se ofrece saltar a un
+    // encabezado que la lista no va a pintar. "Pendientes" siempre está.
+    final saltos = <(String, GlobalKey)>[
+      if (toUnlock.isNotEmpty) ('Aceptadas', _kAceptadas),
+      ('Pendientes', _kPendientes),
+      if (rest.isNotEmpty) ('Historial', _kHistorial),
+    ];
     return Scaffold(
       body: Column(
         children: [
@@ -217,6 +231,15 @@ class _MyOffersScreenState extends State<MyOffersScreen>
               onChanged: (i) => setState(() => _tab = i),
             ),
           ),
+          // Salto rápido a cada sección (pedido PO 2026-08-22). La lista es
+          // larga —cartera, aceptadas, pendientes e historial— y llegar al
+          // final costaba varios dedos de scroll.
+          //
+          // Solo en "Mis ofertas": "Mis pedidos" es otra pantalla incrustada,
+          // con sus propias secciones. Y solo si hay MÁS DE UNA a la que ir:
+          // una píldora suelta que te lleva a donde ya estás es ruido.
+          if (_tab == 0 && !_loading && saltos.length > 1)
+            _SectionJump(items: saltos),
           Expanded(
             child: _tab == 1
                 // La pantalla del cliente en modo incrustado: mismas tarjetas,
@@ -227,7 +250,26 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                     ? const JayaloLoaderBlock()
                     : JayaloRefresh(
                         onRefresh: _refetch,
-                        child: ListView(
+                        // `SingleChildScrollView` + `Column` y NO `ListView`:
+                        // el salto a secciones lo exige. `ListView` monta solo
+                        // lo visible, así que el ancla de "Historial" no
+                        // existía todavía y `Scrollable.ensureVisible` no tenía
+                        // a dónde ir — la tira fallaba EN SILENCIO justo con
+                        // las listas largas, que son las que la necesitan (lo
+                        // cazó su test, no el device).
+                        //
+                        // El coste es acotado: `_buildOfferList` ya construía
+                        // TODAS las tarjetas en cada rebuild, así que lo único
+                        // que se añade es montarlas. Son las ofertas de UN
+                        // proveedor, y la cascada escalonada de entrada ya
+                        // asume una lista de ese tamaño. Si algún día un
+                        // proveedor acumula cientos, esto es lo primero que hay
+                        // que volver perezoso (y entonces el salto necesita
+                        // `scrollable_positioned_list`).
+                        child: SingleChildScrollView(
+                          // Sin esto el pull-to-refresh muere cuando el
+                          // contenido no llena la pantalla.
+                          physics: const AlwaysScrollableScrollPhysics(),
                           padding: EdgeInsets.only(
                             top: 12,
                             bottom: 12 + navBarReservedSpace(context),
@@ -236,7 +278,10 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                           // igual que Solicitudes y Catálogo: `_ci` es el
                           // índice corrido para escalonar el stagger de arriba
                           // hacia abajo.
-                          children: _buildOfferList(toUnlock, pending, rest),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: _buildOfferList(toUnlock, pending, rest),
+                          ),
                         ),
                       ),
           ),
@@ -268,13 +313,18 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     );
     if (toUnlock.isNotEmpty) {
       children.add(
-        const SectionHeader(text: '🏆 ¡Te aceptaron! Desbloquea el contacto'),
+        SectionHeader(
+          key: _kAceptadas,
+          text: '🏆 ¡Te aceptaron! Desbloquea el contacto',
+        ),
       );
       for (final o in toUnlock) {
         children.add(_acceptedCard(o).cascadeIn(ci++));
       }
     }
-    children.add(SectionHeader(text: 'Pendientes (${pending.length})'));
+    children.add(
+      SectionHeader(key: _kPendientes, text: 'Pendientes (${pending.length})'),
+    );
     if (pending.isEmpty && toUnlock.isEmpty) {
       children.add(
         const Padding(
@@ -289,7 +339,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
       children.add(_offerCard(o).cascadeIn(ci++));
     }
     if (rest.isNotEmpty) {
-      children.add(const SectionHeader(text: 'Historial'));
+      children.add(SectionHeader(key: _kHistorial, text: 'Historial'));
     }
     for (final o in rest) {
       children.add(_offerCard(o).cascadeIn(ci++));
@@ -880,4 +930,71 @@ class _JayiCoinPainter extends CustomPainter {
   @override
   bool shouldRepaint(_JayiCoinPainter old) =>
       old.bob != bob || old.fx != fx;
+}
+
+/// Tira de salto a las secciones de Mis ofertas.
+///
+/// NO es un filtro y no tiene estado seleccionado: no esconde nada, solo lleva
+/// la vista al encabezado. Por eso son píldoras sueltas y no un
+/// [PillSegmented], que promete "estás en esta pestaña" — prometer eso y no
+/// cumplirlo es peor que no tener la tira.
+class _SectionJump extends StatelessWidget {
+  const _SectionJump({required this.items});
+
+  /// Etiqueta y ancla de cada sección, en el orden en que aparecen abajo.
+  final List<(String, GlobalKey)> items;
+
+  void _jump(BuildContext context, GlobalKey key) {
+    // Si la sección se fue entre el pintado y el toque (una recarga a
+    // destiempo), no hay a dónde ir: mejor no hacer nada que reventar.
+    final target = key.currentContext;
+    if (target == null) return;
+    JayaloHaptics.tabChange();
+    Scrollable.ensureVisible(
+      target,
+      // Con "reducir animaciones" el salto es seco: el movimiento aquí es
+      // cortesía, y la orden del usuario es llegar.
+      duration: JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.page,
+      curve: Curves.easeOut,
+      // 0 = el encabezado queda pegado arriba del área visible.
+      alignment: 0,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Row(
+        children: [
+          for (final (label, key) in items)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Material(
+                color: cs.primary.withValues(alpha: .10),
+                borderRadius: BorderRadius.circular(999),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => _jump(context, key),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        // Pesos ligeros, doctrina estética: nada de 700+.
+                        fontWeight: FontWeight.w600,
+                        color: cs.primary,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
