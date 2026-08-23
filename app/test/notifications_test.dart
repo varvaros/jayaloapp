@@ -42,6 +42,18 @@ void main() {
         expect(familyFor(k), NotifFamily.system, reason: k);
       }
     });
+    // Son avisos de una cita pautada en un chat y su link abre ese chat: van
+    // con los mensajes, no en "sistema" (que es donde caerían por defecto al
+    // no matchear ningún prefijo de arriba).
+    test('appointment_* es familia mensajes', () {
+      for (final k in [
+        'appointment_proposed', 'appointment_confirmed',
+        'appointment_cancelled', 'appointment_reminder',
+        'appointment_followup',
+      ]) {
+        expect(familyFor(k), NotifFamily.messages, reason: k);
+      }
+    });
   });
 
   group('iconFor', () {
@@ -59,6 +71,17 @@ void main() {
     test('kind desconocido usa el fallback de su familia', () {
       expect(iconFor('wallet_algo_nuevo'), Icons.account_balance_wallet_outlined);
       expect(iconFor('cualquier_cosa'), Icons.notifications_none);
+    });
+    // Icono propio de calendario, distinto del fallback de "mensajes"
+    // (Icons.chat_bubble_outline) al que caerían si no tuvieran caso explícito.
+    test('appointment_* usa el icono de calendario', () {
+      for (final k in [
+        'appointment_proposed', 'appointment_confirmed',
+        'appointment_cancelled', 'appointment_reminder',
+        'appointment_followup',
+      ]) {
+        expect(iconFor(k), Icons.event_outlined, reason: k);
+      }
     });
   });
 

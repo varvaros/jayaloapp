@@ -25,6 +25,9 @@ NotifFamily familyFor(String kind) {
   }
   if (kind.startsWith('wallet_')) return NotifFamily.wallet;
   if (kind.startsWith('review_')) return NotifFamily.reviews;
+  // La fecha pautada se propone/confirma/cancela dentro de un chat y su link
+  // abre ese chat: va con los mensajes, no en "sistema".
+  if (kind.startsWith('appointment_')) return NotifFamily.messages;
   return NotifFamily.system;
 }
 
@@ -56,6 +59,12 @@ IconData iconFor(String kind) => switch (kind) {
       // como `message_new` con el título "Nuevo mensaje".
       'conversation_completed' => Icons.check_circle_outline,
       'conversation_closed_inactivity' => Icons.hourglass_disabled,
+      'appointment_proposed' ||
+      'appointment_confirmed' ||
+      'appointment_cancelled' ||
+      'appointment_reminder' ||
+      'appointment_followup' =>
+        Icons.event_outlined,
       _ => _fallbackIcon(familyFor(kind)),
     };
 
