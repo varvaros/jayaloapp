@@ -1195,19 +1195,34 @@ class _ChatScreenState extends State<ChatScreen> {
                   itemCount: ms.length +
                       (_loadingOlder ? 1 : 0) +
                       (_peerTyping ? 1 : 0),
+                  // Sin esto, la clave del item no conserva nada: el sliver
+                  // guarda sus hijos POR INDICE y, al correrse, tira el que no
+                  // coincide y lo reconstruye. Ver chatItemIndexForKey.
+                  findChildIndexCallback: (key) => chatItemIndexForKey(
+                      key, ms,
+                      peerTyping: _peerTyping, loadingOlder: _loadingOlder),
                   itemBuilder: (context, j) {
                     // Lista invertida: j=0 es el BORDE INFERIOR. El indicador
                     // va justo ahí, debajo del último mensaje, que es donde
                     // aparecería el que el peer está escribiendo. Los demás
                     // índices se corren uno.
+                    //
+                    // Los dos ítems que NO son mensajes llevan clave propia por
+                    // el mismo motivo que `keyedChatItem`: aparecen y
+                    // desaparecen (el indicador entra y sale por el índice 0),
+                    // y sin identidad corren los emparejamientos de todo lo que
+                    // tienen debajo.
                     if (_peerTyping) {
                       if (j == 0) {
-                        return TypingIndicator(peerAvatarUrl: _peerAvatarUrl);
+                        return TypingIndicator(
+                            key: chatTypingKey,
+                            peerAvatarUrl: _peerAvatarUrl);
                       }
                       j -= 1;
                     }
                     if (j >= ms.length) {
                       return const Padding(
+                          key: chatLoadingOlderKey,
                           padding: EdgeInsets.all(12),
                           child: Center(child: JayaloSpinner(size: 18)));
                     }
@@ -1225,24 +1240,30 @@ class _ChatScreenState extends State<ChatScreen> {
                         isProvider: _isProvider,
                         conversationOpen: _isOpen,
                         signedChatImages: _signedChatImages);
-                    if (!needsDaySep(ms, i)) return bubble;
-                    return Column(children: [
-                      Center(
-                          child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 8),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 4),
-                        decoration: BoxDecoration(
-                            color: pal.sys,
-                            borderRadius: BorderRadius.circular(999)),
-                        child: Text(formatDayLabel(m.createdAt),
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: pal.ink.withValues(alpha: .9))),
-                      )),
-                      bubble,
-                    ]);
+                    // La clave del ítem la pone `keyedChatItem` sobre la forma
+                    // FINAL (con separador o sin él): sin identidad estable, un
+                    // mensaje nuevo corre todos los índices y el estado de una
+                    // tarjeta de fecha pautada en vuelo se muda a otra tarjeta.
+                    if (!needsDaySep(ms, i)) return keyedChatItem(m, bubble);
+                    return keyedChatItem(
+                        m,
+                        Column(children: [
+                          Center(
+                              child: Container(
+                            margin: const EdgeInsets.symmetric(vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                                color: pal.sys,
+                                borderRadius: BorderRadius.circular(999)),
+                            child: Text(formatDayLabel(m.createdAt),
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: pal.ink.withValues(alpha: .9))),
+                          )),
+                          bubble,
+                        ]));
                   },
                   ),
                 ),

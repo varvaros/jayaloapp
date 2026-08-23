@@ -33,6 +33,65 @@ chatPalette(BuildContext context) {
         );
 }
 
+/// Identidad ESTABLE de un ítem de la lista de mensajes.
+///
+/// Sin esto, Flutter empareja el estado de los elementos por POSICIÓN y tipo. La
+/// lista del chat va invertida y cada mensaje nuevo entra por el índice 0, así
+/// que TODOS los índices se corren uno: si en ese momento una tarjeta de fecha
+/// pautada tiene su RPC en vuelo, su `_busy` puede aterrizar en OTRA tarjeta del
+/// mismo tipo (y una conversación acumula varias: cada propuesta superada deja
+/// la suya). El síntoma sería una tarjeta que no acepta toques, en un mensaje
+/// que el usuario ni tocó. La rama con separador de día envuelve la burbuja en
+/// un `Column`, lo que además vuelve irregular la secuencia de tipos — otra
+/// forma de que el emparejamiento caiga mal.
+///
+/// Va sobre el ítem COMPLETO (con separador o sin él) para que las dos formas
+/// lleven la misma identidad, y la clave es el ID DEL MENSAJE: el índice es
+/// justo lo que se mueve.
+///
+/// Función compartida a propósito: la usan `ChatScreen` y
+/// `test/chat_list_keys_test.dart`, que reproduce la lista invertida con sus
+/// índices corriéndose.
+Widget keyedChatItem(ChatMessage m, Widget item) =>
+    KeyedSubtree(key: ValueKey(m.id), child: item);
+
+/// Clave del indicador de «está escribiendo» (entra y sale por el índice 0).
+const Key chatTypingKey = Key('chat.typing');
+
+/// Clave del spinner de «cargando más viejos» (aparece al final de la lista).
+const Key chatLoadingOlderKey = Key('chat.loadingOlder');
+
+/// Índice ACTUAL del ítem que lleva [key] — el `findChildIndexCallback` de la
+/// lista de mensajes.
+///
+/// ⚠️ La clave SOLA no basta, y esto se midió: en una lista perezosa el sliver
+/// guarda sus hijos POR ÍNDICE. Cuando los índices se corren, reconstruye el
+/// hijo de ese índice y, como la clave ya no coincide con la del elemento que
+/// estaba ahí, lo TIRA y crea uno nuevo: el estado (`_busy` de la tarjeta de
+/// fecha pautada) se pierde igual que sin clave. `findChildIndexCallback` es lo
+/// que le dice al sliver DÓNDE está ahora el elemento que ya tenía, y solo
+/// entonces la identidad de [keyedChatItem] sirve de algo.
+///
+/// La lista va INVERTIDA: j = 0 es el mensaje más nuevo. Y el indicador de
+/// escritura ocupa el 0 cuando está, corriendo todo lo demás uno.
+int? chatItemIndexForKey(
+  Key key,
+  List<ChatMessage> ms, {
+  required bool peerTyping,
+  required bool loadingOlder,
+}) {
+  final offset = peerTyping ? 1 : 0;
+  if (key == chatTypingKey) return peerTyping ? 0 : null;
+  if (key == chatLoadingOlderKey) {
+    return loadingOlder ? ms.length + offset : null;
+  }
+  if (key is! ValueKey<String>) return null;
+  final i = ms.indexWhere((m) => m.id == key.value);
+  // Un mensaje que ya no está (se recargó la página) devuelve null: el sliver
+  // lo da por ido y construye uno nuevo, que es exactamente lo correcto.
+  return i < 0 ? null : (ms.length - 1 - i) + offset;
+}
+
 Widget buildBubble(
   BuildContext context,
   ChatMessage m, {
