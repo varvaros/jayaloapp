@@ -115,8 +115,8 @@ Widget buildBubble(
   /// ¿Quien mira es el PROVEEDOR de esta conversación? La tarjeta de
   /// seguimiento («¿se realizó?») la escribe el servidor con `sender_id` NULL,
   /// así que `own` es false para las DOS partes y es el único dato que
-  /// distingue quién responde. Se pide ya (Task 5) para no cambiar la firma —
-  /// y con ella todos los llamadores— otra vez en la Task 12.
+  /// distingue quién responde: `isProvider` decide cuál de `doneCustomer` /
+  /// `doneProvider` es «mi lado» y cuál es «la otra parte» — nunca `own`.
   required bool isProvider,
 
   /// Conversación abierta: con ella cerrada no se pinta ninguna acción que
@@ -443,8 +443,8 @@ class _AppointmentCard extends StatefulWidget {
   final bool open;
   final bool proposerKnown;
 
-  /// Lo usará la Task 12 para saber cuál de las dos partes contesta el
-  /// seguimiento (esa tarjeta llega con `sender_id` NULL).
+  /// Cuál de las dos partes contesta el seguimiento («¿se realizó?», esa
+  /// tarjeta llega con `sender_id` NULL así que `own` no sirve para esto).
   final bool isProvider;
   final Future<void> Function(AppointmentPayload, String) onAction;
   final String timeStr;
@@ -576,6 +576,55 @@ class _AppointmentCardState extends State<_AppointmentCard> {
     }
   }
 
+  /// Hijos de la tarjeta de SEGUIMIENTO («¿Se realizó?»). A diferencia de
+  /// [_actions] arriba, NUNCA mira `widget.open`: la RPC
+  /// `answer_scheduled_followup` deliberadamente no exige la conversación
+  /// abierta (la señal de si el trato se cumplió no debe perderse solo porque
+  /// nadie volvió a escribir tras concluirlo), así que imponer esa reja aquí
+  /// reintroduciría justo la restricción que el servidor quitó a propósito —
+  /// asimetría deliberada con confirmar/cancelar.
+  ///
+  /// `isProvider` decide «mi lado» (`doneProvider` si soy proveedor,
+  /// `doneCustomer` si soy cliente) y «la otra parte» (al revés) — NUNCA
+  /// `own`, que aquí es siempre `false` para las dos partes. Un «no» se
+  /// REGISTRA, no se escala: sin disputa, sin cambio de estado, sin aviso a
+  /// la otra parte — el texto no debe sugerir lo contrario.
+  ///
+  /// Mismo copy que el espejo web (`AppointmentBubble.tsx` +
+  /// `followupView` en `src/lib/appointmentFollowup.ts`): «Tu respuesta:
+  /// Sí/No» y «La otra parte: Sí/No» — genérico a propósito, no nombra
+  /// «cliente»/«proveedor» para no sonar a acusación.
+  List<Widget> _followupActions(ColorScheme cs, Color ink) {
+    final a = widget.appointment;
+    final myAnswer = widget.isProvider ? a.doneProvider : a.doneCustomer;
+    final otherAnswer = widget.isProvider ? a.doneCustomer : a.doneProvider;
+    final noteStyle =
+        TextStyle(fontSize: 11.5, color: ink.withValues(alpha: .7));
+    return [
+      if (myAnswer == null)
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            _apButton('Sí',
+                primary: true, ink: ink, cs: cs, action: 'done_yes'),
+            _apButton('No',
+                primary: false, ink: ink, cs: cs, action: 'done_no'),
+          ],
+        )
+      else
+        Text('Tu respuesta: ${myAnswer ? 'Sí' : 'No'}', style: noteStyle),
+      if (otherAnswer != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            'La otra parte: ${otherAnswer ? 'Sí' : 'No'}',
+            style: noteStyle,
+          ),
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -606,15 +655,22 @@ class _AppointmentCardState extends State<_AppointmentCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (a.status == 'followup')
-              // Task 12 enciende los botones «Sí / No» (y ahí entra
-              // `isProvider`). Por ahora solo la pregunta: un botón que no hace
-              // nada es peor que su ausencia.
+            if (a.status == 'followup') ...[
               Text(
                 '¿Se realizó «${a.subject}»?',
                 style: TextStyle(fontWeight: FontWeight.w600, color: ink),
-              )
-            else ...[
+              ),
+              const SizedBox(height: 4),
+              // Misma fecha que el resto de la tarjeta (espejo web): con
+              // varias propuestas en la misma conversación, el asunto solo
+              // no basta para saber a CUÁL de ellas responde el seguimiento.
+              Text(
+                formatAppointmentDate(a.startsAtUtc),
+                style: TextStyle(fontSize: 14.5, color: ink),
+              ),
+              const SizedBox(height: 8),
+              ..._followupActions(cs, ink),
+            ] else ...[
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [

@@ -59,4 +59,16 @@ void main() {
     expect(url, contains('dates=20260826T190000Z%2F20260826T200000Z'));
     expect(url, contains('Jayalo'));
   });
+
+  test(
+      'googleCalendarUrl escribe los segundos REALES del instante — antes '
+      'los fijaba a "00" y adelantaba el evento hasta 59s (bug cruzado con '
+      'la web, que sí escribe getUTCSeconds())', () {
+    final url = googleCalendarUrl(
+      subject: 's',
+      startsAtUtc: DateTime.utc(2026, 8, 26, 19, 0, 45),
+    );
+    expect(url, contains('dates=20260826T190045Z%2F20260826T200045Z'));
+    expect(url, isNot(contains('190000Z')));
+  });
 }

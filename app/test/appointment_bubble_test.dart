@@ -20,6 +20,17 @@ ChatMessage _msg(String body, {String? senderId = 'u1'}) => ChatMessage(
       createdAtRaw: '2026-08-23T12:00:00Z',
     );
 
+/// Cuerpo de una tarjeta de SEGUIMIENTO tal cual la escribe el servidor: sin
+/// `sender_id` (va en `_msg` con `senderId: null`), y con `done_customer` /
+/// `done_provider` solo cuando ese lado ya contestó.
+String _followupBody({bool? doneCustomer, bool? doneProvider}) {
+  final extra = StringBuffer();
+  if (doneCustomer != null) extra.write(',"done_customer":$doneCustomer');
+  if (doneProvider != null) extra.write(',"done_provider":$doneProvider');
+  return '{"appointment_id":"a1","subject":"la entrega",'
+      '"starts_at":"2026-08-26T19:00:00Z","status":"followup"$extra}';
+}
+
 void main() {
   late List<(String, String)> acciones;
 
@@ -169,14 +180,145 @@ void main() {
     expect(proponerOtra, findsNothing);
   });
 
-  testWidgets('seguimiento: solo la pregunta (los botones son de la Task 12)',
-      (t) async {
-    await t.pumpWidget(
-        host(_msg(_body('followup'), senderId: null), own: false));
-    expect(find.text('¿Se realizó «la entrega»?'), findsOneWidget);
-    expect(tarjeta, findsNothing);
-    expect(find.byType(OutlinedButton), findsNothing);
-    expect(find.byType(TextButton), findsNothing);
+  group('seguimiento («¿Se realizó?»)', () {
+    // La tarjeta la escribe el servidor con `sender_id` NULL: `own` es
+    // SIEMPRE false para las dos partes, y `isProvider` es lo único que
+    // distingue quién contesta — nunca `senderId: null` en estos helpers.
+    final si = find.widgetWithText(OutlinedButton, 'Sí');
+    final no = find.widgetWithText(OutlinedButton, 'No');
+
+    testWidgets('mi lado SIN responder: botones Sí/No, sin respuesta de nadie',
+        (t) async {
+      await t.pumpWidget(host(
+        _msg(_followupBody(), senderId: null),
+        own: false,
+        isProvider: true,
+      ));
+      expect(find.text('¿Se realizó «la entrega»?'), findsOneWidget);
+      // Misma fecha que el resto de la tarjeta (RD, UTC-4): con varias
+      // propuestas en la conversación el asunto solo no basta para saber a
+      // cuál responde el seguimiento.
+      expect(find.text('26 ago, 3:00 p. m.'), findsOneWidget);
+      expect(tarjeta, findsNothing);
+      expect(si, findsOneWidget);
+      expect(no, findsOneWidget);
+      expect(find.textContaining('Tu respuesta'), findsNothing);
+      expect(find.textContaining('respondió'), findsNothing);
+
+      await t.tap(si);
+      await t.pump();
+      expect(acciones, [('a1', 'done_yes')]);
+    });
+
+    testWidgets('tocar «No» dispara done_no', (t) async {
+      await t.pumpWidget(host(
+        _msg(_followupBody(), senderId: null),
+        own: false,
+        isProvider: true,
+      ));
+      await t.tap(no);
+      await t.pump();
+      expect(acciones, [('a1', 'done_no')]);
+    });
+
+    testWidgets('mi lado YA respondió Sí: texto, sin botones', (t) async {
+      await t.pumpWidget(host(
+        _msg(_followupBody(doneProvider: true), senderId: null),
+        own: false,
+        isProvider: true,
+      ));
+      expect(find.text('Tu respuesta: Sí'), findsOneWidget);
+      expect(si, findsNothing);
+      expect(no, findsNothing);
+    });
+
+    testWidgets('mi lado YA respondió No: texto, sin botones', (t) async {
+      await t.pumpWidget(host(
+        _msg(_followupBody(doneProvider: false), senderId: null),
+        own: false,
+        isProvider: true,
+      ));
+      expect(find.text('Tu respuesta: No'), findsOneWidget);
+      expect(si, findsNothing);
+      expect(no, findsNothing);
+    });
+
+    testWidgets(
+        'la respuesta de la OTRA parte solo se ve una vez que la dio',
+        (t) async {
+      // El proveedor mira: el cliente YA respondió Sí, el proveedor no.
+      await t.pumpWidget(host(
+        _msg(_followupBody(doneCustomer: true), senderId: null),
+        own: false,
+        isProvider: true,
+      ));
+      expect(si, findsOneWidget, reason: 'mi lado (proveedor) sigue en botones');
+      expect(no, findsOneWidget);
+      expect(find.text('La otra parte: Sí'), findsOneWidget);
+    });
+
+    testWidgets(
+        'isProvider determina "mi lado" — NO own (que es false para las dos '
+        'partes): la MISMA tarjeta se pinta distinto para cada rol',
+        (t) async {
+      // Mismo payload que arriba (cliente respondió Sí, proveedor no), pero
+      // ahora quien mira es el CLIENTE (isProvider:false): su propio lado ya
+      // respondió → texto, no botones; y el proveedor (la OTRA parte para él)
+      // aún no ha contestado → nada que mostrar de "la otra parte".
+      // Si las ramas own/other estuvieran cambiadas de sitio, este caso
+      // pintaría botones (leyendo done_provider como "mi lado") en vez del
+      // texto correcto, y este test lo detecta.
+      await t.pumpWidget(host(
+        _msg(_followupBody(doneCustomer: true), senderId: null),
+        own: false,
+        isProvider: false,
+      ));
+      expect(find.text('Tu respuesta: Sí'), findsOneWidget);
+      expect(si, findsNothing);
+      expect(no, findsNothing);
+      // El proveedor (la otra parte para el cliente) NO ha respondido: nada
+      // que mostrar de él.
+      expect(find.textContaining('La otra parte'), findsNothing);
+    });
+
+    testWidgets(
+        'chat CERRADO: los botones de responder SIGUEN — asimetría a '
+        'propósito con confirmar/cancelar (la RPC no exige conversación '
+        'abierta)', (t) async {
+      await t.pumpWidget(host(
+        _msg(_followupBody(), senderId: null),
+        own: false,
+        isProvider: true,
+        conversationOpen: false,
+      ));
+      expect(si, findsOneWidget);
+      expect(no, findsOneWidget);
+    });
+
+    testWidgets('doble toque: «Sí» no se dispara dos veces (mismo candado)',
+        (t) async {
+      final gate = Completer<void>();
+      enVuelo = gate;
+      await t.pumpWidget(host(
+        _msg(_followupBody(), senderId: null),
+        own: false,
+        isProvider: true,
+      ));
+
+      await t.tap(si);
+      await t.pump();
+      expect(acciones, [('a1', 'done_yes')]);
+      expect(t.widget<OutlinedButton>(si).onPressed, isNull);
+      expect(t.widget<OutlinedButton>(no).onPressed, isNull);
+
+      await t.tap(si, warnIfMissed: false);
+      await t.pump();
+      expect(acciones, [('a1', 'done_yes')]);
+
+      gate.complete();
+      await t.pumpAndSettle();
+      expect(t.widget<OutlinedButton>(si).onPressed, isNotNull);
+    });
   });
 
   testWidgets('doble toque: la acción NO se dispara dos veces', (t) async {

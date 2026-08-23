@@ -710,7 +710,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   /// Acción tocada en una tarjeta de fecha pautada. 'confirm' y 'cancel' van a
-  /// la RPC; 'propose_again' y 'calendar' son locales de la app.
+  /// `respond_scheduled_date`; 'done_yes'/'done_no' (tarjeta de seguimiento)
+  /// van a `answer_scheduled_followup`; 'propose_again' y 'calendar' son
+  /// locales de la app.
   Future<void> _onAppointmentAction(AppointmentPayload a, String action) async {
     switch (action) {
       case 'propose_again':
@@ -724,6 +726,26 @@ class _ChatScreenState extends State<ChatScreen> {
                 subject: a.subject,
                 startsAtUtc: a.startsAtUtc,
                 details: 'Acordada en el chat de Jayalo'));
+      case 'done_yes':
+      case 'done_no':
+        {
+          const generico = 'No se pudo enviar tu respuesta. Intenta de nuevo.';
+          try {
+            // El UPDATE del body llega por realtime; esta RPC no exige la
+            // conversación abierta (ver `answerScheduledFollowup`), así que
+            // no hay guard de `_isOpen` aquí.
+            await answerScheduledFollowup(a.appointmentId, action == 'done_yes');
+          } on PostgrestException catch (e) {
+            // Nunca JY429 (no inserta mensaje); mismo filtro que el resto:
+            // español nuestro sí, tripas del servidor no.
+            if (mounted) {
+              _snack(appointmentFailureMessage(
+                  code: e.code, serverMessage: e.message, fallback: generico));
+            }
+          } catch (_) {
+            if (mounted) _snack(generico);
+          }
+        }
       default: // 'confirm' | 'cancel'
         const generico = 'No se pudo completar la acción. Intenta de nuevo.';
         try {

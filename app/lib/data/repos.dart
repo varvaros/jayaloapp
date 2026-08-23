@@ -2028,6 +2028,29 @@ Future<void> respondScheduledDate(String appointmentId, String action) async =>
       '_action': action,
     });
 
+/// Responde la tarjeta de SEGUIMIENTO («¿Se realizó?») que el servidor
+/// inserta 2 h después de una fecha confirmada. Cada lado contesta UNA vez;
+/// el UPDATE del body llega por realtime igual que el resto de acciones de
+/// fecha pautada, así que aquí no hay nada optimista que pintar.
+///
+/// Lanza `PostgrestException` con `code == 'P0001'` — esta RPC solo puede
+/// levantar: 'No autenticado', 'Respuesta inválida', 'Este seguimiento no
+/// está activo', 'Ya respondiste este seguimiento' o 'No participas en esta
+/// conversación'.
+///
+/// NUNCA `JY429`: a diferencia de [proposeScheduledDate], esta RPC no
+/// inserta ningún mensaje de chat — solo reescribe el body existente.
+///
+/// A propósito NO exige que la conversación esté abierta: la señal de si el
+/// trato se cumplió no debe perderse porque nadie volvió a escribir tras
+/// concluirlo. La UI (`bubbles.dart`) respeta esa asimetría y no vuelve a
+/// imponer la reja de conversación abierta para esta acción.
+Future<void> answerScheduledFollowup(String appointmentId, bool done) async =>
+    supa.rpc('answer_scheduled_followup', params: {
+      '_appointment_id': appointmentId,
+      '_done': done,
+    });
+
 /// Horario de servicio del negocio de esta conversación, o `null` si no hay
 /// horario configurado (hoy: TODOS los negocios en prod) — indistinguible de
 /// "no soy participante de esta conversación". `null` es un estado válido,

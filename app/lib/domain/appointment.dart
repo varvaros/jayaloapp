@@ -111,11 +111,18 @@ String googleCalendarUrl({
   required DateTime startsAtUtc,
   String details = '',
 }) {
+  // Segundos REALES del instante (no fijos a "00"): espejo exacto de
+  // `utcBasic` en `src/lib/calendarEvent.ts` (web), que ya escribe
+  // `getUTCSeconds()`. Fijarlos adelantaba el evento hasta 59 s — inerte hoy
+  // porque los dos clientes arman el instante con granularidad de minuto,
+  // pero una divergencia solo documentada en un informe se redescubre desde
+  // cero la próxima vez que alguien la toque.
   String basic(DateTime d) => '${d.year.toString().padLeft(4, '0')}'
       '${d.month.toString().padLeft(2, '0')}'
       '${d.day.toString().padLeft(2, '0')}T'
       '${d.hour.toString().padLeft(2, '0')}'
-      '${d.minute.toString().padLeft(2, '0')}00Z';
+      '${d.minute.toString().padLeft(2, '0')}'
+      '${d.second.toString().padLeft(2, '0')}Z';
   final start = startsAtUtc.toUtc();
   final end = start.add(const Duration(hours: 1));
   final q = {
