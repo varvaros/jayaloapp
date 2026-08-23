@@ -1966,6 +1966,47 @@ Future<void> improveOfferPrice(String convId, num newPrice) async =>
       params: {'_conversation_id': convId, '_new_price': newPrice},
     );
 
+/// Propone una fecha pautada en el chat. `startsAt` viaja como fue
+/// construido (hora LOCAL del dispositivo desde el selector de fecha/hora de
+/// Task 5) y se convierte a UTC real recién aquí, al armar el parámetro —
+/// nunca antes, para no perder la zona con la que el usuario eligió la hora.
+///
+/// Lanza `PostgrestException` con `code == 'P0001'` (mensaje en español ya
+/// listo para mostrar) o `JY429` (anti-flood del chat) — mismo patrón que
+/// [sendFailureMessage] en `domain/chat.dart`: no inventar un mapeo propio,
+/// mostrar `e.message` tal cual.
+Future<void> proposeScheduledDate(
+  String convId,
+  String subject,
+  DateTime startsAt,
+) async =>
+    supa.rpc('propose_scheduled_date', params: {
+      '_conversation_id': convId,
+      '_subject': subject,
+      '_starts_at': startsAt.toUtc().toIso8601String(),
+    });
+
+/// Responde (confirma/cancela/etc.) una fecha pautada propuesta.
+/// `_action` la valida la RPC server-side (`respond_scheduled_date`); ver
+/// `src/components/marketplace/AppointmentBubble.tsx` (web) para el mismo
+/// llamado — hoy usa 'confirm'/'cancel'; Task 5 (app) añade 'propose_again'
+/// y 'calendar' como acciones locales que NO llaman a esta RPC.
+Future<void> respondScheduledDate(String appointmentId, String action) async =>
+    supa.rpc('respond_scheduled_date', params: {
+      '_appointment_id': appointmentId,
+      '_action': action,
+    });
+
+/// Horario de servicio del negocio de esta conversación, o `null` si no hay
+/// horario configurado (hoy: TODOS los negocios en prod) — indistinguible de
+/// "no soy participante de esta conversación". `null` es un estado válido,
+/// nunca un error: no debe mostrarse como fallo en la UI.
+Future<Map<String, dynamic>?> conversationServiceHours(String convId) async {
+  final raw = await supa.rpc('get_conversation_service_hours',
+      params: {'_conversation_id': convId});
+  return raw is Map ? Map<String, dynamic>.from(raw) : null;
+}
+
 Future<bool> hasConversationRating(String convId) async =>
     (await supa
         .from('conversation_ratings')

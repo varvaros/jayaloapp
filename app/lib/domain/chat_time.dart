@@ -3,6 +3,7 @@
 library;
 
 import 'dart:convert';
+import 'appointment.dart';
 
 const _months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 
@@ -61,6 +62,8 @@ String messagePreview(String kind, String body) {
       } catch (_) {
         return 'Pregunta';
       }
+    case 'appointment':
+      return appointmentPreview(body);
     default:
       return body;
   }
