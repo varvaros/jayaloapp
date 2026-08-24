@@ -22,10 +22,14 @@ enum PlusAction {
 List<(PlusAction, IconData, String)> plusMenuItems({required bool isProvider}) =>
     isProvider
         ? const [
-            // Pedido PO 2026-08-23: «Pautar fecha» va PRIMERA en los dos
-            // roles y se dibuja como botón (ver `_openPlusMenu`), no como
-            // ListTile — de ahí que el orden de esta lista importe.
-            (PlusAction.proposeDate, Icons.event_outlined, 'Pautar fecha'),
+            // Pedido PO 2026-08-23: la acción de pautar fecha va PRIMERA en
+            // los dos roles y se dibuja como botón (ver `_openPlusMenu`), no
+            // como ListTile — de ahí que el orden de esta lista importe.
+            // El rótulo se alargó el 2026-08-24 (pedido PO: decir de qué fecha
+            // se habla). Cabe porque ese botón va a ancho completo; los demás
+            // ítems, que sí son ListTile, ya rondan los 29 caracteres.
+            (PlusAction.proposeDate, Icons.event_outlined,
+                'Pautar fecha de envío o de inicio'),
             // Foto del dispositivo + artículos de la tienda (pedido PO
             // 2026-07-21): el proveedor muestra su mercancía en el chat.
             (PlusAction.sendPhoto, Icons.add_photo_alternate_outlined, 'Enviar foto'),
@@ -35,9 +39,10 @@ List<(PlusAction, IconData, String)> plusMenuItems({required bool isProvider}) =
             (PlusAction.improveOffer, Icons.bolt_outlined, 'Mejorar oferta (bajar precio)'),
           ]
         : const [
-            (PlusAction.proposeDate, Icons.event_outlined, 'Pautar fecha'),
+            (PlusAction.proposeDate, Icons.event_outlined,
+                'Pautar fecha de envío o de inicio'),
             (PlusAction.sendContact, Icons.badge_outlined, 'Enviar mis datos de contacto'),
-            // La ubicación del MOMENTO va primero (tras «Pautar fecha»): es
+            // La ubicación del MOMENTO va primero (tras pautar fecha): es
             // el caso que motivó la tanda (el cliente que no está en su casa).
             (PlusAction.sendCurrentLocation, Icons.my_location, 'Mi ubicación actual'),
             (PlusAction.sendLocation, Icons.place_outlined, 'Mi dirección guardada'),

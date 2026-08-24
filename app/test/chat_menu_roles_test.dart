@@ -64,17 +64,23 @@ void main() {
         ['Mi ubicación actual', 'Mi dirección guardada']));
   });
 
-  test('«Pautar fecha» está PRIMERA en el menú de LAS DOS partes', () {
+  test('pautar fecha está PRIMERA en el menú de LAS DOS partes', () {
     // Cualquiera de los dos puede proponerla: `propose_scheduled_date` solo
     // exige ser participante de la conversación, así que no es de un rol.
-    // Pedido PO 2026-08-23: va de primero y se lee como acción («Pautar
-    // fecha»), no como sustantivo («Fecha pautada»).
+    // Pedido PO 2026-08-23: va de primero y se lee como ACCIÓN («Pautar…»),
+    // no como sustantivo («Fecha pautada»). El 2026-08-24 el PO alargó el
+    // rótulo para decir de qué fecha se habla; sigue siendo acción, así que
+    // la regla de arriba se mantiene — por eso el test comprueba el prefijo
+    // «Pautar» además de la cadena exacta.
     for (final isProvider in [true, false]) {
       final items = plusMenuItems(isProvider: isProvider);
       expect(items.map((i) => i.$1), contains(PlusAction.proposeDate));
       expect(items.first.$1, PlusAction.proposeDate);
-      expect(items.firstWhere((i) => i.$1 == PlusAction.proposeDate).$3,
-          'Pautar fecha');
+      final rotulo =
+          items.firstWhere((i) => i.$1 == PlusAction.proposeDate).$3;
+      expect(rotulo, 'Pautar fecha de envío o de inicio');
+      expect(rotulo, startsWith('Pautar'),
+          reason: 'debe leerse como acción, no como sustantivo');
     }
   });
 
