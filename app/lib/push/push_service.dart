@@ -173,10 +173,15 @@ Future<void> initPush(GoRouter router) async {
       // unidad por encima. Dos `refresh()` concurrentes convergen.
       notifCountStore.refresh();
 
+      // El badge de Mensajes cuenta lo que apunta a un chat, no solo los
+      // mensajes de texto (PO 2026-08-24), así que se refresca con CUALQUIER
+      // aviso que enlace a una conversación: cierre por inactividad, fecha
+      // pautada, valoración pendiente… Antes solo lo hacía `message_new` y el
+      // resto no movía el número.
+      final linkChat = (m.data['link'] as String?)?.startsWith('/messages') ?? false;
+      if (linkChat) messagesBadge.refresh();
+
       if (kind == 'message_new') {
-        // Va ANTES del return de abajo: dentro del chat es justo cuando más
-        // falta hace que el badge de la pestaña quede al día.
-        messagesBadge.refresh();
         // Si estás DENTRO de esa conversación, el sonido ya lo puso ChatScreen
         // al recibir el mensaje por realtime; sonar aquí sería un eco.
         final cid = convIdFromMessageLink(m.data['link'] as String?);

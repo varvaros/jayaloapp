@@ -64,12 +64,18 @@ class MessagesBadgeStore extends ChangeNotifier {
   /// Antes traía TODA la lista de conversaciones (`conversationsList()` = RPC
   /// agregado con 4 LATERAL por conversación) solo para sumar `unread_count`, y
   /// esto corre al montar el shell y en CADA `resumed`. Ahora un COUNT directo
-  /// sobre `notifications` (índice parcial `(user_id, kind) WHERE read_at IS
-  /// NULL`): el badge = nº de notificaciones `message_new` sin leer. Es
-  /// equivalente a la suma vieja — el `unread_count` de la RPC es, por
-  /// conversación, ese mismo conteo correlacionado por link, y cada
-  /// notificación `message_new` apunta a una conversación del usuario — pero con
-  /// payload O(1) en vez de O(nº de chats). Auditoría de rendimiento 2026-07-22.
+  /// sobre `notifications`, con payload O(1) en vez de O(nº de chats).
+  /// Auditoría de rendimiento 2026-07-22.
+  ///
+  /// Se filtra por el LINK, no por el kind (PO 2026-08-24). Filtrar por
+  /// `kind = 'message_new'` dejaba fuera los otros CINCO kinds que apuntan a una
+  /// conversación —aviso de inactividad, cierre por inactividad, valoración
+  /// pendiente y las dos de fecha pautada—, así que el chat recibía una tarjeta
+  /// nueva y ni el badge ni la lista lo marcaban. Medido en prod: de 44
+  /// notificaciones que enlazan a un chat, las 44 llegan acompañadas de
+  /// contenido nuevo en esa conversación, así que «apunta a un chat» y «pasó
+  /// algo en ese chat» son el mismo conjunto. Sigue casando con el
+  /// `unread_count` de la RPC, que correlaciona por el mismo link.
   Future<void> refresh() async {
     try {
       final uid = supa.auth.currentUser?.id;
@@ -78,7 +84,7 @@ class MessagesBadgeStore extends ChangeNotifier {
           .from('notifications')
           .select('id')
           .eq('user_id', uid)
-          .eq('kind', 'message_new')
+          .like('link', '/messages%')
           .isFilter('read_at', null)
           .limit(1)
           .count(CountOption.exact);
@@ -2211,6 +2217,12 @@ Future<void> reportAccount({
 });
 
 /// Gotcha #14: matchear por LINK (formato actual + legado), nunca entity_id.
+///
+/// Sin filtro de `kind`, en espejo exacto de [MessagesBadgeStore.refresh] y del
+/// `unread_count` de la RPC (PO 2026-08-24): al abrir el chat se marca leído
+/// TODO lo que apuntaba a él. Si aquí se filtrara por `message_new` y allí no,
+/// el contador no bajaría al abrir y quedaría pegado — el defecto que el propio
+/// gotcha #14 describe, por la otra puerta.
 Future<void> markChatNotificationsRead(String convId) async {
   final uid = supa.auth.currentUser!.id;
   final readAt = DateTime.now().toUtc().toIso8601String();
@@ -2219,14 +2231,12 @@ Future<void> markChatNotificationsRead(String convId) async {
         .from('notifications')
         .update({'read_at': readAt})
         .eq('user_id', uid)
-        .eq('kind', 'message_new')
         .eq('link', '/messages?c=$convId')
         .isFilter('read_at', null),
     supa
         .from('notifications')
         .update({'read_at': readAt})
         .eq('user_id', uid)
-        .eq('kind', 'message_new')
         .eq('link', '/messages/$convId')
         .isFilter('read_at', null),
   ]);
