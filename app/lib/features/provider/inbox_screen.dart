@@ -393,6 +393,14 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           wholesale: r['is_wholesale'] == true,
                           offerStatus: _offeredStatuses[r['id']],
                           offerCount: _offerCounts[r['id']] ?? 0,
+                          // El borde sigue al contador, incluida su excepción:
+                          // en «Todas» `_syncBadge` no cuenta (ahí es
+                          // exploración, no una alerta accionable), así que ahí
+                          // tampoco se marca. Si marcara, habría bordes sin
+                          // número detrás — la otra mitad del mismo defecto.
+                          unseen: !_todas &&
+                              openedRequestsStore.hasUnseen(
+                                  id, _updatedAt[id]),
                           // La oleada B manda; si no trajo entrada (falló, o la
                           // fila ya venía completa desde `allOpenRequests`), se
                           // usan los de la propia fila. Las dos fuentes leen las
@@ -488,12 +496,20 @@ class _InboxCard extends StatelessWidget {
     this.offerCount = 0,
     this.requirements = RequestRequirements.none,
     this.margin,
+    this.unseen = false,
   });
 
   final String title;
   final String? kind;
   final DateTime createdAt;
   final VoidCallback onTap;
+
+  /// Sin abrir, o abierta y actualizada después. Lo decide el MISMO predicado
+  /// que alimenta el contador de la barra (`openedRequestsStore.hasUnseen`),
+  /// para que no puedan discrepar: hasta el 2026-08-24 `hasUnseen` solo llegaba
+  /// al contador y la tarjeta no se enteraba, así que el proveedor veía un «3»
+  /// sin ninguna forma de saber cuáles tres.
+  final bool unseen;
   final String? imageUrl;
 
   /// La solicitud es "al por mayor" — se marca con un sticker en la esquina de
@@ -564,6 +580,13 @@ class _InboxCard extends StatelessWidget {
     return JayaloCard(
       onTap: onTap,
       margin: margin ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      // Mismo lenguaje que la tarjeta del CLIENTE, a propósito: violeta, 1 px
+      // (PO 2026-08-21, «50% más sutil») y saludando (PO 2026-08-19 — se mueve
+      // lo que no has visto). `pulseBorder` ya respeta «reducir animaciones»:
+      // ahí el borde aparece lleno de una vez, porque la marca es información,
+      // no adorno.
+      border: unseen ? Border.all(color: cs.primary, width: 1) : null,
+      pulseBorder: unseen,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

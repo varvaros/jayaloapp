@@ -3,7 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/provider/hidden_requests_store.dart';
+import 'package:jayalo_app/data/repos.dart' show solicitudesBadge;
 import 'package:jayalo_app/features/provider/inbox_screen.dart';
+import 'package:jayalo_app/features/provider/opened_requests.dart';
+import 'package:jayalo_app/features/shared/brand_kit.dart' show JayaloCard;
 import 'package:jayalo_app/features/shared/violet_header.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -386,6 +389,67 @@ void main() {
           .first);
       expect(placeholder.constraints?.maxWidth, 76);
       expect(placeholder.constraints?.maxHeight, 76);
+    });
+  });
+
+  group('la marca de «sin ver» y el contador NO pueden discrepar (§1.4)', () {
+    // El defecto que arregla esto: `hasUnseen` alimentaba SOLO el contador de
+    // la barra y nunca llegaba a la tarjeta, asi que el proveedor veia un «3»
+    // y ninguna tarjeta marcada — no habia forma de saber cual abrir.
+    // Reporte del PO 2026-08-24.
+
+    Future<List<Map<String, dynamic>>> tres(
+            {String? kind, required bool todas}) async =>
+        todas
+            ? []
+            : [
+                for (final i in [1, 2, 3])
+                  {
+                    'id': 'req-$i',
+                    'source': 'marketplace',
+                    'title': 'Solicitud $i',
+                    'description': 'x',
+                    'kind': 'servicio',
+                    'created_at': DateTime.now().toIso8601String(),
+                  },
+              ];
+
+    /// Tarjetas que llevan borde puesto — la marca de «sin ver».
+    int conBorde(WidgetTester tester) => tester
+        .widgetList<JayaloCard>(find.byType(JayaloCard))
+        .where((c) => c.border != null)
+        .length;
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      openedRequestsStore.reset();
+      await openedRequestsStore.ensureLoaded();
+      solicitudesBadge.value = 0;
+    });
+
+    testWidgets('lo que dice el numero es exactamente lo que sale marcado',
+        (tester) async {
+      await tester.pumpWidget(host(ProviderInboxView(
+          fetch: tres, leading: const SizedBox.shrink(), actions: const [])));
+      await tester.pumpAndSettle();
+
+      expect(solicitudesBadge.value, 3, reason: 'las tres estan sin abrir');
+      expect(conBorde(tester), solicitudesBadge.value,
+          reason: 'un numero sin tarjetas marcadas detras es el defecto §1.4');
+    });
+
+    testWidgets('abrir una apaga su borde Y baja el numero, a la vez',
+        (tester) async {
+      await tester.pumpWidget(host(ProviderInboxView(
+          fetch: tres, leading: const SizedBox.shrink(), actions: const [])));
+      await tester.pumpAndSettle();
+
+      openedRequestsStore.markSeen('req-2', DateTime.now());
+      await tester.pumpAndSettle();
+
+      expect(solicitudesBadge.value, 2);
+      expect(conBorde(tester), 2,
+          reason: 'el borde sigue al contador en el mismo frame');
     });
   });
 }
