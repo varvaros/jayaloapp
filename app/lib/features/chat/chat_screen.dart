@@ -69,6 +69,30 @@ List<String> chatMenuValues({required bool isProvider, required bool isOpen}) =>
 /// comentario largo en `_loadReviewContext`.
 bool canResolveReviewBusiness(String? kind) => kind == 'offer';
 
+/// ¿Va la nota «Ya enviaste tu calificación» en el cartel del chat cerrado, para
+/// el rol que lo está mirando?
+///
+/// Antes la nota era solo del cliente, y al proveedor que YA había calificado le
+/// quedaba el aviso de cierre («Puedes calificar la transacción») sin nada
+/// debajo que lo explicara: el panel había desaparecido justamente porque su
+/// trabajo estaba hecho (bug reportado por el PO el 2026-08-25).
+///
+/// No es simétrica a propósito: el cliente califica en CUALQUIER chat cerrado,
+/// el proveedor solo en los de OFERTA (ver [canResolveReviewBusiness]). En un
+/// chat de producto el proveedor nunca tuvo calificador, así que decirle «ya
+/// enviaste» sería la misma mentira por la puerta de al lado.
+///
+/// Pura y pública por el mismo motivo que la de arriba: se fija en un test sin
+/// montar la pantalla.
+bool showsRatingSentNote({
+  required bool isProvider,
+  required String? kind,
+  required bool hasRating,
+  required bool customerReviewed,
+}) => isProvider
+    ? (canResolveReviewBusiness(kind) && customerReviewed)
+    : hasRating;
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen(
       {super.key, required this.conversationId, this.peerName, this.peerAvatarUrl});
@@ -1463,7 +1487,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 style: TextStyle(
                     fontSize: 13,
                     color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            if (_hasRating && !_isProvider)
+            if (showsRatingSentNote(
+                isProvider: _isProvider,
+                kind: conv['kind'] as String?,
+                hasRating: _hasRating,
+                customerReviewed: _customerReviewed))
               const Padding(
                   padding: EdgeInsets.only(top: 4),
                   child: Text('Ya enviaste tu calificación.',

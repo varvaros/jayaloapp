@@ -2240,6 +2240,31 @@ Future<void> markChatNotificationsRead(String convId) async {
         .eq('link', '/messages/$convId')
         .isFilter('read_at', null),
   ]);
+  // La lista de chats amortiguada acaba de quedar MINTIENDO: su `unread_count`
+  // es de antes de esta lectura. Sin esto, al volver atrás dentro del TTL
+  // `conversations_screen` la servía tal cual y pisaba el badge con el número
+  // viejo — "entré a un chat y no se quita el número" (PO 2026-08-25).
+  final cached = AppCaches.conversations.staleValue;
+  if (cached != null) clearUnreadCountFor(cached, convId);
+}
+
+/// Pone a cero, EN EL SITIO, el `unread_count` de [convId] dentro de [rows].
+/// Devuelve `true` si de verdad cambió algo.
+///
+/// Se corrige la lista en vez de vaciar el caché a propósito: vaciarlo obligaría
+/// a un round-trip al volver a la bandeja y devolvería el `JayaloLoaderBlock`
+/// que ese caché existe para quitar (ver [AppCaches.conversations]).
+///
+/// Pura y pública para poder fijarla en un test sin Supabase.
+bool clearUnreadCountFor(List<Map<String, dynamic>> rows, String convId) {
+  var tocado = false;
+  for (final r in rows) {
+    if (r['id'] == convId && ((r['unread_count'] as int?) ?? 0) != 0) {
+      r['unread_count'] = 0;
+      tocado = true;
+    }
+  }
+  return tocado;
 }
 
 /// Kinds de notificación que hablan de UNA OFERTA TUYA: su `entity_id` es el id
