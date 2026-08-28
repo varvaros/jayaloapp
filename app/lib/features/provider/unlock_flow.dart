@@ -309,8 +309,11 @@ Future<void> showOfferContactSheet(
             ),
             if (canWhatsapp && contact.phone != null) ...[
               const SizedBox(height: 12),
+              // Hoja de contacto de una OFERTA: aquí la devolución sí existe.
               WhatsappReveal(
-                  phone: contact.phone!, firstName: contact.firstName),
+                  phone: contact.phone!,
+                  firstName: contact.firstName,
+                  refundApplies: true),
             ],
             // "¿Se concretó la venta? Marcar completada" RETIRADO (pedido PO
             // 2026-07-23): el proveedor no marca la venta desde esta hoja.
@@ -462,9 +465,24 @@ class _TallSheet extends StatelessWidget {
 /// escribir otra variante.
 class WhatsappReveal extends StatelessWidget {
   const WhatsappReveal(
-      {super.key, required this.phone, required this.firstName});
+      {super.key,
+      required this.phone,
+      required this.firstName,
+      this.refundApplies = false});
   final String phone;
   final String? firstName;
+
+  /// ¿Este desbloqueo puede acabar en devolución de créditos?
+  ///
+  /// Desde el 2026-08-28 SÍ en las ofertas del marketplace: si el chat se cierra
+  /// por inactividad y el cliente nunca escribió, el proveedor puede pedir que
+  /// le devuelvan los créditos — y revelar el WhatsApp es justo lo que le quita
+  /// ese derecho. El aviso tiene que decir eso, no lo contrario.
+  /// En el interés de producto la devolución NO existe (queda fuera del alcance
+  /// v1: no tiene sello de revelado), así que ahí el texto viejo sigue siendo
+  /// verdad. Por eso el copy se parametriza en vez de reescribirse: este widget
+  /// lo comparten los dos flujos y cambiarlo a secas mentiría en uno.
+  final bool refundApplies;
 
   @override
   Widget build(BuildContext context) {
@@ -489,9 +507,14 @@ class WhatsappReveal extends StatelessWidget {
         ]),
         const SizedBox(height: 6),
         Text(
-            'Si hablas por WhatsApp y el cliente no responde, no hay devolución '
-            'de créditos. El chat de Jayalo sí queda como respaldo del contacto. '
-            'Mantén presionado si aun así prefieres WhatsApp.',
+            refundApplies
+                ? 'Si ves el WhatsApp pierdes el derecho a pedir la devolución de '
+                    'créditos, aunque el cliente nunca conteste. El chat de Jayalo '
+                    'sí queda como respaldo del contacto. Mantén presionado si aun '
+                    'así prefieres WhatsApp.'
+                : 'Si hablas por WhatsApp y el cliente no responde, no hay devolución '
+                    'de créditos. El chat de Jayalo sí queda como respaldo del contacto. '
+                    'Mantén presionado si aun así prefieres WhatsApp.',
             style: TextStyle(fontSize: 12.5, height: 1.4, color: warnInk)),
         const SizedBox(height: 12),
         HoldToConfirmButton(
