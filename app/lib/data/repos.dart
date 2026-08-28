@@ -1983,17 +1983,10 @@ Future<bool> hasConversationRating(String convId) async =>
         .maybeSingle()) !=
     null;
 
-/// ¿Ya existe un mensaje de auditoría en esta conversación? Query dedicada:
-/// mirar los 50 cargados no basta (la auditoría puede estar más atrás).
-Future<bool> hasAuditMessage(String convId) async =>
-    (await supa
-        .from('conversation_messages')
-        .select('id')
-        .eq('conversation_id', convId)
-        .eq('kind', 'audit')
-        .limit(1)
-        .maybeSingle()) !=
-    null;
+// `hasAuditMessage` se retiró el 2026-08-28 con su único llamador (la
+// "auditoría 72h" de chat_screen.dart, que no podía escribir desde 2026-07-29).
+// Ver el comentario allí antes de resucitarla: buscaba CUALQUIER `audit`, así
+// que los carteles del cron la daban siempre por satisfecha.
 
 Future<void> submitConversationRating({
   required String convId,
@@ -2119,19 +2112,34 @@ Future<void> reportAccount({
 Future<void> markChatNotificationsRead(String convId) async {
   final uid = supa.auth.currentUser!.id;
   final readAt = DateTime.now().toUtc().toIso8601String();
+  // Los kinds de inactividad se marcan leídos AQUÍ desde el 2026-08-28. Antes
+  // solo `message_new`, pero `get_my_conversations_list.unread_count` cuenta por
+  // LINK sin mirar el kind (decisión del PO, migración 20260824174418) ⇒ el
+  // aviso de inactividad se quedaba sin leer para siempre y el globito de ese
+  // chat no se apagaba nunca abriéndolo. Medido antes del arreglo: 11 de 22
+  // avisos sin leer, el doble de tasa que los mensajes. Con tres avisos
+  // escalonados en vez de uno el problema se triplicaba.
+  // La lista es EXPLÍCITA a propósito, no un "todos menos": quitar el filtro
+  // marcaría también `review_pending_reminder` y los `appointment_*` de este
+  // chat, y abrir el chat borraría un recordatorio de calificar sin atender.
+  const kinds = [
+    'message_new',
+    'conversation_inactivity_warning',
+    'conversation_closed_inactivity',
+  ];
   await Future.wait([
     supa
         .from('notifications')
         .update({'read_at': readAt})
         .eq('user_id', uid)
-        .eq('kind', 'message_new')
+        .inFilter('kind', kinds)
         .eq('link', '/messages?c=$convId')
         .isFilter('read_at', null),
     supa
         .from('notifications')
         .update({'read_at': readAt})
         .eq('user_id', uid)
-        .eq('kind', 'message_new')
+        .inFilter('kind', kinds)
         .eq('link', '/messages/$convId')
         .isFilter('read_at', null),
   ]);

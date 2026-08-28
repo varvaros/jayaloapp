@@ -295,25 +295,20 @@ class _ChatScreenState extends State<ChatScreen> {
         await _sendRaw('text', body);
       }
     }
-    // 3) Auditoría 72h. Solo el CLIENTE la dispara: es el destinatario del
-    // "¿Ya recibiste tu producto?" y así hay un solo actor, sin carrera
-    // cross-device entre cliente y proveedor abriendo el chat a la vez.
-    // `_session.messages` solo trae los últimos 50 — en conversaciones largas
-    // eso no basta para saber si la auditoría ya existe (podría estar más
-    // atrás), así que primero evaluamos la parte barata (status/72h con los
-    // datos ya cargados de `conv`) y solo si puede hacer falta consultamos.
-    if (!_isProvider &&
-        needsAudit(
-            status: conv['status'] as String,
-            createdAt: DateTime.parse(conv['created_at'] as String),
-            hasAudit: false,
-            now: DateTime.now())) {
-      final already = await hasAuditMessage(conv['id'] as String);
-      if (!mounted) return;
-      if (!already) {
-        await _sendRaw('audit', '¿Ya recibiste tu producto?', systemSender: true);
-      }
-    }
+    // Aquí vivía la "auditoría 72h": el CLIENTE insertaba «¿Ya recibiste tu
+    // producto?» como `kind:'audit', sender_id:null` al abrir un chat viejo.
+    // Retirada el 2026-08-28 porque era IMPOSIBLE desde el 2026-07-29: la
+    // política de INSERT solo admite text|address|image|quick con
+    // `sender_id = auth.uid()`, así que ese insert rebotaba con 42501, retiraba
+    // la burbuja optimista y le pintaba al cliente un "No se pudo enviar" que no
+    // venía de nada que hubiera hecho. No se veía por dos tapaderas: el cartel
+    // del cron a las 48 h ya dejaba un `audit` (`hasAuditMessage` buscaba
+    // CUALQUIERA, no el suyo) y a las 72 h el chat ya estaba cerrado. Al pasar
+    // el cierre a una semana las dos desaparecían a la vez, y el error habría
+    // salido en cada apertura entre la hora 72 y la 144.
+    // La web la retiró por lo mismo el 2026-08-13. Los carteles de plataforma
+    // los pone el servidor: `warn_stale_conversations` avisa a las 24 h, 96 h y
+    // 144 h, y `auto_close_stale_conversations` cierra a las 168 h.
   }
 
   /// Relee la conversación (estado, precio acordado…). Best-effort DE VERDAD:

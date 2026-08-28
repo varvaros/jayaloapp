@@ -147,17 +147,9 @@ void main() {
         firstName: 'Ana', business: 'El Corito', product: 'Nevera', priceTxt: ' por RD\$5,000');
     expect(g, '¡Hola, Ana! Gracias por elegir El Corito. Confirmo que el acuerdo es: Nevera por RD\$5,000. Estoy listo para concretar la entrega.');
   });
-  group('needsAudit', () {
-    final created = DateTime(2026, 7, 10);
-    test('>72h abierto sin audit → true', () => expect(
-        needsAudit(status: 'abierto', createdAt: created, hasAudit: false, now: DateTime(2026, 7, 17)), isTrue));
-    test('<72h → false', () => expect(
-        needsAudit(status: 'abierto', createdAt: created, hasAudit: false, now: DateTime(2026, 7, 11)), isFalse));
-    test('ya tiene audit → false', () => expect(
-        needsAudit(status: 'abierto', createdAt: created, hasAudit: true, now: DateTime(2026, 7, 17)), isFalse));
-    test('cerrado → false', () => expect(
-        needsAudit(status: 'cerrado', createdAt: created, hasAudit: false, now: DateTime(2026, 7, 17)), isFalse));
-  });
+  // Los 4 tests de `needsAudit` se fueron con la función el 2026-08-28. Estaban
+  // en verde mientras la funcionalidad llevaba un mes rota: probaban la
+  // aritmética de las 72 h, no que el insert que disparaban llegara a la BD.
   group('convIdFromMessageLink (gotcha #14, ambos formatos)', () {
     test('formato actual', () => expect(convIdFromMessageLink('/messages?c=abc-123'), 'abc-123'));
     test('formato legado', () => expect(convIdFromMessageLink('/messages/abc-123'), 'abc-123'));
