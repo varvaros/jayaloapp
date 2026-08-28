@@ -9,6 +9,7 @@ import '../../core/brand.dart';
 import '../../core/session_state.dart';
 import '../../data/notifications_repository.dart';
 import '../../domain/notifications.dart';
+import '../../push/chat_notifications.dart' show clearAlertNotifications;
 import '../shared/brand_kit.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
@@ -73,6 +74,11 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     notifCountStore.addListener(_onStoreChanged);
     _loadFirst();
     _subscribe();
+    // El usuario está mirando estos mismos avisos DENTRO de la app, así que la
+    // copia de la bandeja del sistema sobra — y mientras siga ahí, el globo del
+    // ícono la sigue sumando. Se limpia al ENTRAR, no al salir: entrar ya es el
+    // gesto de "voy a ver mis avisos". No espera: es best-effort.
+    clearAlertNotifications();
   }
 
   @override
@@ -256,6 +262,11 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       notifCountStore.refresh();
     });
     notifCountStore.zero();
+    // "Marcar todas" es el gesto más inequívoco de "ya lo atendí": la bandeja
+    // del sistema tiene que quedar igual de vacía que la campana. Repetirlo
+    // aquí (ya se limpió al entrar) cubre los avisos que hayan LLEGADO con la
+    // pantalla abierta.
+    clearAlertNotifications();
     // Cascada solo sobre lo cargado; las páginas no cargadas ya quedaron
     // marcadas por el update de arriba.
     final unread = _items.where((n) => n.unread).toList();

@@ -146,6 +146,43 @@ Future<void> showAlertNotification({
   }
 }
 
+/// Vacía de la BANDEJA DEL SISTEMA los avisos que no son chat, sin tocar la
+/// tabla `notifications` (leer sigue siendo marcar `read_at`).
+///
+/// Hace falta porque el globo del ícono NO lo decide la app: Android —y MIUI /
+/// HyperOS más aún— lo calcula SUMANDO el `Notification.number` de todo lo que
+/// el paquete tenga vivo en la bandeja. Los avisos se quedaban ahí hasta
+/// caducar a las 72 h y el número solo subía. `AppBadgePlus` no puede
+/// arreglarlo desde aquí: en MIUI su `updateBadge` es un NO-OP MUDO
+/// (`MiUIBadge.kt` sale de vacío porque nadie llama a `Badge.applyNotification`),
+/// así que la ÚNICA palanca real sobre el globo es la bandeja.
+///
+/// Selectivo por canal a propósito: se lleva [kAlertsChannelId] y deja vivos los
+/// mensajes de chat sin leer. `cancelAll()` sería una línea, pero borra TODO lo
+/// que postea el paquete —incluido lo que pinta Play Services— y le quitaría de
+/// la bandeja conversaciones que el usuario todavía no ha abierto.
+///
+/// Best-effort de arriba abajo: `getActiveNotifications` LANZA en API < 23, y
+/// un fallo aquí nunca debe romper la pantalla que lo llama.
+Future<void> clearAlertNotifications() async {
+  try {
+    final active = await flnp.getActiveNotifications();
+    for (final n in active) {
+      if (n.channelId != kAlertsChannelId) continue;
+      final id = n.id;
+      // Las que pinta Play Services desde FCM llegan con `id:0` y un `tag`
+      // propio (`FCM-Notification:<n>`); las locales, con `tag:null`. Cancelar
+      // exige la MISMA pareja (id, tag) con la que se posteó — y en Android el
+      // plugin SIEMPRE rellena el id (`getId()` del StatusBarNotification), así
+      // que el `null` que documenta el tipo es cosa de iOS.
+      if (id == null) continue;
+      await flnp.cancel(id: id, tag: n.tag);
+    }
+  } catch (e) {
+    debugPrint('No se pudo limpiar la bandeja: $e');
+  }
+}
+
 /// Notificación simple sin acción (confirmación de "Enviado"/"No se pudo").
 Future<void> _showStatus(String conversationId, String title, String body) =>
     flnp.show(

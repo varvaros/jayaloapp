@@ -24,15 +24,18 @@ Future<List<Map<String, dynamic>>> notificationsPage(int page) async {
       .range(page * notifPageSize, page * notifPageSize + notifPageSize - 1));
 }
 
-/// Ventana del badge, ESPEJO de `BADGE_WINDOW_DAYS` en la edge function
-/// `send-push`. El badge es un empujón ("tienes cosas recientes por ver"), no un
-/// histórico: sin ventana, las informativas que nadie abre (confirmaciones,
-/// billetera, bienvenidas) se acumulaban hasta números absurdos.
+/// Ventana de la CAMPANA de la app. Es un empujón ("tienes cosas recientes por
+/// ver"), no un histórico: sin ventana, las informativas que nadie abre
+/// (confirmaciones, billetera, bienvenidas) se acumulaban hasta números
+/// absurdos.
 ///
-/// Tiene que valer lo mismo que en el servidor. Los dos escriben el badge del
-/// launcher —el servidor con cada push, la app en cada refresco— así que si las
-/// ventanas difieren el número SALTA entre dos verdades según quién escribió
-/// último.
+/// YA NO ES ESPEJO DE NADIE. El servidor tenía su propio `BADGE_WINDOW_DAYS`
+/// para escribir el globo del ícono, y se retiró el 2026-08-28: mandar el total
+/// de no-leídas en cada push envenenaba ese globo, porque Android lo calcula
+/// SUMANDO el `number` de todo lo vivo en la bandeja (marcaba 43 con 21
+/// no-leídas reales). Hoy el globo del ícono cuenta avisos en bandeja y este
+/// número solo alimenta la campana in-app — son dos cosas distintas a
+/// propósito, y no tienen por qué coincidir.
 const notifBadgeWindowDays = 30;
 
 /// Conteo de no-leídas para el badge. `count` respeta los filtros e IGNORA
