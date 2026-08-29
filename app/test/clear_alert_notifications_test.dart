@@ -116,18 +116,26 @@ void main() {
     ]);
   });
 
-  test('sin canal (Android < 8) no cancela nada, en vez de cancelarlo todo',
+  test('sin canal (Android < 8) esa notificacion se respeta, no se arrasa',
       () async {
     // El plugin solo rellena `channelId` en API >= 26; por debajo llega null.
     // Ante la duda, NO se borra: es preferible un globo alto a una bandeja
     // vaciada a ciegas.
+    //
+    // La de alertas va al lado A PROPÓSITO: sin ella el test afirmaría sobre
+    // una lista vacía, que es exactamente lo que produce un helper que reventó
+    // y se tragó la excepción. Así el verde exige que el filtro CORRIÓ y
+    // discriminó, no solo que no cancelo nada.
     montar([
       {'id': 7, 'tag': null, 'channelId': null},
+      {'id': 8, 'tag': null, 'channelId': kAlertsChannelId},
     ]);
 
     await clearAlertNotifications();
 
-    expect(cancelados, isEmpty);
+    expect(cancelados, [
+      {'id': 8, 'tag': null}
+    ]);
   });
 
   test('si leer la bandeja lanza, no propaga (API < 23)', () async {

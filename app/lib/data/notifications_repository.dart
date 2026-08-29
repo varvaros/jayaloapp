@@ -32,7 +32,7 @@ Future<List<Map<String, dynamic>>> notificationsPage(int page) async {
 /// YA NO ES ESPEJO DE NADIE. El servidor tenía su propio `BADGE_WINDOW_DAYS`
 /// para escribir el globo del ícono, y se retiró el 2026-08-28: mandar el total
 /// de no-leídas en cada push envenenaba ese globo, porque Android lo calcula
-/// SUMANDO el `number` de todo lo vivo en la bandeja (marcaba 43 con 21
+/// SUMANDO el `number` de todo lo vivo en la bandeja (marcaba 43 con TRES
 /// no-leídas reales). Hoy el globo del ícono cuenta avisos en bandeja y este
 /// número solo alimenta la campana in-app — son dos cosas distintas a
 /// propósito, y no tienen por qué coincidir.

@@ -135,6 +135,12 @@ Future<void> showAlertNotification({
           channelDescription: 'Ofertas, billetera y avisos de tu cuenta',
           importance: Importance.high,
           priority: Priority.high,
+          // Mismo 1 que manda `send-push` en `notification_count`: el globo del
+          // ícono es la SUMA de los `number` de la bandeja, así que sin esto un
+          // aviso pintado en foreground aportaría 0 y el mismo aviso llegado con
+          // la app cerrada aportaría 1 — el globo subcontaría según dónde
+          // estuviera el usuario cuando llegó.
+          number: 1,
         ),
       ),
       payload: jsonEncode({'link': link}),
