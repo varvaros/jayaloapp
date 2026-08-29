@@ -187,12 +187,19 @@ class _ChatScreenState extends State<ChatScreen> {
         fetchConversation(widget.conversationId),
         messagesPage(widget.conversationId, limit: _pageSize),
         if (needsPeerFetch) conversationsList() else Future.value(const <Map<String, dynamic>>[]),
-        hasConversationRating(widget.conversationId),
       ]);
       final conv = results[0] as Map<String, dynamic>?;
       if (conv == null) throw StateError('not found');
       final page = results[1] as List<Map<String, dynamic>>;
-      final hasRating = results[3] as bool;
+      // `hasConversationRating` sale del `Future.wait` a propósito: desde el
+      // 2026-08-29 necesita el `source_id` de la conversación para poder mirar
+      // también `business_reviews` (ver su doc), y dentro del wait `conv` todavía
+      // no existe. Cuesta un viaje más; a cambio, el cliente que ya calificó
+      // desde la web no vuelve a ver el formulario aquí ni pisa su propia nota.
+      final hasRating = await hasConversationRating(
+        widget.conversationId,
+        offerId: conv['kind'] == 'offer' ? conv['source_id'] as String? : null,
+      );
       _session.seedFirstPage(page, _pageSize);
       if (!mounted) return;
       setState(() {

@@ -1975,13 +1975,47 @@ Future<void> improveOfferPrice(String convId, num newPrice) async =>
       params: {'_conversation_id': convId, '_new_price': newPrice},
     );
 
-Future<bool> hasConversationRating(String convId) async =>
-    (await supa
-        .from('conversation_ratings')
-        .select('id')
-        .eq('conversation_id', convId)
-        .maybeSingle()) !=
-    null;
+/// ¿Ya calificó este cliente a este proveedor?
+///
+/// 🔴 Mirar SOLO `conversation_ratings` era una rotura de DOS orillas desde el
+/// 2026-08-29: en la web se puede calificar desde la tarjeta de seguimiento con
+/// el chat todavía ABIERTO, y la RLS de esa tabla exige `status='cerrado'`, así
+/// que en ese caso la nota vive SOLO en `business_reviews`. Con el chequeo viejo,
+/// el cliente que calificaba en la web y luego abría la APP al cerrarse el chat
+/// **veía el formulario otra vez**, y el segundo envío hace `upsert` con
+/// `onConflict: business_id,reviewer_id` ⇒ **pisaba su primera nota en silencio**.
+///
+/// Se consultan las DOS y basta con una. `_offerId` es el `source_id` de la
+/// conversación y solo existe en los chats de OFERTA: en `product_interest` no
+/// hay negocio detrás y la respuesta correcta es «no ha calificado».
+Future<bool> hasConversationRating(String convId, {String? offerId}) async {
+  final r = await supa
+      .from('conversation_ratings')
+      .select('id')
+      .eq('conversation_id', convId)
+      .maybeSingle();
+  if (r != null) return true;
+  if (offerId == null) return false;
+
+  final uid = supa.auth.currentUser?.id;
+  if (uid == null) return false;
+
+  final off = await supa
+      .from('provider_offers')
+      .select('business_id')
+      .eq('id', offerId)
+      .maybeSingle();
+  final bizId = off?['business_id'] as String?;
+  if (bizId == null) return false;
+
+  return (await supa
+          .from('business_reviews')
+          .select('id')
+          .eq('business_id', bizId)
+          .eq('reviewer_id', uid)
+          .maybeSingle()) !=
+      null;
+}
 
 // `hasAuditMessage` se retiró el 2026-08-28 con su único llamador (la
 // "auditoría 72h" de chat_screen.dart, que no podía escribir desde 2026-07-29).
