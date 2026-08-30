@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/features/provider/hidden_requests_store.dart';
 import 'package:jayalo_app/features/provider/inbox_screen.dart';
+import 'package:jayalo_app/features/provider/opened_requests.dart';
+import 'package:jayalo_app/features/shared/brand_kit.dart';
+import 'package:jayalo_app/features/shared/onboarding_store.dart';
 import 'package:jayalo_app/features/shared/violet_header.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -386,6 +389,101 @@ void main() {
           .first);
       expect(placeholder.constraints?.maxWidth, 76);
       expect(placeholder.constraints?.maxHeight, 76);
+    });
+  });
+
+  // ── La marca de «sin abrir» en la bandeja (queja PO 2026-08-25) ───────────
+  //
+  // «sigo sin saber que es ese 4 en la barra, no me senala nada pendiente»: el
+  // badge contaba lo no abierto pero la bandeja no lo pintaba en ninguna parte
+  // — `hasUnseen` aparecia UNA sola vez en toda la pantalla, en el calculo del
+  // numero. Se copia lo que ya hace «Mis solicitudes» del cliente: borde que
+  // saluda + las sin abrir arriba.
+  group('marca de sin abrir', () {
+    Map<String, dynamic> req(String id, String title, DateTime creada) => {
+          'id': id,
+          'source': 'marketplace',
+          'title': title,
+          'kind': 'producto',
+          'created_at': creada.toIso8601String(),
+        };
+
+    // "vieja" se abrio; "nueva" no. La vieja es MAS RECIENTE a proposito: si
+    // el orden no mirara lo visto, saldria primero.
+    final ahora = DateTime.utc(2026, 8, 25, 12);
+    Future<List<Map<String, dynamic>>> dos(
+            {String? kind, required bool todas}) async =>
+        todas
+            ? []
+            : [
+                req('req-vista', 'Ya la abri', ahora),
+                req('req-nueva', 'Sin abrir', ahora.subtract(const Duration(hours: 2))),
+              ];
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      openedRequestsStore.reset();
+      // La guia de la lista se pinta en un Overlay sobre la primera tarjeta y
+      // se come el toque del toggle "Todas". Se marca hecha, igual que en
+      // catalog_screen_test y chat_composer_pill_test.
+      onboardingStore.reset();
+      await onboardingStore.markDone('provider.requests_list.v1');
+    });
+
+    JayaloCard cardDe(WidgetTester tester, String titulo) =>
+        tester.widget<JayaloCard>(find
+            .ancestor(of: find.text(titulo), matching: find.byType(JayaloCard))
+            .first);
+
+    testWidgets('la sin abrir lleva borde que saluda; la ya vista, ninguno',
+        (tester) async {
+      openedRequestsStore.markSeen('req-vista', ahora);
+
+      await tester.pumpWidget(host(ProviderInboxView(
+          fetch: dos, leading: const SizedBox.shrink(), actions: const [])));
+      await tester.pumpAndSettle();
+
+      expect(cardDe(tester, 'Sin abrir').pulseBorder, isTrue,
+          reason: 'es la que suma al badge: tiene que decirlo');
+      expect(cardDe(tester, 'Ya la abri').pulseBorder, isFalse,
+          reason: 'ya la abriste, no cuenta y no debe marcarse');
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('las sin abrir van ARRIBA aunque sean mas viejas',
+        (tester) async {
+      openedRequestsStore.markSeen('req-vista', ahora);
+
+      await tester.pumpWidget(host(ProviderInboxView(
+          fetch: dos, leading: const SizedBox.shrink(), actions: const [])));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(find.text('Sin abrir')).dy,
+        lessThan(tester.getTopLeft(find.text('Ya la abri')).dy),
+      );
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('en "Todas" no se marca nada: es exploracion, no una alerta',
+        (tester) async {
+      Future<List<Map<String, dynamic>>> ambas(
+              {String? kind, required bool todas}) async =>
+          [req('req-nueva', 'Sin abrir', ahora)];
+
+      await tester.pumpWidget(host(ProviderInboxView(
+          fetch: ambas, leading: const SizedBox.shrink(), actions: const [])));
+      await tester.pumpAndSettle();
+      expect(cardDe(tester, 'Sin abrir').pulseBorder, isTrue);
+
+      await tester.tap(find.descendant(
+          of: find.byType(HeaderSegmented).first, matching: find.text('Todas')));
+      await tester.pumpAndSettle();
+
+      expect(cardDe(tester, 'Sin abrir').pulseBorder, isFalse,
+          reason: 'en "Todas" casi todo esta sin abrir: un mar de bordes no '
+              'senala nada');
+      await tester.pump(const Duration(seconds: 3));
     });
   });
 }

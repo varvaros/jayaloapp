@@ -17,6 +17,11 @@ class HiddenRequestsStore extends ChangeNotifier {
 
   bool contains(String id) => _ids.contains(id);
 
+  /// Copia del set para pasárselo a `loadInboxData`, que lo necesita entero
+  /// para descontarlo del badge. Se copia en vez de exponer `_ids` para que
+  /// nadie de fuera pueda ocultar una solicitud sin pasar por [hide].
+  Set<String> get ids => Set.unmodifiable(_ids);
+
   /// Carga el set persistido una vez. Best-effort: si falla, arranca vacío
   /// (no se oculta nada — el fallo nunca esconde solicitudes por accidente).
   Future<void> ensureLoaded() async {

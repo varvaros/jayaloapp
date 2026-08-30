@@ -148,17 +148,33 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     if (mounted) setState(_syncBadge);
   }
 
-  /// El badge = lo que queda SIN ABRIR. En "Todas" no se toca: ese conteo no es
-  /// una alerta accionable, es exploracion.
+  /// El badge = lo que queda SIN ABRIR y SIN DESCARTAR. En "Todas" no se toca:
+  /// ese conteo no es una alerta accionable, es exploracion.
   void _syncBadge() {
     if (!mounted || _todas) return;
     solicitudesBadge.value = _badgeIds
-        .where((id) => openedRequestsStore.hasUnseen(id, _updatedAt[id]))
+        .where(
+          (id) =>
+              !hiddenRequestsStore.contains(id) &&
+              openedRequestsStore.hasUnseen(id, _updatedAt[id]),
+        )
         .length;
   }
 
+  /// Descartar y «Deshacer» mueven el badge EN EL ACTO, sin volver a la red:
+  /// `_badgeIds` guarda las candidatas enteras, asi que revivir una la devuelve
+  /// al contador. Es la mitad que faltaba de la queja del PO 2026-08-25.
+  /// Sin abrir Y contando: es exactamente lo que suma al badge. Las tarjetas
+  /// de interes de producto ('store') no entran — no son una solicitud del
+  /// marketplace. En "Todas" no se marca nada: eso es exploracion, no alerta.
+  bool _sinAbrir(Map<String, dynamic> r) {
+    if (_todas || r['source'] == 'store') return false;
+    final id = r['id'] as String;
+    return openedRequestsStore.hasUnseen(id, _updatedAt[id]);
+  }
+
   void _onHiddenChanged() {
-    if (mounted) setState(() {});
+    if (mounted) setState(_syncBadge);
   }
 
   @override
@@ -184,6 +200,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
           ? null
           : () => myOfferedOpenRequests(kind: _kind),
       seen: openedRequestsStore.seen,
+      hidden: hiddenRequestsStore.ids,
       fetchUpdatedAt: updatedAtForRequests,
       fetchStatuses: myOfferedRequestStatuses,
       fetchCounts: offerCountsForRequests,
@@ -358,12 +375,26 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                         },
                       );
                     }
+                    // Las SIN ABRIR van arriba (queja del PO 2026-08-25: «no
+                    // me senala nada pendiente»). Se PARTE la lista en vez de
+                    // ordenarla: `List.sort` no es estable y desharia el orden
+                    // por fecha que ya trae cada grupo.
+                    //
+                    // Solo en "Para ti". En "Todas" casi todo esta sin abrir:
+                    // subirlo todo no ordena nada y el mar de bordes tampoco
+                    // senala nada.
+                    final ordenadas = _todas
+                        ? items
+                        : [
+                            ...items.where(_sinAbrir),
+                            ...items.where((r) => !_sinAbrir(r)),
+                          ];
                     // Primera solicitud REGULAR (no _InterestCard) de la lista:
                     // ancla de la guía de onboarding. Las tarjetas 'store' son
                     // otra cosa (interés de producto), así que la guía —que
                     // habla de "personas buscando servicios"— no debe anclarse
                     // ahí.
-                    final firstRegularIndex = items.indexWhere(
+                    final firstRegularIndex = ordenadas.indexWhere(
                       (r) => r['source'] != 'store',
                     );
                     return ListView.builder(
@@ -372,9 +403,9 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                         top: 8,
                         bottom: 8 + navBarReservedSpace(context),
                       ),
-                      itemCount: items.length,
+                      itemCount: ordenadas.length,
                       itemBuilder: (_, i) {
-                        final r = items[i];
+                        final r = ordenadas[i];
                         // Los intereses de producto ('store') son otra cosa que
                         // una solicitud del marketplace: un comprador interesado
                         // en TU producto, no una solicitud abierta — tarjeta y
@@ -402,6 +433,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           createdAt: DateTime.parse(r['created_at'] as String),
                           // Sin margen propio: lo aplica el swipe.
                           margin: EdgeInsets.zero,
+                          unseen: _sinAbrir(r),
                           // push (no go): apila el detalle para que el atrás
                           // vuelva a la bandeja (el go reemplazaba la pila y la
                           // flecha "no funcionaba"). Al volver se refresca por si
@@ -488,6 +520,7 @@ class _InboxCard extends StatelessWidget {
     this.offerCount = 0,
     this.requirements = RequestRequirements.none,
     this.margin,
+    this.unseen = false,
   });
 
   final String title;
@@ -517,6 +550,10 @@ class _InboxCard extends StatelessWidget {
   /// Null = margen estándar de lista; se pasa cero cuando la tarjeta vive
   /// dentro de [SwipeToActions] (el swipe aplica el margen exterior).
   final EdgeInsetsGeometry? margin;
+
+  /// Sin abrir: la que suma al badge. Lleva el mismo borde que saluda que
+  /// «Mis solicitudes» del cliente — la marca se lee igual en los dos lados.
+  final bool unseen;
 
   /// Lado de la miniatura: sin descripción en la tarjeta (pedido PO
   /// 2026-08-09) la foto pasa a ser la protagonista — 76 desde el mockup
@@ -563,6 +600,11 @@ class _InboxCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return JayaloCard(
       onTap: onTap,
+      // 1 px y no 2: el mismo grosor que las otras tarjetas con marca
+      // (PO 2026-08-21, «50% mas sutil»). `JayaloCard` saca de aqui el grosor
+      // del borde que respira.
+      border: unseen ? Border.all(color: cs.primary, width: 1) : null,
+      pulseBorder: unseen,
       margin: margin ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

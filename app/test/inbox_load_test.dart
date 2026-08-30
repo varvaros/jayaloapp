@@ -174,6 +174,33 @@ void main() {
       expect(data.badgeCount, 0);
     });
 
+    // Queja del PO 2026-08-25: «sigo sin saber que es ese 4 en la barra, no me
+    // senala nada pendiente». Una solicitud DESCARTADA con el swipe sale de la
+    // bandeja pero seguia contando en el badge: el numero apuntaba a tarjetas
+    // que NO estan en pantalla, asi que no habia forma de bajarlo.
+    test('el badge NO cuenta las solicitudes DESCARTADAS', () async {
+      final data = await loadInboxData(
+        fetchItems: () async => [req('a'), req('b')],
+        fetchOfferedOpen: null,
+        hidden: {'b'},
+        fetchStatuses: (_) async => {},
+        fetchCounts: (_) async => {},
+        fetchRequirements: (_) async => {},
+      );
+      expect(data.badgeCount, 1, reason: 'descartar la saca tambien del badge');
+      expect(
+        data.items.length,
+        2,
+        reason: 'el filtro visual vive en la pantalla; aqui solo se deja de contar',
+      );
+      expect(
+        data.badgeIds,
+        containsAll(['a', 'b']),
+        reason: 'sigue siendo candidata: «Deshacer» la devuelve al contador '
+            'sin volver a la red',
+      );
+    });
+
     test('si updated_at no llega, lo ya visto SIGUE visto', () async {
       // La consulta es best-effort: al fallar no se puede saber si cambio. Se
       // cree lo que se sabe — el badge se queda corto, nunca grita de mas.

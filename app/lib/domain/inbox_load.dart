@@ -22,12 +22,13 @@ typedef InboxData = ({
   Map<String, int> counts,
   Map<String, RequestRequirements> requirements,
   /// Ids que PUEDEN contar para el badge (marketplace, antes del merge), SIN
-  /// filtrar por vistas. La pantalla lo guarda para poder recalcular el badge
-  /// al vuelo cuando se abre una solicitud, sin volver a la red.
+  /// filtrar por vistas NI por descartadas. La pantalla lo guarda para poder
+  /// recalcular el badge al vuelo —al abrir una solicitud, al descartarla o al
+  /// deshacer— sin volver a la red.
   Set<String> badgeIds,
   /// `updated_at` de cada solicitud: con que fila cambio se compara lo visto.
   Map<String, DateTime> updatedAt,
-  /// Lo que se pinta: [badgeIds] menos las ya abiertas.
+  /// Lo que se pinta: [badgeIds] menos las ya abiertas y menos las descartadas.
   int badgeCount,
 });
 
@@ -47,6 +48,11 @@ Future<InboxData> loadInboxData({
   Map<String, DateTime> seen = const {},
   /// `updated_at` por id. Va en la oleada B, con sus hermanas.
   Future<Map<String, DateTime>> Function(List<String>)? fetchUpdatedAt,
+  /// Ids que el proveedor DESCARTÓ con el swipe. Salen del contador, no de
+  /// [items]: el filtro visual vive en la pantalla y «Deshacer» tiene que poder
+  /// devolverlas al badge sin volver a la red.
+  /// Ver `features/provider/hidden_requests_store.dart`.
+  Set<String> hidden = const {},
   required Future<Map<String, String>> Function(List<String>) fetchStatuses,
   required Future<Map<String, int>> Function(List<String>) fetchCounts,
   required Future<Map<String, RequestRequirements>> Function(List<String>)
@@ -131,6 +137,11 @@ Future<InboxData> loadInboxData({
   // oferta propia en otro rubro no es una alerta pendiente.
   final badgeCount = badgeIds
       .where((id) {
+        // Descartar la saca del contador. Queja del PO 2026-08-25: «sigo sin
+        // saber qué es ese 4 en la barra, no me señala nada pendiente» — el
+        // número apuntaba a tarjetas que ya no están en pantalla, así que no
+        // había forma de bajarlo.
+        if (hidden.contains(id)) return false;
         final visto = seen[id];
         if (visto == null) return true; // nunca abierta
         final u = updatedAt[id];
