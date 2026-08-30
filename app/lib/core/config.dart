@@ -20,6 +20,21 @@ abstract final class AppConfig {
   /// Seguridad de los Datos de Play Console.
   static const deleteAccountUrl = '$siteUrl/eliminar-cuenta';
 
-  /// DEBE coincidir con TERMS_VERSION de la web (src/components/legal).
+  /// La web va por '2.1' desde el 2026-08-28: añade la cláusula 23,
+  /// «Declaración de buena fe del proveedor», que en la web se firma con una
+  /// SEGUNDA casilla aparte de la de Términos.
+  ///
+  /// 🔴 LA APP TODAVÍA NO TIENE ESA CASILLA. Mientras no la tenga:
+  ///   - Subir esto a '2.1' NO marca a nadie como declarante (la prueba es la
+  ///     columna `profiles.conduct_declared_at`, que la app no escribe), pero
+  ///     sí afirmaría que el usuario aceptó un texto cuya cláusula 23 la app
+  ///     no le hizo firmar.
+  ///   - Dejarlo en '2.0' tampoco es exacto: `termsUrl` apunta a la web VIVA,
+  ///     así que quien abra los Términos desde el APK ya lee el texto 2.1.
+  ///
+  /// Lo correcto es cerrar la brecha, no elegir número: añadir la casilla en
+  /// `provider_onboarding_screen.dart` (estado + `_stepValid`), escribir
+  /// `conduct_declared_at` al dar de alta, y entonces subir esto a '2.1'.
+  /// Las tres cosas, en la misma tanda.
   static const termsVersion = '2.0';
 }
