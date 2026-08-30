@@ -148,17 +148,24 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     if (mounted) setState(_syncBadge);
   }
 
-  /// El badge = lo que queda SIN ABRIR. En "Todas" no se toca: ese conteo no es
-  /// una alerta accionable, es exploracion.
+  /// El badge = lo que queda SIN ABRIR y SIN DESCARTAR. En "Todas" no se toca:
+  /// ese conteo no es una alerta accionable, es exploracion.
   void _syncBadge() {
     if (!mounted || _todas) return;
     solicitudesBadge.value = _badgeIds
-        .where((id) => openedRequestsStore.hasUnseen(id, _updatedAt[id]))
+        .where(
+          (id) =>
+              !hiddenRequestsStore.contains(id) &&
+              openedRequestsStore.hasUnseen(id, _updatedAt[id]),
+        )
         .length;
   }
 
+  /// Descartar y «Deshacer» mueven el badge EN EL ACTO, sin volver a la red:
+  /// `_badgeIds` guarda las candidatas enteras, asi que revivir una la devuelve
+  /// al contador. Es la mitad que faltaba de la queja del PO 2026-08-25.
   void _onHiddenChanged() {
-    if (mounted) setState(() {});
+    if (mounted) setState(_syncBadge);
   }
 
   @override
@@ -184,6 +191,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
           ? null
           : () => myOfferedOpenRequests(kind: _kind),
       seen: openedRequestsStore.seen,
+      hidden: hiddenRequestsStore.ids,
       fetchUpdatedAt: updatedAtForRequests,
       fetchStatuses: myOfferedRequestStatuses,
       fetchCounts: offerCountsForRequests,

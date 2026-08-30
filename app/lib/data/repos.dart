@@ -1665,8 +1665,19 @@ Future<int> setBusinessOficios(String businessId, List<String> slugs) async {
 
 Future<String?> uploadBusinessLogo(String filePath) async {
   final uid = supa.auth.currentUser!.id;
+  final dot = filePath.lastIndexOf('.');
+  final ext = dot == -1 ? 'jpg' : filePath.substring(dot + 1).toLowerCase();
   final path = '$uid/logo-${DateTime.now().millisecondsSinceEpoch}.jpg';
-  await supa.storage.from('business-logos').upload(path, File(filePath));
+  await supa.storage
+      .from('business-logos')
+      .upload(
+        path,
+        File(filePath),
+        // Sin `contentType` el cliente lo deduce de la ruta LOCAL y manda
+        // `application/octet-stream` cuando no reconoce la extension. Los
+        // buckets llevan lista blanca de MIME, asi que eso seria un rechazo.
+        fileOptions: FileOptions(contentType: _imageContentType(ext)),
+      );
   return supa.storage.from('business-logos').getPublicUrl(path);
 }
 
@@ -1761,7 +1772,12 @@ Future<String> updateMyAvatar(String filePath) async {
       .upload(
         path,
         File(filePath),
-        fileOptions: const FileOptions(upsert: true),
+        // Mismo motivo que en `uploadBusinessLogo`: el MIME se declara, no se
+        // adivina desde la extension del fichero temporal.
+        fileOptions: FileOptions(
+          upsert: true,
+          contentType: _imageContentType(ext),
+        ),
       );
   final url = supa.storage.from('business-logos').getPublicUrl(path);
   await supa.from('profiles').update({'avatar_url': url}).eq('user_id', uid);
@@ -2076,25 +2092,52 @@ Future<Map<String, dynamic>?> conversationServiceHours(String convId) async {
   return raw is Map ? Map<String, dynamic>.from(raw) : null;
 }
 
-Future<bool> hasConversationRating(String convId) async =>
-    (await supa
-        .from('conversation_ratings')
-        .select('id')
-        .eq('conversation_id', convId)
-        .maybeSingle()) !=
-    null;
+/// ¿Ya calificó este cliente a este proveedor?
+///
+/// 🔴 Mirar SOLO `conversation_ratings` era una rotura de DOS orillas desde el
+/// 2026-08-29: en la web se puede calificar desde la tarjeta de seguimiento con
+/// el chat todavía ABIERTO, y la RLS de esa tabla exige `status='cerrado'`, así
+/// que en ese caso la nota vive SOLO en `business_reviews`. Con el chequeo viejo,
+/// el cliente que calificaba en la web y luego abría la APP al cerrarse el chat
+/// **veía el formulario otra vez**, y el segundo envío hace `upsert` con
+/// `onConflict: business_id,reviewer_id` ⇒ **pisaba su primera nota en silencio**.
+///
+/// Se consultan las DOS y basta con una. `_offerId` es el `source_id` de la
+/// conversación y solo existe en los chats de OFERTA: en `product_interest` no
+/// hay negocio detrás y la respuesta correcta es «no ha calificado».
+Future<bool> hasConversationRating(String convId, {String? offerId}) async {
+  final r = await supa
+      .from('conversation_ratings')
+      .select('id')
+      .eq('conversation_id', convId)
+      .maybeSingle();
+  if (r != null) return true;
+  if (offerId == null) return false;
 
-/// ¿Ya existe un mensaje de auditoría en esta conversación? Query dedicada:
-/// mirar los 50 cargados no basta (la auditoría puede estar más atrás).
-Future<bool> hasAuditMessage(String convId) async =>
-    (await supa
-        .from('conversation_messages')
-        .select('id')
-        .eq('conversation_id', convId)
-        .eq('kind', 'audit')
-        .limit(1)
-        .maybeSingle()) !=
-    null;
+  final uid = supa.auth.currentUser?.id;
+  if (uid == null) return false;
+
+  final off = await supa
+      .from('provider_offers')
+      .select('business_id')
+      .eq('id', offerId)
+      .maybeSingle();
+  final bizId = off?['business_id'] as String?;
+  if (bizId == null) return false;
+
+  return (await supa
+          .from('business_reviews')
+          .select('id')
+          .eq('business_id', bizId)
+          .eq('reviewer_id', uid)
+          .maybeSingle()) !=
+      null;
+}
+
+// `hasAuditMessage` se retiró el 2026-08-28 con su único llamador (la
+// "auditoría 72h" de chat_screen.dart, que no podía escribir desde 2026-07-29).
+// Ver el comentario allí antes de resucitarla: buscaba CUALQUIER `audit`, así
+// que los carteles del cron la daban siempre por satisfecha.
 
 Future<void> submitConversationRating({
   required String convId,
@@ -2226,17 +2269,34 @@ Future<void> reportAccount({
 Future<void> markChatNotificationsRead(String convId) async {
   final uid = supa.auth.currentUser!.id;
   final readAt = DateTime.now().toUtc().toIso8601String();
+  // Los kinds de inactividad se marcan leídos AQUÍ desde el 2026-08-28. Antes
+  // solo `message_new`, pero `get_my_conversations_list.unread_count` cuenta por
+  // LINK sin mirar el kind (decisión del PO, migración 20260824174418) ⇒ el
+  // aviso de inactividad se quedaba sin leer para siempre y el globito de ese
+  // chat no se apagaba nunca abriéndolo. Medido antes del arreglo: 11 de 22
+  // avisos sin leer, el doble de tasa que los mensajes. Con tres avisos
+  // escalonados en vez de uno el problema se triplicaba.
+  // La lista es EXPLÍCITA a propósito, no un "todos menos": quitar el filtro
+  // marcaría también `review_pending_reminder` y los `appointment_*` de este
+  // chat, y abrir el chat borraría un recordatorio de calificar sin atender.
+  const kinds = [
+    'message_new',
+    'conversation_inactivity_warning',
+    'conversation_closed_inactivity',
+  ];
   await Future.wait([
     supa
         .from('notifications')
         .update({'read_at': readAt})
         .eq('user_id', uid)
+        .inFilter('kind', kinds)
         .eq('link', '/messages?c=$convId')
         .isFilter('read_at', null),
     supa
         .from('notifications')
         .update({'read_at': readAt})
         .eq('user_id', uid)
+        .inFilter('kind', kinds)
         .eq('link', '/messages/$convId')
         .isFilter('read_at', null),
   ]);

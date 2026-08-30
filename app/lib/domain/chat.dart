@@ -356,8 +356,11 @@ String buildGreeting(String template,
         .replaceAll('{product}', product)
         .replaceAll('{price}', priceTxt);
 
-bool needsAudit({required String status, required DateTime createdAt, required bool hasAudit, required DateTime now}) =>
-    status == 'abierto' && !hasAudit && now.difference(createdAt) >= const Duration(hours: 72);
+// `needsAudit` se retiró el 2026-08-28 junto con la "auditoría 72h" de
+// chat_screen.dart: su insert era imposible desde 2026-07-29 (la política solo
+// admite text|address|image|quick con sender_id = auth.uid()) y lo único que
+// producía era un "No se pudo enviar" al cliente. Tenía 4 tests en verde: los
+// tests probaban la aritmética de las 72 h, no que el insert llegara a la BD.
 
 /// Gotcha #14: el convId viene SOLO en el link (`/messages?c=<id>` actual,
 /// `/messages/<id>` legado) — NUNCA en entity_id.
