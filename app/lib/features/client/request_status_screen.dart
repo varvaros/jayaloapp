@@ -4,6 +4,7 @@ import '../../core/brand.dart';
 import '../../data/repos.dart';
 import '../../domain/money.dart';
 import '../../domain/phase.dart';
+import '../../domain/share_links.dart';
 import '../../domain/finalist_slots.dart';
 import '../../domain/request_requirements.dart';
 import 'my_requests_screen.dart' show phaseChip;
@@ -11,6 +12,7 @@ import 'offer_actions.dart';
 import 'offer_requirement_coverage.dart';
 import 'request_detail_sheet.dart';
 import '../shared/brand_kit.dart';
+import '../shared/share_button.dart';
 import '../shared/collapsing_photo_panel.dart';
 import '../shared/network_image.dart' show jayaloAvatarImage;
 import '../shared/verified_badges.dart';
@@ -445,6 +447,13 @@ class RequestDetailBody extends StatelessWidget {
     // scrolls quedaban aislados (panel fijo en 300.0 mientras el título
     // scrolleaba solo por dentro). `false` deja que el `Column` sin scroll de
     // la hoja participe del scroll EXTERNO junto con el panel.
+    // Compartir la solicitud: `/requests/{id}` es página PÚBLICA en jayalo.com
+    // (tiene hasta su tarjeta OG), así que el enlace le sirve a cualquiera —
+    // también a un proveedor que todavía no tenga cuenta.
+    final share = shareForRequest(
+      id: request['id'] as String?,
+      title: (request['title'] as String?) ?? '',
+    );
     return Column(
       children: [
         Expanded(
@@ -454,6 +463,13 @@ class RequestDetailBody extends StatelessWidget {
                 images: images,
                 fallbackIcon: phaseChip(phase, 0).$1,
                 leading: leading,
+                actions: [
+                  if (share != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ShareFab(content: share),
+                    ),
+                ],
                 onOpenViewer: onOpenViewer,
               ),
               SliverFillRemaining(

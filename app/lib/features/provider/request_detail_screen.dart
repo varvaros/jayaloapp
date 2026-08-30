@@ -26,6 +26,8 @@ import '../../domain/store_product_prefill.dart';
 import '../shared/request_requirement_badges.dart';
 import '../shared/celebration.dart';
 import '../shared/collapsing_photo_panel.dart';
+import '../../domain/share_links.dart';
+import '../shared/share_button.dart';
 import '../shared/detail_tiles.dart';
 import '../shared/request_bullet_tiles.dart';
 import '../shared/customer_rep_card.dart';
@@ -2059,6 +2061,13 @@ class _ProviderRequestDetailScreenState
     // CTA del detalle del cliente: es lo que el proveedor ya pagó y no debe
     // irse de pantalla. El pie carga el hueco de la navbar; el scroll ya no.
     final footer = _offerUnlockedOrDone && !_editing;
+    // El proveedor comparte la SOLICITUD (pública en jayalo.com), nunca su
+    // oferta: una oferta solo la ve el dueño de la solicitud y no tiene página
+    // propia — un enlace a ella no existiría.
+    final share = shareForRequest(
+      id: (req['id'] as String?) ?? widget.requestId,
+      title: (req['title'] as String?) ?? '',
+    );
     final scroll = CustomScrollView(slivers: [
         // La foto se PLIEGA al bajar (pedido PO 2026-08-01: "que se desplace
         // hacia arriba y casi se oculte, para que la ventana se vea
@@ -2072,6 +2081,13 @@ class _ProviderRequestDetailScreenState
               ? Icons.handyman_outlined
               : Icons.inventory_2_outlined,
           leading: _backButton(context),
+          actions: [
+            if (share != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ShareFab(content: share),
+              ),
+          ],
           onOpenViewer: (i) =>
               showPhotoViewer(context, images, initialIndex: i),
         ),

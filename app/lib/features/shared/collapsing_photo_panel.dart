@@ -24,6 +24,7 @@ class CollapsingPhotoPanel extends StatelessWidget {
     this.expandedHeight = 300,
     this.activeIndex = 0,
     this.leading,
+    this.actions = const [],
     this.onOpenViewer,
     this.overlay,
   });
@@ -46,6 +47,11 @@ class CollapsingPhotoPanel extends StatelessWidget {
   /// Va como `leading` de la barra, así que sigue tocable con el panel
   /// plegado — si desapareciera al colapsar, el usuario se quedaría sin salida.
   final Widget? leading;
+
+  /// Botones de la DERECHA de la barra (hoy: compartir). Viven en la barra y
+  /// no flotando sobre la foto por el mismo motivo que [leading]: al plegar el
+  /// panel siguen ahí. Vacío = barra sin acciones, idéntica a antes.
+  final List<Widget> actions;
 
   /// Abre el visor a pantalla completa en la foto `index`. Nulo = las fotos no
   /// son tocables.
@@ -96,6 +102,7 @@ class CollapsingPhotoPanel extends StatelessWidget {
       elevation: 0,
       automaticallyImplyLeading: false,
       leading: leading,
+      actions: actions,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
       ),
@@ -126,7 +133,12 @@ class CollapsingPhotoPanel extends StatelessWidget {
               // `background` y no en las `actions`.
               if (images.length > 1 && overlay == null)
                 Positioned(
-                  top: 30,
+                  // Con acciones en la barra, la miniatura BAJA: los dos son
+                  // pegados al borde derecho y a 30 se metía justo debajo del
+                  // botón (la barra ocupa el alto del status bar + 56). Sin
+                  // acciones se queda donde siempre — las pantallas que no
+                  // pasan ninguna no cambian un píxel.
+                  top: actions.isEmpty ? 30 : 96,
                   right: 0,
                   child: GestureDetector(
                     onTap: onOpenViewer == null

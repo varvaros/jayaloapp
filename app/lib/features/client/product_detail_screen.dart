@@ -15,6 +15,8 @@ import '../../domain/offer_defaults.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/collapsing_photo_panel.dart';
+import '../../domain/share_links.dart';
+import '../shared/share_button.dart';
 import '../shared/detail_tiles.dart';
 import '../../core/motion.dart';
 
@@ -210,6 +212,10 @@ class _ProductDetailViewState extends State<ProductDetailView> {
       priceMin: p['price_min'] as num?,
       priceMax: p['price_max'] as num?,
     );
+    // `/products/{id}` es página pública en jayalo.com, con su foto en la
+    // tarjeta de previsualización: es el enlace que un cliente manda por
+    // WhatsApp cuando enseña algo que encontró.
+    final share = shareForProduct(id: p['id'] as String?, name: name);
     final condition = p['condition'] as String?;
     final conditionLabel =
         condition == 'nuevo' ? 'Nuevo' : condition == 'usado' ? 'Usado' : null;
@@ -328,11 +334,26 @@ class _ProductDetailViewState extends State<ProductDetailView> {
                 ),
                 const SizedBox(height: 10),
               ],
-              Text(name,
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w600,
-                      color: jayaloHead(context))),
+              // El compartir va aquí y no en la barra de la foto —donde vive
+              // en los detalles de solicitud— porque esta pantalla ya tiene el
+              // contador de fotos anclado arriba a la derecha (overlay
+              // Variante B, aprobado 2026-08-11): los dos se pisarían.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(name,
+                        style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w600,
+                            color: jayaloHead(context))),
+                  ),
+                  if (share != null) ...[
+                    const SizedBox(width: 8),
+                    ShareFab(content: share),
+                  ],
+                ],
+              ),
               const SizedBox(height: 16),
               // Orden de la hoja de oferta (Variante B): PRIMERO los detalles
               // en tarjetas, DESPUÉS el precio en su tarjeta lila cerrando el
