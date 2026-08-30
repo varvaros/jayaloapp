@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # El +N es el versionCode: cada subida a Play lo QUEMA para siempre. Los APK
 # de device van por numeros intermedios sin commitear (45, 47...); aqui queda
 # commiteado el del AAB para que nadie recompile a ciegas con uno ya usado.
-version: 1.0.4+84
+version: 1.0.4+85
 
 environment:
   sdk: ^3.12.2
@@ -51,6 +51,10 @@ dependencies:
   # cargan al instante en vez de re-descargarse cada vez que se abre la app.
   cached_network_image: ^3.4.1
   url_launcher: ^6.3.2
+  # Hoja de compartir del sistema (botón "Compartir" de solicitudes, productos
+  # y tiendas). Solo manda texto: los enlaces apuntan a jayalo.com, que es
+  # donde esas páginas existen de verdad.
+  share_plus: ^12.0.0
   # Deep link de retorno tras recargar por PayPal en la web (jayalo://wallet).
   app_links: ^6.3.2
   http: ^1.6.0

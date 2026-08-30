@@ -77,14 +77,48 @@ void main() {
             'no contiene ninguna vía de pago: $actuales');
   });
 
-  test('la app no abre ninguna ruta /provider de la web', () {
-    final web = RegExp(r'''(AppConfig\.siteUrl|https://jayalo\.com)[^'"]*/provider''');
-    final ofensores = [
-      for (final f in dart)
-        if (web.hasMatch(_sinComentarios(f.readAsStringSync()))) rel(f)
-    ];
+  /// La ÚNICA ruta `/provider` que la app puede construir: la vitrina pública
+  /// de un negocio, que se comparte con la hoja del sistema.
+  ///
+  /// La excepción se apoya en un hecho, no en una probabilidad: la web sirve
+  /// esa ruta —y solo esa— **sin ninguna superficie de pago** en el cascarón
+  /// (`src/lib/paymentSurfaces.ts` en jayalo-main: fuera el botón de créditos
+  /// de la barra y fuera «Mis créditos» del menú). Vale para cualquier
+  /// visitante, también para un proveedor con sesión. Si esa regla de la web
+  /// desaparece, esta excepción deja de estar justificada y hay que retirarla.
+  ///
+  /// Compartir tampoco es el caso que este guard vigila: la app no ABRE nada
+  /// —entrega texto a la hoja del sistema— y quien abre el enlace es un
+  /// tercero, en su navegador.
+  final landingDeNegocio = RegExp(r'/provider/business/');
+
+  test('la app no abre ninguna ruta /provider de la web, salvo la vitrina', () {
+    final web = RegExp(r'''(AppConfig\.siteUrl|https://jayalo\.com)[^'"]*/provider[^'"]*''');
+    final ofensores = <String>[];
+    for (final f in dart) {
+      final src = _sinComentarios(f.readAsStringSync());
+      for (final m in web.allMatches(src)) {
+        if (!landingDeNegocio.hasMatch(m.group(0)!)) {
+          ofensores.add('${rel(f)} → ${m.group(0)}');
+        }
+      }
+    }
     expect(ofensores, isEmpty,
         reason: 'el panel web lleva dos "Recargar créditos" (PayPal) en: $ofensores');
+  });
+
+  test('la vitrina es la única excepción, y solo la construye share_links', () {
+    // Ojo: `/provider/business/...` también son RUTAS INTERNAS de go_router
+    // (`/provider/business/add`, `/provider/business/package`). Lo que se
+    // vigila es la URL de la WEB, así que el patrón exige el prefijo del sitio.
+    final web = RegExp(r'''(AppConfig\.siteUrl|https://jayalo\.com)[^'"]*/provider[^'"]*''');
+    final constructores = <String>[];
+    for (final f in dart) {
+      if (web.hasMatch(_sinComentarios(f.readAsStringSync()))) constructores.add(rel(f));
+    }
+    expect(constructores, ['lib/domain/share_links.dart'],
+        reason: 'la URL de la vitrina se arma en UN solo sitio, que es el que '
+            'documenta por qué se permite');
   });
 
   // Lo que Play prohíbe insinuar es PAGAR fuera de su sistema, no mencionar el

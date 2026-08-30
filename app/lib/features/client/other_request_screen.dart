@@ -5,6 +5,8 @@ import '../../data/repos.dart';
 import '../../domain/request_requirements.dart';
 import '../shared/brand_kit.dart';
 import '../shared/collapsing_photo_panel.dart';
+import '../shared/share_button.dart';
+import '../../domain/share_links.dart';
 import '../shared/detail_tiles.dart';
 import '../shared/request_bullet_tiles.dart';
 import '../shared/request_requirement_badges.dart';
@@ -86,13 +88,24 @@ class _OtherRequestScreenState extends State<OtherRequestScreen> {
             );
           }
           final imgs = _images(r);
+          // La solicitud de otro usuario también es pública en jayalo.com:
+          // compartirla es justo lo que hace que alguien más venga a ofertar.
+          final share = shareForRequest(
+            id: (r['id'] as String?) ?? widget.requestId,
+            title: (r['title'] as String?) ?? '',
+          );
           // CON foto entra el panel plegable (la foto se ESCONDE al scrollear
           // — pedido PO 2026-08-11, la fija de 200 no lo hacía) con el atrás
           // flotante encima, misma anatomía que los otros detalles. SIN foto
           // se conserva el header «Solicitud» de siempre.
           if (imgs.isEmpty) {
             return Scaffold(
-              appBar: AppBar(title: const Text('Solicitud')),
+              appBar: AppBar(
+                title: const Text('Solicitud'),
+                actions: [
+                  if (share != null) ShareIconButton(content: share),
+                ],
+              ),
               body: ListView(
                 padding: EdgeInsets.fromLTRB(
                     20, 16, 20, 24 + navBarReservedSpace(context)),
@@ -109,6 +122,13 @@ class _OtherRequestScreenState extends State<OtherRequestScreen> {
                     ? Icons.handyman_outlined
                     : Icons.inventory_2_outlined,
                 leading: productBackButton(context),
+                actions: [
+                  if (share != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ShareFab(content: share),
+                    ),
+                ],
                 onOpenViewer: (i) =>
                     showPhotoViewer(context, imgs, initialIndex: i),
               ),
