@@ -10,28 +10,34 @@
 /// |---|---|---|
 /// | Solicitud | `/requests/{id}` | Sí |
 /// | Producto o servicio del catálogo | `/products/{id}` | Sí |
-/// | **Tienda de un negocio** | `/provider/business/{id}` | **No**: ver abajo |
+/// | Tienda de un negocio | `/provider/business/{id}` | Sí — con la salvedad de abajo |
 /// | **Oferta** | ninguna — solo la ve el dueño de la solicitud | **No** |
 /// | **Interés de producto** | ninguna — es privado entre las dos partes | **No** |
 /// | **Paquete** | vive dentro de la landing del negocio | **No**: se comparte la tienda |
 /// | **Perfil / reputación del cliente** | no existe | **No** |
 ///
-/// 🔴 **La TIENDA no se comparte, y no es un olvido.** Su página pública vive
-/// en `/provider/business/{id}`, y `test/no_link_out_test.dart` prohíbe que la
-/// app construya CUALQUIER URL bajo `/provider`: ese panel de la web lleva dos
-/// botones de «Recargar créditos» que abren PayPal, y Play prohíbe el link-out
-/// a un método de pago ajeno —también insinuarlo—. Un solo call site
-/// reintroducido hace el binario no publicable. Compartir la tienda necesita
-/// primero una ruta pública FUERA de `/provider` (p. ej. `/negocio/{id}`), que
-/// hoy no existe en la web.
+/// 🔴 **La tienda es la excepción del guard de Play, y se apoya en un hecho.**
+/// Su página vive en `/provider/business/{id}`, y `test/no_link_out_test.dart`
+/// prohíbe construir URLs bajo `/provider` porque ese panel de la web lleva
+/// «Recargar créditos» → PayPal, y Play prohíbe el link-out a un pago ajeno.
+/// La web sirve **esa ruta, y solo esa, sin ninguna superficie de pago** en el
+/// cascarón (`src/lib/paymentSurfaces.ts` en jayalo-main): sin botón de
+/// créditos en la barra y sin «Mis créditos» en el menú, para cualquier
+/// visitante —también un proveedor con sesión—. Compartir tampoco es lo que el
+/// guard vigila: la app no abre nada, entrega texto a la hoja del sistema, y
+/// quien abre el enlace es un tercero en su navegador.
+///
+/// ⚠️ **Si esa regla de la web desaparece, esta función tiene que irse con
+/// ella.** Es el único sitio de la app que puede armar una URL `/provider`, y
+/// el guard lo verifica.
 ///
 /// ⚠️ Estos enlaces abren en el NAVEGADOR, no en la app, aunque el receptor la
 /// tenga instalada: el único `intent-filter` de la app es `jayalo://wallet`.
 /// Para que un `https://jayalo.com/...` abriera la app harían falta App Links
 /// verificados, y eso exige publicar `/.well-known/assetlinks.json` con el
-/// SHA-256 de Play App Signing (que todavía no existe: no hay cuenta de Play
-/// Console). Mientras tanto, compartir lleva tráfico a la web, que es donde el
-/// enlace sí funciona.
+/// SHA-256 de Play App Signing, que se saca de Play Console una vez subido el
+/// primer AAB (ver `docs/play-release.md`). Mientras tanto, compartir lleva
+/// tráfico a la web, que es donde el enlace sí funciona.
 library;
 
 import '../core/config.dart';
@@ -75,4 +81,20 @@ ShareContent? shareForProduct({required String? id, required String name}) {
   final head = _oneLine(name);
   final intro = head.isEmpty ? 'Mira esto' : head;
   return ShareContent(url: url, text: '$intro\n\nMíralo en Jayalo:\n$url');
+}
+
+/// [own] distingue al proveedor compartiendo SU tienda («mi tienda») del
+/// cliente compartiendo la de otro («su tienda»): con un solo copy, uno de los
+/// dos siempre suena raro.
+ShareContent? shareForBusiness({
+  required String? id,
+  required String name,
+  bool own = false,
+}) {
+  if (id == null || id.isEmpty) return null;
+  final url = '${AppConfig.siteUrl}/provider/business/$id';
+  final head = _oneLine(name);
+  final intro = head.isEmpty ? (own ? 'Mi tienda' : 'Esta tienda') : head;
+  final linea = own ? 'Mira mi tienda en Jayalo:' : 'Mira su tienda en Jayalo:';
+  return ShareContent(url: url, text: '$intro\n\n$linea\n$url');
 }

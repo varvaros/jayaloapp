@@ -6,6 +6,8 @@ import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../../domain/profile_sections.dart';
 import '../shared/brand_kit.dart';
+import '../shared/share_button.dart';
+import '../../domain/share_links.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
 import '../shared/open_in_maps_button.dart';
@@ -56,6 +58,12 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
   // Identidad real del negocio (PO 2026-07-28). `null` mientras carga o si
   // falla — degrada a "Proveedor" sin logo, nunca rompe la pantalla.
   BusinessIdentity? _identity;
+
+  /// `null` mientras la identidad no ha cargado: sin nombre el mensaje saldría
+  /// mudo, y el botón simplemente no está todavía.
+  ShareContent? get _shareTienda => _identity == null
+      ? null
+      : shareForBusiness(id: widget.businessId, name: _identity!.name);
 
   /// Sello "Tienda física" (PO 2026-08-12), AUTODECLARADO — ver doc de
   /// `businessesPhysicalLocation`. Vive fuera de `_identity` a propósito: esa
@@ -138,6 +146,16 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
             ),
             title: _identity?.name ?? 'Proveedor',
             subtitle: 'Tienda del proveedor',
+            // La vitrina es la landing pública del negocio: compartirla es
+            // mandarle un cliente al proveedor.
+            actions: [
+              if (_shareTienda != null)
+                HeaderCircleButton(
+                  icon: Icons.ios_share,
+                  tooltip: 'Compartir',
+                  onTap: () => shareContent(context, _shareTienda!),
+                ),
+            ],
           ),
           Expanded(
             child: _loading

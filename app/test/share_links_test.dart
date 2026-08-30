@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/core/config.dart';
 import 'package:jayalo_app/domain/share_links.dart';
@@ -17,6 +15,12 @@ void main() {
       final s = shareForProduct(id: 'prod-1', name: 'Taladro')!;
       expect(s.url, '${AppConfig.siteUrl}/products/prod-1');
     });
+
+    test('la tienda apunta a la vitrina — la excepción del guard de Play, que '
+        'se sostiene porque la web la sirve sin superficies de pago', () {
+      final s = shareForBusiness(id: 'biz-1', name: 'Ferretería La Económica')!;
+      expect(s.url, '${AppConfig.siteUrl}/provider/business/biz-1');
+    });
   });
 
   group('sin id no hay enlace que compartir', () {
@@ -24,19 +28,7 @@ void main() {
       expect(shareForRequest(id: null, title: 'x'), isNull);
       expect(shareForRequest(id: '', title: 'x'), isNull);
       expect(shareForProduct(id: null, name: 'x'), isNull);
-    });
-  });
-
-  group('lo que NO se comparte', () {
-    test('no existe forma de compartir la tienda: su URL viviría bajo '
-        '/provider, que `no_link_out_test` prohíbe (PayPal en ese panel)', () {
-      // Si algún día se añade `shareForBusiness`, este test deja de compilar y
-      // obliga a leer el porqué antes de reintroducir el link-out.
-      final fuente = File('lib/domain/share_links.dart').readAsStringSync();
-      expect(fuente.contains('/provider'), isTrue,
-          reason: 'el módulo debe seguir documentando POR QUÉ no se comparte');
-      expect(fuente.contains(r"'/provider/business/$"), isFalse,
-          reason: 'nadie debe volver a construir una URL /provider');
+      expect(shareForBusiness(id: '', name: 'x'), isNull);
     });
   });
 
@@ -56,6 +48,13 @@ void main() {
       final cabecera = s.text.split('\n').first;
       expect(cabecera.length, lessThanOrEqualTo(80));
       expect(cabecera.endsWith('…'), isTrue);
+    });
+
+    test('el proveedor comparte MI tienda; el cliente, SU tienda', () {
+      final mia = shareForBusiness(id: 'b', name: 'Taller Pérez', own: true)!;
+      final suya = shareForBusiness(id: 'b', name: 'Taller Pérez')!;
+      expect(mia.text, contains('Mira mi tienda en Jayalo'));
+      expect(suya.text, contains('Mira su tienda en Jayalo'));
     });
 
     test('sin título el mensaje sigue teniendo sentido', () {

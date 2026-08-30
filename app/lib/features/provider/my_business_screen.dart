@@ -13,6 +13,8 @@ import '../../domain/catalog.dart';
 import '../../domain/profile_sections.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
+import '../shared/share_button.dart';
+import '../../domain/share_links.dart';
 import '../shared/star_score.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
@@ -661,6 +663,11 @@ class _MyBusinessViewState extends State<MyBusinessView> {
         // toda la cascada de abajo sin ganar nada.
         ?PhysicalLocationBadge.maybe(
             hasPhysicalLocation: _hasPhysicalLocation),
+        // Compartir MI tienda. Va aquí y no en el header violeta porque el id
+        // del negocio solo existe dentro de esta vista (el header se construye
+        // antes de que cargue). Y con texto, no como icono: es el compartir con
+        // más valor de la app —el proveedor mandando su propia vitrina—.
+        ?_shareStoreButton(b),
         const SectionHeader(text: 'SOBRE EL NEGOCIO'),
         _AboutCard(
           description: _description,
@@ -752,6 +759,24 @@ class _MyBusinessViewState extends State<MyBusinessView> {
   /// SIEMPRE, en el orden de `offers`, aunque estén vacías — así el dueño
   /// puede publicar desde su propio perfil sin que la regla anti-inferencia
   /// (que sí aplica al visitante) le esconda una sección propia.
+  /// Botón de compartir la tienda, o `null` si el negocio todavía no tiene
+  /// enlace público que mandar.
+  Widget? _shareStoreButton(StoreProfile b) {
+    final content = shareForBusiness(id: b.id, name: b.name, own: true);
+    if (content == null) return null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: () => shareContent(context, content),
+          icon: const Icon(Icons.ios_share, size: 18),
+          label: const Text('Compartir mi tienda'),
+        ),
+      ),
+    );
+  }
+
   List<ProfileSection> _catalogOrder(StoreProfile b) => profileSections(
         offers: b.raw['offers'] as String?,
         productCount: widget.productos.length,
