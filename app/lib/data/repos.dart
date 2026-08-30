@@ -1659,8 +1659,19 @@ Future<int> setBusinessOficios(String businessId, List<String> slugs) async {
 
 Future<String?> uploadBusinessLogo(String filePath) async {
   final uid = supa.auth.currentUser!.id;
+  final dot = filePath.lastIndexOf('.');
+  final ext = dot == -1 ? 'jpg' : filePath.substring(dot + 1).toLowerCase();
   final path = '$uid/logo-${DateTime.now().millisecondsSinceEpoch}.jpg';
-  await supa.storage.from('business-logos').upload(path, File(filePath));
+  await supa.storage
+      .from('business-logos')
+      .upload(
+        path,
+        File(filePath),
+        // Sin `contentType` el cliente lo deduce de la ruta LOCAL y manda
+        // `application/octet-stream` cuando no reconoce la extension. Los
+        // buckets llevan lista blanca de MIME, asi que eso seria un rechazo.
+        fileOptions: FileOptions(contentType: _imageContentType(ext)),
+      );
   return supa.storage.from('business-logos').getPublicUrl(path);
 }
 
@@ -1755,7 +1766,12 @@ Future<String> updateMyAvatar(String filePath) async {
       .upload(
         path,
         File(filePath),
-        fileOptions: const FileOptions(upsert: true),
+        // Mismo motivo que en `uploadBusinessLogo`: el MIME se declara, no se
+        // adivina desde la extension del fichero temporal.
+        fileOptions: FileOptions(
+          upsert: true,
+          contentType: _imageContentType(ext),
+        ),
       );
   final url = supa.storage.from('business-logos').getPublicUrl(path);
   await supa.from('profiles').update({'avatar_url': url}).eq('user_id', uid);
