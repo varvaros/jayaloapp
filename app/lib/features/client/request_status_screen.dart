@@ -15,6 +15,8 @@ import '../shared/collapsing_photo_panel.dart';
 import '../shared/network_image.dart' show jayaloAvatarImage;
 import '../shared/verified_badges.dart';
 import '../../core/motion.dart';
+import '../../domain/share_links.dart';
+import '../shared/share_button.dart';
 
 /// Precio "efectivo" con el que se comparan las ofertas: precio base + costo
 /// de envío cuando el proveedor lo cobra (pedido PO: sumar el envío al precio
@@ -245,6 +247,18 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
               tooltip: 'Atrás',
               onTap: _goBack,
             ),
+            // Compartir tu propia solicitud: difundirla es exactamente lo que
+            // le conviene a quien la publicó. Pedido PO 2026-08-30.
+            actions: [
+              _CornerFab(
+                icon: Icons.share_outlined,
+                tooltip: 'Compartir',
+                onTap: () => compartir(
+                  ShareLinks.requestText(req['title'] as String?),
+                  ShareLinks.request(widget.requestId),
+                ),
+              ),
+            ],
             onOpenViewer: (i) =>
                 showPhotoViewer(context, images, initialIndex: i),
             onSeeOffers: () => _showOffers(context, req, offers),
@@ -406,6 +420,7 @@ class RequestDetailBody extends StatelessWidget {
     required this.images,
     required this.unreadCount,
     required this.onSeeOffers,
+    this.actions = const [],
     this.closedReason,
     this.leading,
     this.onOpenViewer,
@@ -432,6 +447,9 @@ class RequestDetailBody extends StatelessWidget {
   /// pantalla). Va como `leading` de la barra, así que sobrevive al plegado.
   final Widget? leading;
 
+  /// Acciones al otro extremo de la barra de la foto. Hoy: compartir.
+  final List<Widget> actions;
+
   /// Abre el visor a pantalla completa en la foto `index`.
   final void Function(int index)? onOpenViewer;
 
@@ -454,6 +472,7 @@ class RequestDetailBody extends StatelessWidget {
                 images: images,
                 fallbackIcon: phaseChip(phase, 0).$1,
                 leading: leading,
+                actions: actions,
                 onOpenViewer: onOpenViewer,
               ),
               SliverFillRemaining(

@@ -10,6 +10,8 @@ import '../shared/request_bullet_tiles.dart';
 import '../shared/request_requirement_badges.dart';
 import '../shell/floating_nav_bar.dart';
 import 'product_detail_screen.dart' show productBackButton;
+import '../../domain/share_links.dart';
+import '../shared/share_button.dart';
 
 /// Detalle READ-ONLY de una solicitud de OTRO usuario (pestaña "De otros" de
 /// Tus solicitudes). No muestra estado/ofertas (eso es de las propias) ni
@@ -190,10 +192,22 @@ class _OtherRequestScreenState extends State<OtherRequestScreen> {
         padding: const EdgeInsets.only(top: 16),
       ),
       const SizedBox(height: 28),
-      FilledButton.icon(
-        onPressed: _confirmSeed,
-        icon: const Icon(Icons.add),
-        label: const Text('También busco esto'),
+      // El compartir va AL LADO de la acción, no debajo (PO 2026-08-30).
+      Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _confirmSeed,
+              icon: const Icon(Icons.add),
+              label: const Text('También busco esto'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          ShareIconButton(
+            texto: ShareLinks.requestText(r['title'] as String?),
+            url: ShareLinks.request(widget.requestId),
+          ),
+        ],
       ),
     ];
   }

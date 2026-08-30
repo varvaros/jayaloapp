@@ -10,6 +10,8 @@ import '../../data/repos.dart';
 import '../../core/safe_image_picker.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/interest_message.dart';
+import '../../domain/share_links.dart';
+import '../shared/share_button.dart';
 import '../../domain/money.dart';
 import '../../domain/offer_defaults.dart';
 import '../shell/floating_nav_bar.dart';
@@ -559,9 +561,8 @@ class _CtaArea extends StatelessWidget {
       return _anchor(
         cs,
         child: Column(children: [
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
+          _conCompartir(
+            FilledButton(
               onPressed: null,
               child: const Text('Solicitud enviada'),
             ),
@@ -576,9 +577,8 @@ class _CtaArea extends StatelessWidget {
     return _anchor(
       cs,
       child: Column(children: [
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
+        _conCompartir(
+          FilledButton.icon(
             onPressed: () => onOpenInterest(),
             icon: const Icon(Icons.shopping_bag_outlined),
             label: const Text('Solicitar'),
@@ -591,6 +591,19 @@ class _CtaArea extends StatelessWidget {
       ]),
     );
   }
+
+  /// El compartir va AL LADO de la accion principal, no debajo (correccion del
+  /// PO 2026-08-30). Cuadrado de la misma altura para que la fila quede pareja.
+  Widget _conCompartir(Widget principal) => Row(
+        children: [
+          Expanded(child: principal),
+          const SizedBox(width: 8),
+          ShareIconButton(
+            texto: ShareLinks.productText(data.product['name'] as String?),
+            url: ShareLinks.product(data.product['id'] as String),
+          ),
+        ],
+      );
 
   Widget _anchor(ColorScheme cs, {required Widget child}) => Container(
         width: double.infinity,

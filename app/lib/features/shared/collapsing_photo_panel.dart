@@ -24,6 +24,7 @@ class CollapsingPhotoPanel extends StatelessWidget {
     this.expandedHeight = 300,
     this.activeIndex = 0,
     this.leading,
+    this.actions = const [],
     this.onOpenViewer,
     this.overlay,
   });
@@ -46,6 +47,10 @@ class CollapsingPhotoPanel extends StatelessWidget {
   /// Va como `leading` de la barra, así que sigue tocable con el panel
   /// plegado — si desapareciera al colapsar, el usuario se quedaría sin salida.
   final Widget? leading;
+
+  /// Acciones de la barra, al otro extremo del [leading] y con la misma
+  /// virtud: siguen tocables con el panel plegado. Vacío = barra como siempre.
+  final List<Widget> actions;
 
   /// Abre el visor a pantalla completa en la foto `index`. Nulo = las fotos no
   /// son tocables.
@@ -96,6 +101,7 @@ class CollapsingPhotoPanel extends StatelessWidget {
       elevation: 0,
       automaticallyImplyLeading: false,
       leading: leading,
+      actions: actions,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
       ),

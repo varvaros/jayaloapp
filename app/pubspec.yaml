@@ -66,6 +66,10 @@ dependencies:
   # estaba resuelta como transitiva de flutter_launcher_icons: promoverla es
   # cero descarga y cero código nativo.
   image: ^4.8.0
+  # La hoja nativa de compartir de Android/iOS (pedido PO 2026-08-30). En el
+  # movil SIEMPRE existe, asi que aqui no hace falta el respaldo al
+  # portapapeles que si lleva la web.
+  share_plus: ^12.0.0
   shared_preferences: ^2.5.2
   # Versión/build number de la app para el campo `release` del reporte de
   # errores (task 12, reporter Flutter → /api/public/hooks/report-error).
