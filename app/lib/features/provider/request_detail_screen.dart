@@ -42,6 +42,8 @@ import 'offer_center_menu.dart';
 import 'offer_requirements_warning.dart';
 import 'unlock_flow.dart';
 import 'opened_requests.dart';
+import '../../domain/share_links.dart';
+import '../shared/share_button.dart';
 
 const _maxOfferPhotos = 5;
 
@@ -2072,6 +2074,22 @@ class _ProviderRequestDetailScreenState
               ? Icons.handyman_outlined
               : Icons.inventory_2_outlined,
           leading: _backButton(context),
+          // Compartir la solicitud DESDE EL LADO DEL PROVEEDOR. Faltaba: las
+          // otras tres pantallas con boton son todas del lado cliente, asi que
+          // un proveedor no veia ninguno (reporte del PO 2026-08-30). Va como
+          // accion de la barra de la foto, al otro extremo del atras — igual
+          // que en el detalle de la solicitud propia del cliente.
+          actions: [
+            _redondo(
+              context,
+              icon: Icons.share_outlined,
+              tooltip: 'Compartir',
+              onTap: () => compartir(
+                ShareLinks.requestText(req['title'] as String?),
+                ShareLinks.request(widget.requestId),
+              ),
+            ),
+          ],
           onOpenViewer: (i) =>
               showPhotoViewer(context, images, initialIndex: i),
         ),
@@ -2505,6 +2523,36 @@ class _ProviderRequestDetailScreenState
   /// Devuelve el botón PELADO, sin posicionar: va al `leading` de la barra
   /// plegable —donde sigue tocable con el panel encogido— y también al Stack
   /// de la pantalla de carga, que sí necesita colocarlo arriba a la izquierda.
+  /// El mismo boton redondo del atras, para las acciones de la barra de la
+  /// foto. Se extrae en vez de copiarlo para que las dos esquinas no se
+  /// separen visualmente con el tiempo.
+  Widget _redondo(
+    BuildContext context, {
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) =>
+      Center(
+        child: Material(
+          color: Theme.of(context).colorScheme.surfaceContainerLowest,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          elevation: 1,
+          child: Tooltip(
+            message: tooltip,
+            child: InkWell(
+              onTap: onTap,
+              child: SizedBox(
+                width: 42,
+                height: 42,
+                child: Icon(icon,
+                    size: 18, color: Theme.of(context).colorScheme.onSurface),
+              ),
+            ),
+          ),
+        ),
+      );
+
   Widget _backButton(BuildContext context) => Center(
         child: Material(
           color: Theme.of(context).colorScheme.surfaceContainerLowest,
