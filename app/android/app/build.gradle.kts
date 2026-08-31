@@ -30,6 +30,37 @@ if (hasReleaseSigning) {
 // en una máquina sin keystore. Sin el flag, el build falla en voz alta.
 val allowDebugSigning = (project.findProperty("allowDebugSigning") as String?) == "true"
 
+// ── SELLO DE BUILD ────────────────────────────────────────────────────────────
+// Rama y commit de los que salio ESTE binario, horneados dentro. Nace del APK
+// 1.0.4+87 (2026-08-30): se compilo desde una rama hermana y le quito al
+// telefono 26 commits de trabajo. Nadie podia saberlo mirando el aparato — solo
+// haciendo arqueologia de git — y por eso tardo en verse.
+//
+// Va aqui, en Gradle, y NO en un `--dart-define`: un dart-define hay que
+// acordarse de pasarlo, y lo que falla es justamente acordarse. Gradle corre
+// SIEMPRE que se compila, asi que el sello no se puede olvidar.
+//
+// Degrada sin romper: fuera de un repo git, o sin `git` en el PATH, queda
+// "desconocido" y el build sigue. Un sello es informacion, no un guardia.
+fun gitOut(vararg args: String): String = try {
+    val p = ProcessBuilder(listOf("git") + args)
+        .directory(rootProject.projectDir)
+        .redirectErrorStream(true)
+        .start()
+    val out = p.inputStream.bufferedReader().readText().trim()
+    if (p.waitFor() == 0 && out.isNotEmpty()) out else ""
+} catch (e: Exception) {
+    ""
+}
+
+val gitRama = gitOut("rev-parse", "--abbrev-ref", "HEAD").ifEmpty { "desconocida" }
+val gitSha = gitOut("rev-parse", "--short", "HEAD").ifEmpty { "desconocido" }
+// `--porcelain` vacio = arbol limpio. Si hay algo sin commitear el binario NO
+// corresponde a ningun commit, y eso es lo mas importante que puede decir el
+// sello: es la situacion en la que el codigo que corre no esta en ninguna parte.
+val gitSucio = if (gitOut("status", "--porcelain").isNotEmpty()) "1" else "0"
+
+
 android {
     namespace = "com.jayalo.app"
     compileSdk = flutter.compileSdkVersion
@@ -69,6 +100,13 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Llegan al manifest como <meta-data> y de ahi a Ajustes → «Esta
+        // version». El versionName se deja LIMPIO a proposito: es lo que ve el
+        // usuario en Play y no debe llevar sufijos de rama.
+        manifestPlaceholders["buildRama"] = gitRama
+        manifestPlaceholders["buildSha"] = gitSha
+        manifestPlaceholders["buildSucio"] = gitSucio
     }
 
     signingConfigs {

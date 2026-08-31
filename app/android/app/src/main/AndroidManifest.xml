@@ -110,6 +110,19 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Jayalo.UCrop" />
 
+        <!-- Sello de build: de que rama y commit salio este binario. Lo
+             rellena Gradle (ver `manifestPlaceholders` en build.gradle.kts) y
+             lo lee Ajustes → «Esta version» a traves de un MethodChannel. -->
+        <meta-data
+            android:name="com.jayalo.app.BUILD_RAMA"
+            android:value="${buildRama}" />
+        <meta-data
+            android:name="com.jayalo.app.BUILD_SHA"
+            android:value="${buildSha}" />
+        <meta-data
+            android:name="com.jayalo.app.BUILD_SUCIO"
+            android:value="${buildSucio}" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

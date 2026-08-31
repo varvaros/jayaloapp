@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/account_deletion_client.dart';
 import '../../core/brand.dart';
 import '../../core/session_state.dart';
+import '../../core/sello_build_canal.dart';
+import '../../domain/sello_build.dart';
 import '../../core/theme_store.dart';
 import '../../data/repos.dart';
 import '../chat/widgets/bubbles.dart' show chatPalette;
@@ -486,6 +489,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           subtitle: 'Borra tus datos personales. No se puede deshacer',
           onTap: _deleteAccount,
         ),
+        // De qué build es esta app. Va al FINAL y sin acción: no es algo que
+        // el usuario tenga que tocar, es algo que hay que poder mirar cuando
+        // algo no cuadra. Ver `domain/sello_build.dart`.
+        const SectionHeader(text: 'Esta versión'),
+        const _FilaSelloBuild(),
           ]),
         ),
       ]),
@@ -712,3 +720,52 @@ Future<bool> confirmResetGuides(BuildContext context) async =>
       ),
     ) ??
     false;
+
+/// Versión, número de build y de qué rama y commit salió. Se lee una sola vez
+/// —es una propiedad del binario, no del estado— y mientras llega no se pinta
+/// nada: un esqueleto parpadeando al final de Ajustes molesta más de lo que
+/// informa.
+class _FilaSelloBuild extends StatefulWidget {
+  const _FilaSelloBuild();
+
+  @override
+  State<_FilaSelloBuild> createState() => _FilaSelloBuildState();
+}
+
+class _FilaSelloBuildState extends State<_FilaSelloBuild> {
+  String? _version;
+  SelloBuild? _sello;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final sello = await SelloBuildCanal.leer();
+    String version;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      version = '${info.version}+${info.buildNumber}';
+    } catch (_) {
+      version = 'desconocida';
+    }
+    if (!mounted) return;
+    setState(() {
+      _sello = sello;
+      _version = version;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sello = _sello;
+    if (sello == null) return const SizedBox.shrink();
+    return _SettingsRow(
+      icon: Icons.tag_outlined,
+      title: _version ?? 'desconocida',
+      subtitle: sello.linea,
+    );
+  }
+}
