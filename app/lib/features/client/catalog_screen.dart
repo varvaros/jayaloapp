@@ -147,7 +147,7 @@ class _CatalogViewState extends State<CatalogView> {
   /// que el usuario cerró sin cambiar nada.
   Future<void> _openFilter() async {
     final res = await showCatalogFilterSheet(context,
-        categoryId: _categoryId, rubro: _rubro);
+        kind: _kind, categoryId: _categoryId, rubro: _rubro);
     if (res != null) _applyFilter(categoryId: res.categoryId, rubro: res.rubro);
   }
 

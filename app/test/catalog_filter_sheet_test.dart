@@ -14,7 +14,7 @@ void main() {
           body: Center(
             child: ElevatedButton(
               onPressed: () async =>
-                  result = await showCatalogFilterSheet(context),
+                  result = await showCatalogFilterSheet(context, kind: 'producto'),
               child: const Text('abrir'),
             ),
           ),

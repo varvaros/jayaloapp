@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/brand.dart';
-import '../../data/repos.dart' show rubrosForCategories;
+import '../../data/repos.dart' show categoriasConCatalogo, rubrosForCategories;
 import '../../domain/catalog.dart';
 import '../shared/brand_kit.dart';
 import '../../core/motion.dart';
@@ -16,7 +16,7 @@ class CatalogFilterResult {
 }
 
 Future<CatalogFilterResult?> showCatalogFilterSheet(BuildContext context,
-        {String? categoryId, String? rubro}) =>
+        {required String kind, String? categoryId, String? rubro}) =>
     showModalBottomSheet<CatalogFilterResult>(
       sheetAnimationStyle: JayaloMotion.sheetRise,
       context: context,
@@ -24,12 +24,13 @@ Future<CatalogFilterResult?> showCatalogFilterSheet(BuildContext context,
       showDragHandle: true,
       builder: (_) => FractionallySizedBox(
         heightFactor: .85,
-        child: _CatalogFilterSheet(categoryId: categoryId, rubro: rubro),
+        child: _CatalogFilterSheet(kind: kind, categoryId: categoryId, rubro: rubro),
       ),
     );
 
 class _CatalogFilterSheet extends StatefulWidget {
-  const _CatalogFilterSheet({this.categoryId, this.rubro});
+  const _CatalogFilterSheet({required this.kind, this.categoryId, this.rubro});
+  final String kind; // 'producto' | 'servicio' — el tab activo del catálogo
   final String? categoryId;
   final String? rubro;
 
@@ -42,6 +43,18 @@ class _CatalogFilterSheetState extends State<_CatalogFilterSheet> {
   String _query = '';
   String? _expanded; // categoría desplegada (acordeón)
   List<Map<String, dynamic>>? _rubros; // rubros de _expanded (lazy)
+  // Categorías con artículos publicados del kind activo. `null` mientras no
+  // llega (o si la RPC falla): en ese hueco NO se filtra — igual que la web,
+  // un flash de lista completa es mejor que una hoja vacía.
+  Set<String>? _vivas;
+
+  @override
+  void initState() {
+    super.initState();
+    categoriasConCatalogo(widget.kind).then((v) {
+      if (mounted) setState(() => _vivas = v);
+    });
+  }
 
   @override
   void dispose() {
@@ -50,9 +63,13 @@ class _CatalogFilterSheetState extends State<_CatalogFilterSheet> {
   }
 
   List<Category> get _filtered {
+    // Solo categorías navegables (decisión PO 2026-08-31, paridad web); la
+    // seleccionada nunca se oculta. La búsqueda corre SOBRE las navegables.
+    final base = categoriasNavegables(kCategories, _vivas,
+        seleccionada: widget.categoryId);
     final q = _query.trim().toLowerCase();
-    if (q.isEmpty) return kCategories;
-    return kCategories.where((c) => c.name.toLowerCase().contains(q)).toList();
+    if (q.isEmpty) return base;
+    return base.where((c) => c.name.toLowerCase().contains(q)).toList();
   }
 
   Future<void> _expand(String catId) async {

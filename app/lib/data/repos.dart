@@ -3852,3 +3852,23 @@ Future<String?> myDeliveryAddress() async {
 /// `business-logos`, reusado por todas las fotos de marketplace de la app).
 Future<String> uploadInterestImage(String filePath) =>
     _uploadMarketplaceImage(filePath, 'interest');
+
+/// Ids de categoría con artículos PUBLICADOS del kind dado ('producto' o
+/// 'servicio'). Alimenta el filtrado de categorías «navegables» de la hoja de
+/// filtros del catálogo (decisión PO 2026-08-31, paridad con la web). Sale de
+/// la RPC `get_product_counts` — agregado en servidor, el mismo que usa la web
+/// para su sidebar. Ante cualquier error devuelve `null`: el caller enseña la
+/// lista completa (degradar a como era antes, nunca a una hoja vacía).
+Future<Set<String>?> categoriasConCatalogo(String kind) async {
+  try {
+    final rows =
+        List<Map<String, dynamic>>.from(await supa.rpc('get_product_counts'));
+    return {
+      for (final r in rows)
+        if ((r['kind'] ?? 'producto') == kind && r['category_id'] != null)
+          r['category_id'] as String,
+    };
+  } catch (_) {
+    return null;
+  }
+}

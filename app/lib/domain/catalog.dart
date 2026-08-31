@@ -71,3 +71,22 @@ const List<Category> kCategories = [
   (id: 'empresariales', name: 'Servicios empresariales'),
   (id: 'seguros', name: 'Seguros y finanzas'),
 ];
+
+/// Solo categorías NAVEGABLES (decisión PO 2026-08-31, paridad con la web):
+/// la hoja de filtros del catálogo enseña únicamente categorías con artículos
+/// publicados — un menú de 41 entradas con 1 viva es un pasillo de puertas
+/// cerradas. `vivas == null` significa que los conteos no llegaron (o
+/// fallaron): NO se filtra — mejor la lista completa que una hoja vacía.
+/// La categoría SELECCIONADA nunca se oculta: si desapareciera de la lista,
+/// el filtro seguiría aplicado sin ningún control visible para quitarlo.
+List<Category> categoriasNavegables(
+  List<Category> todas,
+  Set<String>? vivas, {
+  String? seleccionada,
+}) {
+  if (vivas == null) return todas;
+  return [
+    for (final c in todas)
+      if (c.id == seleccionada || vivas.contains(c.id)) c,
+  ];
+}
