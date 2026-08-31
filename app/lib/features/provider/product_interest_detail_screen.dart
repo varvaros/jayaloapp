@@ -470,7 +470,16 @@ class _ProductInterestDetailViewState extends State<ProductInterestDetailView> {
             child: IgnorePointer(
               child: HoldMascotLayer(
                 progress: _progress,
-                alignment: const Alignment(0, .12),
+                // PEGADA al boton, no en medio de la pagina (PO 2026-08-30,
+                // con captura). En `.12` flotaba entre la ficha y los datos
+                // del cliente, lejos del pulgar: se leia como un adorno suelto
+                // y no como la reaccion al gesto. Es EXACTAMENTE la misma
+                // queja que ya se atendio en la hoja de aceptar oferta el
+                // 2026-07-30 (`offer_actions.dart`), y se copia su valor:
+                // `.60` la sienta justo encima del boton que se mantiene
+                // presionado. La mascota SIGUE presente en reposo — eso lo
+                // pidio el PO el 2026-07-22 y no cambia.
+                alignment: const Alignment(0, .60),
               ),
             ),
           ),
