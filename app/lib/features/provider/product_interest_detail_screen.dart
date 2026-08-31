@@ -432,6 +432,24 @@ class _ProductInterestDetailViewState extends State<ProductInterestDetailView> {
                           firstName: widget.contactName),
                     ],
                   ] else ...[
+                    // Jayi va DENTRO del flujo y en este orden exacto —
+                    // Jayi, Costo, boton— por pedido del PO 2026-08-30. Antes
+                    // era una capa fija sobre TODA la pantalla, asi que caia
+                    // donde tocara segun el scroll y la orientacion: en
+                    // horizontal aterrizaba sobre la barra de abajo, detras
+                    // del boton «+». Mover el porcentaje no arreglaba eso, solo
+                    // cambiaba de sitio el problema.
+                    //
+                    // El alto es FIJO: `Transform.scale` pinta pero no ocupa,
+                    // asi que la mascota se infla hasta 1.8x sin empujar ni el
+                    // «Costo» ni el boton.
+                    if (showMascot)
+                      SizedBox(
+                        height: 132,
+                        child: IgnorePointer(
+                          child: HoldMascotLayer(progress: _progress),
+                        ),
+                      ),
                     Row(
                       children: [
                         const MonedaJayalo(size: 16),
@@ -464,25 +482,6 @@ class _ProductInterestDetailViewState extends State<ProductInterestDetailView> {
             ),
           ),
         ]),
-        // La mascota solo cuando hay hold real.
-        if (showMascot)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: HoldMascotLayer(
-                progress: _progress,
-                // PEGADA al boton, no en medio de la pagina (PO 2026-08-30,
-                // con captura). En `.12` flotaba entre la ficha y los datos
-                // del cliente, lejos del pulgar: se leia como un adorno suelto
-                // y no como la reaccion al gesto. Es EXACTAMENTE la misma
-                // queja que ya se atendio en la hoja de aceptar oferta el
-                // 2026-07-30 (`offer_actions.dart`), y se copia su valor:
-                // `.60` la sienta justo encima del boton que se mantiene
-                // presionado. La mascota SIGUE presente en reposo — eso lo
-                // pidio el PO el 2026-07-22 y no cambia.
-                alignment: const Alignment(0, .60),
-              ),
-            ),
-          ),
       ]),
     );
   }
