@@ -250,13 +250,9 @@ class _RequestStatusScreenState extends State<RequestStatusScreen>
             // Compartir tu propia solicitud: difundirla es exactamente lo que
             // le conviene a quien la publicó. Pedido PO 2026-08-30.
             actions: [
-              _CornerFab(
-                icon: Icons.share_outlined,
-                tooltip: 'Compartir',
-                onTap: () => compartir(
-                  ShareLinks.requestText(req['title'] as String?),
-                  ShareLinks.request(widget.requestId),
-                ),
+              SharePhotoAction(
+                texto: ShareLinks.requestText(req['title'] as String?),
+                url: ShareLinks.request(widget.requestId),
               ),
             ],
             onOpenViewer: (i) =>

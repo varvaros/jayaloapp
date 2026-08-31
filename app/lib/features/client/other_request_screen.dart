@@ -111,6 +111,12 @@ class _OtherRequestScreenState extends State<OtherRequestScreen> {
                     ? Icons.handyman_outlined
                     : Icons.inventory_2_outlined,
                 leading: productBackButton(context),
+                actions: [
+                  SharePhotoAction(
+                    texto: ShareLinks.requestText(r['title'] as String?),
+                    url: ShareLinks.request(widget.requestId),
+                  ),
+                ],
                 onOpenViewer: (i) =>
                     showPhotoViewer(context, imgs, initialIndex: i),
               ),
@@ -192,22 +198,10 @@ class _OtherRequestScreenState extends State<OtherRequestScreen> {
         padding: const EdgeInsets.only(top: 16),
       ),
       const SizedBox(height: 28),
-      // El compartir va AL LADO de la acción, no debajo (PO 2026-08-30).
-      Row(
-        children: [
-          Expanded(
-            child: FilledButton.icon(
-              onPressed: _confirmSeed,
-              icon: const Icon(Icons.add),
-              label: const Text('También busco esto'),
-            ),
-          ),
-          const SizedBox(width: 8),
-          ShareIconButton(
-            texto: ShareLinks.requestText(r['title'] as String?),
-            url: ShareLinks.request(widget.requestId),
-          ),
-        ],
+      FilledButton.icon(
+        onPressed: _confirmSeed,
+        icon: const Icon(Icons.add),
+        label: const Text('También busco esto'),
       ),
     ];
   }

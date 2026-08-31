@@ -283,6 +283,12 @@ class _ProductDetailViewState extends State<ProductDetailView> {
             isServicio ? Icons.handyman_outlined : Icons.inventory_2_outlined,
         activeIndex: _activeImg,
         leading: productBackButton(context),
+        actions: [
+          SharePhotoAction(
+            texto: ShareLinks.productText(widget.data.product['name'] as String?),
+            url: ShareLinks.product(widget.data.product['id'] as String),
+          ),
+        ],
         onOpenViewer: (i) =>
             showPhotoViewer(context, images, initialIndex: i),
         // Variante B: las miniaturas se MONTAN sobre la foto (abajo a la
@@ -561,8 +567,9 @@ class _CtaArea extends StatelessWidget {
       return _anchor(
         cs,
         child: Column(children: [
-          _conCompartir(
-            FilledButton(
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
               onPressed: null,
               child: const Text('Solicitud enviada'),
             ),
@@ -577,8 +584,9 @@ class _CtaArea extends StatelessWidget {
     return _anchor(
       cs,
       child: Column(children: [
-        _conCompartir(
-          FilledButton.icon(
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
             onPressed: () => onOpenInterest(),
             icon: const Icon(Icons.shopping_bag_outlined),
             label: const Text('Solicitar'),
@@ -591,19 +599,6 @@ class _CtaArea extends StatelessWidget {
       ]),
     );
   }
-
-  /// El compartir va AL LADO de la accion principal, no debajo (correccion del
-  /// PO 2026-08-30). Cuadrado de la misma altura para que la fila quede pareja.
-  Widget _conCompartir(Widget principal) => Row(
-        children: [
-          Expanded(child: principal),
-          const SizedBox(width: 8),
-          ShareIconButton(
-            texto: ShareLinks.productText(data.product['name'] as String?),
-            url: ShareLinks.product(data.product['id'] as String),
-          ),
-        ],
-      );
 
   Widget _anchor(ColorScheme cs, {required Widget child}) => Container(
         width: double.infinity,
