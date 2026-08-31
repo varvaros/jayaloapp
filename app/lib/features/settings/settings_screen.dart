@@ -735,6 +735,13 @@ class _FilaSelloBuild extends StatefulWidget {
 class _FilaSelloBuildState extends State<_FilaSelloBuild> {
   String? _version;
   SelloBuild? _sello;
+  // La cara pública dice «Jayalo v1.0.4 (98)» y nada más (decisión PO
+  // 2026-08-31). El sello (rama · sha) se revela con el gesto clásico de
+  // Android: 5 toques en la fila. No persiste: cada visita a Ajustes vuelve
+  // a nacer oculto. El aviso de árbol sucio se enseña SIEMPRE — ver
+  // `subtituloVersion` en domain/sello_build.dart.
+  int _toques = 0;
+  bool _revelado = false;
 
   @override
   void initState() {
@@ -758,14 +765,21 @@ class _FilaSelloBuildState extends State<_FilaSelloBuild> {
     });
   }
 
+  void _toque() {
+    if (_revelado) return;
+    _toques++;
+    if (_toques >= 5) setState(() => _revelado = true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final sello = _sello;
     if (sello == null) return const SizedBox.shrink();
     return _SettingsRow(
       icon: Icons.tag_outlined,
-      title: _version ?? 'desconocida',
-      subtitle: sello.linea,
+      title: tituloVersionPublica(_version),
+      subtitle: subtituloVersion(sello, revelado: _revelado),
+      onTap: _toque,
     );
   }
 }
