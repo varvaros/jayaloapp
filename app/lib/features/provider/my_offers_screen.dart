@@ -18,8 +18,6 @@ import '../shared/onboarding_copy.dart';
 import '../chat/widgets/rating_form.dart';
 import 'unlock_flow.dart';
 import '../shared/moneda.dart';
-import '../../domain/share_links.dart';
-import '../shared/share_button.dart';
 
 /// ¿Toca calificar al cliente por esta oferta? Completada + cliente conocido +
 /// sin reseña previa.
@@ -421,39 +419,26 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                 const SizedBox(height: 8),
                 // Botón "Conversar · N créditos": desbloquea el contacto (mismo
                 // flujo que toca la tarjeta). Igual estilo que la interest card.
-                // Compartir AL LADO de la accion (PO 2026-08-30). La oferta no
-                // tiene pagina propia: se comparte la SOLICITUD a la que
-                // responde, que si es publica y no filtra precio ni
-                // condiciones.
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    FilledButton.icon(
-                        onPressed: () => _openOffer(o),
-                        style: FilledButton.styleFrom(
-                          // Mismo verde del botón de ACEPTAR oferta
-                          // (HoldToConfirmTone.free → JayaloColors.success), texto
-                          // blanco; destaca sobre el fondo blanco de la tarjeta.
-                          backgroundColor:
-                              Theme.of(context).brightness == Brightness.dark
-                                  ? JayaloColors.dSuccess
-                                  : JayaloColors.success,
-                          foregroundColor: Colors.white,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        icon: const MonedaJayalo(size: 17),
-                        label: Text(
-                          'Conversar · $cost crédito${cost == 1 ? '' : 's'}',
-                        ),
-                      ),
-                    const SizedBox(width: 8),
-                    ShareIconButton(
-                      alto: 40,
-                      texto:
-                          ShareLinks.requestText(o['request_title'] as String?),
-                      url: ShareLinks.request(o['request_id'] as String),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.icon(
+                    onPressed: () => _openOffer(o),
+                    style: FilledButton.styleFrom(
+                      // Mismo verde del botón de ACEPTAR oferta
+                      // (HoldToConfirmTone.free → JayaloColors.success), texto
+                      // blanco; destaca sobre el fondo blanco de la tarjeta.
+                      backgroundColor:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? JayaloColors.dSuccess
+                              : JayaloColors.success,
+                      foregroundColor: Colors.white,
+                      visualDensity: VisualDensity.compact,
                     ),
-                  ],
+                    icon: const MonedaJayalo(size: 17),
+                    label: Text(
+                      'Conversar · $cost crédito${cost == 1 ? '' : 's'}',
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 6),
                 // "Aceptada" + el PRECIO OFERTADO al lado (pedido PO
