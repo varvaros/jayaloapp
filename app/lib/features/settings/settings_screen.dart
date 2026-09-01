@@ -61,8 +61,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _hasIdDoc = docs;
           });
         }
-      } catch (_) {
-        // Nudge best-effort: sin red no se muestran las filas de verificación.
+      } catch (e) {
+        // Best-effort de verdad SOLO para "sin red". Este catch estuvo mudo y
+        // se tragó durante meses un `42501` de PostgREST (el select pedía la
+        // columna `rnc`, sin grant desde 20260710011825): las dos filas de
+        // verificación no se pintaban y no había ni rastro de por qué.
+        debugPrint('[ajustes] verificación del negocio no cargó: $e');
       }
     }
   }

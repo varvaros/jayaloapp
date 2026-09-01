@@ -1502,16 +1502,55 @@ Future<void> saveIdDoc({
   }, onConflict: 'business_id');
 }
 
+/// Columnas de `provider_businesses` que `authenticated` PUEDE leer por SELECT
+/// directo.
+///
+/// 🔴 `rnc` y `address` NO están, y no es un olvido: la migración
+/// `20260710011825_close_rnc_address_grant` les revocó el SELECT a propósito
+/// (ALTO-1 de la auditoría) y dejó `get_my_business_private` como única puerta
+/// del dueño. Pedirlas aquí **no devuelve null**: PostgREST corta con
+/// `42501 permission denied for table provider_businesses` y tumba la consulta
+/// ENTERA. Así vivió meses este fichero — Ajustes se quedaba sin `_biz` y
+/// desaparecían tanto «Validar RNC» como «Validar negocio (cédula)».
+const kBusinessVerificationColumns =
+    'id,business_type,identity_verified_at,business_verified_at';
+
+/// Pega el `rnc` que devuelve `get_my_business_private` sobre la fila pública.
+///
+/// La RPC es `RETURNS TABLE`, así que por PostgREST llega como lista de 0 o 1
+/// fila; se acepta también el Map suelto por si el cliente la desenvuelve.
+/// Pura a propósito: es lo único de este camino que se puede probar sin red.
+Map<String, dynamic> mergeBusinessRnc(
+    Map<String, dynamic> base, dynamic privado) {
+  final fila = privado is List
+      ? (privado.isEmpty ? null : privado.first)
+      : privado;
+  return {
+    ...base,
+    'rnc': fila is Map ? fila['rnc'] as String? : null,
+  };
+}
+
 /// Contexto de verificación del negocio del proveedor (para Ajustes): tipo,
 /// RNC y los sellos (identidad/negocio) que la web fija al aprobar.
+///
+/// Dos viajes, no uno: el RNC no se puede leer por SELECT (ver
+/// [kBusinessVerificationColumns]) y sale de la RPC `get_my_business_private`,
+/// que ya comprueba dueño/staff/admin por dentro.
 Future<Map<String, dynamic>?> myBusinessForVerification() async {
   final uid = supa.auth.currentUser!.id;
-  return await supa
+  final base = await supa
       .from('provider_businesses')
-      .select('id,business_type,rnc,identity_verified_at,business_verified_at')
+      .select(kBusinessVerificationColumns)
       .eq('user_id', uid)
       .limit(1)
       .maybeSingle();
+  if (base == null) return null;
+  final privado = await supa.rpc(
+    'get_my_business_private',
+    params: {'_business_id': base['id']},
+  );
+  return mergeBusinessRnc(base, privado);
 }
 
 /// Confirma/actualiza el RNC del negocio formal — update directo (el dueño
