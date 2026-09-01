@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/account_deletion_client.dart';
 import '../../core/brand.dart';
+import '../../core/error_reporter.dart';
 import '../../core/session_state.dart';
 import '../../core/sello_build_canal.dart';
 import '../../domain/sello_build.dart';
@@ -61,12 +64,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _hasIdDoc = docs;
           });
         }
-      } catch (e) {
+      } catch (e, s) {
         // Best-effort de verdad SOLO para "sin red". Este catch estuvo mudo y
         // se tragó durante meses un `42501` de PostgREST (el select pedía la
         // columna `rnc`, sin grant desde 20260710011825): las dos filas de
         // verificación no se pintaban y no había ni rastro de por qué.
-        debugPrint('[ajustes] verificación del negocio no cargó: $e');
+        // `debugPrint` NO basta: en un APK de release no lo lee nadie, que es
+        // justo por lo que el bug vivió mes y medio. Va al reporter.
+        unawaited(reportError(e, s));
       }
     }
   }
@@ -342,14 +347,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _verifyBusiness() async {
     final bizId = await myBusinessId();
     if (bizId == null) return;
-    final biz = await supa
-        .from('provider_businesses')
-        .select('whatsapp')
-        .eq('id', bizId)
-        .maybeSingle();
+    // MISMO caso que `myBusinessForVerification`: `whatsapp` tampoco tiene
+    // SELECT para `authenticated` (revocado con `rnc`/`address`/`lat`/`lng`/
+    // `country_code`), asi que el `.select('whatsapp')` que habia aqui moria
+    // con `42501 permission denied for table provider_businesses` — y sin
+    // try/catch, en un `onTap`, la excepcion se perdia: el proveedor tocaba
+    // "Sello de WhatsApp del negocio" y NO pasaba absolutamente nada.
+    //
+    // La puerta correcta ya existia y la web ya la usa: `get_business_whatsapp`
+    // es SECURITY DEFINER con EXECUTE para authenticated. OJO: devuelve `text`
+    // ESCALAR (`proretset=false`), no `RETURNS TABLE` — llega como cadena
+    // suelta, NO como lista. No copiar el patron de `mergeBusinessRnc`.
+    String telefono = '';
+    try {
+      final res =
+          await supa.rpc('get_business_whatsapp', params: {'_business_id': bizId});
+      telefono = (res as String?) ?? '';
+    } catch (e, s) {
+      // Degrada al comportamiento de hoy (hoja con el numero vacio), pero
+      // dejando rastro: este fallo lleva desde julio sin que nadie lo viera.
+      unawaited(reportError(e, s));
+    }
     if (!mounted) return;
-    await showOtpSheet(context,
-        phone: (biz?['whatsapp'] as String?) ?? '', businessId: bizId);
+    await showOtpSheet(context, phone: telefono, businessId: bizId);
   }
 
   @override

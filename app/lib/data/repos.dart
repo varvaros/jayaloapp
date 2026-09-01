@@ -1512,13 +1512,36 @@ Future<void> saveIdDoc({
 /// `42501 permission denied for table provider_businesses` y tumba la consulta
 /// ENTERA. Así vivió meses este fichero — Ajustes se quedaba sin `_biz` y
 /// desaparecían tanto «Validar RNC» como «Validar negocio (cédula)».
+/// Columnas de `provider_businesses` que `authenticated` NO puede leer por
+/// SELECT (comprobado en prod contra `information_schema.column_privileges`).
+///
+/// 🔴🔥 Meter UNA de estas en un `.select()` **no la devuelve nula: tumba la
+/// consulta ENTERA** con `42501 permission denied for table
+/// provider_businesses`. Ya ha mordido dos veces, las dos en silencio y las dos
+/// durante meses: `rnc` en `myBusinessForVerification` y `whatsapp` en
+/// `_verifyBusiness`. Cada una tiene su RPC `SECURITY DEFINER` de repuesto:
+/// `get_my_business_private` (rnc, address) y `get_business_whatsapp`.
+const kProviderBusinessesSinSelect = <String>[
+  'address',
+  'country_code',
+  'lat',
+  'lng',
+  'rnc',
+  'whatsapp',
+];
+
 const kBusinessVerificationColumns =
     'id,business_type,identity_verified_at,business_verified_at';
 
 /// Pega el `rnc` que devuelve `get_my_business_private` sobre la fila pública.
 ///
-/// La RPC es `RETURNS TABLE`, así que por PostgREST llega como lista de 0 o 1
-/// fila; se acepta también el Map suelto por si el cliente la desenvuelve.
+/// La RPC es `RETURNS TABLE` (`proretset`), así que por PostgREST **siempre**
+/// llega como lista: `[]` si el llamante no es dueño/staff/admin o el id no
+/// existe (la función es SQL puro, no lanza), `[{rnc, address}]` si lo es.
+/// `postgrest 2.8.0` solo desenvuelve lista→objeto con `maybeSingle` sobre GET,
+/// y `rpc()` es POST — así que el Map suelto NO es un contrato de PostgREST,
+/// se tolera por barato. Lo que sí ocurre de verdad es `null`: el cliente deja
+/// el cuerpo en null cuando llega vacío. Mismo criterio que [latLngFromRpcRow].
 /// Pura a propósito: es lo único de este camino que se puede probar sin red.
 Map<String, dynamic> mergeBusinessRnc(
     Map<String, dynamic> base, dynamic privado) {
@@ -1546,11 +1569,23 @@ Future<Map<String, dynamic>?> myBusinessForVerification() async {
       .limit(1)
       .maybeSingle();
   if (base == null) return null;
-  final privado = await supa.rpc(
-    'get_my_business_private',
-    params: {'_business_id': base['id']},
-  );
-  return mergeBusinessRnc(base, privado);
+  // La RPC va en su PROPIO try: el `rnc` es OPCIONAL (solo lo lee la fila
+  // "Validar RNC", y solo si business_type == 'formal'), mientras que `base`
+  // trae `business_type`, que es lo que decide si se pinta "Validar negocio
+  // (cédula)" — la fila que destraba poder ofertar. Sin este aislamiento un
+  // fallo de red en lo opcional tumbaría lo esencial y reaparecería el mismo
+  // síntoma que este arreglo viene a cerrar. Misma doctrina que
+  // `businessesPhysicalLocation` más abajo.
+  try {
+    final privado = await supa.rpc(
+      'get_my_business_private',
+      params: {'_business_id': base['id']},
+    );
+    return mergeBusinessRnc(base, privado);
+  } catch (e, s) {
+    unawaited(reportError(e, s));
+    return mergeBusinessRnc(base, null);
+  }
 }
 
 /// Confirma/actualiza el RNC del negocio formal — update directo (el dueño

@@ -24,8 +24,13 @@ void main() {
   // "Validar RNC" como "Validar negocio (cédula)".
   test('el select de verificación no pide columnas sin grant de SELECT', () {
     final cols = kBusinessVerificationColumns.split(',');
-    expect(cols, isNot(contains('rnc')));
-    expect(cols, isNot(contains('address')));
+    // Candado contra la lista COMPLETA, no solo contra `rnc`: la misma mina
+    // pisó `whatsapp` en `_verifyBusiness` y nadie se enteró en mes y medio.
+    for (final prohibida in kProviderBusinessesSinSelect) {
+      expect(cols, isNot(contains(prohibida)),
+          reason: '`$prohibida` no tiene SELECT para authenticated: pedirla '
+              'tumba la consulta ENTERA con 42501, no la devuelve nula.');
+    }
     // Y sigue trayendo lo que Ajustes necesita para decidir qué filas pinta.
     expect(cols, containsAll(<String>['id', 'business_type']));
     expect(cols, containsAll(<String>['identity_verified_at', 'business_verified_at']));
@@ -46,7 +51,8 @@ void main() {
   test('mergeBusinessRnc sin fila privada deja el rnc nulo y no revienta', () {
     expect(mergeBusinessRnc({'id': 'b1'}, <dynamic>[])['rnc'], isNull);
     expect(mergeBusinessRnc({'id': 'b1'}, null)['rnc'], isNull);
-    // La RPC de PostgREST puede llegar como Map suelto en vez de lista.
+    // El Map suelto NO es un contrato de PostgREST (rpc() es POST y siempre
+    // devuelve lista): se tolera por barato, no porque ocurra.
     expect(mergeBusinessRnc({'id': 'b1'}, {'rnc': '131005969'})['rnc'],
         '131005969');
   });
