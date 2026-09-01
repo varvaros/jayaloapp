@@ -364,8 +364,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           await supa.rpc('get_business_whatsapp', params: {'_business_id': bizId});
       telefono = (res as String?) ?? '';
     } catch (e, s) {
-      // Degrada al comportamiento de hoy (hoja con el numero vacio), pero
-      // dejando rastro: este fallo lleva desde julio sin que nadie lo viera.
+      // Degradado: `telefono` se queda vacio y `showOtpSheet` NO abre hoja,
+      // saca el snack "Tu cuenta no tiene un numero de WhatsApp guardado"
+      // (otp_sheet.dart:16). Ese copy MIENTE si lo que fallo fue la lectura y
+      // no la ausencia del numero — pero sigue siendo mejor que lo de antes,
+      // que era no pasar absolutamente nada. Corregir el copy es UI y no se ha
+      // pedido; el rastro del fallo real va al reporter.
       unawaited(reportError(e, s));
     }
     if (!mounted) return;

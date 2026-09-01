@@ -1502,25 +1502,21 @@ Future<void> saveIdDoc({
   }, onConflict: 'business_id');
 }
 
-/// Columnas de `provider_businesses` que `authenticated` PUEDE leer por SELECT
-/// directo.
-///
-/// 🔴 `rnc` y `address` NO están, y no es un olvido: la migración
-/// `20260710011825_close_rnc_address_grant` les revocó el SELECT a propósito
-/// (ALTO-1 de la auditoría) y dejó `get_my_business_private` como única puerta
-/// del dueño. Pedirlas aquí **no devuelve null**: PostgREST corta con
-/// `42501 permission denied for table provider_businesses` y tumba la consulta
-/// ENTERA. Así vivió meses este fichero — Ajustes se quedaba sin `_biz` y
-/// desaparecían tanto «Validar RNC» como «Validar negocio (cédula)».
 /// Columnas de `provider_businesses` que `authenticated` NO puede leer por
-/// SELECT (comprobado en prod contra `information_schema.column_privileges`).
+/// SELECT. Comprobado en prod contra `information_schema.column_privileges`:
+/// son estas SEIS, ni una más.
 ///
-/// 🔴🔥 Meter UNA de estas en un `.select()` **no la devuelve nula: tumba la
+/// 🔴🔥 Meter UNA de ellas en un `.select()` **no la devuelve nula: tumba la
 /// consulta ENTERA** con `42501 permission denied for table
-/// provider_businesses`. Ya ha mordido dos veces, las dos en silencio y las dos
-/// durante meses: `rnc` en `myBusinessForVerification` y `whatsapp` en
-/// `_verifyBusiness`. Cada una tiene su RPC `SECURITY DEFINER` de repuesto:
+/// provider_businesses`. Se las revocó a propósito la migración
+/// `20260710011825_close_rnc_address_grant` (ALTO-1 de la auditoría), que dejó
+/// una RPC `SECURITY DEFINER` de repuesto para cada dato:
 /// `get_my_business_private` (rnc, address) y `get_business_whatsapp`.
+///
+/// Ya ha mordido DOS veces, las dos en silencio y las dos durante meses:
+/// `rnc` en [myBusinessForVerification] y `whatsapp` en `_verifyBusiness`
+/// (Ajustes). El test de `business_identity_repos_test.dart` candea esta lista
+/// contra [kBusinessVerificationColumns].
 const kProviderBusinessesSinSelect = <String>[
   'address',
   'country_code',
@@ -1530,6 +1526,12 @@ const kProviderBusinessesSinSelect = <String>[
   'whatsapp',
 ];
 
+/// Columnas de `provider_businesses` que `authenticated` SÍ puede leer, y que
+/// necesita Ajustes para decidir qué filas de verificación pinta.
+///
+/// Ninguna de [kProviderBusinessesSinSelect] puede entrar aquí — en particular
+/// `rnc`, que es lo que tumbaba esta consulta entera y dejaba a Ajustes sin
+/// «Validar RNC» NI «Validar negocio (cédula)». El RNC llega aparte, por RPC.
 const kBusinessVerificationColumns =
     'id,business_type,identity_verified_at,business_verified_at';
 
