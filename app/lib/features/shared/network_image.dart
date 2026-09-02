@@ -24,6 +24,8 @@ library;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/image_url.dart';
+
 class JayaloNetworkImage extends StatelessWidget {
   const JayaloNetworkImage(
     this.url, {
@@ -60,9 +62,25 @@ class JayaloNetworkImage extends StatelessWidget {
     } else {
       cacheW = (MediaQuery.sizeOf(context).width * dpr).round();
     }
+    // Y ademas se le PIDE AL SERVIDOR ese tamano (auditoria 2026-09-02). Lo de
+    // arriba acotaba la RAM, pero el fichero seguia viajando ENTERO: un logo de
+    // 515 kB se descargaba completo para pintarse en un avatar de 40 px. Con el
+    // transformador esa misma foto baja 11 kB en WebP (medido contra prod).
+    // `ResizeImage` se queda igual: son dos problemas distintos —datos moviles
+    // contra bitmap en RAM— y el servidor puede devolver algo mas grande de lo
+    // pedido al conservar el aspecto.
+    //
+    // Solo cuando se conoce el ANCHO. Si unicamente hay alto, la URL se deja
+    // como estaba: el transformador pide `width`, y deducirlo del alto seria
+    // inventarse un recorte.
+    //
+    // OJO: la URL es la CLAVE de la cache en disco, asi que al estrenar esto
+    // cada foto ya cacheada se vuelve a descargar UNA vez. Coste de una sola vez.
+    final urlServida =
+        cacheW != null ? transformedImageUrl(url, width: cacheW) : url;
     return Image(
       image: ResizeImage.resizeIfNeeded(
-          cacheW, cacheH, CachedNetworkImageProvider(url)),
+          cacheW, cacheH, CachedNetworkImageProvider(urlServida)),
       width: width,
       height: height,
       fit: fit,
@@ -80,6 +98,9 @@ class JayaloNetworkImage extends StatelessWidget {
 ImageProvider jayaloAvatarImage(
     String url, double diameter, BuildContext context) {
   final px = (diameter * MediaQuery.devicePixelRatioOf(context)).round();
+  // Mismo criterio que [JayaloNetworkImage]: al servidor se le pide el tamano
+  // real del avatar en vez de traer la foto entera para encogerla aqui.
+  final urlServida = px > 0 ? transformedImageUrl(url, width: px) : url;
   return ResizeImage.resizeIfNeeded(
-      px > 0 ? px : null, null, CachedNetworkImageProvider(url));
+      px > 0 ? px : null, null, CachedNetworkImageProvider(urlServida));
 }
