@@ -1277,6 +1277,9 @@ class _VueloMonedasState extends State<VueloMonedas>
     // que los tintineos caigan sobre los aterrizajes, no detrás de ellos.
     if (!_sono && t >= .56) {
       _sono = true;
+      // El sonido se pierde con el móvil en silencio, que es como anda medio
+      // mundo: sin esto la recarga acreditada no llegaba por ningún sentido.
+      JayaloHaptics.success();
       unawaited(playSfx(Sfx.coinsCredited));
     }
     while (_aterrizadas < 5 &&

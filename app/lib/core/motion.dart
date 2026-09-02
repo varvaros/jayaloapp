@@ -313,4 +313,24 @@ abstract final class JayaloHaptics {
   /// dispara solo cuando el índice CAMBIA de verdad — re-tocar la pestaña en
   /// la que ya estás no vibra.
   static void tabChange() => HapticFeedback.selectionClick();
+
+  /// Se CONSUMÓ algo que importa: una oferta aceptada, un contacto desbloqueado,
+  /// unos créditos acreditados. Va por encima de [sent] a propósito — un envío
+  /// es rutina y esto es un hito, casi siempre con dinero o una decisión detrás.
+  ///
+  /// Acompaña a los sonidos de celebración de `Sfx`, que hasta ahora sonaban
+  /// SOLOS: el audio se pierde con el móvil en silencio, que es como anda medio
+  /// mundo, y entonces la celebración no llegaba por ningún sentido.
+  ///
+  /// Es el mismo `mediumImpact` del "¡PUM!" del hold-to-confirm, y no es
+  /// casualidad: los dos marcan que algo deliberado se consumó.
+  static void success() => HapticFeedback.mediumImpact();
+
+  /// La acción NO se hizo: saldo insuficiente, rechazo del servidor, fallo de
+  /// red. El pulso más pesado, y el único que no celebra nada.
+  ///
+  /// La razón de que exista: un fallo tiene que sentirse DISTINTO de un acierto
+  /// sin necesidad de mirar la pantalla. Sin él, desbloquear un contacto y que
+  /// te lo rechacen por saldo se sienten igual en la mano.
+  static void error() => HapticFeedback.heavyImpact();
 }

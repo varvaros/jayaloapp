@@ -573,6 +573,9 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
       if (!mounted) return;
       Navigator.pop(context); // cierra la hoja de la oferta
     } else {
+      // El "¡PUM!" del hold ya vibró prometiendo que la cosa iba: si acaba en
+      // nada, tiene que sentirse distinto o el gesto miente.
+      JayaloHaptics.error();
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Esta oferta ya no está disponible.')));

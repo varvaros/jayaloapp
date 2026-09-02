@@ -215,6 +215,10 @@ Future<void> startUnlockFlow(
                         ),
                       );
                     } else {
+                      // Acción PAGADA que no se consumó. El "¡PUM!" del hold ya
+                      // vibró prometiendo que iba: sin este pulso, fallar y
+                      // acertar se sienten igual en la mano.
+                      JayaloHaptics.error();
                       _snack(context, 'No se pudo desbloquear. Intenta de nuevo.');
                     }
                   },
