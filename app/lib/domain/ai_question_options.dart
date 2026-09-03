@@ -40,6 +40,11 @@ String _norm(String s) {
   return b.toString();
 }
 
+/// La misma normalización, pública: la transcripción (`buildTranscript`)
+/// compara respuestas con opciones con esta regla y nadie más debe
+/// reinventarla. Trim + minúsculas + vocales sin acento + ñ→n.
+String normalizeLabel(String s) => _norm(s);
+
 final _catchAll = RegExp(
     r'^otr[oa]s?(\s+(marcas?|modelos?|opcion(?:es)?|tipos?|colores|color|medidas?|materiales|material|tamanos?))?$');
 

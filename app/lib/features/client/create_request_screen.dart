@@ -12,6 +12,7 @@ import '../../core/ai_client.dart';
 import '../../core/brand.dart';
 import '../../core/center_action.dart';
 import '../../core/create_request_nav.dart';
+import '../../core/error_reporter.dart';
 import '../../core/unsaved_guard.dart';
 import '../../data/repos.dart';
 import '../../domain/ai_image.dart';
@@ -26,6 +27,7 @@ import '../../domain/demand_guard.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/request_progress.dart';
 import '../../domain/request_seed.dart';
+import '../../domain/request_transcript.dart';
 import '../../domain/wholesale.dart';
 import '../shell/floating_nav_bar.dart';
 import '../verification/verify_banner.dart';
@@ -940,7 +942,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       final imageUrls = await Future.wait(
         _photos.map((p) => uploadRequestImage(p.file.path)),
       );
-      await submitRequest(
+      final requestId = await submitRequest(
         title: r.title,
         bullets: r.bullets,
         kind: _kind,
@@ -988,6 +990,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       // Publicada: nada que perder — que ninguna salida pregunte.
       releaseUnsavedGuard(this);
       setState(() => _submitted = true);
+      // Fase 0 del registro de patrones (spec §7): DESPUÉS del «Publicada»,
+      // fire-and-forget. Nunca bloquea ni enseña error.
+      if (requestId != null) unawaited(_saveTranscript(requestId));
     } catch (e) {
       // Red de seguridad: si el aviso previo no atrapó algo, los triggers de
       // la BD sí lo bloquean — traducir su SQLSTATE al mensaje humano en vez
@@ -1002,6 +1007,27 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       );
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Guarda la conversación en `request_ai_transcripts` (fase 0, spec §7).
+  /// Best-effort: un fallo va a `reportError`, jamás a la UI — la solicitud
+  /// ya está publicada. `model`/`prompt_version` salen de `AiReady.meta`
+  /// (null si el servidor no los mandó); `attributes` de `AiReady.attributes`.
+  Future<void> _saveTranscript(String requestId) async {
+    final rd = _ready;
+    final row = buildTranscript(
+      requestId,
+      List<AiMessage>.of(_messages),
+      attributes: rd?.attributes ?? const {},
+      model: rd?.meta?.model,
+      promptVersion: rd?.meta?.promptVersion,
+    );
+    if (row == null) return;
+    try {
+      await supa.from('request_ai_transcripts').insert(row);
+    } catch (e, s) {
+      unawaited(reportError(e, s));
     }
   }
 

@@ -515,7 +515,11 @@ String newRequestClientId() {
 /// - `requiresEvaluation` aplica a ambos (la web no lo capa por kind);
 /// - `urgency` = string de URGENCY_OPTIONS (producto);
 /// - `serviceModality`/`urgencyLevel`/`serviceEventDate` solo servicios.
-Future<void> submitRequest({
+/// Devuelve el `id` de la fila creada (la política «Requests: select» del
+/// dueño permite el `.select('id')` del insert), o `null` en el reintento
+/// 23505 — ahí la solicitud ya existe pero no se vuelve a leer. El id lo usa
+/// la transcripción (fase 0, best-effort); sin id no hay transcripción.
+Future<String?> submitRequest({
   required String title,
   required List<String> bullets,
   required String kind, // 'producto' | 'servicio'
@@ -583,8 +587,9 @@ Future<void> submitRequest({
     prof = null;
     unawaited(reportError(e, s));
   }
+  String? id;
   try {
-    await supa.from('customer_requests').insert({
+    final row = await supa.from('customer_requests').insert({
       'user_id': uid,
       'city': prof?['city'] ?? '',
       'sector': prof?['sector'] ?? '',
@@ -633,17 +638,21 @@ Future<void> submitRequest({
           : null,
       'wholesale_note': (!isService && wholesale) ? wholesaleNote : null,
       'target_business_id': null,
-    });
+    }).select('id').single();
+    id = row['id'] as String?;
   } on PostgrestException catch (e) {
     // 23505 = choque con `uq_customer_requests_client_idempotency`: el primer
     // intento SÍ creó la solicitud y su ack de red se perdió; este es el
     // reintento con el MISMO token. Idempotente: no es error — la solicitud ya
     // existe, así que se trata como éxito (no se re-inserta, no se re-dispara el
-    // fan-out de notificaciones a proveedores).
+    // fan-out de notificaciones a proveedores). Sin id: no se hace un select
+    // por `client_request_id` (grant de columna no verificado; la memoria del
+    // proyecto manda mirar `column_privileges` antes de un `.select()`).
     if (e.code != '23505') rethrow;
   }
   AppCaches.invalidateRequestLists();
   requestsChanged.value++;
+  return id;
 }
 
 /// Cancela (retira) una solicitud del marketplace. La regla dura la impone la
