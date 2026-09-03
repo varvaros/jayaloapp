@@ -45,6 +45,11 @@ class AiClient {
   /// contrato multimodal de la web: el cliente los manda en CADA POST y el
   /// servidor decide a qué mensaje del historial adjuntarlos
   /// (`chat-stream.ts` L408). El modelo ve la foto.
+  /// `useTemplates`: pide al servidor que mire plantillas por rubro (spec
+  /// §8.1). Solo tiene sentido en el PRIMER turno (`messages.length == 1`):
+  /// el servidor solo lo consulta ahí (chat-stream.ts L331) y el fallback a
+  /// IA manda el historial completo SIN plantillas. Aquí se filtra por
+  /// longitud para que ningún caller pueda mandarlo en un turno 2+.
   Future<AiTurn> sendTurn({
     required List<AiMessage> messages,
     String? kind, // 'producto' | 'servicio'
@@ -52,6 +57,7 @@ class AiClient {
     String? accessToken,
     String? imageDataUrl,
     String? imageDataUrl2,
+    bool useTemplates = false,
   }) async {
     final res = await _http
         .post(
@@ -74,6 +80,9 @@ class AiClient {
             // servidor viejo descarta la clave sin enterarse (fijado por test
             // en la web: chatStreamBody.test.ts).
             'wantReadyNext': true,
+            // Modo plantilla (spec §8.1): solo en el primer mensaje. Un
+            // servidor viejo o con el interruptor apagado lo ignora.
+            if (useTemplates && messages.length == 1) 'useTemplates': true,
           }),
         )
         .timeout(_timeout);
