@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Repo: `C:\Users\ac\Downloads\jayalo-app`. Antes de empezar: `git status` limpio, `git checkout feat/fecha-pautada-app && git checkout -b feat/atras-y-plantillas-app`. Todos los comandos `flutter` se lanzan desde `C:\Users\ac\Downloads\jayalo-app\app`.
+- Repo: worktree `C:SERSCDOWNLOADSJAYALO-APP-PLANTILLAS` (RAMA `FEAT/ATRAS-Y-PLANTILLAS-APP`, BASE `FEAT/FECHA-PAUTADA-APP`, YA CREADA; `GIT STATUS` LIMPIO AL EMPEZAR). TODOS LOS COMANDOS `FLUTTER` SE LANZAN DESDE `C:SERSCDOWNLOADSJAYALO-APP-PLANTILLASPP`. NUNCA TOCAR LOS WORKTREES HERMANOS (`JAYALO-APP`, `JAYALO-APP-IMAGENES`).
 - TDD estricto: test que falla → código → test que pasa. Tests con `flutter test test/<fichero>.dart` (uno) o `flutter test` (todos). `flutter analyze` sin avisos nuevos.
 - Un commit por task, mensaje en español como el repo (`feat(app): …`, `fix(app): …`). NUNCA `git push`. NUNCA tocar la BD (ni MCP ni SQL): los grants ya están vivos y son la frontera.
 - Formato de respuesta a `question`: `'Pregunta: ${q.question}\nRespuesta: $texto'`. «No» a `kind_switch`: `'Pregunta: ${k.message}\nRespuesta: No, sigo como $kind.'`.
