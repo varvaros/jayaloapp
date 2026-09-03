@@ -91,3 +91,45 @@ Future<bool> confirmDiscard(BuildContext context) async {
   );
   return salir == true;
 }
+
+// ── Segundo gancho: «un paso atrás» DENTRO de la pantalla (spec §5.3) ──────
+
+class _BackStepEntry {
+  _BackStepEntry(this.owner, this.step);
+  final Object owner;
+  final bool Function() step;
+}
+
+/// Misma disciplina que `_stack`: pila por dueño, manda el tope, quien
+/// registra suelta en `dispose`. Vive aparte del guard de cambios sin
+/// guardar porque responde a OTRA pregunta: no «¿se pierde algo?», sino
+/// «¿hay algo que deshacer antes de salir?». El creador de solicitudes
+/// registra aquí su «Atrás» de la conversación; BackGuard lo consulta
+/// PRIMERO. La navbar (home_shell) no: cambiar de pestaña no es un paso.
+final List<_BackStepEntry> _backSteps = [];
+
+/// Registra el «paso atrás» de ESTA pantalla. `step` devuelve `true` si
+/// consumió el gesto (deshizo algo) y `false` si no había nada que deshacer
+/// — entonces BackGuard sigue con el flujo de siempre. Re-registrar el mismo
+/// `owner` lo actualiza en su sitio (no le roba el turno a la de arriba).
+void takeBackStep({required Object owner, required bool Function() step}) {
+  final entry = _BackStepEntry(owner, step);
+  final i = _backSteps.indexWhere((e) => identical(e.owner, owner));
+  if (i == -1) {
+    _backSteps.add(entry);
+  } else {
+    _backSteps[i] = entry;
+  }
+}
+
+/// Quita el registro de `owner`. Inofensivo si no está. Quien registra DEBE
+/// soltar en `dispose`, o una pantalla muerta se comería el atrás de la
+/// siguiente para siempre.
+void releaseBackStep(Object owner) {
+  _backSteps.removeWhere((e) => identical(e.owner, owner));
+}
+
+/// `true` si la pantalla del tope consumió el gesto. `false` si no hay nada
+/// registrado o el tope dijo que no tenía nada que deshacer.
+bool tryBackStep() =>
+    _backSteps.isEmpty ? false : _backSteps.last.step();

@@ -19,6 +19,10 @@ class BackGuard extends StatelessWidget {
   final Widget child;
 
   Future<void> _handleBack(BuildContext context) async {
+    // Primero: ¿la pantalla tiene un paso que deshacer? El creador de
+    // solicitudes registra su «Atrás» de la conversación (spec §5.3): si lo
+    // consume, el gesto termina aquí — ni diálogo ni navegación.
+    if (tryBackStep()) return;
     // Antes de cualquier navegacion: si la pantalla actual tiene trabajo sin
     // guardar, se pregunta. Vale para las cinco BackAction — la de irse a otra
     // pantalla y la de salir de la app.
