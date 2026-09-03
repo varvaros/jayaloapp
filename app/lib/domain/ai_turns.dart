@@ -1,16 +1,48 @@
+import 'dart:convert';
+
 /// Turnos del endpoint IA `/api/ai/chat-stream` (que NO es streaming: cada
 /// turno es un POST que devuelve UN objeto JSON). Contrato verificado en
 /// jayalo-main: src/lib/ai/prompts.ts L30-82 + chat-stream.ts L438-500.
+/// «Atrás», transcripción y plantillas: paridad con src/lib/aiTurns.ts.
+
+/// Un mensaje del historial que viaja en `messages` (`role`: 'user' |
+/// 'assistant'). Vive en el dominio (antes en core/ai_client.dart) porque
+/// `stepBack`/`answeredCount` lo leen; `ai_client.dart` lo re-exporta para
+/// que nadie tenga que cambiar sus imports. Compara por valor: «Atrás»
+/// reconstruye listas y los tests las cotejan enteras.
+class AiMessage {
+  const AiMessage(this.role, this.content);
+  final String role;
+  final String content;
+  Map<String, String> toJson() => {'role': role, 'content': content};
+
+  @override
+  bool operator ==(Object other) =>
+      other is AiMessage && other.role == role && other.content == content;
+  @override
+  int get hashCode => Object.hash(role, content);
+  @override
+  String toString() => 'AiMessage($role, $content)';
+}
+
 sealed class AiTurn {
   const AiTurn();
 }
 
 class AiQuestion extends AiTurn {
   const AiQuestion(
-      {required this.question, required this.options, required this.allowOther});
+      {required this.question,
+      required this.options,
+      required this.allowOther,
+      this.attribute});
   final String question;
   final List<String> options;
   final bool allowOther;
+
+  /// Clave snake_case del atributo que produce la pregunta (prompt
+  /// 2026-09-03.1; las preguntas de plantilla lo llevan siempre). null si el
+  /// modelo no lo mandó o no era una clave válida.
+  final String? attribute;
 }
 
 class AiImageRequest extends AiTurn {
@@ -41,7 +73,9 @@ class AiReady extends AiTurn {
       {required this.title,
       required this.bullets,
       required this.wholesale,
-      this.condition});
+      this.condition,
+      this.attributes = const {},
+      this.meta});
   final String title;
   final List<String> bullets;
   final bool wholesale;
@@ -50,6 +84,15 @@ class AiReady extends AiTurn {
   /// conversación (paridad con `parseReadyCondition` de la web): permite
   /// saltar el paso Estado del formulario final. null = hay que preguntar.
   final String? condition;
+
+  /// `{"marca": "Samsung", "tipo_unidad": "split"}` ya saneado (claves
+  /// snake_case, valores recortados). `{}` si el servidor no lo mandó. Va a
+  /// `request_ai_transcripts.attributes`.
+  final Map<String, String> attributes;
+
+  /// Modelo y versión del prompt que produjeron la ficha; null si el
+  /// servidor no los mandó. Va a `model`/`prompt_version` de la transcripción.
+  final ({String model, String promptVersion})? meta;
 }
 
 class AiKindSwitch extends AiTurn {
@@ -62,6 +105,50 @@ class AiKindSwitch extends AiTurn {
 
 List<String> _strs(dynamic v) =>
     (v is List) ? v.map((e) => e.toString()).toList() : const [];
+
+// ── Atributos (paridad con src/lib/ai/aiAttributes.ts) ─────────────────────
+
+final _attrKeyRe = RegExp(r'^[a-z0-9_]{1,40}$');
+const attributesMaxKeys = 20;
+const attributeValueMaxChars = 120;
+
+/// La regla de clave, en un solo sitio: `ready.attributes` y
+/// `question.attribute` la comparten. null si no es una clave válida.
+String? sanitizeAttributeKey(Object? raw) {
+  if (raw is! String) return null;
+  final key = raw.trim();
+  return _attrKeyRe.hasMatch(key) ? key : null;
+}
+
+/// Claves inválidas, valores no-string o vacíos: fuera. Valores recortados a
+/// 120 chars, como mucho 20 claves. NUNCA lanza: un atributo raro no puede
+/// tumbar un turno.
+Map<String, String> sanitizeAttributes(Object? raw) {
+  final out = <String, String>{};
+  if (raw is! Map) return out;
+  for (final e in raw.entries) {
+    if (out.length >= attributesMaxKeys) break;
+    final key = sanitizeAttributeKey(e.key);
+    final v = e.value;
+    if (key == null || v is! String) continue;
+    var clean = v.trim();
+    if (clean.length > attributeValueMaxChars) {
+      clean = clean.substring(0, attributeValueMaxChars);
+    }
+    if (clean.isEmpty) continue;
+    out[key] = clean;
+  }
+  return out;
+}
+
+({String model, String promptVersion})? _metaOf(dynamic v) {
+  if (v is! Map) return null;
+  final m = v['model'];
+  final p = v['promptVersion'];
+  return (m is String && p is String) ? (model: m, promptVersion: p) : null;
+}
+
+// ── Parseo ─────────────────────────────────────────────────────────────────
 
 /// Parsea el `readyNext` adjunto a un routing. Cualquier malformación degrada
 /// a null (= fallback al auto-«ok»), nunca rompe el turno que lo trae.
@@ -79,7 +166,8 @@ AiTurn parseAiTurn(Map<String, dynamic> json) => switch (json['type']) {
       'question' => AiQuestion(
           question: json['question'] as String? ?? '',
           options: _strs(json['options']),
-          allowOther: json['allowOther'] as bool? ?? true),
+          allowOther: json['allowOther'] as bool? ?? true,
+          attribute: sanitizeAttributeKey(json['attribute'])),
       'image_request' => AiImageRequest(
           message: json['message'] as String? ?? '',
           hint: json['hint'] as String? ?? ''),
@@ -95,10 +183,162 @@ AiTurn parseAiTurn(Map<String, dynamic> json) => switch (json['type']) {
           condition: switch (json['condition']) {
             'nuevo' || 'usado' || 'ambos' => json['condition'] as String,
             _ => null,
-          }),
+          },
+          attributes: sanitizeAttributes(json['attributes']),
+          meta: _metaOf(json['meta'])),
       'kind_switch' => AiKindSwitch(
           message: json['message'] as String? ?? '',
           suggestedKind: json['suggested_kind'] as String? ?? 'servicio',
           options: _strs(json['options'])),
       _ => throw FormatException('Turno IA desconocido: ${json['type']}'),
     };
+
+/// El JSON que va al historial (`messages`) por cada turno de la IA. Antes era
+/// `_turnToJson` privado de la pantalla; «Atrás» rehidrata desde aquí, así
+/// que parse ↔ serialize tienen que ser inversos. `attributes`/`meta`/
+/// `condition` solo si vienen; `readyNext` NO se guarda (como siempre: el
+/// ready se añade como su propio turno).
+Map<String, dynamic> turnToJson(AiTurn t) => switch (t) {
+      AiQuestion q => {
+          'type': 'question',
+          'question': q.question,
+          'options': q.options,
+          'allowOther': q.allowOther,
+          'attribute': ?q.attribute,
+        },
+      AiImageRequest i => {
+          'type': 'image_request',
+          'message': i.message,
+          'hint': i.hint,
+        },
+      AiRouting r => {
+          'type': 'routing',
+          'message': r.message,
+          'categories': r.categories,
+          'rubros': r.rubros,
+        },
+      AiReady r => {
+          'type': 'ready',
+          'title': r.title,
+          'bullets': r.bullets,
+          if (r.wholesale) 'wholesale': true,
+          'condition': ?r.condition,
+          if (r.attributes.isNotEmpty) 'attributes': r.attributes,
+          if (r.meta case final m?)
+            'meta': {'model': m.model, 'promptVersion': m.promptVersion},
+        },
+      AiKindSwitch k => {
+          'type': 'kind_switch',
+          'message': k.message,
+          'suggested_kind': k.suggestedKind,
+          'options': k.options,
+        },
+    };
+
+/// Un turno de la IA desde el `content` de un mensaje `assistant` del
+/// historial. `null` si no es JSON, no es un objeto o no es un turno
+/// conocido. NUNCA lanza (`parseAiTurn` sigue lanzando para el turno recién
+/// recibido del servidor, que sí debe fallar ruidosamente).
+AiTurn? parseAssistantTurn(String content) {
+  try {
+    final parsed = jsonDecode(content);
+    if (parsed is! Map<String, dynamic>) return null;
+    return parseAiTurn(parsed);
+  } catch (_) {
+    return null;
+  }
+}
+
+// ── «Atrás» (paridad con stepBack de aiTurns.ts) ───────────────────────────
+
+/// Mensaje con el que viaja la segunda foto (literal de la web,
+/// `SECOND_PHOTO_MSG`). Mientras siga en el historial, la foto sigue.
+const secondPhotoMsg = 'Aquí tienes otra foto para más contexto.';
+
+/// «Atrás» puede deshacer el envío de la segunda foto: si el mensaje ya no
+/// está, la foto tampoco debe estar.
+bool keepsSecondPhoto(List<AiMessage> messages) =>
+    messages.any((m) => m.role == 'user' && m.content == secondPhotoMsg);
+
+typedef StepBack = ({List<AiMessage> messages, AiTurn? turn});
+
+/// «Atrás»: quita el turno actual de la IA y la respuesta que lo provocó, y
+/// rehidrata el turno anterior desde el historial. Cero llamadas: todo está
+/// en `messages`. Si no queda ningún turno válido detrás, vuelve al inicio
+/// (`messages: []`, `turn: null`), que en la pantalla es el compositor con
+/// texto y foto intactos. No muta la lista que recibe.
+StepBack stepBack(List<AiMessage> messages) {
+  final msgs = List<AiMessage>.of(messages);
+  // 1) el turno actual de la IA (puede haber más de uno seguido: routing +
+  //    ready; se quitan todos)
+  while (msgs.isNotEmpty && msgs.last.role == 'assistant') {
+    msgs.removeLast();
+  }
+  // 2) la respuesta del usuario que lo provocó
+  while (msgs.isNotEmpty && msgs.last.role == 'user') {
+    msgs.removeLast();
+  }
+  // 3) el turno anterior; si no parsea, seguir hacia atrás
+  while (msgs.isNotEmpty) {
+    final last = msgs.last;
+    if (last.role == 'assistant') {
+      final turn = parseAssistantTurn(last.content);
+      if (turn != null) return (messages: msgs, turn: turn);
+      msgs.removeLast();
+      while (msgs.isNotEmpty && msgs.last.role == 'user') {
+        msgs.removeLast();
+      }
+    } else {
+      msgs.removeLast();
+    }
+  }
+  return (messages: <AiMessage>[], turn: null);
+}
+
+// ── Respuestas del usuario (§5.1 answeredCount, §6 formato) ────────────────
+
+const _answerMarker = '\nRespuesta:';
+
+/// Lo que el usuario contestó, sin el envoltorio `Pregunta: …\nRespuesta: `.
+/// Un mensaje sin envoltorio (el 'ok' del routing, la foto) vuelve tal cual.
+String answerTextOf(String content) {
+  final i = content.indexOf(_answerMarker);
+  if (!content.startsWith('Pregunta:') || i == -1) return content;
+  return content.substring(i + _answerMarker.length).trim();
+}
+
+/// Los mensajes `user` que responden a un `question` o `kind_switch` (los
+/// que van JUSTO después de uno de esos turnos), en orden. Es la fuente de
+/// la tarjeta «Tu solicitud» y del contador «Pregunta N»: con «Atrás» un
+/// contador incremental se desincroniza; esto se recalcula del historial.
+List<String> answerTexts(List<AiMessage> messages) {
+  final out = <String>[];
+  var pending = false;
+  for (final m in messages) {
+    if (m.role == 'assistant') {
+      final t = parseAssistantTurn(m.content);
+      pending = t is AiQuestion || t is AiKindSwitch;
+      continue;
+    }
+    if (pending) {
+      out.add(answerTextOf(m.content));
+      pending = false;
+    }
+  }
+  return out;
+}
+
+int answeredCount(List<AiMessage> messages) => answerTexts(messages).length;
+
+/// Lo que se guarda en el historial al contestar. A un `question` se le
+/// responde con el formato de la web (`new.tsx` L781) — el constructor de
+/// plantillas lo exige (`request_template_qa_pairs` lee `\nRespuesta:`). A
+/// todo lo demás (primer mensaje, foto, 'ok', corrección) va el texto suelto.
+String answerContent(AiTurn? current, String text) => switch (current) {
+      AiQuestion q => 'Pregunta: ${q.question}\nRespuesta: $text',
+      _ => text,
+    };
+
+/// «No» a un `kind_switch` (web `new.tsx` L1950).
+String kindSwitchNoContent(AiKindSwitch k, String kind) =>
+    'Pregunta: ${k.message}\nRespuesta: No, sigo como $kind.';

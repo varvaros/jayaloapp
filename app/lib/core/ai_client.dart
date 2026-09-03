@@ -3,12 +3,10 @@ import 'package:http/http.dart' as http;
 import '../domain/ai_turns.dart';
 import 'config.dart';
 
-class AiMessage {
-  const AiMessage(this.role, this.content); // role: 'user' | 'assistant'
-  final String role;
-  final String content;
-  Map<String, String> toJson() => {'role': role, 'content': content};
-}
+// `AiMessage` se mudó al dominio (stepBack/answeredCount lo leen). Se
+// re-exporta para que quien importaba `core/ai_client.dart` por él siga
+// compilando sin tocar un import.
+export '../domain/ai_turns.dart' show AiMessage;
 
 class AiHttpException implements Exception {
   AiHttpException(this.status, this.message);
