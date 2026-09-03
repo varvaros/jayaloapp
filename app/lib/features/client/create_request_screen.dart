@@ -488,6 +488,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     JayaloHaptics.sent();
     setState(() {
       _kind = kind;
+      // Paridad web (new.tsx L1857): «servicio» no admite al por mayor.
+      if (kind == 'servicio') _wholesale = false;
       _messages
         ..clear()
         ..add(first);
