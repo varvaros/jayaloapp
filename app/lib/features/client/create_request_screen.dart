@@ -794,6 +794,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         if (_catalogRubros.isEmpty && !_loadingCatalog) {
           unawaited(_loadRubroCatalog());
         }
+      case AiTemplate():
+        // El modo plantilla se cablea en la Task 8 (`_startTemplate`). Hasta
+        // entonces la app no manda `useTemplates`, así que este turno no
+        // puede llegar; el caso existe para que el switch sobre el sealed
+        // siga siendo exhaustivo.
+        break;
     }
   }
 

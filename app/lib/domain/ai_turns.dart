@@ -103,6 +103,48 @@ class AiKindSwitch extends AiTurn {
   final List<String> options;
 }
 
+/// Una pregunta de plantilla (`request_templates.questions[i]`), validada
+/// como `TemplateQuestionSchema` de la web: key `^[a-z0-9_]{1,40}$`, label
+/// 1-60, question 1-200, options ≤ 8 de 1-80 chars (todo recortado).
+typedef TemplateQuestion = ({
+  String key,
+  String label,
+  String question,
+  List<String> options,
+});
+
+/// Turno `template` (spec §8.1): la respuesta del servidor al PRIMER mensaje
+/// cuando hay una plantilla activa para el ámbito y `useTemplates: true`.
+/// A partir de ahí todo corre LOCAL (`domain/template_run.dart`). Vive aquí
+/// y no en template_run.dart porque `AiTurn` es sealed: Dart exige que sus
+/// subclases estén en la misma biblioteca. Nunca se guarda en `messages`.
+class AiTemplate extends AiTurn {
+  const AiTemplate({
+    required this.id,
+    required this.version,
+    required this.scope,
+    required this.questions,
+    required this.categories,
+    required this.rubros,
+    required this.knownAttributes,
+  });
+  final String id;
+  final int version;
+  final String scope;
+  final List<TemplateQuestion> questions;
+  final List<String> categories;
+  final List<String> rubros;
+  final Map<String, String> knownAttributes;
+}
+
+/// `parseAiTurn` la lanza cuando el servidor manda `type: 'template'` con una
+/// forma inesperada. Es un `FormatException` (la pantalla lo trata como un
+/// turno de IA fallido: toast + reintento) pero distinguible: a la segunda
+/// vez la pantalla deja de pedir plantillas en esa conversación (§8.1).
+class TemplateFormatException extends FormatException {
+  const TemplateFormatException() : super('Turno template malformado');
+}
+
 List<String> _strs(dynamic v) =>
     (v is List) ? v.map((e) => e.toString()).toList() : const [];
 
@@ -148,6 +190,76 @@ Map<String, String> sanitizeAttributes(Object? raw) {
   return (m is String && p is String) ? (model: m, promptVersion: p) : null;
 }
 
+// ── Turno template (paridad con parseTemplateTurn de templateRun.ts) ───────
+
+final _templateKeyRe = RegExp(r'^[a-z0-9_]{1,40}$');
+
+List<String> _strsOnly(dynamic v) =>
+    v is List ? v.whereType<String>().toList() : const [];
+
+TemplateQuestion? _templateQuestionOf(dynamic v) {
+  if (v is! Map) return null;
+  final key = v['key'];
+  final label = v['label'];
+  final question = v['question'];
+  final options = v['options'];
+  if (key is! String || !_templateKeyRe.hasMatch(key)) return null;
+  if (label is! String) return null;
+  final l = label.trim();
+  if (l.isEmpty || l.length > 60) return null;
+  if (question is! String) return null;
+  final q = question.trim();
+  if (q.isEmpty || q.length > 200) return null;
+  if (options is! List || options.length > 8) return null;
+  final opts = <String>[];
+  for (final o in options) {
+    if (o is! String) return null;
+    final t = o.trim();
+    if (t.isEmpty || t.length > 80) return null;
+    opts.add(t);
+  }
+  return (key: key, label: l, question: q, options: opts);
+}
+
+/// `null` ante cualquier forma inesperada — nunca lanza (mismo trato que
+/// `parseAssistantTurn`). `version` admite el double entero que deja
+/// `jsonDecode` (3.0), como `Number.isInteger` en la web.
+AiTemplate? parseTemplateTurn(Object? json) {
+  if (json is! Map || json['type'] != 'template') return null;
+  final t = json['template'];
+  if (t is! Map) return null;
+  final id = t['id'];
+  final rawVersion = t['version'];
+  final scope = t['scope'];
+  final qs = t['questions'];
+  if (id is! String || id.isEmpty) return null;
+  final version = switch (rawVersion) {
+    int v => v,
+    double v when v == v.truncateToDouble() => v.toInt(),
+    _ => null,
+  };
+  if (version == null || version <= 0) return null;
+  if (scope is! String || scope.isEmpty) return null;
+  if (qs is! List || qs.isEmpty || qs.length > 12) return null;
+  final questions = <TemplateQuestion>[];
+  for (final q in qs) {
+    final parsed = _templateQuestionOf(q);
+    if (parsed == null) return null;
+    questions.add(parsed);
+  }
+  final routing = json['routing'];
+  final r = routing is Map ? routing : const <String, dynamic>{};
+  return AiTemplate(
+    id: id,
+    version: version,
+    scope: scope,
+    questions: questions,
+    categories: _strsOnly(r['categories']),
+    rubros: _strsOnly(r['rubros']),
+    knownAttributes: sanitizeAttributes(json['known_attributes']),
+  );
+}
+
 // ── Parseo ─────────────────────────────────────────────────────────────────
 
 /// Parsea el `readyNext` adjunto a un routing. Cualquier malformación degrada
@@ -190,6 +302,8 @@ AiTurn parseAiTurn(Map<String, dynamic> json) => switch (json['type']) {
           message: json['message'] as String? ?? '',
           suggestedKind: json['suggested_kind'] as String? ?? 'servicio',
           options: _strs(json['options'])),
+      'template' =>
+        parseTemplateTurn(json) ?? (throw const TemplateFormatException()),
       _ => throw FormatException('Turno IA desconocido: ${json['type']}'),
     };
 
@@ -232,6 +346,27 @@ Map<String, dynamic> turnToJson(AiTurn t) => switch (t) {
           'message': k.message,
           'suggested_kind': k.suggestedKind,
           'options': k.options,
+        },
+      // Nunca va al historial (la pantalla no lo añade a `messages`); se
+      // serializa entero solo para que el switch sea exhaustivo y reversible.
+      AiTemplate t => {
+          'type': 'template',
+          'template': {
+            'id': t.id,
+            'version': t.version,
+            'scope': t.scope,
+            'questions': [
+              for (final q in t.questions)
+                {
+                  'key': q.key,
+                  'label': q.label,
+                  'question': q.question,
+                  'options': q.options,
+                },
+            ],
+          },
+          'routing': {'categories': t.categories, 'rubros': t.rubros},
+          'known_attributes': t.knownAttributes,
         },
     };
 
