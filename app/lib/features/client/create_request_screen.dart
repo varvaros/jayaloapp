@@ -189,7 +189,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   List<String> _categories = [];
   List<String> _rubros = [];
   final List<_PendingPhoto> _photos = [];
-  final List<String> _answers = [];
   AiTurn? _current;
   int _pop = 0; // key de la reacción de la mascota (cambia por turno)
   AiReady? _ready;
@@ -229,7 +228,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   List<Map<String, dynamic>> _catalogRubros = [];
   bool _loadingCatalog = false;
   String? _catalogError;
-  int _aiAnswered = 0;
+
+  /// La 2ª foto la puso el usuario DENTRO de la conversación (respondiendo a
+  /// un `image_request`), no en el compositor. Solo esa se va con «Atrás»
+  /// cuando su mensaje (`secondPhotoMsg`) deja de estar en el historial; las
+  /// del compositor nunca pasaron por el historial y se quedan (§5.2: la 1ª
+  /// foto NUNCA se suelta; la app admite dos en el compositor, la web una).
+  bool _secondPhotoFromChat = false;
+
+  /// Lo que el usuario escribió en el compositor al arrancar. `_send` vacía
+  /// `_input`; «Atrás» hasta el inicio lo devuelve al campo (§5.2).
+  String _composerText = '';
 
   // Detalles de mayoreo (obligatorios cuando la solicitud es al por mayor —
   // paridad web requests/new.tsx). Slugs de `domain/wholesale.dart`.
@@ -258,9 +267,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// texto propio en el input (el sembrado por `seedFrom` no es suyo).
   bool _hasUnsavedWork() {
     if (_submitted) return false;
+    // Las respuestas viven en `_messages` (ver `answerTexts`): no hay lista
+    // aparte que pueda desincronizarse con «Atrás».
     return _kind.isNotEmpty ||
         _messages.isNotEmpty ||
-        _answers.isNotEmpty ||
         _photos.length > _seedPhotos ||
         _input.text.trim() != _seedTitle.trim();
   }
@@ -308,6 +318,18 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       check: _hasUnsavedWork,
       message: 'Perderás lo que escribiste en esta solicitud.',
     );
+    // El gesto ATRÁS de Android deshace UN paso de la conversación (spec
+    // §5.3) y BackGuard lo consulta antes que el aviso de descarte. En el
+    // compositor (sin historial) o mientras la IA piensa no consume: se sale
+    // como siempre. La flecha del header NO pasa por aquí: esa sale.
+    takeBackStep(
+      owner: this,
+      step: () {
+        if (_messages.isEmpty || _busy) return false;
+        _goBack();
+        return true;
+      },
+    );
     if (widget.seedFrom != null) {
       // fire-and-forget: prefija el input; la foto se adjunta en Task 5.
       _applySeed(widget.seedFrom!);
@@ -318,6 +340,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   void dispose() {
     releaseCenterAction(_centerCamera);
     releaseUnsavedGuard(this);
+    releaseBackStep(this);
     // Faltaban (auditoría 2026-07-30). Esta es la pantalla que más se abre y
     // cierra del producto — el ＋ de la barra la lanza una y otra vez — así que
     // cada apertura dejaba colgando un TextEditingController con sus listeners
@@ -369,16 +392,18 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// aún es true — sin force, el guard se las tragaba en silencio y el flujo
   /// quedaba muerto esperando al usuario (bug pre-existente que el chat viejo
   /// disimulaba y la vista guiada destapó).
-  Future<void> _send(String text, {bool force = false}) async {
+  ///
+  /// `raw` manda `text` tal cual. Sin `raw`, la respuesta a un `question` se
+  /// guarda como `Pregunta: …\nRespuesta: …` (spec §6, paridad web): el
+  /// constructor de plantillas lee ese formato. La corrección tras la ficha
+  /// (`_correcting`) y todo lo que no responde a un `question` van sueltos.
+  Future<void> _send(String text, {bool force = false, bool raw = false}) async {
     if (text.trim().isEmpty || (_busy && !force)) return;
-    // Solo cuentan como "respuesta" de la solicitud las contestaciones a una
-    // pregunta real de la IA (no el auto-"ok" del routing, ni la foto, ni las
-    // correcciones tras el ready).
-    final record =
-        !_correcting && (_current is AiQuestion || _current is AiKindSwitch);
     // Mismo pulso que el chat entre personas: acá el usuario también le está
     // MANDANDO algo a alguien (la IA que arma la solicitud).
     JayaloHaptics.sent();
+    final content =
+        raw ? text : answerContent(_correcting ? null : _current, text);
     // El estado del botón central lo decide `_syncCenter` desde `build` (la
     // cámara deja de mandar en cuanto arranca la conversación, PO 2026-08-20).
     // No se pierde nada: el único punto del flujo donde hace falta otra foto es
@@ -387,13 +412,26 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     setState(() {
       _busy = true;
       _showOther = false;
-      _messages.add(AiMessage('user', text));
-      if (record) {
-        _answers.add(text);
-        _aiAnswered++;
-      }
+      _messages.add(AiMessage('user', content));
       _input.clear();
     });
+    final ok = await _ask();
+    // El mensaje que provocó el fallo se quita: el usuario reintenta desde el
+    // mismo punto. Las respuestas ya no se cuentan aparte (`answerTexts` lee
+    // el historial), así que no hay contador que revertir.
+    if (!ok && mounted) {
+      setState(() {
+        _messages.removeLast();
+      });
+    }
+  }
+
+  /// Manda el historial TAL CUAL está y trata el turno que vuelve. `true` si
+  /// llegó un turno (o la pantalla murió mientras tanto); `false` si falló,
+  /// ya con su toast. Quien añadió un mensaje antes de llamar decide qué
+  /// hacer con él (`_send` lo quita; `_restartWithKind` restaura el anterior).
+  Future<bool> _ask() async {
+    setState(() => _busy = true);
     try {
       // El JWT de la sesión exime el Turnstile del primer turno (ADR-0032);
       // el WebView del CAPTCHA se quitó: se pintaba negro en MIUI y colgaba
@@ -406,47 +444,136 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         imageDataUrl: _photos.isNotEmpty ? _photos[0].dataUrl : null,
         imageDataUrl2: _photos.length > 1 ? _photos[1].dataUrl : null,
       );
-      _messages.add(AiMessage('assistant', jsonEncode(_turnToJson(turn))));
+      _messages.add(AiMessage('assistant', jsonEncode(turnToJson(turn))));
       // `sendTurn` tarda 2-8 s en datos móviles y el usuario puede cerrar el
       // compositor mientras tanto. Sin este guard, `_handleTurn` y los dos
       // `catch` de abajo llamaban `setState` sobre un State ya desmontado
       // ("setState() called after dispose()"): el turno se perdía y el error
       // ensuciaba el tracking. El `finally` ya lo hacía bien; estas ramas no.
-      if (!mounted) return;
+      if (!mounted) return true;
       // La correccion se da por consumida SOLO cuando el turno llego. Si la
       // IA falla, `_correcting` sigue en true y el usuario vuelve a ver el
       // campo de corregir con su formulario intacto detras, en vez de
       // quedarse en una pantalla sin nada que tocar.
       setState(() => _correcting = false);
       await _handleTurn(turn);
+      return true;
     } on AiHttpException catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       _toast(
         e.status == 429
             ? 'Un momento… demasiadas solicitudes. Espera 1 minuto.'
             : e.message,
       );
-      setState(() {
-        _messages.removeLast();
-        if (record) {
-          _answers.removeLast();
-          _aiAnswered--;
-        }
-      });
+      return false;
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       _toast('Algo falló. Intenta de nuevo.');
-      setState(() {
-        _messages.removeLast();
-        if (record) {
-          _answers.removeLast();
-          _aiAnswered--;
-        }
-      });
+      return false;
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// «Sí, cambiar» de un `kind_switch`: como la web (`new.tsx` L1860-1900),
+  /// se cambia el tipo y la conversación ARRANCA DE NUEVO con solo el primer
+  /// mensaje. Antes la app mandaba la opción como un mensaje más sobre el
+  /// historial viejo; con el tipo cambiado, ese historial ya no vale — y el
+  /// reinicio es lo que permite volver a pedir plantillas (Task 8).
+  Future<void> _restartWithKind(String kind) async {
+    if (_busy || _messages.isEmpty) return;
+    final previous = List<AiMessage>.of(_messages);
+    final previousCurrent = _current;
+    final first = _messages.first;
+    JayaloHaptics.sent();
+    setState(() {
+      _kind = kind;
+      _messages
+        ..clear()
+        ..add(first);
+      _current = null;
+      _ready = null;
+      _categories = [];
+      _rubros = [];
+      _showOther = false;
+      _pop++;
+    });
+    final ok = await _ask();
+    if (!ok && mounted) {
+      // Si el reinicio falla, se vuelve a donde estaba (con el kind ya
+      // cambiado: eso lo pidió el usuario y no depende del servidor).
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(previous);
+        _current = previousCurrent;
+      });
+    }
+  }
+
+  /// «Atrás» de la conversación (spec §5.2): deshace el último paso desde el
+  /// historial, SIN llamar al servidor. Lo disparan el botón y el gesto ATRÁS
+  /// de Android (`takeBackStep` en `initState`). Si no queda turno detrás se
+  /// vuelve al compositor con el texto y las fotos del compositor intactos.
+  void _goBack() {
+    if (_busy || _messages.isEmpty) return;
+    final r = stepBack(_messages);
+    final routing = _lastRouting(r.messages);
+    final categories = List<String>.of(routing?.categories ?? const []);
+    // El catálogo de rubros es de las categorías CARGADAS; si «Atrás» cambia
+    // las categorías, el catálogo y la selección ya no corresponden.
+    final catalogStale = categories.join(',') != _categories.join(',');
+    setState(() {
+      _showOther = false;
+      _correcting = false;
+      if (r.turn == null) _input.text = _composerText;
+      _messages
+        ..clear()
+        ..addAll(r.messages);
+      _current = r.turn;
+      _ready = switch (r.turn) {
+        AiReady rd => rd,
+        _ => null,
+      };
+      _categories = categories;
+      _rubros = List<String>.of(routing?.rubros ?? const []);
+      if (catalogStale) {
+        _catalogRubros = [];
+        _selectedRubros = {};
+      }
+      // Si «Atrás» deshizo el envío de la segunda foto, la foto misma se va:
+      // si no, «Seguir sin foto» en el siguiente `image_request` la mandaría
+      // igual (repro del PO en la web). Solo la que entró por el chat.
+      if (_secondPhotoFromChat &&
+          !keepsSecondPhoto(_messages) &&
+          _photos.length > 1) {
+        _photos.removeLast();
+        _secondPhotoFromChat = false;
+      }
+      _pop++;
+    });
+    if (catalogStale && _categories.isNotEmpty) unawaited(_loadRubroCatalog());
+  }
+
+  /// El último `routing` que queda en el historial (o null): de ahí salen las
+  /// categorías/rubros tras un «Atrás».
+  AiRouting? _lastRouting(List<AiMessage> msgs) {
+    for (final m in msgs.reversed) {
+      if (m.role != 'assistant') continue;
+      if (parseAssistantTurn(m.content) case AiRouting r) return r;
+    }
+    return null;
+  }
+
+  /// Botón «Atrás» de la conversación: texto + `arrow_back`, mismo estilo que
+  /// «Otra respuesta…» (TextButton centrado). Apagado mientras la IA piensa.
+  Widget _backButton() => Center(
+        child: TextButton.icon(
+          onPressed: _busy ? null : _goBack,
+          icon: const Icon(Icons.arrow_back, size: 18),
+          label: const Text('Atrás'),
+        ),
+      );
 
   /// Elige y valida una foto; la agrega a `_photos` (con su base64 cacheado).
   /// Devuelve true si se agregó. Con [replaceLast], la nueva foto sustituye a
@@ -517,9 +644,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   Future<void> _pickForRequest(ImageSource source) async {
     final replacing = _photos.length >= _maxRequestPhotos;
     if (await _pickPhoto(source, replaceLast: replacing)) {
-      await _send(replacing
-          ? 'Cambié la foto, mira esta.'
-          : 'Aquí tienes una foto para más contexto.');
+      // La 2ª foto viaja con el literal de la web (`secondPhotoMsg`): «Atrás»
+      // sabe que sigue en juego mientras ese mensaje siga en el historial
+      // (`keepsSecondPhoto`). El servidor adjunta `imageDataUrl2` al ÚLTIMO
+      // mensaje `user` sea cual sea su texto (chat-stream.ts L516-533), así
+      // que el reemplazo de la 2ª también va con este literal.
+      final isSecond = _photos.length == _maxRequestPhotos;
+      if (isSecond) _secondPhotoFromChat = true;
+      await _send(
+        isSecond ? secondPhotoMsg : 'Aquí tienes una foto para más contexto.',
+        raw: true,
+      );
     }
   }
 
@@ -624,10 +759,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           // F3: el servidor ya adjuntó el ready — el POST del auto-«ok» (que
           // re-subía la foto entera) se ahorra. El historial queda IGUAL que
           // por el camino lento: el mismo 'ok' + el ready serializado con el
-          // mismo `_turnToJson` — las correcciones tras la ficha dependen de
+          // mismo `turnToJson` — las correcciones tras la ficha dependen de
           // esa coherencia.
           _messages.add(const AiMessage('user', 'ok'));
-          _messages.add(AiMessage('assistant', jsonEncode(_turnToJson(rn))));
+          _messages.add(AiMessage('assistant', jsonEncode(turnToJson(rn))));
           await _handleTurn(rn);
         } else {
           // Servidor viejo o readyNext omitido: el camino de siempre.
@@ -704,38 +839,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     });
     unawaited(_loadRubroCatalog());
   }
-
-  Map<String, dynamic> _turnToJson(AiTurn t) => switch (t) {
-    AiQuestion q => {
-      'type': 'question',
-      'question': q.question,
-      'options': q.options,
-      'allowOther': q.allowOther,
-    },
-    AiImageRequest i => {
-      'type': 'image_request',
-      'message': i.message,
-      'hint': i.hint,
-    },
-    AiRouting r => {
-      'type': 'routing',
-      'message': r.message,
-      'categories': r.categories,
-      'rubros': r.rubros,
-    },
-    AiReady r => {
-      'type': 'ready',
-      'title': r.title,
-      'bullets': r.bullets,
-      if (r.wholesale) 'wholesale': true,
-    },
-    AiKindSwitch k => {
-      'type': 'kind_switch',
-      'message': k.message,
-      'suggested_kind': k.suggestedKind,
-      'options': k.options,
-    },
-  };
 
   /// Gates idénticos al `submit()` de la web (requests/new.tsx L520-570).
   Future<void> _submit() async {
@@ -1242,6 +1345,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _toast('Elige Producto, Servicio o Al por mayor para continuar.');
       return;
     }
+    // «Atrás» hasta el inicio devuelve esto al campo (spec §5.2).
+    _composerText = text.trim();
     // En PRODUCTO la descripción es opcional si hay foto (pedido PO
     // 2026-08-11): la foto habla por el usuario — viaja en el dataUrl de este
     // mismo POST y el servidor ya usa este mismo texto por defecto para los
@@ -1352,7 +1457,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       switch (_current) {
         case AiQuestion q:
           question = q.question;
-          counter = 'Pregunta ${_aiAnswered + 1}';
+          // Del historial, no de un contador: «Atrás» lo baja solo.
+          counter = 'Pregunta ${answeredCount(_messages) + 1}';
           // Si la IA ya ofreció un catch-all ("Otros", "Otra marca"), ese botón
           // ES el disparador del campo de texto: enviarlo tal cual mandaba
           // "Otros" al proveedor como si fuera la respuesta (bug PO
@@ -1379,6 +1485,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                   child: const Text('Otra respuesta…'),
                 ),
               ),
+            _backButton(),
           ];
         case AiKindSwitch k:
           question = k.message;
@@ -1387,10 +1494,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               _optionButton(op, () {
                 final low = op.toLowerCase();
                 if (low.startsWith('sí') || low.startsWith('si')) {
-                  setState(() => _kind = k.suggestedKind);
+                  // Reinicio con el tipo nuevo (paridad web).
+                  _restartWithKind(k.suggestedKind);
+                } else {
+                  // «No»: formato de la web (new.tsx L1950), sigue el hilo.
+                  _send(kindSwitchNoContent(k, _kind), raw: true);
                 }
-                _send(op);
               }),
+            _backButton(),
           ];
         case AiImageRequest ir:
           question = ir.hint.isEmpty ? ir.message : '${ir.message}\n${ir.hint}';
@@ -1411,7 +1522,15 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               () => _pickForRequest(ImageSource.gallery),
             ),
             _optionButton('Seguir sin foto', () => _send('Sigamos sin foto.')),
+            _backButton(),
           ];
+        case AiRouting r:
+          // Solo se ve si el auto-«ok» falló (si no, el routing dura lo que
+          // tarda el POST siguiente). Antes aquí no había NADA que tocar;
+          // «Atrás» es la salida de ese callejón: se vuelve a la pregunta
+          // anterior y se reintenta desde ahí.
+          question = r.message;
+          actions = [_backButton()];
         default:
           return const SizedBox.shrink();
       }
@@ -1488,8 +1607,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// "Tu solicitud" — la esencia a la vista: fotos, descripción y cada
   /// respuesta con su check, más la barra honesta "N de ~M".
   Widget _buildingCard(ColorScheme cs) {
-    final total = estimatedTotal(answered: _aiAnswered, wholesale: _wholesale);
-    final frac = (_aiAnswered / total).clamp(0.0, .96);
+    final answers = answerTexts(_messages);
+    final answered = answers.length;
+    final total = estimatedTotal(answered: answered, wholesale: _wholesale);
+    final frac = (answered / total).clamp(0.0, .96);
     // Lila del detalle sin foto (JayaloStatus.responded) — tinta violeta.
     const bg = Color(0xFFEDEBFF);
     const ink = Color(0xFF3C3489);
@@ -1519,7 +1640,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               ),
               const Spacer(),
               Text(
-                '$_aiAnswered de ~$total',
+                '$answered de ~$total',
                 style: const TextStyle(fontSize: 12, color: ink),
               ),
             ],
@@ -1581,7 +1702,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               style: const TextStyle(fontSize: 13, height: 1.35, color: ink),
             ),
           ],
-          for (final a in _answers)
+          for (final a in answers)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Row(
@@ -2191,7 +2312,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           ),
         ],
         const SizedBox(height: 18),
-        Row(
+        Wrap(
+          spacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             FilledButton(
               onPressed: _busy ? null : _submit,
@@ -2199,7 +2322,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                   ? const JayaloSpinner(size: 16, color: Colors.white)
                   : const Text('Enviar solicitud'),
             ),
-            const SizedBox(width: 8),
             TextButton(
               onPressed: _busy
                   ? null
@@ -2207,6 +2329,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                       _correcting = true;
                     }),
               child: const Text('Corregir algo'),
+            ),
+            // «Atrás» desde la ficha (spec §5.2): vuelve al routing/última
+            // pregunta sin llamar al servidor. Oculto mientras `_correcting`
+            // porque entonces no se pinta la ficha, sino `_questionArea`.
+            TextButton.icon(
+              onPressed: _busy ? null : _goBack,
+              icon: const Icon(Icons.arrow_back, size: 18),
+              label: const Text('Atrás'),
             ),
           ],
         ),
