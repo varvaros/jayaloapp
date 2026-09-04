@@ -10,6 +10,7 @@ import '../../data/repos.dart';
 import '../../domain/first_offer_chip.dart';
 import '../../domain/inbox_load.dart';
 import '../../domain/inbox_offer_action.dart';
+import '../../domain/inbox_order.dart';
 import '../../domain/pricing.dart';
 import '../../domain/request_requirements.dart';
 import '../shared/request_requirement_badges.dart';
@@ -398,7 +399,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                     }
                     // Filtro de estado EN CLIENTE (pedido PO 2026-07-22), según
                     // el estado de la oferta de ESTE proveedor por solicitud.
-                    final items = (snap.data!).where((r) {
+                    final filteredItems = (snap.data!).where((r) {
                       if (r['source'] == 'store') return _status == 'todas';
                       // Ocultas por swipe («no me interesa», PO 2026-08-10):
                       // fuera de la bandeja en ambas pestañas. Solo aplica a
@@ -418,6 +419,34 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                         _ => true, // todas
                       };
                     }).toList();
+                    // Orden de la bandeja (pedido PO 2026-09-04): pendiente
+                    // de desbloqueo PRIMERO, luego el resto en el mismo
+                    // orden que ya usa la web (`domain/inbox_order.dart`).
+                    // Se ordena AQUÍ, en `build()`, y no dentro de
+                    // `inbox_load.dart`: los estados de la oferta
+                    // (`_offeredStatuses`) llegan DESPUÉS, en la oleada B
+                    // asíncrona (`_runFetch`), así que el orden tiene que
+                    // recalcularse con el estado MÁS RECIENTE del widget en
+                    // cada repintado, sin depender de qué tan lejos vaya esa
+                    // segunda carga.
+                    final items = sortInboxItems(
+                      filteredItems,
+                      statuses: _offeredStatuses,
+                      unlockedIds: {
+                        for (final entry in _offeredStatuses.entries)
+                          if (entry.value == 'unlocked') entry.key,
+                      },
+                      unseenIds: {
+                        for (final r in filteredItems)
+                          if (r['source'] != 'store' &&
+                              !_todas &&
+                              openedRequestsStore.hasUnseen(
+                                r['id'] as String,
+                                _updatedAt[r['id']],
+                              ))
+                            r['id'] as String,
+                      },
+                    );
                     if (items.isEmpty) {
                       return EmptyState(
                         controller: homeScrollController,
