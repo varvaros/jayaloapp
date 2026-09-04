@@ -140,7 +140,10 @@ void main() {
     // proveedor podía CREAR una solicitud desde el ＋ de la barra y después no
     // tenía dónde encontrarla.
     expect(find.text('Mis solicitudes'), findsNothing);
-    expect(find.text('Reputación'), findsOneWidget);
+    // "Reputación" TAMPOCO está (PO 2026-09-04): competía con "Estadísticas"
+    // dos filas más abajo enseñando otra "calificación /10", y sus cinco datos
+    // se mudaron a la sección "COMO COMPRADOR" de `/provider/stats`.
+    expect(find.text('Reputación'), findsNothing);
     expect(find.text('Otros proveedores'), findsOneWidget);
     expect(find.text('Estadísticas'), findsOneWidget);
     // La fila de recargar se conserva (recargar es el core del negocio, la
@@ -191,21 +194,21 @@ void main() {
     expect(find.text('Ajustes'), findsOneWidget);
   });
 
-  testWidgets('proveedor: tocar "Reputación" navega a /client/reputation',
+  testWidgets('proveedor: tocar "Otros proveedores" navega a /catalog',
       (tester) async {
     roleStore.value = RoleState.provider;
     await tester.pumpWidget(host(balanceFetch: () async => 0));
     await tester.pumpAndSettle();
     await abrirMenu(tester);
 
-    // Reemplaza al caso de "Mis solicitudes", que dejó de vivir en este menú
-    // (PO 2026-07-30). Se conserva un caso de NAVEGACIÓN real desde el panel:
-    // lo que se prueba acá es que tocar una fila cierra el menú y empuja su
-    // ruta, no la fila concreta.
-    await tester.tap(find.text('Reputación'));
+    // Este caso ha ido heredando fila: primero fue "Mis solicitudes" (que
+    // salió del menú el 2026-07-30), después "Reputación" (que salió el
+    // 2026-09-04). Lo que prueba NO es la fila concreta, sino que tocar una
+    // fila del panel lo cierra y empuja su ruta.
+    await tester.tap(find.text('Otros proveedores'));
     await tester.pumpAndSettle();
 
-    expect(find.text('pantalla de reputación'), findsOneWidget);
+    expect(find.text('pantalla de otros proveedores'), findsOneWidget);
   });
 
   testWidgets('sin foto de perfil, el avatar muestra la inicial del nombre',

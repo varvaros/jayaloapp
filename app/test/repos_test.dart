@@ -293,4 +293,57 @@ void main() {
       expect(payload['price'], 1500);
     });
   });
+
+  /// Estadísticas fusiona TRES RPCs (PO 2026-09-04). El riesgo real no es que
+  /// falte un dato: es que `get_customer_reputation` devuelve `avg_rating` y
+  /// `reviews_count` con los MISMOS nombres que la nota del negocio (salen de
+  /// `customer_reviews` y `business_reviews`, tablas distintas). Aplanarla
+  /// pisaría "Cómo te califican" con la nota de comprador, sin error alguno.
+  group('mergeProviderStats', () {
+    const negocio = {
+      'clients_count': 8,
+      'completed_count': 12,
+      'points_invested': 45,
+      'revenue_total': 128500,
+    };
+    const notaNegocio = {'avg_rating': 8.6, 'reviews_count': 9};
+    const notaComprador = {
+      'requests_count': 12,
+      'completed_purchases': 7,
+      'avg_rating': 9.2,
+      'reviews_count': 5,
+      'median_response_minutes': 45,
+      'response_samples': 11,
+    };
+
+    test('la nota del comprador NO pisa la del negocio', () {
+      final m = mergeProviderStats([negocio], [notaNegocio], [notaComprador]);
+
+      // Arriba, la del negocio.
+      expect(m['avg_rating'], 8.6);
+      expect(m['reviews_count'], 9);
+      // Abajo y anidada, la del comprador.
+      expect(m[kStatsBuyerKey]['avg_rating'], 9.2);
+      expect(m[kStatsBuyerKey]['reviews_count'], 5);
+    });
+
+    test('conserva los campos propios del comprador', () {
+      final m = mergeProviderStats([negocio], [notaNegocio], [notaComprador]);
+      expect(m[kStatsBuyerKey]['completed_purchases'], 7);
+      expect(m[kStatsBuyerKey]['requests_count'], 12);
+      expect(m[kStatsBuyerKey]['median_response_minutes'], 45);
+    });
+
+    test('sin fila de comprador, la clave queda en null (no revienta)', () {
+      final m = mergeProviderStats([negocio], [notaNegocio], const []);
+      expect(m[kStatsBuyerKey], isNull);
+      expect(m['avg_rating'], 8.6);
+    });
+
+    test('las tres vacías dan un mapa sin métricas', () {
+      final m = mergeProviderStats(const [], const [], const []);
+      expect(m['avg_rating'], isNull);
+      expect(m[kStatsBuyerKey], isNull);
+    });
+  });
 }

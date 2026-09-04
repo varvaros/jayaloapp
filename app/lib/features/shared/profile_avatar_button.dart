@@ -239,11 +239,14 @@ Future<void> openProfileMenu(BuildContext context,
                   // enterrada en este menú mientras el ＋ de la misma barra
                   // dejaba CREAR solicitudes — se podía crear algo que después
                   // no había dónde encontrar.
-                  ListTile(
-                    leading: const Icon(Icons.workspace_premium_outlined),
-                    title: const Text('Reputación'),
-                    onTap: () => Navigator.pop(ctx, '/client/reputation'),
-                  ),
+                  //
+                  // "Reputación" tampoco vive acá (PO 2026-09-04): competía con
+                  // "Estadísticas" dos filas más abajo, y las dos enseñaban una
+                  // "calificación /10" — pero de tablas distintas (la del
+                  // negocio y la del comprador), sin nada que dijera cuál era
+                  // cuál. Sus cinco datos son ahora la sección "COMO COMPRADOR"
+                  // de `/provider/stats`. El CLIENTE conserva la pantalla
+                  // entera en su barra; solo el proveedor perdió este atajo.
                   ListTile(
                     // El catálogo del marketplace, renombrado para el
                     // proveedor: lo que ofrecen los DEMÁS (sus propios

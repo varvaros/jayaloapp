@@ -7,6 +7,7 @@
 /// no los re-derive ni los desafine.
 library;
 
+import 'dart:io' show Platform;
 import 'dart:math';
 
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -416,23 +417,222 @@ class StatusChip extends StatelessWidget {
 /// Encabezado de sección — el mismo estilo de los títulos de día de
 /// notificaciones ("Hoy", "Ayer").
 class SectionHeader extends StatelessWidget {
-  const SectionHeader({super.key, required this.text});
+  const SectionHeader({
+    super.key,
+    required this.text,
+    this.glyph,
+    this.idle,
+    this.pulse,
+  });
+
   final String text;
 
+  /// Ícono animado en una pastilla a la izquierda del rótulo. Sin él la
+  /// cabecera es el eyebrow pelado de siempre — así la siguen usando
+  /// Reputación y el resto de pantallas, sin cambiar un píxel.
+  final SectionGlyph? glyph;
+
+  /// Reloj compartido del bucle ocioso, una vuelta completa por ciclo (0→1).
+  /// Lo posee LA PANTALLA y se lo pasa a todas sus cabeceras: así los íconos
+  /// van sincronizados en vez de ir cada uno con su ticker a la deriva. Sin
+  /// reloj, el ícono se queda quieto en su posición de reposo.
+  final Animation<double>? idle;
+
+  /// Mando de la sección: cuando una tarjeta lo pulsa, esta pastilla responde
+  /// con el pop. Ver [SectionPulse].
+  final SectionPulse? pulse;
+
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
-        child: Text(
-          // Eyebrow en versalitas con tracking, como los `.shead` del mockup
-          // ("CÓMO TE CALIFICAN", "TU NEGOCIO").
-          text.toUpperCase(),
-          style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.4,
-              color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
-      );
+  Widget build(BuildContext context) {
+    final rotulo = Text(
+      // Eyebrow en versalitas con tracking, como los `.shead` del mockup
+      // ("CÓMO TE CALIFICAN", "TU NEGOCIO").
+      text.toUpperCase(),
+      style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 1.4,
+          color: Theme.of(context).colorScheme.onSurfaceVariant),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+      child: glyph == null
+          ? rotulo
+          : Row(children: [
+              _SectionGlyphPill(glyph: glyph!, idle: idle, pulse: pulse),
+              const SizedBox(width: 9),
+              rotulo,
+            ]),
+    );
+  }
+}
+
+/// Qué ícono lleva una cabecera de sección — y por tanto qué gesto hace en su
+/// bucle ocioso (mockup aprobado PO 2026-09-04): la estrella TITILA con una
+/// chispa, la tienda RESPIRA y la bolsa SE MECE.
+enum SectionGlyph { estrella, tienda, bolsa }
+
+/// Mando decorativo de una sección: las tarjetas lo pulsan al soltarlas y la
+/// pastilla de SU cabecera responde con un pop.
+///
+/// Es solo adorno: no navega, no recarga y no cambia ningún dato (decisión PO
+/// 2026-09-04, textual: "a ningún lado, solo se anima y se mueve al darle
+/// clic"). Si algún día una sección debe llevar a algún sitio, eso será un
+/// `onTap` con destino, no este mando.
+///
+/// `ChangeNotifier` pelado y no `ValueNotifier<algo>` a propósito: dos toques
+/// seguidos tienen que dar DOS pops, y un valor que no cambia no notifica.
+class SectionPulse extends ChangeNotifier {
+  void pop() => notifyListeners();
+}
+
+/// La pastilla violeta con el ícono vivo. Combina DOS movimientos sobre el
+/// mismo glifo: el bucle ocioso que viene de fuera ([idle], compartido con sus
+/// hermanas) y el pop propio que dispara [pulse].
+class _SectionGlyphPill extends StatefulWidget {
+  const _SectionGlyphPill({required this.glyph, this.idle, this.pulse});
+
+  final SectionGlyph glyph;
+  final Animation<double>? idle;
+  final SectionPulse? pulse;
+
+  @override
+  State<_SectionGlyphPill> createState() => _SectionGlyphPillState();
+}
+
+class _SectionGlyphPillState extends State<_SectionGlyphPill>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pop =
+      AnimationController(vsync: this, duration: JayaloMotion.page);
+
+  /// `Platform.environment` y no `bool.fromEnvironment`: ese dart-define NO
+  /// está definido bajo `flutter test` (mismo gotcha que documentan
+  /// `conversations_screen.dart` y el Jayi de Reputación). Sin esto, un pop a
+  /// medias deja un Timer vivo y los tests mueren con "Pending timers".
+  static final _enTest = Platform.environment.containsKey('FLUTTER_TEST');
+
+  bool _quieto = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.pulse?.addListener(_alPulsar);
+  }
+
+  @override
+  void didUpdateWidget(_SectionGlyphPill old) {
+    super.didUpdateWidget(old);
+    if (old.pulse != widget.pulse) {
+      old.pulse?.removeListener(_alPulsar);
+      widget.pulse?.addListener(_alPulsar);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _quieto = _enTest || JayaloMotion.reduced(context);
+  }
+
+  void _alPulsar() {
+    if (_quieto || !mounted) return;
+    _pop.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    widget.pulse?.removeListener(_alPulsar);
+    _pop.dispose();
+    super.dispose();
+  }
+
+  /// Un solo destello por vuelta, entre .56 y .78 del ciclo. Fuera de esa
+  /// ventana la estrella está en reposo.
+  double _titileo(double t) {
+    const a = .56, b = .78;
+    if (t < a || t > b) return 0;
+    return sin((t - a) / (b - a) * pi);
+  }
+
+  /// Perfil del pop: sube en el primer 30% y baja frenando el resto
+  /// ([JayaloMotion.brake], easeOutQuint). SIN overshoot — la app no tiene
+  /// curvas elásticas en ningún sitio y este adorno no las estrena.
+  double _fuerzaPop(double v) => v <= 0
+      ? 0
+      : v < .3
+          ? JayaloMotion.enter.transform(v / .3)
+          : 1 - JayaloMotion.brake.transform((v - .3) / .7);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final icono = switch (widget.glyph) {
+      SectionGlyph.estrella => Icons.star_rounded,
+      SectionGlyph.tienda => Icons.storefront_outlined,
+      SectionGlyph.bolsa => Icons.shopping_bag_outlined,
+    };
+
+    return Container(
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        color: cs.primary.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: AnimatedBuilder(
+        animation: Listenable.merge([widget.idle, _pop]),
+        builder: (context, _) {
+          final t = _quieto ? 0.0 : (widget.idle?.value ?? 0);
+          final k = _quieto ? 0.0 : _fuerzaPop(_pop.value);
+
+          var escala = 1.0;
+          var giro = 0.0; // grados
+          var chispa = 0.0;
+
+          switch (widget.glyph) {
+            case SectionGlyph.estrella:
+              final d = _titileo(t);
+              escala += .18 * d;
+              giro -= 9 * d;
+              chispa = d;
+            case SectionGlyph.tienda:
+              // Respiración 1.00 → 1.08 → 1.00. Un coseno y no una rampa por
+              // tramos para que la costura del ciclo no dé un salto visible.
+              escala += .04 - .04 * cos(2 * pi * t);
+            case SectionGlyph.bolsa:
+              giro = -7 * sin(2 * pi * t);
+          }
+
+          escala += .24 * k;
+          giro -= 8 * k;
+
+          return Transform.rotate(
+            angle: giro * pi / 180,
+            child: Transform.scale(
+              scale: escala,
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  Icon(icono, size: 15, color: cs.primary),
+                  if (chispa > 0)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: Opacity(
+                        opacity: chispa,
+                        child: Icon(Icons.star_rounded,
+                            size: 7, color: cs.primary),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
 
 /// Cifra grande + etiqueta. La reusan Reputación y Estadísticas — movida

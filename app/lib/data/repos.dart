@@ -2859,20 +2859,50 @@ Future<List<Map<String, dynamic>>> customerReviews(
 /// RPCs cambiaran de forma en el futuro.
 ///
 /// Campos: clients_count, completed_count, points_invested, revenue_total,
-/// avg_rating, reviews_count.
+/// avg_rating, reviews_count, más [kStatsBuyerKey] (ver abajo).
 Future<Map<String, dynamic>> providerStats() async {
   final uid = supa.auth.currentUser!.id;
   final results = await Future.wait([
     supa.rpc('get_provider_stats', params: {'_user_id': uid}),
     supa.rpc('get_provider_reviews_summary', params: {'_user_id': uid}),
+    // El mismo usuario visto como COMPRADOR (sección "Como comprador" de
+    // `stats_screen.dart`, decisión PO 2026-09-04). Es la RPC que alimentaba
+    // `/client/reputation`, que el proveedor ya no alcanza desde su menú.
+    supa.rpc('get_customer_reputation', params: {'_customer_id': uid}),
   ]);
-  final stats = List<Map<String, dynamic>>.from(results[0] as List);
-  final reviews = List<Map<String, dynamic>>.from(results[1] as List);
-  return {
-    ...(stats.isEmpty ? const <String, dynamic>{} : stats.first),
-    ...(reviews.isEmpty ? const <String, dynamic>{} : reviews.first),
-  };
+  return mergeProviderStats(
+    List<Map<String, dynamic>>.from(results[0] as List),
+    List<Map<String, dynamic>>.from(results[1] as List),
+    List<Map<String, dynamic>>.from(results[2] as List),
+  );
 }
+
+/// Dónde vive, dentro del mapa de [providerStats], la reputación del usuario
+/// como comprador (`get_customer_reputation`). Constante y no un literal
+/// suelto porque el productor y la pantalla que lo consume tienen que
+/// coincidir exactamente.
+const kStatsBuyerKey = 'buyer';
+
+/// La fusión de las tres respuestas, aparte y pura para que un test la fije
+/// sin tener que simular Supabase (mismo motivo que [isBusinessVerified]).
+///
+/// ⚠️ LA REPUTACIÓN DE COMPRADOR VA ANIDADA, nunca esparcida con `...`:
+/// `get_customer_reputation` trae SUS PROPIOS `avg_rating` y `reviews_count`
+/// —la nota que te ponen a ti COMO COMPRADOR— y aplanarlos PISARÍA los del
+/// negocio, dejando la sección "Cómo te califican" enseñando la nota
+/// equivocada, sin error ni aviso de ningún tipo. Los dos lados usan los
+/// mismos nombres de columna porque salen de tablas distintas
+/// (`business_reviews` y `customer_reviews`).
+Map<String, dynamic> mergeProviderStats(
+  List<Map<String, dynamic>> stats,
+  List<Map<String, dynamic>> reviews,
+  List<Map<String, dynamic>> buyer,
+) =>
+    {
+      ...(stats.isEmpty ? const <String, dynamic>{} : stats.first),
+      ...(reviews.isEmpty ? const <String, dynamic>{} : reviews.first),
+      kStatsBuyerKey: buyer.isEmpty ? null : buyer.first,
+    };
 
 /// Cuántos productos y cuántos servicios tiene publicados el proveedor.
 /// Solo la CIFRA — el catálogo navegable es un spec aparte.

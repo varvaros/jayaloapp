@@ -7,14 +7,11 @@ import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../core/motion.dart';
 import '../../data/repos.dart';
+import '../../domain/response_time.dart';
 import '../shell/floating_nav_bar.dart';
 import '../shared/brand_kit.dart';
 import '../shared/star_score.dart';
 import '../shared/violet_header.dart';
-
-/// Umbral de la web (`src/lib/responseTime.ts`): con menos de 5 respuestas
-/// medidas la mediana no representa nada y se omite por completo.
-const kMinResponseSamples = 5;
 
 class ReputationScreen extends StatefulWidget {
   const ReputationScreen({super.key});
@@ -137,17 +134,13 @@ class _ReputationViewState extends State<ReputationView> {
           value: '$requests',
           trailing: _VerPill(onTap: () => context.go('/client')),
         ).cascadeIn(2),
-        if (samples >= kMinResponseSamples && minutes != null)
+        if (responseTimeCopy(minutes, samples) case final frase?)
           JayaloCard(
             child: Row(
               children: [
                 Icon(Icons.schedule, color: cs.onSurfaceVariant),
                 const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Regularmente respondes en ${_humanMinutes(minutes)}',
-                  ),
-                ),
+                Expanded(child: Text(frase)),
               ],
             ),
           ).cascadeIn(3),
@@ -547,12 +540,3 @@ class _JayiEstrellaPainter extends CustomPainter {
       old.t != t || old.estatico != estatico;
 }
 
-/// "45 minutos" / "unas 2 horas" / "1 día" — nunca "min" ni "h" abreviados:
-/// el público de la app lee palabras, no unidades.
-String _humanMinutes(int m) {
-  if (m < 60) return '$m minutos';
-  final horas = (m / 60).round();
-  if (horas < 24) return horas == 1 ? 'una hora' : 'unas $horas horas';
-  final dias = (horas / 24).round();
-  return dias == 1 ? 'un día' : '$dias días';
-}

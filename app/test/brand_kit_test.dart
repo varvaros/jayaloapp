@@ -491,4 +491,59 @@ void main() {
           greaterThanOrEqualTo(navBarReservedSpace(ctx) + 12));
     });
   });
+
+  /// Cabeceras de sección con ícono vivo (PO 2026-09-04). El contrato que
+  /// importa es que el ícono sea OPCIONAL: Reputación y el resto de pantallas
+  /// siguen pasando solo `text` y no deben ganar una pastilla que nadie pidió.
+  group('SectionHeader', () {
+    testWidgets('sin glyph es el eyebrow pelado de siempre', (tester) async {
+      await tester.pumpWidget(host(const SectionHeader(text: 'TU NEGOCIO')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('TU NEGOCIO'), findsOneWidget);
+      expect(find.byType(Icon), findsNothing);
+    });
+
+    testWidgets('con glyph dibuja su ícono junto al rótulo', (tester) async {
+      await tester.pumpWidget(host(const SectionHeader(
+          text: 'COMO COMPRADOR', glyph: SectionGlyph.bolsa)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('COMO COMPRADOR'), findsOneWidget);
+      expect(find.byIcon(Icons.shopping_bag_outlined), findsOneWidget);
+    });
+
+    testWidgets('cada glyph trae su propio ícono', (tester) async {
+      await tester.pumpWidget(host(const Column(children: [
+        SectionHeader(text: 'A', glyph: SectionGlyph.estrella),
+        SectionHeader(text: 'B', glyph: SectionGlyph.tienda),
+      ])));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.star_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.storefront_outlined), findsOneWidget);
+    });
+
+    testWidgets('pulsar el mando no rompe nada ni deja timers vivos',
+        (tester) async {
+      // Bajo `flutter test` el pop no arranca (mismo gotcha de
+      // `conversations_screen.dart`): lo que se fija aquí es que pulsar sea
+      // inofensivo, porque es puro adorno — no navega ni recarga.
+      final pulse = SectionPulse();
+      addTearDown(pulse.dispose);
+
+      await tester.pumpWidget(host(SectionHeader(
+          text: 'CÓMO TE CALIFICAN',
+          glyph: SectionGlyph.estrella,
+          pulse: pulse)));
+      await tester.pumpAndSettle();
+
+      pulse.pop();
+      pulse.pop();
+      await tester.pumpAndSettle();
+
+      expect(find.text('CÓMO TE CALIFICAN'), findsOneWidget);
+      expect(find.byIcon(Icons.star_rounded), findsOneWidget);
+    });
+  });
 }
