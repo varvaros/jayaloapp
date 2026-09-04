@@ -38,7 +38,7 @@ SlotSignal providerSlotSignal(int acceptedCount, int offersCount) {
     return const SlotSignal(SlotTone.yellow, '1 de 3 seleccionado');
   }
   if (offersCount == 0) {
-    return const SlotSignal(SlotTone.green, '¡Sé el primero en ofertar!');
+    return const SlotSignal(SlotTone.green, '¡Haz la primera oferta!');
   }
   return const SlotSignal(SlotTone.green, '3 lugares disponibles');
 }

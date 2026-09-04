@@ -2431,6 +2431,34 @@ Future<Map<String, DateTime>> updatedAtForRequests(List<String> ids) async {
   };
 }
 
+/// `offers_count` de cada solicitud del marketplace, por id — para el chip
+/// «¡Haz la primera oferta!» de la bandeja (pedido PO 2026-09-04):
+/// `get_provider_inbox_unified` NO devuelve esta columna (igual que
+/// `updated_at` arriba), así que se lee aparte de `customer_requests`, donde
+/// ya vive con SELECT concedido (la usa `request_detail_screen.dart` en la
+/// misma tabla).
+///
+/// Sale de la MISMA tabla que [updatedAtForRequests] y [requirementsForRequests]
+/// y puede viajar en la misma oleada concurrente.
+///
+/// Best-effort: quien llama debe tratar la ausencia de un id (fallo o fila
+/// sin esa columna) como "desconocido", NUNCA como 0 — un 0 falso enciende el
+/// chip sobre una solicitud que sí tiene ofertas.
+Future<Map<String, int>> offersCountForRequests(List<String> ids) async {
+  if (ids.isEmpty) return {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('customer_requests')
+        .select('id,offers_count')
+        .inFilter('id', ids),
+  );
+  return {
+    for (final r in rows)
+      if (r['offers_count'] != null)
+        r['id'] as String: (r['offers_count'] as num).toInt(),
+  };
+}
+
 /// Foto del chat → bucket **privado** `chat-media`, carpeta por conversación.
 /// Devuelve el marcador `chat-media:{path}`, NO una URL: el bucket no es
 /// público y una URL firmada guardada en el `body` caducaría.

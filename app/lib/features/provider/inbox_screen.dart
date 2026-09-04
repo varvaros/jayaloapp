@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../shared/network_image.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
+import '../../core/error_reporter.dart';
 import '../../data/repos.dart';
+import '../../domain/first_offer_chip.dart';
 import '../../domain/inbox_load.dart';
 import '../../domain/pricing.dart';
 import '../../domain/request_requirements.dart';
@@ -117,6 +121,12 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   /// Sin entrada = los de la propia fila. Se recalcula en cada `_runFetch`.
   Map<String, RequestRequirements> _requirements = {};
 
+  /// `offers_count` por solicitud (chip «¡Haz la primera oferta!», pedido PO
+  /// 2026-09-04). Sin entrada = DESCONOCIDO (nunca se trata como 0): esta
+  /// lectura va APARTE de `loadInboxData` — no es una de sus 4 fuentes ni
+  /// bloquea el pintado de la lista, ver `_loadOffersCounts`.
+  Map<String, int> _offersCounts = {};
+
   late Future<List<Map<String, dynamic>>> _load = _runFetch();
 
   /// Coordina "un solo row de swipe abierto a la vez" (mismo patrón que
@@ -205,7 +215,30 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     _offeredStatuses = data.statuses;
     _offerCounts = data.counts;
     _requirements = data.requirements;
+    // Lectura best-effort APARTE (pedido PO 2026-09-04): `offers_count` no
+    // viaja en `get_provider_inbox_unified` ni en ninguna de las 4 fuentes de
+    // `loadInboxData`, así que no entra en su orquestación — se dispara sin
+    // esperar y solo repinta al llegar; si falla, la lista ya pintada con lo
+    // que sí llegó queda intacta y ninguna tarjeta enciende el chip.
+    unawaited(
+      _loadOffersCounts([
+        for (final r in data.items)
+          if (r['source'] != 'store') r['id'] as String,
+      ]),
+    );
     return data.items;
+  }
+
+  /// Ver el comentario de [_offersCounts]. Nunca lanza ni bloquea: un fallo
+  /// se reporta y la bandeja se queda sin chips «¡Haz la primera oferta!»
+  /// hasta el próximo refresh, nunca a medias ni con un 0 falso.
+  Future<void> _loadOffersCounts(List<String> ids) async {
+    try {
+      final counts = await offersCountForRequests(ids);
+      if (mounted) setState(() => _offersCounts = counts);
+    } catch (e, s) {
+      unawaited(reportError(e, s));
+    }
   }
 
   // Bloque, no expresión: `setState(() => _load = future)` hace que la
@@ -401,6 +434,18 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           wholesale: r['is_wholesale'] == true,
                           offerStatus: _offeredStatuses[r['id']],
                           offerCount: _offerCounts[r['id']] ?? 0,
+                          // Chip «¡Haz la primera oferta!» (pedido PO
+                          // 2026-09-04): decisión pura en
+                          // `domain/first_offer_chip.dart`. `hasMyOffer` es
+                          // la MISMA condición que ya decide "Ya ofertaste"
+                          // arriba (`_offeredStatuses[id] == null` = no
+                          // ofertó) — no se reinventa un segundo chequeo que
+                          // pueda discrepar.
+                          showFirstOffer: showFirstOfferChip(
+                            offersCount: _offersCounts[id],
+                            hasMyOffer: _offeredStatuses[id] != null,
+                            isMarketplace: r['source'] != 'store',
+                          ),
                           // El borde sigue al contador, incluida su excepción:
                           // en «Todas» `_syncBadge` no cuenta (ahí es
                           // exploración, no una alerta accionable), así que ahí
@@ -502,6 +547,7 @@ class _InboxCard extends StatelessWidget {
     this.wholesale = false,
     this.offerStatus,
     this.offerCount = 0,
+    this.showFirstOffer = false,
     this.requirements = RequestRequirements.none,
     this.margin,
     this.unseen = false,
@@ -532,6 +578,13 @@ class _InboxCard extends StatelessWidget {
   /// Cuántas ofertas ha recibido la solicitud EN TOTAL (FOMO, pedido PO
   /// 2026-07-21): solo el número, no se pueden ver. 0 = no se muestra chip.
   final int offerCount;
+
+  /// Chip verde «¡Haz la primera oferta!» (pedido PO 2026-09-04): decidido
+  /// FUERA de esta tarjeta por `showFirstOfferChip` (domain/first_offer_chip
+  /// .dart), con `offers_count` — una fuente distinta a [offerCount] (esa
+  /// viene de la RPC `offer_counts_for_requests`; esta, de la columna de
+  /// `customer_requests`). Se apaga solo en cuanto llega la primera oferta.
+  final bool showFirstOffer;
 
   /// Lo que el cliente EXIGE en esta solicitud (comprobante fiscal, suplidor
   /// del Estado, envío…). Se pintan como símbolos mudos junto a la hora; el
@@ -647,12 +700,24 @@ class _InboxCard extends StatelessWidget {
                   ],
                 ),
                 if (offerCount > 0 ||
-                    (offerStatus != null && offerStatus != 'rejected')) ...[
+                    (offerStatus != null && offerStatus != 'rejected') ||
+                    showFirstOffer) ...[
                   const SizedBox(height: 7),
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
                     children: [
+                      // «¡Haz la primera oferta!» (pedido PO 2026-09-04):
+                      // verde, mismo tono que "Aceptada" — invita en vez de
+                      // avisar. `showFirstOfferChip` ya garantiza que aquí
+                      // `offerCount` es 0 y no hay chip de estado propio, así
+                      // que nunca convive con los otros dos de este Wrap.
+                      if (showFirstOffer)
+                        StatusChip(
+                          label: firstOfferChipText,
+                          icon: Icons.bolt,
+                          tone: offerBadgeTone(context, 'accepted'),
+                        ),
                       // FOMO (pedido PO 2026-07-21): cuántas ofertas ya
                       // recibió la solicitud — solo el número, no se pueden
                       // ver. Chip ámbar con llama = competencia/urgencia.

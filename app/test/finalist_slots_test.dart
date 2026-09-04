@@ -26,7 +26,7 @@ void main() {
 
   test('providerSlotSignal — escalera de color y copy exacto', () {
     expect(providerSlotSignal(0, 0).tone, SlotTone.green);
-    expect(providerSlotSignal(0, 0).text, '¡Sé el primero en ofertar!');
+    expect(providerSlotSignal(0, 0).text, '¡Haz la primera oferta!');
     expect(providerSlotSignal(0, 4).text, '3 lugares disponibles');
     expect(providerSlotSignal(1, 5).tone, SlotTone.yellow);
     expect(providerSlotSignal(1, 5).text, '1 de 3 seleccionado');
