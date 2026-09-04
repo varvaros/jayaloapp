@@ -419,9 +419,9 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                         _ => true, // todas
                       };
                     }).toList();
-                    // Orden de la bandeja (pedido PO 2026-09-04): pendiente
-                    // de desbloqueo PRIMERO, luego el resto en el mismo
-                    // orden que ya usa la web (`domain/inbox_order.dart`).
+                    // Orden de la bandeja (pedido PO 2026-09-04, 2ª vuelta):
+                    // aceptadas · sin ofertar · actualizadas · ofertadas ·
+                    // rechazadas (`domain/inbox_order.dart`).
                     // Se ordena AQUÍ, en `build()`, y no dentro de
                     // `inbox_load.dart`: los estados de la oferta
                     // (`_offeredStatuses`) llegan DESPUÉS, en la oleada B
@@ -441,6 +441,25 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           if (r['source'] != 'store' &&
                               !_todas &&
                               openedRequestsStore.hasUnseen(
+                                r['id'] as String,
+                                _updatedAt[r['id']],
+                              ))
+                            r['id'] as String,
+                      },
+                      // «Las que actualizaron algo» del orden del PO. Mismo
+                      // gate que `unseenIds` —fuera de «Todas», y sin filas
+                      // de tienda— para que el grupo y el borde violeta
+                      // salgan de la misma señal: si en «Todas» el borde no
+                      // se pinta, tampoco debe haber un grupo invisible
+                      // moviendo tarjetas. Aquí la mitad estricta:
+                      // `hasUpdateSinceSeen` exige haberla abierto antes,
+                      // así un móvil recién estrenado no manda TODAS las
+                      // ofertadas al grupo de «actualizadas».
+                      updatedIds: {
+                        for (final r in filteredItems)
+                          if (r['source'] != 'store' &&
+                              !_todas &&
+                              openedRequestsStore.hasUpdateSinceSeen(
                                 r['id'] as String,
                                 _updatedAt[r['id']],
                               ))

@@ -1,15 +1,22 @@
-/// Orden de la bandeja del proveedor (pedido PO 2026-09-04): las solicitudes
-/// PENDIENTES DE DESBLOQUEO — mi oferta fue aceptada y todavía no pagué el
-/// contacto, la tarjeta que ahora enseña «Conversar · N crédito(s)» (ver
-/// `inbox_offer_action.dart`) — van PRIMERO, sin importar la fecha.
+/// Orden de la bandeja del proveedor. El PO lo dictó en dos vueltas el
+/// 2026-09-04, y esta es la segunda, que manda:
 ///
-/// El resto sigue el mismo criterio que ya usa la web
-/// (`ProviderInboxSection.tsx`, función `priority()`): 1) estado de la
-/// oferta manda, 2) dentro del grupo SIN oferta las «Nueva» (sin abrir) van
-/// arriba, 3) más recientes primero. La web además desempata por
-/// `match_level` (tu especialidad); la app no tiene esa columna en la fila
-/// de la bandeja, así que ese paso se omite — no hay nada que desempatar con
-/// él.
+///   **Aceptadas · sin ofertar · actualizadas · ofertadas · rechazadas.**
+///
+/// «Aceptadas» son dos grupos, no uno: primero la que está PENDIENTE DE
+/// DESBLOQUEO —te aceptaron y aún no pagaste el contacto, la tarjeta que
+/// enseña «Conversar · N crédito(s)» (ver `inbox_offer_action.dart`)— y
+/// detrás la ya desbloqueada o completada. Es la acción que más urge y va
+/// arriba del todo, sin importar la fecha.
+///
+/// Lo que cambió respecto de la primera vuelta: **«no has ofertado» sube por
+/// delante de «ya ofertaste»** (antes iba detrás, copiando a la web), y **«la
+/// actualizaron» pasa de desempate a GRUPO**, partiendo en dos las que ya
+/// ofertaste: si el cliente tocó algo después de que la abrieras, sube. La
+/// web (`ProviderInboxSection.tsx`, `priority()`) se queda con el orden
+/// viejo hasta que se porte; a partir de aquí los dos criterios ya no son el
+/// mismo. La web además desempata por `match_level` (tu especialidad); la app
+/// no tiene esa columna en la fila de la bandeja, así que ese paso se omite.
 ///
 /// Decisión pura, sin BuildContext ni red, para poder probarla sin widgets
 /// (mismo espíritu que `inbox_load.dart`/`inbox_offer_action.dart`): la
@@ -33,21 +40,31 @@ import 'inbox_offer_action.dart';
 /// `data/repos.dart`), o `null` si este proveedor no ofertó. [unlocked] es
 /// el mismo booleano que ya usa `inboxOfferActionFor` en la tarjeta
 /// (`offerStatus == 'unlocked'`).
-int inboxPriority({required String? status, required bool unlocked}) {
+///
+/// [updated] es «el cliente cambió algo DESPUÉS de que abrieras esta
+/// solicitud» (`OpenedRequestsStore.hasUpdateSinceSeen`). Solo parte el grupo
+/// de las que YA ofertaste, que es el único sitio donde el PO lo colocó: por
+/// delante no hay nada que partir (las aceptadas y las que no has ofertado ya
+/// están por encima) y por detrás no interesa (una rechazada editada sigue
+/// siendo una rechazada).
+int inboxPriority({
+  required String? status,
+  required bool unlocked,
+  bool updated = false,
+}) {
   final action = inboxOfferActionFor(status: status, unlocked: unlocked);
   return switch (action) {
-    // Pedido EXPLÍCITO del PO: pendiente de desbloqueo va PRIMERO, por
-    // delante incluso de lo ya desbloqueado — es la acción que más urge.
+    // Pendiente de desbloqueo: la acción que más urge, siempre primera.
     InboxOfferAction.unlock => 0,
     // Ya desbloqueado o venta 'completed' (misma regla que la tarjeta: una
-    // venta cerrada NUNCA cuenta como pendiente). Orden de la web: por
-    // delante de "ya ofertaste" y de lo aún sin oferta.
+    // venta cerrada NUNCA cuenta como pendiente).
     InboxOfferAction.unlocked => 1,
-    InboxOfferAction.offered => 2,
     // `inboxOfferActionFor` junta bajo `none` tanto "nunca ofertó" como
-    // "rechazada/cancelada" — aquí SÍ hace falta distinguirlos (la web los
-    // trata distinto: sin oferta = 3, rechazada/cancelada = 4, la última).
-    InboxOfferAction.none => status == null ? 3 : 4,
+    // "rechazada/cancelada", y aquí quedan en los dos extremos opuestos: sin
+    // oferta es lo que más se puede ganar (2), rechazada es lo último (5).
+    InboxOfferAction.none => status == null ? 2 : 5,
+    // Ya ofertaste: sube si te la cambiaron desde que la abriste.
+    InboxOfferAction.offered => updated ? 3 : 4,
   };
 }
 
@@ -58,7 +75,9 @@ int inboxPriority({required String? status, required bool unlocked}) {
 ///    (espejo de las «Nueva» de la web, que solo reordenan el grupo sin
 ///    oferta — aquí no hace falta filtrar por grupo a propósito: al ser el
 ///    SEGUNDO criterio de un sort estable, solo puede desempatar filas que
-///    YA comparten grupo).
+///    YA comparten grupo). Ojo: `unseenIds` incluye las que nunca abriste Y
+///    las que te cambiaron; [updatedIds] es solo la segunda mitad, y ese es
+///    el que forma grupo.
 /// 2. **`created_at` descendente**: más reciente primero.
 ///
 /// Y, si dos filas empatan en TODO lo anterior, conserva su orden relativo
@@ -70,13 +89,18 @@ int inboxPriority({required String? status, required bool unlocked}) {
 /// derivarlo aquí dentro, para espejar la misma llamada a
 /// `inboxOfferActionFor(status:, unlocked:)` que ya hace la tarjeta
 /// (`inbox_screen.dart`). Las filas de `source == 'store'` (intereses de
-/// producto) no tienen entrada en [statuses] → `status == null` → grupo 3
-/// (sin oferta), que es donde ya caían hoy al no tener oferta propia.
+/// producto) no tienen entrada en [statuses] → `status == null` → grupo
+/// «sin oferta», que es donde ya caían al no tener oferta propia.
+///
+/// [updatedIds] son los ids que el cliente cambió después de que los
+/// abrieras (`OpenedRequestsStore.hasUpdateSinceSeen`). Forman grupo propio
+/// dentro de las ya ofertadas — ver [inboxPriority].
 List<Map<String, dynamic>> sortInboxItems(
   List<Map<String, dynamic>> items, {
   required Map<String, String> statuses,
   required Set<String> unlockedIds,
   required Set<String> unseenIds,
+  required Set<String> updatedIds,
 }) {
   String? idOf(Map<String, dynamic> r) =>
       r['id'] is String ? r['id'] as String : null;
@@ -92,10 +116,12 @@ List<Map<String, dynamic>> sortInboxItems(
     final priorityA = inboxPriority(
       status: idA == null ? null : statuses[idA],
       unlocked: idA != null && unlockedIds.contains(idA),
+      updated: idA != null && updatedIds.contains(idA),
     );
     final priorityB = inboxPriority(
       status: idB == null ? null : statuses[idB],
       unlocked: idB != null && unlockedIds.contains(idB),
+      updated: idB != null && updatedIds.contains(idB),
     );
     if (priorityA != priorityB) return priorityA - priorityB;
 

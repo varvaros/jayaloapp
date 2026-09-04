@@ -39,6 +39,18 @@ class OpenedRequestsStore extends ChangeNotifier {
     return updatedAt.isAfter(visto);
   }
 
+  /// ¿La CAMBIARON desde que la abriste? Es la mitad estricta de [hasUnseen]:
+  /// «nunca abierta» NO cuenta aquí. Sirve para el orden de la bandeja (pedido
+  /// PO 2026-09-04): «las que actualizaron algo» son un grupo propio, y una
+  /// solicitud que este teléfono no ha abierto nunca no dice nada sobre si el
+  /// cliente tocó algo — en un móvil recién estrenado `_seen` está vacío y
+  /// TODO parecería recién cambiado.
+  bool hasUpdateSinceSeen(String id, DateTime? updatedAt) {
+    final visto = _seen[id];
+    if (visto == null || updatedAt == null) return false;
+    return updatedAt.isAfter(visto);
+  }
+
   /// Carga lo persistido una vez. Best-effort: si falla, arranca vacío (todo
   /// cuenta como sin abrir — el badge exagera, nunca se queda corto).
   Future<void> ensureLoaded() async {
