@@ -768,9 +768,11 @@ Future<Map<String, dynamic>?> requestById(String id) async => await supa
       // target_categories: decide si la oferta pregunta por los materiales
       // (un abogado no los tiene) — ver `domain/offer_materials.dart`.
       ',target_categories'
-      // updated_at: el detalle lo guarda como "version vista" para el badge de
-      // la bandeja (ver `features/provider/opened_requests.dart`).
-      ',updated_at'
+      // content_updated_at: el detalle lo guarda como "version vista" para el
+      // badge de la bandeja (ver `features/provider/opened_requests.dart`).
+      // NO `updated_at`: esa se resella con las ofertas de terceros — ver
+      // `updatedAtForRequests` más abajo.
+      ',content_updated_at'
       ',$requestRequirementCols',
     )
     .eq('id', id)
@@ -2436,10 +2438,18 @@ Future<void> markOfferSeen(String offerId) async {
   } catch (_) {}
 }
 
-/// `updated_at` de cada solicitud, por id. Es la marca de "esta fila cambió"
-/// que la bandeja del proveedor necesita para saber si una solicitud que ya
-/// abriste trae algo nuevo — `get_provider_inbox_unified` NO devuelve esa
-/// columna y ampliar el RPC costaba una migración en producción.
+/// `content_updated_at` de cada solicitud, por id. Es la marca de "esta fila
+/// cambió" que la bandeja del proveedor necesita para saber si una solicitud
+/// que ya abriste trae algo nuevo — `get_provider_inbox_unified` NO devuelve
+/// esa columna y ampliar el RPC costaba una migración en producción.
+///
+/// ⚠️ **NUNCA `updated_at`.** Esa columna se resella con CUALQUIER update de la
+/// fila —incluido el contador de ofertas de OTROS proveedores— y por eso
+/// resucitaba solicitudes ya leídas: medido el 2026-08-31, 20 de 25 abiertas
+/// reselladas sin que su contenido hubiera cambiado. `content_updated_at` la
+/// mueve un trigger que solo mira lo que escribió el cliente (migración
+/// `20260901133140`). La web ya la usaba desde entonces; la app arrastró el
+/// defecto hasta el 2026-09-04.
 ///
 /// Sale de la MISMA tabla que `requirementsForRequests` y viaja en la misma
 /// oleada concurrente, así que no añade latencia.
@@ -2451,13 +2461,14 @@ Future<Map<String, DateTime>> updatedAtForRequests(List<String> ids) async {
   final rows = List<Map<String, dynamic>>.from(
     await supa
         .from('customer_requests')
-        .select('id,updated_at')
+        .select('id,content_updated_at')
         .inFilter('id', ids),
   );
   return {
     for (final r in rows)
-      if (DateTime.tryParse(r['updated_at'] as String? ?? '') != null)
-        r['id'] as String: DateTime.parse(r['updated_at'] as String).toUtc(),
+      if (DateTime.tryParse(r['content_updated_at'] as String? ?? '') != null)
+        r['id'] as String:
+            DateTime.parse(r['content_updated_at'] as String).toUtc(),
   };
 }
 

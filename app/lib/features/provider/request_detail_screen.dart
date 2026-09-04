@@ -363,12 +363,14 @@ class _ProviderRequestDetailScreenState
       // tiene una actualizacion que no has abierto, cuenta").
       //
       // Se marca AQUI, con la fila ya en la mano, y no en el `initState` a
-      // secas: hace falta su `updated_at` para saber QUE version estas viendo.
+      // secas: hace falta su `content_updated_at` para saber QUE version estas
+      // viendo. Esa columna, y no `updated_at`, porque `updated_at` lo resella
+      // cualquier oferta de OTRO proveedor.
       // Y en el detalle, no en el `onTap` de la bandeja, para que cuente
       // tambien al llegar desde un push o un enlace directo.
       openedRequestsStore.markSeen(
         widget.requestId,
-        DateTime.tryParse(r?['updated_at'] as String? ?? '')?.toUtc(),
+        DateTime.tryParse(r?['content_updated_at'] as String? ?? '')?.toUtc(),
       );
       // Reputación del cliente que solicita (best-effort).
       final cid = r?['user_id'] as String?;

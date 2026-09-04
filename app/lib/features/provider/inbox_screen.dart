@@ -162,8 +162,9 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   /// recalcular sin volver a la red cuando se abre una solicitud.
   Set<String> _badgeIds = const {};
 
-  /// `updated_at` de esas solicitudes en la ultima carga: es contra esto que se
-  /// compara lo ya visto.
+  /// `content_updated_at` de esas solicitudes en la ultima carga: es contra
+  /// esto que se compara lo ya visto. NO `updated_at` — esa la resella
+  /// cualquier oferta de otro proveedor (ver `updatedAtForRequests`).
   Map<String, DateTime> _updatedAt = const {};
 
   void _onOpenedChanged() {

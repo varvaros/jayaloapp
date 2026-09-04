@@ -26,7 +26,8 @@ typedef InboxData = ({
   /// recalcular el badge al vuelo —al abrir una solicitud, al descartarla o al
   /// deshacer— sin volver a la red.
   Set<String> badgeIds,
-  /// `updated_at` de cada solicitud: con que fila cambio se compara lo visto.
+  /// `content_updated_at` de cada solicitud: con que fila cambio se compara
+  /// lo visto.
   Map<String, DateTime> updatedAt,
   /// Lo que se pinta: [badgeIds] menos las ya abiertas y menos las descartadas.
   int badgeCount,
@@ -46,7 +47,7 @@ Future<InboxData> loadInboxData({
   /// Hasta que version vio este dispositivo cada solicitud. Vacio = todo
   /// cuenta como sin abrir. Ver `features/provider/opened_requests.dart`.
   Map<String, DateTime> seen = const {},
-  /// `updated_at` por id. Va en la oleada B, con sus hermanas.
+  /// `content_updated_at` por id. Va en la oleada B, con sus hermanas.
   Future<Map<String, DateTime>> Function(List<String>)? fetchUpdatedAt,
   /// Ids que el proveedor DESCARTÓ con el swipe. Salen del contador, no de
   /// [items]: el filtro visual vive en la pantalla y «Deshacer» tiene que poder
@@ -132,9 +133,10 @@ Future<InboxData> loadInboxData({
       );
 
   final updatedAt = await updatedAtFuture;
-  // El badge se cierra AQUI y no arriba porque necesita `updated_at`, que llega
-  // en la oleada B. `badgeIds` si se fija antes del merge: dar seguimiento a una
-  // oferta propia en otro rubro no es una alerta pendiente.
+  // El badge se cierra AQUI y no arriba porque necesita
+  // `content_updated_at`, que llega en la oleada B. `badgeIds` si se fija
+  // antes del merge: dar seguimiento a una oferta propia en otro rubro no es
+  // una alerta pendiente.
   final badgeCount = badgeIds
       .where((id) {
         // Descartar la saca del contador. Queja del PO 2026-08-25: «sigo sin

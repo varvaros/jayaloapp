@@ -9,11 +9,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Regla del PO (2026-08-22): «debe ser "lo que no has abierto"; si tiene una
 /// actualización que no has abierto, cuenta». Por eso no guarda un simple
 /// conjunto de "ya abiertas" —eso apagaba la marca PARA SIEMPRE, y una
-/// solicitud editada después habría quedado muda— sino el `updated_at` que
-/// tenía la fila cuando la abriste. Hay novedad cuando la fila cambió después.
+/// solicitud editada después habría quedado muda— sino el `content_updated_at`
+/// que tenía la fila cuando la abriste. Hay novedad cuando el CONTENIDO cambió
+/// después.
+///
+/// ⚠️ La versión es `content_updated_at`, **nunca** `updated_at`: esa se
+/// resella con cualquier UPDATE de la fila, incluido el contador de ofertas de
+/// OTROS proveedores, y resucitaba solicitudes ya leídas (20 de 25 medidas el
+/// 2026-08-31). La columna buena la mantiene un trigger que solo se mueve
+/// cuando cambia lo que escribió el cliente (migración `20260901133140`).
 ///
 /// **Se guarda la versión vista, no la hora a la que miraste**, a propósito: el
-/// `updated_at` lo pone el servidor y compararlo contra `DateTime.now()` del
+/// `content_updated_at` lo pone el servidor y compararlo contra
+/// `DateTime.now()` del
 /// teléfono metería el reloj del dispositivo en la ecuación — con un reloj
 /// atrasado, una solicitud recién abierta volvería a contar como nueva. Así la
 /// comparación es servidor contra servidor.
@@ -74,7 +82,7 @@ class OpenedRequestsStore extends ChangeNotifier {
 
   /// Marca que viste la solicitud [id] tal como estaba en [updatedAt].
   ///
-  /// Sin `updated_at` (fila incompleta) se guarda el epoch: cuenta como vista
+  /// Sin versión (fila incompleta) se guarda el epoch: cuenta como vista
   /// ahora, y cualquier cambio futuro —que sí traerá fecha— la reactivará.
   void markSeen(String id, DateTime? updatedAt) {
     final v = (updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0)).toUtc();
