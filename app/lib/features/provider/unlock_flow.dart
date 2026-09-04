@@ -28,6 +28,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/brand.dart';
 import '../../core/motion.dart';
 import '../../core/router.dart' show openCreditShop;
 import '../../data/repos.dart';
@@ -50,6 +51,58 @@ int estimatedUnlockCost(Map<String, dynamic> o) {
     estimatedHours: (o['estimated_hours'] as num?)?.toDouble(),
   );
   return c < 1 ? 1 : c;
+}
+
+/// Botón compartido «Conversar · N crédito(s)» (pedido PO 2026-09-04): antes
+/// vivía SOLO inline en `my_offers_screen.dart` (`_acceptedCard`); la bandeja
+/// del proveedor (`inbox_screen.dart`) necesita el MISMO botón — mismo label,
+/// mismo costo (`estimatedUnlockCost`), mismo verde de "aceptar" — para la
+/// tarjeta de una solicitud aceptada y sin desbloquear. UNA sola definición
+/// para que ambas pantallas no puedan divergir en estilo o copy.
+///
+/// Por defecto arranca [startUnlockFlow] directo; [onPressed] permite
+/// sobrescribir esa acción (lo usa "Mis ofertas" para pasar por su propio
+/// `_openOffer`, que además marca la tarjeta como vista antes de abrir el
+/// flujo — sin duplicar la llamada a `startUnlockFlow` dentro de este botón).
+class UnlockOfferButton extends StatelessWidget {
+  const UnlockOfferButton({
+    super.key,
+    required this.offer,
+    this.onChanged,
+    this.onPressed,
+  });
+
+  /// La fila de `provider_offers` (ver `offerCols` en `data/repos.dart`):
+  /// [estimatedUnlockCost] y [startUnlockFlow] la necesitan entera.
+  final Map<String, dynamic> offer;
+
+  /// Se llama tras un desbloqueo exitoso (o venta marcada) para que quien
+  /// llamó refresque su vista. Ignorado si se pasa [onPressed].
+  final Future<void> Function()? onChanged;
+
+  /// Sobrescribe la acción por defecto (`startUnlockFlow(context, offer,
+  /// onChanged: onChanged)`).
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final cost = estimatedUnlockCost(offer);
+    return FilledButton.icon(
+      onPressed:
+          onPressed ?? () => startUnlockFlow(context, offer, onChanged: onChanged),
+      style: FilledButton.styleFrom(
+        // Mismo verde del botón de ACEPTAR oferta (HoldToConfirmTone.free →
+        // JayaloColors.success), texto blanco; destaca sobre fondo blanco.
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? JayaloColors.dSuccess
+            : JayaloColors.success,
+        foregroundColor: Colors.white,
+        visualDensity: VisualDensity.compact,
+      ),
+      icon: const MonedaJayalo(size: 17),
+      label: Text('Conversar · $cost crédito${cost == 1 ? '' : 's'}'),
+    );
+  }
 }
 
 void _snack(BuildContext context, String msg) => ScaffoldMessenger.of(context)

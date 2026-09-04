@@ -359,6 +359,33 @@ Future<Map<String, String>> myOfferedRequestStatuses(
   };
 }
 
+/// Fila COMPLETA de la oferta de este proveedor, indexada por `request_id`
+/// (pedido PO 2026-09-04): la bandeja necesitaba el ESTADO
+/// ([myOfferedRequestStatuses]) para el chip, pero el botón «Conversar · N
+/// crédito(s)» que lo reemplaza en la tarjeta aceptada-y-sin-desbloquear
+/// (`UnlockOfferButton`, `unlock_flow.dart`) necesita la oferta entera:
+/// `estimatedUnlockCost` lee las columnas de precio y `startUnlockFlow`
+/// necesita el `id`. Mismas columnas que ya lee "Mis ofertas" (`offerCols`,
+/// el mismo `select()` de [offersForRequest]/[myOfferForRequest]): ya están
+/// cubiertas por el grant de SELECT del dueño, así que no hay sorpresa de
+/// 42501 aquí. Lectura aparte y best-effort en quien llama (mismo patrón que
+/// [myOfferedRequestStatuses]): no se mete en `offerCols` de golpe para no
+/// pedir de más cuando solo hace falta el estado.
+Future<Map<String, Map<String, dynamic>>> myOfferedOffersByRequest(
+  List<String> requestIds,
+) async {
+  if (requestIds.isEmpty) return {};
+  final uid = supa.auth.currentUser!.id;
+  final rows = List<Map<String, dynamic>>.from(
+    await supa
+        .from('provider_offers')
+        .select(offerCols)
+        .eq('user_id', uid)
+        .inFilter('request_id', requestIds),
+  );
+  return {for (final r in rows) r['request_id'] as String: r};
+}
+
 /// Cuántas ofertas ha recibido cada solicitud (FOMO para el proveedor, pedido
 /// PO 2026-07-21): SOLO el número, nunca las ofertas — la RLS impide leer las
 /// ofertas ajenas, así que se pasa por la RPC SECURITY DEFINER

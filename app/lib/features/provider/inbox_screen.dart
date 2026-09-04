@@ -9,6 +9,7 @@ import '../../core/error_reporter.dart';
 import '../../data/repos.dart';
 import '../../domain/first_offer_chip.dart';
 import '../../domain/inbox_load.dart';
+import '../../domain/inbox_offer_action.dart';
 import '../../domain/pricing.dart';
 import '../../domain/request_requirements.dart';
 import '../shared/request_requirement_badges.dart';
@@ -22,6 +23,7 @@ import '../shared/swipe_to_actions.dart';
 import '../shared/violet_header.dart';
 import 'hidden_requests_store.dart';
 import 'opened_requests.dart';
+import 'unlock_flow.dart';
 import '../shared/moneda.dart';
 
 /// Signature de las fuentes de datos del inbox: `providerInbox` (Para ti,
@@ -127,6 +129,15 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
   /// bloquea el pintado de la lista, ver `_loadOffersCounts`.
   Map<String, int> _offersCounts = {};
 
+  /// Fila COMPLETA de mi oferta (`provider_offers`) para las solicitudes
+  /// aceptadas-y-sin-desbloquear (pedido PO 2026-09-04): `_offeredStatuses`
+  /// solo trae el ESTADO, pero el botón «Conversar · N crédito(s)» que
+  /// reemplaza el chip pasivo "Aceptada" necesita la fila entera
+  /// (`estimatedUnlockCost` + `startUnlockFlow`, `unlock_flow.dart`). Sin
+  /// entrada = aún no llegó o falló la lectura best-effort: la tarjeta cae al
+  /// chip pasivo de siempre, ver `_loadOfferedOffers`.
+  Map<String, Map<String, dynamic>> _offeredOffers = {};
+
   late Future<List<Map<String, dynamic>>> _load = _runFetch();
 
   /// Coordina "un solo row de swipe abierto a la vez" (mismo patrón que
@@ -226,6 +237,17 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
           if (r['source'] != 'store') r['id'] as String,
       ]),
     );
+    // Lectura best-effort APARTE (pedido PO 2026-09-04), mismo patrón que
+    // `_loadOffersCounts`: solo hace falta la fila entera para las
+    // solicitudes donde el chip pasivo "Aceptada" va a volverse el botón
+    // "Conversar" (`inboxOfferActionFor` decide con el status ya conocido).
+    unawaited(
+      _loadOfferedOffers([
+        for (final entry in data.statuses.entries)
+          if (entry.value == 'accepted' || entry.value == 'completed')
+            entry.key,
+      ]),
+    );
     return data.items;
   }
 
@@ -236,6 +258,22 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     try {
       final counts = await offersCountForRequests(ids);
       if (mounted) setState(() => _offersCounts = counts);
+    } catch (e, s) {
+      unawaited(reportError(e, s));
+    }
+  }
+
+  /// Ver el comentario de [_offeredOffers]. Nunca lanza ni bloquea: un fallo
+  /// (o una lista vacía) deja la tarjeta con el chip pasivo "Aceptada" de
+  /// siempre, nunca a medias ni rota.
+  Future<void> _loadOfferedOffers(List<String> requestIds) async {
+    if (requestIds.isEmpty) {
+      if (mounted) setState(() => _offeredOffers = {});
+      return;
+    }
+    try {
+      final offers = await myOfferedOffersByRequest(requestIds);
+      if (mounted) setState(() => _offeredOffers = offers);
     } catch (e, s) {
       unawaited(reportError(e, s));
     }
@@ -434,6 +472,13 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           wholesale: r['is_wholesale'] == true,
                           offerStatus: _offeredStatuses[r['id']],
                           offerCount: _offerCounts[r['id']] ?? 0,
+                          // Botón «Conversar · N crédito(s)» (pedido PO
+                          // 2026-09-04): solo llega la fila cuando el status
+                          // es 'accepted'/'completed' (ver `_runFetch`); si
+                          // aún no llegó o falló, `_InboxCard` cae sola al
+                          // chip pasivo "Aceptada".
+                          unlockableOffer: _offeredOffers[id],
+                          onOfferChanged: () async => _refetch(),
                           // Chip «¡Haz la primera oferta!» (pedido PO
                           // 2026-09-04): decisión pura en
                           // `domain/first_offer_chip.dart`. `hasMyOffer` es
@@ -551,6 +596,8 @@ class _InboxCard extends StatelessWidget {
     this.requirements = RequestRequirements.none,
     this.margin,
     this.unseen = false,
+    this.unlockableOffer,
+    this.onOfferChanged,
   });
 
   final String title;
@@ -572,12 +619,25 @@ class _InboxCard extends StatelessWidget {
 
   /// Estado de la oferta de ESTE proveedor a esta solicitud (`null` = aún no
   /// ofertó). Pinta el badge: 'pending' → "Ya ofertaste" (verde);
-  /// 'accepted'/'completed' → "Aceptada" (ámbar, ¡hay dinero esperando!).
+  /// 'accepted'/'completed' → "Aceptada" (ámbar, ¡hay dinero esperando!) — o,
+  /// si [unlockableOffer] llegó, el botón "Conversar" en su lugar (ver
+  /// [inboxOfferActionFor]).
   final String? offerStatus;
 
   /// Cuántas ofertas ha recibido la solicitud EN TOTAL (FOMO, pedido PO
   /// 2026-07-21): solo el número, no se pueden ver. 0 = no se muestra chip.
   final int offerCount;
+
+  /// Fila completa de MI oferta a esta solicitud (pedido PO 2026-09-04),
+  /// SOLO cuando [offerStatus] es 'accepted'/'completed' — ver
+  /// `_loadOfferedOffers` en `inbox_screen.dart`. `null` = aún no llegó (o
+  /// falló) la lectura best-effort: la tarjeta cae al chip pasivo "Aceptada"
+  /// de siempre, nunca queda sin nada.
+  final Map<String, dynamic>? unlockableOffer;
+
+  /// Se llama tras un desbloqueo exitoso para que la bandeja refresque
+  /// (mismo `_refetch` que ya usan las demás acciones de la tarjeta).
+  final Future<void> Function()? onOfferChanged;
 
   /// Chip verde «¡Haz la primera oferta!» (pedido PO 2026-09-04): decidido
   /// FUERA de esta tarjeta por `showFirstOfferChip` (domain/first_offer_chip
@@ -734,6 +794,26 @@ class _InboxCard extends StatelessWidget {
                       if (offerStatus != null && offerStatus != 'rejected')
                         Builder(
                           builder: (context) {
+                            // Decisión pura en `domain/inbox_offer_action.dart`
+                            // (pedido PO 2026-09-04): aceptada-y-sin-desbloquear
+                            // pasa de chip pasivo a botón "Conversar" — el
+                            // MISMO flujo que "Mis ofertas" (`UnlockOfferButton`,
+                            // unlock_flow.dart) — en cuanto llega la fila
+                            // completa de la oferta.
+                            final action = inboxOfferActionFor(
+                              status: offerStatus,
+                              unlocked: offerStatus == 'unlocked',
+                            );
+                            final offer = unlockableOffer;
+                            if (action == InboxOfferAction.unlock &&
+                                offer != null) {
+                              return UnlockOfferButton(
+                                offer: offer,
+                                onChanged: onOfferChanged,
+                              );
+                            }
+                            // Fallback (la fila aún no llegó, o falló la
+                            // lectura best-effort): el chip pasivo de siempre.
                             // Colores del badge (pedido PO 2026-07-21/22): "Ya
                             // ofertaste" = ÁMBAR (esperando); "Aceptada" =
                             // VERDE (te eligieron); "Desbloqueado" = VIOLETA

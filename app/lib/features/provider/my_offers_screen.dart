@@ -363,7 +363,6 @@ class _MyOffersScreenState extends State<MyOffersScreen>
             .where((u) => u.isNotEmpty)
             .toList();
     final title = (o['request_title'] as String? ?? '').trim();
-    final cost = estimatedUnlockCost(o);
     final price = offerPriceLabel(o);
     final nuevo = _unseen.contains(o['id']);
     return JayaloCard(
@@ -419,25 +418,19 @@ class _MyOffersScreenState extends State<MyOffersScreen>
                 const SizedBox(height: 8),
                 // Botón "Conversar · N créditos": desbloquea el contacto (mismo
                 // flujo que toca la tarjeta). Igual estilo que la interest card.
+                //
+                // Definición ÚNICA en `UnlockOfferButton` (unlock_flow.dart,
+                // pedido PO 2026-09-04): la bandeja del proveedor reusa el
+                // mismo widget para que ambas pantallas no puedan divergir. Se
+                // pasa `onPressed: () => _openOffer(o)` (en vez de dejar que
+                // el botón llame a `startUnlockFlow` por su cuenta) para
+                // conservar el `_markSeen` que ya hacía `_openOffer` antes de
+                // abrir el flujo.
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: FilledButton.icon(
+                  child: UnlockOfferButton(
+                    offer: o,
                     onPressed: () => _openOffer(o),
-                    style: FilledButton.styleFrom(
-                      // Mismo verde del botón de ACEPTAR oferta
-                      // (HoldToConfirmTone.free → JayaloColors.success), texto
-                      // blanco; destaca sobre el fondo blanco de la tarjeta.
-                      backgroundColor:
-                          Theme.of(context).brightness == Brightness.dark
-                              ? JayaloColors.dSuccess
-                              : JayaloColors.success,
-                      foregroundColor: Colors.white,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    icon: const MonedaJayalo(size: 17),
-                    label: Text(
-                      'Conversar · $cost crédito${cost == 1 ? '' : 's'}',
-                    ),
                   ),
                 ),
                 const SizedBox(height: 6),
