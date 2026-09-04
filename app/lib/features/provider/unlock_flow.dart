@@ -364,7 +364,7 @@ Future<void> showOfferContactSheet(
               const SizedBox(height: 12),
               // Hoja de contacto de una OFERTA: aquí la devolución sí existe.
               WhatsappReveal(
-                  phone: contact.phone!,
+                  loadPhone: () async => contact.phone,
                   firstName: contact.firstName,
                   refundApplies: true),
             ],
@@ -519,10 +519,16 @@ class _TallSheet extends StatelessWidget {
 class WhatsappReveal extends StatelessWidget {
   const WhatsappReveal(
       {super.key,
-      required this.phone,
+      required this.loadPhone,
       required this.firstName,
       this.refundApplies = false});
-  final String phone;
+
+  /// Trae el teléfono. Se llama SOLO tras el hold, nunca al pintar: en las
+  /// ofertas la RPC que lo devuelve (`get_unlocked_offer_contact`) MARCA
+  /// `whatsapp_revealed_at`, y con esa marca el proveedor pierde el derecho a
+  /// pedir la devolución de créditos. Recibirlo ya resuelto obligaba a
+  /// traerlo antes de tiempo, así que la firma es parte del arreglo.
+  final Future<String?> Function() loadPhone;
   final String? firstName;
 
   /// ¿Este desbloqueo puede acabar en devolución de créditos?
@@ -574,6 +580,18 @@ class WhatsappReveal extends StatelessWidget {
           tone: HoldToConfirmTone.free,
           label: 'Mantén para ver WhatsApp',
           onConfirmed: () async {
+            String? phone;
+            try {
+              phone = await loadPhone();
+            } catch (_) {
+              // Cae al aviso de abajo: nunca un wa.me con el número vacío.
+            }
+            if (phone == null || phone.trim().isEmpty) {
+              if (context.mounted) {
+                _snack(context, 'No pudimos abrir WhatsApp. Intenta de nuevo.');
+              }
+              return;
+            }
             final digits = phone.replaceAll(RegExp(r'\D'), '');
             await launchUrl(Uri.parse('https://wa.me/$digits'),
                 mode: LaunchMode.externalApplication);
@@ -583,3 +601,37 @@ class WhatsappReveal extends StatelessWidget {
     );
   }
 }
+
+/// Hoja que enseña SOLO el gate de WhatsApp: el aviso + el hold, nada más.
+///
+/// Existe para que el ⋮ del chat no tenga que reconstruir el gate: una sola
+/// definición del aviso y del hold, imposible que las dos superficies
+/// diverjan en copy o en duración del hold.
+Future<void> showWhatsappRevealSheet(
+  BuildContext context, {
+  required Future<String?> Function() loadPhone,
+  required bool refundApplies,
+  String? peerName,
+}) =>
+    showModalBottomSheet<void>(
+      sheetAnimationStyle: JayaloMotion.sheetRise,
+      context: context,
+      showDragHandle: true,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      builder: (ctx) => _TallSheet(
+        heightFactor: .5,
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('WhatsApp de ${peerName ?? 'tu cliente'}',
+                  style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              WhatsappReveal(
+                  loadPhone: loadPhone,
+                  firstName: peerName,
+                  refundApplies: refundApplies),
+            ]),
+      ),
+    );
