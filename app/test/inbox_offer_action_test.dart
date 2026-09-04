@@ -23,12 +23,16 @@ void main() {
     );
   });
 
-  test('completada y sin desbloquear → unlock (mismo trato que accepted)', () {
-    expect(
-      inboxOfferActionFor(status: 'completed', unlocked: false),
-      InboxOfferAction.unlock,
-    );
-  });
+  test(
+    'completada y sin desbloquear → unlocked (la venta ya cerró, no se '
+    'vuelve a cobrar)',
+    () {
+      expect(
+        inboxOfferActionFor(status: 'completed', unlocked: false),
+        InboxOfferAction.unlocked,
+      );
+    },
+  );
 
   test('desbloqueada gana sobre el status, sea cual sea', () {
     expect(

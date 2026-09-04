@@ -10,6 +10,12 @@
 /// (`inbox_screen.dart`), con la misma regla de siempre — `unlocked_at` GANA
 /// sobre el status (bug PO 2026-07-23, ver `myOfferedRequestStatuses` en
 /// `data/repos.dart`).
+///
+/// Regla aparte para 'completed': una venta cerrada NUNCA ofrece el botón de
+/// desbloqueo, tenga o no `unlocked_at` — el momento del dinero ya pasó, así
+/// que no hay nada que cobrar de nuevo. Mismo trato que le da el resto de la
+/// app a una oferta completada (`request_detail_screen.dart`,
+/// `my_offers_screen.dart`).
 enum InboxOfferAction {
   /// Sin oferta de este proveedor a esta solicitud (o rechazada/cancelada):
   /// no se pinta nada de estado.
@@ -37,7 +43,14 @@ InboxOfferAction inboxOfferActionFor({
   if (unlocked) return InboxOfferAction.unlocked;
   return switch (status) {
     'pending' => InboxOfferAction.offered,
-    'accepted' || 'completed' => InboxOfferAction.unlock,
+    // Una venta 'completed' ya cerró el momento del dinero, con o sin
+    // 'unlocked_at' registrado: NUNCA se le vuelve a ofrecer "Conversar · N
+    // crédito(s)" ni se le cobra de nuevo. Misma regla que ya rige en
+    // `request_detail_screen.dart` (`_alreadyOfferedCard`: `unlocked || st ==
+    // 'completed'`), `my_offers_screen.dart` (excluye 'completed' de la
+    // tarjeta de desbloqueo) y el chip de respaldo de esta misma bandeja.
+    'completed' => InboxOfferAction.unlocked,
+    'accepted' => InboxOfferAction.unlock,
     _ => InboxOfferAction.none, // null, 'rejected', 'cancelled'
   };
 }
