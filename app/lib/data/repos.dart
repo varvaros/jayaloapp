@@ -1273,9 +1273,12 @@ Future<Map<String, dynamic>?> myProfile() async {
 /// Preferencia de contacto del usuario (pedido PO 2026-07-22): si prefiere que
 /// lo contacten por WhatsApp (true) o SOLO por el chat de Jayalo (false).
 /// Es la columna `profiles.whatsapp_reveal_enabled` que gatea
-/// `can_reveal_offer_whatsapp` server-side. DEFAULT = DESACTIVADO (pedido PO
-/// 2026-07-21, alineado con la doctrina "WhatsApp nunca es la conversación"):
-/// quien lo quiera lo enciende en Ajustes.
+/// `can_reveal_offer_whatsapp` server-side. DEFAULT = ACTIVADO (pedido PO
+/// 2026-09-04, que revierte el 2026-07-21): quien NO lo quiera lo apaga en
+/// Ajustes. El fallback acompaña al DEFAULT de la columna, que prod tenía en
+/// `false` aunque el repo dijera `true` desde julio (deriva medida el
+/// 2026-09-04) y que la migración `whatsapp_activado_por_defecto` pone en
+/// `true` de verdad, junto con el backfill de las cuentas ya creadas.
 Future<bool> whatsappRevealEnabled() async {
   final uid = supa.auth.currentUser!.id;
   final row = await supa
@@ -1283,7 +1286,7 @@ Future<bool> whatsappRevealEnabled() async {
       .select('whatsapp_reveal_enabled')
       .eq('user_id', uid)
       .maybeSingle();
-  return row?['whatsapp_reveal_enabled'] as bool? ?? false;
+  return row?['whatsapp_reveal_enabled'] as bool? ?? true;
 }
 
 Future<void> setWhatsappRevealEnabled(bool enabled) async {
