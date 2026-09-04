@@ -59,6 +59,25 @@ List<String> chatMenuValues({required bool isProvider, required bool isOpen}) =>
       'report',
     ];
 
+/// Por qué el ⋮ puede (o no) enseñar el WhatsApp del cliente.
+///
+/// `unknown` es el estado de ARRANQUE y el de "la consulta falló": por
+/// defecto el ítem sale gris, y solo el servidor puede habilitarlo.
+enum WhatsappRevealGate { canReveal, optedOut, noPhone, unknown }
+
+/// Motivo que va bajo «Ver WhatsApp del cliente» en el ⋮. `null` = el ítem va
+/// habilitado. Pura y pública por el mismo motivo que [chatMenuValues]: se
+/// fija en un test sin montar la pantalla (su initState toca Supabase).
+String? whatsappMenuReason(WhatsappRevealGate gate) => switch (gate) {
+      WhatsappRevealGate.canReveal => null,
+      // El interruptor es del CLIENTE (`profiles.whatsapp_reveal_enabled`,
+      // false por defecto): no es un fallo nuestro y el copy no debe sonar a
+      // error. Es el caso de 9 de cada 10 ofertas reales.
+      WhatsappRevealGate.optedOut => 'El cliente prefiere solo el chat de Jayalo',
+      WhatsappRevealGate.noPhone => 'El cliente no dejó un teléfono',
+      WhatsappRevealGate.unknown => 'No pudimos comprobarlo',
+    };
+
 /// ¿Se puede resolver el negocio de esta conversación para escribir en
 /// `business_reviews`? Pura y pública para fijar el límite en un test sin
 /// montar la pantalla (su `initState` toca Supabase).
