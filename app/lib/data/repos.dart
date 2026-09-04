@@ -280,8 +280,14 @@ Future<List<Map<String, dynamic>>> _fetchMyRequests() async {
   );
 }
 
+// `customer_id` tiene SELECT concedido a `authenticated` (comprobado en
+// information_schema.column_privileges el 2026-09-04) y lo necesita
+// `showOfferContactSheet` para resolver el nombre del cliente con
+// `customerPublicProfile` — la vía que NO marca `whatsapp_revealed_at`.
+// No hay fuga hacia el cliente: quien lee estas ofertas ES el customer_id.
 const offerCols =
-    'id,request_id,business_id,user_id,price,price_min,price_max,pricing_mode,'
+    'id,request_id,business_id,user_id,customer_id,price,price_min,price_max,'
+    'pricing_mode,'
     'hourly_rate,estimated_hours,message,status,unlocked_at,created_at,'
     // Fotos de la oferta (marquesina en la hoja de detalle) + logística de
     // envío (para sumar al precio en el badge "Más económica").
@@ -1080,7 +1086,7 @@ Future<List<Map<String, dynamic>>> _fetchMyOffers() async {
     await supa
         .from('provider_offers')
         .select(
-          '$offerCols,request_title,points_charged,purchase_completed,customer_id',
+          '$offerCols,request_title,points_charged,purchase_completed',
         )
         .eq('user_id', uid)
         .order('created_at', ascending: false),
@@ -1297,6 +1303,28 @@ Future<void> setWhatsappRevealEnabled(bool enabled) async {
       .from('profiles')
       .update({'whatsapp_reveal_enabled': enabled})
       .eq('user_id', uid);
+}
+
+/// ¿El CLIENTE aceptó que lo contacten por WhatsApp?
+///
+/// Lee `profiles.whatsapp_reveal_enabled` de OTRO usuario. Lo permite la
+/// política `Profiles: select`, que además del dueño y de los admin admite al
+/// proveedor con un `product_interests` desbloqueado de ese cliente; la
+/// columna tiene SELECT concedido a `authenticated` (ambas cosas comprobadas
+/// contra prod el 2026-09-04). Fuera de ese caso la fila simplemente no llega
+/// y se devuelve `false` — default seguro, igual que la columna.
+///
+/// ⚠️ Es una reja de UI, NO del servidor:
+/// `get_unlocked_product_interest_contact` sigue devolviendo el teléfono sin
+/// mirar esta bandera. Apretarla es un ticket con migración propia (ver §9 del
+/// spec 2026-09-04); no se hace desde el cliente.
+Future<bool> customerWhatsappRevealEnabled(String customerId) async {
+  final row = await supa
+      .from('profiles')
+      .select('whatsapp_reveal_enabled')
+      .eq('user_id', customerId)
+      .maybeSingle();
+  return row?['whatsapp_reveal_enabled'] as bool? ?? false;
 }
 
 /// Respuestas rápidas del chat personalizadas por el usuario (jsonb

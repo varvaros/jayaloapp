@@ -428,7 +428,10 @@ class _ProductInterestDetailViewState extends State<ProductInterestDetailView> {
                     if (widget.contactPhone != null) ...[
                       const SizedBox(height: 14),
                       WhatsappReveal(
-                          phone: widget.contactPhone!,
+                          // Su RPC (`get_unlocked_product_interest_contact`)
+                          // es STABLE y no marca nada, así que el teléfono ya
+                          // está en mano: el cargador solo lo entrega.
+                          loadPhone: () async => widget.contactPhone,
                           firstName: widget.contactName),
                     ],
                   ] else ...[

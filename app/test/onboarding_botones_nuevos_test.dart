@@ -18,7 +18,7 @@ void main() {
 
   test('las claves nuevas existen y traen texto', () {
     const nuevas = [
-      'chat.menu.provider.v1',
+      'chat.menu.provider.v2',
       'chat.menu.client.v1',
       'chat.attach.provider.v1',
       'chat.attach.client.v1',

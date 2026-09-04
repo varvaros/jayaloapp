@@ -18,7 +18,7 @@ void main() {
       'client.request_wholesale.v1',
       'client.catalog.v1',
       'chat.quick_replies.v1',
-      'chat.menu.provider.v1',
+      'chat.menu.provider.v2',
       'chat.menu.client.v1',
       'provider.make_offer.v2',
       'provider.offer_menu.v1',
@@ -44,5 +44,14 @@ void main() {
         reason: 'la v1 debe desaparecer: si sobrevive, quien ya la vio nunca ve el texto nuevo');
     expect(onboardingCopy['client.create_request.v2']!.first.message,
         'Aquí creas una solicitud que le llegará a los proveedores ideales.');
+  });
+
+  test('el menu del proveedor subio a v2 (Ver WhatsApp del cliente) y la v1 ya no existe', () {
+    // Mismo motivo que el de arriba: la v1 quedaria marcada como vista en el
+    // backend sin que nadie leyera el copy nuevo (PO 2026-09-04).
+    expect(onboardingCopy.containsKey('chat.menu.provider.v1'), isFalse,
+        reason: 'la v1 debe desaparecer: si sobrevive, quien ya la vio nunca ve el texto nuevo');
+    expect(onboardingCopy['chat.menu.provider.v2']!.first.message,
+        contains('pides su WhatsApp'));
   });
 }

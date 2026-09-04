@@ -26,6 +26,7 @@ import 'widgets/bubbles.dart';
 import 'widgets/calendar_link.dart';
 import 'widgets/chat_dialogs.dart';
 import 'widgets/conversation_actions.dart';
+import '../provider/unlock_flow.dart' show showWhatsappRevealSheet;
 import 'funnel_status_store.dart';
 import 'opened_conversations.dart';
 import '../shared/brand_kit.dart';
@@ -53,11 +54,36 @@ List<String> chatMenuValues({required bool isProvider, required bool isOpen}) =>
       // el perfil anónimo/revelado es de clientes; el cliente ya ve la tienda
       // del proveedor por su propia vía.
       if (isProvider) 'profile',
+      // Ver el WhatsApp del cliente (PO 2026-09-04). Va justo detrás del
+      // perfil: las dos son "cosas del cliente". SIEMPRE presente para el
+      // proveedor con el chat abierto — cuando no se puede se pinta gris con
+      // el motivo (ver `whatsappMenuReason`), no se esconde. Con el chat
+      // cerrado desaparece, como el resto de acciones vivas.
+      if (isProvider && isOpen) 'whatsapp',
       if (isProvider && isOpen) 'complete',
       if (isOpen) 'lost',
       if (isProvider) 'funnel',
       'report',
     ];
+
+/// Por qué el ⋮ puede (o no) enseñar el WhatsApp del cliente.
+///
+/// `unknown` es el estado de ARRANQUE y el de "la consulta falló": por
+/// defecto el ítem sale gris, y solo el servidor puede habilitarlo.
+enum WhatsappRevealGate { canReveal, optedOut, noPhone, unknown }
+
+/// Motivo que va bajo «Ver WhatsApp del cliente» en el ⋮. `null` = el ítem va
+/// habilitado. Pura y pública por el mismo motivo que [chatMenuValues]: se
+/// fija en un test sin montar la pantalla (su initState toca Supabase).
+String? whatsappMenuReason(WhatsappRevealGate gate) => switch (gate) {
+      WhatsappRevealGate.canReveal => null,
+      // El interruptor es del CLIENTE (`profiles.whatsapp_reveal_enabled`,
+      // false por defecto): no es un fallo nuestro y el copy no debe sonar a
+      // error. Es el caso de 9 de cada 10 ofertas reales.
+      WhatsappRevealGate.optedOut => 'El cliente prefiere solo el chat de Jayalo',
+      WhatsappRevealGate.noPhone => 'El cliente no dejó un teléfono',
+      WhatsappRevealGate.unknown => 'No pudimos comprobarlo',
+    };
 
 /// ¿Se puede resolver el negocio de esta conversación para escribir en
 /// `business_reviews`? Pura y pública para fijar el límite en un test sin
@@ -119,6 +145,16 @@ class _ChatScreenState extends State<ChatScreen> {
   // paso 7 — slot `titleTrailing` de `VioletHeader`). Best-effort: null si no
   // hay relación registrada o la RPC falla; la cabecera se pinta igual.
   PeerBadges? _peerBadges;
+  /// Motivo por el que el ⋮ NO puede enseñar el WhatsApp del cliente. `null`
+  /// = habilitado. Arranca en «no pudimos comprobarlo» a propósito: por
+  /// defecto el ítem va gris, y solo una respuesta del servidor lo enciende.
+  String? _waReason = whatsappMenuReason(WhatsappRevealGate.unknown);
+
+  /// Teléfono del cliente en un chat de INTERÉS de producto. Su RPC es STABLE
+  /// (no marca nada), así que se resuelve al cargar; NO se pinta en ninguna
+  /// parte hasta pasar el hold. En los chats de OFERTA queda null: allí el
+  /// teléfono se pide dentro del cargador, porque pedirlo marca el revelado.
+  String? _waPhone;
   int _tempSeq = 0;
   bool _greeted = false;
   bool _sending = false;
@@ -251,6 +287,8 @@ class _ChatScreenState extends State<ChatScreen> {
       // Sellos de la contraparte — best-effort, no bloquea la UI (mismo
       // patrón fire-and-forget que las notificaciones leídas de abajo).
       _loadPeerBadges(conv);
+      // ¿Se puede enseñar el WhatsApp? Best-effort, igual que los sellos.
+      _loadWhatsappGate(conv);
       // Notificaciones leídas — best-effort, no bloquea la UI. Al leer este
       // chat, el badge de "Mensajes" de la barra debe bajar (pedido PO
       // 2026-07-21): se recuenta tras marcar leído.
@@ -277,6 +315,67 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) setState(() => _peerBadges = badges);
     } catch (_) {
       // best-effort: sin sello, la cabecera se pinta igual.
+    }
+  }
+
+  /// ¿Puede este proveedor ver el WhatsApp del cliente? Best-effort, con el
+  /// mismo patrón fire-and-forget que `_loadPeerBadges`: si algo falla, el
+  /// ítem se queda gris con «No pudimos comprobarlo» y el chat se pinta igual.
+  ///
+  /// Las dos consultas que usa son de SOLO LECTURA (`can_reveal_offer_whatsapp`
+  /// es STABLE; `get_unlocked_product_interest_contact` también). Ninguna marca
+  /// `whatsapp_revealed_at`: eso solo puede pasar tras el hold.
+  Future<void> _loadWhatsappGate(Map<String, dynamic> conv) async {
+    if (conv['provider_user_id'] != _uid) return;
+    final sourceId = conv['source_id'] as String?;
+    if (sourceId == null) return;
+    try {
+      if (conv['kind'] == 'offer') {
+        final can = await canRevealOffer(sourceId);
+        if (!mounted) return;
+        setState(() => _waReason = whatsappMenuReason(can
+            ? WhatsappRevealGate.canReveal
+            // El bool no distingue "interruptor apagado" de "sin WhatsApp
+            // verificado" y separarlo costaría otra consulta para el caso
+            // raro: contra prod, 9 de cada 10 clientes con oferta desbloqueada
+            // SÍ están verificados, así que el motivo real es el interruptor.
+            : WhatsappRevealGate.optedOut));
+        return;
+      }
+      if (conv['kind'] != 'product_interest') return;
+      final customerId = conv['customer_id'] as String?;
+      if (customerId == null) return;
+      // El interruptor PRIMERO, el teléfono DESPUÉS (2026-09-04, revisión
+      // final de rama). Antes se lanzaban las dos consultas en paralelo y
+      // eso traía dos problemas: (a) si `enabledF` terminaba en error
+      // mientras `contactF` seguía en vuelo, nadie la había `await`eado
+      // todavía, así que la zona la reportaba como error async sin dueño
+      // (ver `error_reporter.dart`) y el catch de aquí abajo la volvía a
+      // tragar — ruido duplicado y sin contexto en el panel de errores; y
+      // (b) `productInterestContact` corría SIEMPRE, así que un cliente con
+      // el interruptor apagado ("solo el chat de Jayalo") igual tenía su
+      // teléfono viajando por la red y aparcado en `_waPhone`, aunque nunca
+      // se pintara — justo lo contrario de lo que esta reja existe para
+      // evitar. Ahora, si el interruptor está apagado, la función sale sin
+      // pedir el teléfono; el estado `noPhone` solo es alcanzable cuando
+      // `enabled` es true, así que no se pierde ningún caso.
+      final enabled = await customerWhatsappRevealEnabled(customerId);
+      if (!mounted) return;
+      if (!enabled) {
+        setState(() =>
+            _waReason = whatsappMenuReason(WhatsappRevealGate.optedOut));
+        return;
+      }
+      final phone = (await productInterestContact(sourceId)).phone;
+      if (!mounted) return;
+      setState(() {
+        _waPhone = phone;
+        _waReason = whatsappMenuReason((phone == null || phone.trim().isEmpty)
+            ? WhatsappRevealGate.noPhone
+            : WhatsappRevealGate.canReveal);
+      });
+    } catch (_) {
+      // best-effort: se queda en «No pudimos comprobarlo».
     }
   }
 
@@ -1378,6 +1477,26 @@ class _ChatScreenState extends State<ChatScreen> {
                           : '?offer=$src';
                   context.push('/provider/customer/$cid$ctx');
                 }
+              case 'whatsapp':
+                // `enabled: false` impide que este case corra sin gate: un
+                // PopupMenuItem deshabilitado no dispara `onSelected`.
+                final src = _conv?['source_id'] as String?;
+                if (src == null) return;
+                final isOffer = _conv?['kind'] == 'offer';
+                final phone = _waPhone;
+                await showWhatsappRevealSheet(
+                  context,
+                  peerName: _peerName,
+                  // La devolución de créditos solo existe en las ofertas
+                  // (PO 2026-08-28); en el interés el aviso viejo es el que
+                  // dice la verdad.
+                  refundApplies: isOffer,
+                  loadPhone: isOffer
+                      // Esta RPC MARCA el revelado: por eso vive aquí dentro
+                      // y no en la carga del chat.
+                      ? () async => (await unlockedContact(src)).phone
+                      : () async => phone,
+                );
               case 'complete':
                 if (await showCompleteDialog(context)) {
                   if (!mounted) return;
@@ -1433,13 +1552,20 @@ class _ChatScreenState extends State<ChatScreen> {
                 isProvider: _isProvider, isOpen: _isOpen))
               PopupMenuItem(
                 value: v,
-                child: Text(switch (v) {
-                  'profile' => 'Ver perfil del cliente',
-                  'complete' => 'Marcar como completado',
-                  'lost' => 'Marcar como no concretado',
-                  'funnel' => 'Estado del cliente',
-                  _ => 'Denunciar cuenta',
-                }),
+                // Solo el de WhatsApp puede salir gris: es el único que
+                // depende de una decisión del otro lado.
+                enabled: v != 'whatsapp' || _waReason == null,
+                child: _menuItemChild(
+                  switch (v) {
+                    'profile' => 'Ver perfil del cliente',
+                    'whatsapp' => 'Ver WhatsApp del cliente',
+                    'complete' => 'Marcar como completado',
+                    'lost' => 'Marcar como no concretado',
+                    'funnel' => 'Estado del cliente',
+                    _ => 'Denunciar cuenta',
+                  },
+                  reason: v == 'whatsapp' ? _waReason : null,
+                ),
               ),
           ],
           ),
@@ -1448,9 +1574,33 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  /// Hijo de un `PopupMenuItem`. Sin [reason] devuelve el `Text` pelado, para
+  /// que los cinco ítems de siempre se pinten exactamente igual que antes.
+  Widget _menuItemChild(String label, {String? reason}) {
+    if (reason == null) return Text(label);
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label),
+        // El motivo solo se pinta en un ítem DESHABILITADO. `PopupMenuItem`
+        // atenúa el estilo heredado de la etiqueta cuando está deshabilitado,
+        // pero un color explícito como este no recibe ese tratamiento — sin
+        // el alpha, el motivo se veía con más contraste que el propio ítem
+        // que explica (2026-09-04). `.38` es el tono deshabilitado estándar
+        // de Flutter.
+        Text(reason,
+            style: TextStyle(
+                fontSize: 11.5,
+                color: cs.onSurfaceVariant.withValues(alpha: .38))),
+      ],
+    );
+  }
+
   /// Guía del ⋮, por rol (ver `onboarding_copy.dart`).
   String get _chatMenuGuideKey =>
-      _isProvider ? 'chat.menu.provider.v1' : 'chat.menu.client.v1';
+      _isProvider ? 'chat.menu.provider.v2' : 'chat.menu.client.v1';
 
   /// Banner de cerrado, o composer si la conversación sigue abierta.
   Widget _buildBottom(Map<String, dynamic> conv) {

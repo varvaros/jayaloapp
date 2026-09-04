@@ -29,6 +29,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/brand.dart';
+import '../../core/error_reporter.dart';
 import '../../core/motion.dart';
 import '../../core/router.dart' show openCreditShop;
 import '../../data/repos.dart';
@@ -300,13 +301,22 @@ Future<void> showOfferContactSheet(
   try {
     canWhatsapp = await canRevealOffer(offer['id'] as String);
   } catch (_) {}
-  ({String? firstName, String? phone}) contact = (firstName: null, phone: null);
-  if (canWhatsapp) {
+  // El NOMBRE sale del perfil público, que NO marca nada. Antes salía de
+  // `get_unlocked_offer_contact`, que hace `UPDATE … SET whatsapp_revealed_at
+  // = now()`: abrir esta hoja le quitaba al proveedor el derecho a la
+  // devolución de créditos aunque nunca llegara a ver el WhatsApp
+  // (bug 2026-09-04). El teléfono ya no se pide aquí: lo pide el cargador de
+  // `WhatsappReveal`, tras el hold.
+  String? firstName;
+  final customerId = offer['customer_id'] as String?;
+  if (customerId != null) {
     try {
-      contact = await unlockedContact(offer['id'] as String);
+      final p = await customerPublicProfile(customerId,
+          offerId: offer['id'] as String);
+      firstName = p.firstName;
     } catch (_) {
-      // Inesperado (el gate dijo que sí): cae a chat-only sin romper nada.
-      canWhatsapp = false;
+      // best-effort: la hoja cae a «Cliente»/«tu cliente», como ya hacía
+      // cuando `first_name` venía null.
     }
   }
   if (!context.mounted) return;
@@ -326,9 +336,9 @@ Future<void> showOfferContactSheet(
             Text('✅ Contacto desbloqueado',
                 style: Theme.of(ctx).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text(canWhatsapp && contact.phone != null
-                ? (contact.firstName ?? 'Cliente')
-                : 'Escríbele a ${contact.firstName ?? 'tu cliente'} por el '
+            Text(canWhatsapp
+                ? (firstName ?? 'Cliente')
+                : 'Escríbele a ${firstName ?? 'tu cliente'} por el '
                     'chat de Jayalo.'),
             const SizedBox(height: 4),
             Text(
@@ -355,17 +365,19 @@ Future<void> showOfferContactSheet(
                 }
                 Navigator.pop(ctx);
                 context.push('/messages/$convId',
-                    extra: {'peer_name': contact.firstName});
+                    extra: {'peer_name': firstName});
               },
               icon: const Icon(Icons.forum_outlined),
               label: const Text('Escribir al cliente por el chat'),
             ),
-            if (canWhatsapp && contact.phone != null) ...[
+            if (canWhatsapp) ...[
               const SizedBox(height: 12),
               // Hoja de contacto de una OFERTA: aquí la devolución sí existe.
+              // El teléfono se pide DENTRO del cargador, ya pasado el hold.
               WhatsappReveal(
-                  phone: contact.phone!,
-                  firstName: contact.firstName,
+                  loadPhone: () async =>
+                      (await unlockedContact(offer['id'] as String)).phone,
+                  firstName: firstName,
                   refundApplies: true),
             ],
             // "¿Se concretó la venta? Marcar completada" RETIRADO (pedido PO
@@ -519,10 +531,16 @@ class _TallSheet extends StatelessWidget {
 class WhatsappReveal extends StatelessWidget {
   const WhatsappReveal(
       {super.key,
-      required this.phone,
+      required this.loadPhone,
       required this.firstName,
       this.refundApplies = false});
-  final String phone;
+
+  /// Trae el teléfono. Se llama SOLO tras el hold, nunca al pintar: en las
+  /// ofertas la RPC que lo devuelve (`get_unlocked_offer_contact`) MARCA
+  /// `whatsapp_revealed_at`, y con esa marca el proveedor pierde el derecho a
+  /// pedir la devolución de créditos. Recibirlo ya resuelto obligaba a
+  /// traerlo antes de tiempo, así que la firma es parte del arreglo.
+  final Future<String?> Function() loadPhone;
   final String? firstName;
 
   /// ¿Este desbloqueo puede acabar en devolución de créditos?
@@ -574,6 +592,23 @@ class WhatsappReveal extends StatelessWidget {
           tone: HoldToConfirmTone.free,
           label: 'Mantén para ver WhatsApp',
           onConfirmed: () async {
+            String? phone;
+            try {
+              phone = await loadPhone();
+            } catch (e, s) {
+              // Cae al aviso de abajo: nunca un wa.me con el número vacío.
+              // Se reporta (2026-09-04): antes el catch se tragaba el error
+              // entero y un fallo de `get_unlocked_offer_contact` (red, RPC,
+              // auth) quedaba invisible para cualquier panel — el único rastro
+              // era este snackbar genérico en el teléfono del proveedor.
+              unawaited(reportError(e, s));
+            }
+            if (phone == null || phone.trim().isEmpty) {
+              if (context.mounted) {
+                _snack(context, 'No pudimos abrir WhatsApp. Intenta de nuevo.');
+              }
+              return;
+            }
             final digits = phone.replaceAll(RegExp(r'\D'), '');
             await launchUrl(Uri.parse('https://wa.me/$digits'),
                 mode: LaunchMode.externalApplication);
@@ -583,3 +618,37 @@ class WhatsappReveal extends StatelessWidget {
     );
   }
 }
+
+/// Hoja que enseña SOLO el gate de WhatsApp: el aviso + el hold, nada más.
+///
+/// Existe para que el ⋮ del chat no tenga que reconstruir el gate: una sola
+/// definición del aviso y del hold, imposible que las dos superficies
+/// diverjan en copy o en duración del hold.
+Future<void> showWhatsappRevealSheet(
+  BuildContext context, {
+  required Future<String?> Function() loadPhone,
+  required bool refundApplies,
+  String? peerName,
+}) =>
+    showModalBottomSheet<void>(
+      sheetAnimationStyle: JayaloMotion.sheetRise,
+      context: context,
+      showDragHandle: true,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      builder: (ctx) => _TallSheet(
+        heightFactor: .5,
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('WhatsApp de ${peerName ?? 'tu cliente'}',
+                  style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              WhatsappReveal(
+                  loadPhone: loadPhone,
+                  firstName: peerName,
+                  refundApplies: refundApplies),
+            ]),
+      ),
+    );

@@ -72,9 +72,12 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
   // acciones — entre ellas cerrar el trato. Va por rol porque el menú también
   // cambia por rol: el cliente no ve "completado" ni el perfil de la otra
   // parte.
-  'chat.menu.provider.v1': [
+  // v2 (2026-09-04): el ⋮ del proveedor gana «Ver WhatsApp del cliente». La
+  // clave sube porque quien ya vio la v1 la tiene marcada en el backend, y sin
+  // subirla el texto nuevo sería invisible para todos los usuarios actuales.
+  'chat.menu.provider.v2': [
     OnboardingStep(
-        'Aquí cierras el trato —completado o no concretado—, ves el perfil del cliente y denuncias si algo no cuadra.'),
+        'Aquí cierras el trato —completado o no concretado—, ves el perfil del cliente, pides su WhatsApp y denuncias si algo no cuadra.'),
   ],
   'chat.menu.client.v1': [
     OnboardingStep(
