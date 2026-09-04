@@ -53,6 +53,12 @@ List<String> chatMenuValues({required bool isProvider, required bool isOpen}) =>
       // el perfil anónimo/revelado es de clientes; el cliente ya ve la tienda
       // del proveedor por su propia vía.
       if (isProvider) 'profile',
+      // Ver el WhatsApp del cliente (PO 2026-09-04). Va justo detrás del
+      // perfil: las dos son "cosas del cliente". SIEMPRE presente para el
+      // proveedor con el chat abierto — cuando no se puede se pinta gris con
+      // el motivo (ver `whatsappMenuReason`), no se esconde. Con el chat
+      // cerrado desaparece, como el resto de acciones vivas.
+      if (isProvider && isOpen) 'whatsapp',
       if (isProvider && isOpen) 'complete',
       if (isOpen) 'lost',
       if (isProvider) 'funnel',

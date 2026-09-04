@@ -91,4 +91,26 @@ void main() {
     expect(acciones, isNot(contains(PlusAction.sendLocation)));
     expect(acciones, contains(PlusAction.sendAddress));
   });
+
+  test('ver WhatsApp es solo del proveedor', () {
+    // El item aparece SIEMPRE (proveedor + chat abierto) y sale gris con su
+    // motivo cuando no se puede — decision PO 2026-09-04. El cliente no lo ve:
+    // el WhatsApp del proveedor ya vive en su tienda publica.
+    expect(chatMenuValues(isProvider: true, isOpen: true), contains('whatsapp'));
+    expect(chatMenuValues(isProvider: false, isOpen: true),
+        isNot(contains('whatsapp')));
+  });
+
+  test('ver WhatsApp desaparece con el chat cerrado', () {
+    for (final isProvider in [true, false]) {
+      expect(chatMenuValues(isProvider: isProvider, isOpen: false),
+          isNot(contains('whatsapp')));
+    }
+  });
+
+  test('ver WhatsApp va justo detrás del perfil del cliente', () {
+    // Las dos son "cosas del cliente"; cerrar el trato queda debajo.
+    expect(chatMenuValues(isProvider: true, isOpen: true),
+        containsAllInOrder(['profile', 'whatsapp', 'complete']));
+  });
 }
