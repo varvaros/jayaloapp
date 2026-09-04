@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jayalo_app/core/error_reporter.dart';
 import 'package:jayalo_app/features/provider/unlock_flow.dart';
 // `HoldToConfirmButton` vive aquí: el segundo test lo busca para hacer el hold.
 import 'package:jayalo_app/features/shared/brand_kit.dart';
@@ -44,5 +45,29 @@ void main() {
         findsOneWidget);
     expect(find.byType(WhatsappReveal), findsOneWidget,
         reason: 'el aviso sigue en pantalla para reintentar');
+  });
+
+  testWidgets('un loadPhone que lanza avisa y reporta el error',
+      (tester) async {
+    final reportes = <Object>[];
+    debugOnReport = reportes.add;
+    addTearDown(() => debugOnReport = null);
+
+    await tester.pumpWidget(_host(() async => throw Exception('boom')));
+
+    final boton = find.byType(HoldToConfirmButton);
+    final gesto = await tester.startGesture(tester.getCenter(boton));
+    // El hold dura JayaloMotion.holdConfirm (2,5 s); se pasa de largo.
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    await gesto.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('No pudimos abrir WhatsApp. Intenta de nuevo.'),
+        findsOneWidget);
+    expect(find.byType(WhatsappReveal), findsOneWidget,
+        reason: 'el aviso sigue en pantalla para reintentar');
+    expect(reportes, isNotEmpty,
+        reason: 'un fallo de loadPhone debe llegar al reporter');
   });
 }

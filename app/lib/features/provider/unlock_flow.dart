@@ -29,6 +29,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/brand.dart';
+import '../../core/error_reporter.dart';
 import '../../core/motion.dart';
 import '../../core/router.dart' show openCreditShop;
 import '../../data/repos.dart';
@@ -583,8 +584,13 @@ class WhatsappReveal extends StatelessWidget {
             String? phone;
             try {
               phone = await loadPhone();
-            } catch (_) {
+            } catch (e, s) {
               // Cae al aviso de abajo: nunca un wa.me con el número vacío.
+              // Se reporta (2026-09-04): antes el catch se tragaba el error
+              // entero y un fallo de `get_unlocked_offer_contact` (red, RPC,
+              // auth) quedaba invisible para cualquier panel — el único rastro
+              // era este snackbar genérico en el teléfono del proveedor.
+              unawaited(reportError(e, s));
             }
             if (phone == null || phone.trim().isEmpty) {
               if (context.mounted) {
