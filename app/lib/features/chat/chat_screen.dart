@@ -345,22 +345,34 @@ class _ChatScreenState extends State<ChatScreen> {
       if (conv['kind'] != 'product_interest') return;
       final customerId = conv['customer_id'] as String?;
       if (customerId == null) return;
-      // En paralelo: el teléfono y el interruptor del cliente. La RPC del
-      // interés NO mira `whatsapp_reveal_enabled` (agujero conocido, ticket
-      // §9 del spec), así que la reja la pone aquí la app.
-      final contactF = productInterestContact(sourceId);
-      final enabledF = customerWhatsappRevealEnabled(customerId);
-      final contact = await contactF;
-      final enabled = await enabledF;
+      // El interruptor PRIMERO, el teléfono DESPUÉS (2026-09-04, revisión
+      // final de rama). Antes se lanzaban las dos consultas en paralelo y
+      // eso traía dos problemas: (a) si `enabledF` terminaba en error
+      // mientras `contactF` seguía en vuelo, nadie la había `await`eado
+      // todavía, así que la zona la reportaba como error async sin dueño
+      // (ver `error_reporter.dart`) y el catch de aquí abajo la volvía a
+      // tragar — ruido duplicado y sin contexto en el panel de errores; y
+      // (b) `productInterestContact` corría SIEMPRE, así que un cliente con
+      // el interruptor apagado ("solo el chat de Jayalo") igual tenía su
+      // teléfono viajando por la red y aparcado en `_waPhone`, aunque nunca
+      // se pintara — justo lo contrario de lo que esta reja existe para
+      // evitar. Ahora, si el interruptor está apagado, la función sale sin
+      // pedir el teléfono; el estado `noPhone` solo es alcanzable cuando
+      // `enabled` es true, así que no se pierde ningún caso.
+      final enabled = await customerWhatsappRevealEnabled(customerId);
       if (!mounted) return;
-      final phone = contact.phone;
+      if (!enabled) {
+        setState(() =>
+            _waReason = whatsappMenuReason(WhatsappRevealGate.optedOut));
+        return;
+      }
+      final phone = (await productInterestContact(sourceId)).phone;
+      if (!mounted) return;
       setState(() {
         _waPhone = phone;
-        _waReason = whatsappMenuReason(!enabled
-            ? WhatsappRevealGate.optedOut
-            : (phone == null || phone.trim().isEmpty)
-                ? WhatsappRevealGate.noPhone
-                : WhatsappRevealGate.canReveal);
+        _waReason = whatsappMenuReason((phone == null || phone.trim().isEmpty)
+            ? WhatsappRevealGate.noPhone
+            : WhatsappRevealGate.canReveal);
       });
     } catch (_) {
       // best-effort: se queda en «No pudimos comprobarlo».
@@ -1572,8 +1584,16 @@ class _ChatScreenState extends State<ChatScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label),
+        // El motivo solo se pinta en un ítem DESHABILITADO. `PopupMenuItem`
+        // atenúa el estilo heredado de la etiqueta cuando está deshabilitado,
+        // pero un color explícito como este no recibe ese tratamiento — sin
+        // el alpha, el motivo se veía con más contraste que el propio ítem
+        // que explica (2026-09-04). `.38` es el tono deshabilitado estándar
+        // de Flutter.
         Text(reason,
-            style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
+            style: TextStyle(
+                fontSize: 11.5,
+                color: cs.onSurfaceVariant.withValues(alpha: .38))),
       ],
     );
   }

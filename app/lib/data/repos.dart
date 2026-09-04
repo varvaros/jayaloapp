@@ -1084,7 +1084,7 @@ Future<List<Map<String, dynamic>>> _fetchMyOffers() async {
     await supa
         .from('provider_offers')
         .select(
-          '$offerCols,request_title,points_charged,purchase_completed,customer_id',
+          '$offerCols,request_title,points_charged,purchase_completed',
         )
         .eq('user_id', uid)
         .order('created_at', ascending: false),
