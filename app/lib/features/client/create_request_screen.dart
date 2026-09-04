@@ -28,6 +28,7 @@ import '../../domain/image_pick.dart';
 import '../../domain/request_progress.dart';
 import '../../domain/request_seed.dart';
 import '../../domain/request_transcript.dart';
+import '../../domain/template_run.dart';
 import '../../domain/wholesale.dart';
 import '../shell/floating_nav_bar.dart';
 import '../verification/verify_banner.dart';
@@ -157,6 +158,29 @@ class _PendingPhoto {
   final String dataUrl;
 }
 
+/// Modo plantilla (spec §8.3): el turno `template` reemplaza al clarificador
+/// para el PRIMER mensaje cuando hay una plantilla activa para el ámbito. A
+/// partir de ahí TODO corre local — cero llamadas a la IA — hasta que el
+/// usuario publica, pulsa «No es esto» o corrige (`fellBack`). `runId` es un
+/// UUID v4 LOCAL (`newRequestClientId`, sin paquete uuid): es la PK de
+/// `request_template_runs` y se manda en el INSERT.
+class _TemplateRun {
+  _TemplateRun({required this.turn, required this.runId});
+  final AiTemplate turn;
+  final String runId;
+  final Map<String, String> answers = {};
+  int otherCount = 0;
+  bool fellBack = false;
+  String? fallbackKey;
+
+  /// Sigue en modo plantilla (no cayó a IA).
+  bool get live => !fellBack;
+
+  String get id => turn.id;
+  int get version => turn.version;
+  String get scope => turn.scope;
+}
+
 class CreateRequestScreen extends StatefulWidget {
   const CreateRequestScreen({super.key, this.seedFrom});
   final String? seedFrom;
@@ -241,6 +265,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// Lo que el usuario escribió en el compositor al arrancar. `_send` vacía
   /// `_input`; «Atrás» hasta el inicio lo devuelve al campo (§5.2).
   String _composerText = '';
+
+  /// Run de plantilla en curso (null = flujo de IA de siempre).
+  _TemplateRun? _templateRun;
+
+  /// El servidor mandó un turno `template` que no parseó (ya con toast). A la
+  /// siguiente se deja de pedir plantillas en ESTA conversación (§8.1): el
+  /// reintento cae al clarificador de siempre en vez de repetir el fallo.
+  bool _templateBroken = false;
 
   // Detalles de mayoreo (obligatorios cuando la solicitud es al por mayor —
   // paridad web requests/new.tsx). Slugs de `domain/wholesale.dart`.
@@ -401,6 +433,20 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// (`_correcting`) y todo lo que no responde a un `question` van sueltos.
   Future<void> _send(String text, {bool force = false, bool raw = false}) async {
     if (text.trim().isEmpty || (_busy && !force)) return;
+    // Modo plantilla (§8.3): las respuestas a una pregunta de plantilla se
+    // resuelven LOCAL, y una corrección tras la ficha es el handoff al
+    // clarificador. `force`/`raw` son caminos internos (auto-«ok», foto,
+    // «No» del kind_switch, el propio handoff) y pasan de largo.
+    if (_templateRun case final run? when run.live && !force && !raw) {
+      if (_correcting) {
+        await _fallBackToAi(text, null);
+        return;
+      }
+      if (_current is AiQuestion) {
+        _answerTemplate(run, text);
+        return;
+      }
+    }
     // Mismo pulso que el chat entre personas: acá el usuario también le está
     // MANDANDO algo a alguien (la IA que arma la solicitud).
     JayaloHaptics.sent();
@@ -417,7 +463,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _messages.add(AiMessage('user', content));
       _input.clear();
     });
-    final ok = await _ask();
+    // `useTemplates` solo cuando el historial es el primer mensaje (§8.3);
+    // `sendTurn` lo filtra otra vez por longitud.
+    final ok = await _ask(useTemplates: _messages.length == 1);
     // El mensaje que provocó el fallo se quita: el usuario reintenta desde el
     // mismo punto. Las respuestas ya no se cuentan aparte (`answerTexts` lee
     // el historial), así que no hay contador que revertir.
@@ -432,7 +480,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// llegó un turno (o la pantalla murió mientras tanto); `false` si falló,
   /// ya con su toast. Quien añadió un mensaje antes de llamar decide qué
   /// hacer con él (`_send` lo quita; `_restartWithKind` restaura el anterior).
-  Future<bool> _ask() async {
+  Future<bool> _ask({bool useTemplates = false}) async {
     setState(() => _busy = true);
     try {
       // El JWT de la sesión exime el Turnstile del primer turno (ADR-0032);
@@ -445,7 +493,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         accessToken: supa.auth.currentSession?.accessToken,
         imageDataUrl: _photos.isNotEmpty ? _photos[0].dataUrl : null,
         imageDataUrl2: _photos.length > 1 ? _photos[1].dataUrl : null,
+        useTemplates: useTemplates && !_templateBroken,
       );
+      if (!mounted) return true;
+      if (turn is AiTemplate) {
+        // El turno `template` NUNCA va al historial (paridad web): la
+        // conversación sigue siendo [primer mensaje] + los pares locales.
+        setState(() => _correcting = false);
+        await _startTemplate(turn);
+        return true;
+      }
       _messages.add(AiMessage('assistant', jsonEncode(turnToJson(turn))));
       // `sendTurn` tarda 2-8 s en datos móviles y el usuario puede cerrar el
       // compositor mientras tanto. Sin este guard, `_handleTurn` y los dos
@@ -468,6 +525,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             : e.message,
       );
       return false;
+    } on TemplateFormatException {
+      // Turno `template` malformado (§8.1): se trata como un turno de IA
+      // fallido — toast + reintento — pero a la siguiente ya no se piden
+      // plantillas en esta conversación.
+      if (!mounted) return false;
+      _templateBroken = true;
+      _toast('Algo falló. Intenta de nuevo.');
+      return false;
     } catch (e) {
       if (!mounted) return false;
       _toast('Algo falló. Intenta de nuevo.');
@@ -488,6 +553,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     final previousCurrent = _current;
     final first = _messages.first;
     JayaloHaptics.sent();
+    // El cambio de kind invalida el run de plantilla en curso, si lo hay: el
+    // ámbito de la plantilla ya no corresponde al kind nuevo (§8.3). Estado
+    // primero; la escritura es best-effort y no demora el reinicio.
+    final closing = _templateRun;
+    _templateRun = null;
+    if (closing != null && closing.live) {
+      unawaited(_updateTemplateRun(closing.runId, {
+        'outcome': 'abandoned',
+        'ended_at': DateTime.now().toUtc().toIso8601String(),
+      }));
+    }
     setState(() {
       _kind = kind;
       // Paridad web (new.tsx L1857): «servicio» no admite al por mayor.
@@ -502,7 +578,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _showOther = false;
       _pop++;
     });
-    final ok = await _ask();
+    // Es un primer mensaje, igual que el arranque: puede devolver plantilla.
+    final ok = await _ask(useTemplates: true);
     if (!ok && mounted) {
       // Si el reinicio falla, se vuelve a donde estaba (con el kind ya
       // cambiado: eso lo pidió el usuario y no depende del servidor).
@@ -521,6 +598,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// vuelve al compositor con el texto y las fotos del compositor intactos.
   void _goBack() {
     if (_busy || _messages.isEmpty) return;
+    if (_templateRun case final run? when run.live) {
+      _goBackTemplate(run);
+      return;
+    }
     final r = stepBack(_messages);
     final routing = _lastRouting(r.messages);
     final categories = List<String>.of(routing?.categories ?? const []);
@@ -578,6 +659,197 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           label: const Text('Atrás'),
         ),
       );
+
+  // ── Modo plantilla (spec §8.3, paridad con new.tsx) ────────────────────
+
+  /// Arranca el modo plantilla: pinta la primera pregunta pendiente (o la
+  /// ficha si no falta ninguna) y DESPUÉS registra el run — fire-and-forget,
+  /// `reportError` si falla. INSERT con EXACTAMENTE `id, user_id,
+  /// template_id, template_version` (grant por columna: uno de más es 42501).
+  Future<void> _startTemplate(AiTemplate t) async {
+    final run = _TemplateRun(turn: t, runId: newRequestClientId());
+    setState(() {
+      _templateRun = run;
+      _ready = null;
+      _categories = List<String>.of(t.categories);
+      _rubros = List<String>.of(t.rubros);
+      _catalogRubros = [];
+      _selectedRubros = {};
+    });
+    unawaited(_loadRubroCatalog());
+    _showNextTemplateQuestion();
+    final uid = supa.auth.currentUser?.id;
+    if (uid != null) unawaited(_insertTemplateRun(run, uid));
+  }
+
+  Future<void> _insertTemplateRun(_TemplateRun run, String uid) async {
+    try {
+      await supa.from('request_template_runs').insert({
+        'id': run.runId,
+        'user_id': uid,
+        'template_id': run.id,
+        'template_version': run.version,
+      });
+    } catch (e, s) {
+      unawaited(reportError(e, s));
+    }
+  }
+
+  /// UPDATE del desenlace del run, best-effort. `patch` solo puede llevar
+  /// columnas del grant de UPDATE (`outcome, fallback_key, answered_count,
+  /// other_count, title_edited, request_id, ended_at`).
+  Future<void> _updateTemplateRun(
+      String runId, Map<String, dynamic> patch) async {
+    try {
+      await supa.from('request_template_runs').update(patch).eq('id', runId);
+    } catch (e, s) {
+      unawaited(reportError(e, s));
+    }
+  }
+
+  /// Siguiente pregunta pendiente con la UI de `question` de siempre; si no
+  /// queda ninguna, la ficha local.
+  void _showNextTemplateQuestion() {
+    final run = _templateRun;
+    if (run == null) return;
+    final pending = pendingQuestions(run.turn, run.answers);
+    if (pending.isEmpty) {
+      unawaited(_finishTemplate());
+      return;
+    }
+    setState(() {
+      _ready = null;
+      _current = templateQuestionTurn(pending.first);
+      _showOther = false;
+      _pop++;
+    });
+  }
+
+  /// `routing` + `ready` LOCALES al historial (mismos JSON que `turnToJson`,
+  /// mismo 'user' intermedio que la web) y `_handleTurn(ready)` sin POST.
+  Future<void> _finishTemplate() async {
+    final run = _templateRun;
+    if (run == null) return;
+    final built =
+        buildTemplateReady(run.turn, run.answers, _scopeLabelFor(run.turn));
+    _messages.add(AiMessage('assistant', jsonEncode(turnToJson(built.routing))));
+    _messages.add(const AiMessage('user', 'Perfecto, ahora dame la ficha final.'));
+    _messages.add(AiMessage('assistant', jsonEncode(turnToJson(built.ready))));
+    setState(() {
+      _categories = List<String>.of(built.routing.categories);
+      _rubros = List<String>.of(built.routing.rubros);
+    });
+    await _handleTurn(built.ready);
+  }
+
+  /// Título de la ficha cuando la plantilla no conoce el `tipo`: el nombre
+  /// de la primera categoría del routing si la app lo tiene (catálogo local
+  /// `kCategories`), si no el `scope` tal cual.
+  String _scopeLabelFor(AiTemplate t) {
+    final first = t.categories.isEmpty ? null : t.categories.first;
+    return categoryNameById(first) ?? t.scope;
+  }
+
+  /// Respuesta a una pregunta de plantilla: par assistant+user al historial,
+  /// `answers[key]`, `otherCount` si no calza con las opciones; siguiente
+  /// pendiente o ficha. Cero llamadas.
+  void _answerTemplate(_TemplateRun run, String text) {
+    final pending = pendingQuestions(run.turn, run.answers);
+    if (pending.isEmpty) {
+      // No debería pasar (clic tardío tras cerrar el run) — nunca un no-op
+      // silencioso: cae al clarificador con la respuesta tal cual.
+      unawaited(_fallBackToAi(answerContent(_current, text), null));
+      return;
+    }
+    final q = pending.first;
+    JayaloHaptics.sent();
+    final next = appendTemplateAnswer(_messages, q, text);
+    run.answers[q.key] = text;
+    if (isOther(q, text)) run.otherCount++;
+    setState(() {
+      _messages
+        ..clear()
+        ..addAll(next);
+      _showOther = false;
+      _input.clear();
+      _current = null;
+    });
+    _showNextTemplateQuestion();
+  }
+
+  /// Cierra el run como `fallback` (best-effort, sin bloquear) y le pasa la
+  /// posta al clarificador con el historial COMPLETO (primer mensaje + pares
+  /// de plantilla + `handoff`) SIN `useTemplates`. La usan «No es esto»
+  /// (`fallbackKey: null` desde la ficha), la corrección (`_correcting`) y el
+  /// defensivo de `_answerTemplate`. Desde aquí la conversación es de IA.
+  Future<void> _fallBackToAi(String handoff, String? fallbackKey) async {
+    final run = _templateRun;
+    if (_busy || run == null || run.fellBack) return;
+    run.fellBack = true;
+    run.fallbackKey = fallbackKey;
+    unawaited(_updateTemplateRun(run.runId, {
+      'outcome': 'fallback',
+      'fallback_key': fallbackKey,
+      'answered_count': run.answers.length,
+      'other_count': run.otherCount,
+      'ended_at': DateTime.now().toUtc().toIso8601String(),
+    }));
+    // `raw`: el handoff va tal cual y se salta el gancho de plantilla de
+    // `_send` (el run ya no está `live`). El historial tiene 2+ mensajes,
+    // así que `useTemplates` no viaja.
+    await _send(handoff, raw: true);
+  }
+
+  /// «Atrás» en modo plantilla (§8.3): `stepBack` sobre el historial y
+  /// `answers` se recalcula desde los pares que quedan. Desde la ficha se
+  /// deshace primero el cierre local (los 3 mensajes de `_finishTemplate`),
+  /// como en la web: si no, `stepBack` se pararía en el `routing`. Si no
+  /// queda nada, se abandona el run y se vuelve al compositor.
+  void _goBackTemplate(_TemplateRun run) {
+    var base = List<AiMessage>.of(_messages);
+    if (_current is AiReady && base.length >= 3) {
+      base = base.sublist(0, base.length - 3);
+    }
+    final r = stepBack(base);
+    if (r.turn == null) {
+      final abandoning = run.runId;
+      setState(() {
+        _templateRun = null;
+        _input.text = _composerText;
+        _messages.clear();
+        _current = null;
+        _ready = null;
+        _categories = [];
+        _rubros = [];
+        _showOther = false;
+        _correcting = false;
+        _pop++;
+      });
+      unawaited(_updateTemplateRun(abandoning, {
+        'outcome': 'abandoned',
+        'ended_at': DateTime.now().toUtc().toIso8601String(),
+      }));
+      return;
+    }
+    final answers = templateAnswersIn(r.messages, run.turn);
+    run.answers
+      ..clear()
+      ..addAll(answers);
+    run.otherCount = answers.entries.where((e) {
+      final q = run.turn.questions.firstWhere((q) => q.key == e.key);
+      return isOther(q, e.value);
+    }).length;
+    setState(() {
+      _messages
+        ..clear()
+        ..addAll(r.messages);
+      _ready = null;
+      _current = null;
+      _showOther = false;
+      _correcting = false;
+    });
+    _showNextTemplateQuestion();
+  }
 
   /// Elige y valida una foto; la agrega a `_photos` (con su base64 cacheado).
   /// Devuelve true si se agregó. Con [replaceLast], la nueva foto sustituye a
@@ -794,12 +1066,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         if (_catalogRubros.isEmpty && !_loadingCatalog) {
           unawaited(_loadRubroCatalog());
         }
-      case AiTemplate():
-        // El modo plantilla se cablea en la Task 8 (`_startTemplate`). Hasta
-        // entonces la app no manda `useTemplates`, así que este turno no
-        // puede llegar; el caso existe para que el switch sobre el sealed
-        // siga siendo exhaustivo.
-        break;
+      case AiTemplate t:
+        // Normalmente `_ask` lo intercepta antes (no va al historial); si
+        // llega por aquí, el trato es el mismo.
+        await _startTemplate(t);
     }
   }
 
@@ -999,6 +1269,25 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       // Fase 0 del registro de patrones (spec §7): DESPUÉS del «Publicada»,
       // fire-and-forget. Nunca bloquea ni enseña error.
       if (requestId != null) unawaited(_saveTranscript(requestId));
+      // Cierra el run de plantilla como `published` — best-effort. Si «No es
+      // esto»/corregir ya lo cerró como `fallback`, no se toca (pisaría la
+      // señal real). La app no edita el título en la ficha: `title_edited`
+      // queda false. `requestId`/`_templateRun` se comprueban por separado:
+      // Dart no deja combinar `&&` con un `case` de pattern en la misma
+      // condición (el `&&` colapsa a bool antes del `case`, que ya no tiene
+      // sobre qué matchear `run.live`).
+      if (requestId != null) {
+        if (_templateRun case final run? when run.live) {
+          unawaited(_updateTemplateRun(run.runId, {
+            'outcome': 'published',
+            'answered_count': run.answers.length,
+            'other_count': run.otherCount,
+            'title_edited': false,
+            'request_id': requestId,
+            'ended_at': DateTime.now().toUtc().toIso8601String(),
+          }));
+        }
+      }
     } catch (e) {
       // Red de seguridad: si el aviso previo no atrapó algo, los triggers de
       // la BD sí lo bloquean — traducir su SQLSTATE al mensaje humano en vez
@@ -1022,12 +1311,18 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// (null si el servidor no los mandó); `attributes` de `AiReady.attributes`.
   Future<void> _saveTranscript(String requestId) async {
     final rd = _ready;
+    final run = _templateRun;
     final row = buildTranscript(
       requestId,
       List<AiMessage>.of(_messages),
       attributes: rd?.attributes ?? const {},
       model: rd?.meta?.model,
       promptVersion: rd?.meta?.promptVersion,
+      // Fase 1: de dónde salió la conversación. `buildTranscript` degrada a
+      // 'ai' si faltara la plantilla (el CHECK de la BD lo exige).
+      source: run == null ? 'ai' : (run.fellBack ? 'fallback' : 'template'),
+      templateId: run?.id,
+      templateVersion: run?.version,
     );
     if (row == null) return;
     try {
@@ -2372,6 +2667,20 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               icon: const Icon(Icons.arrow_back, size: 18),
               label: const Text('Atrás'),
             ),
+            // Modo plantilla (§8.3): la ficha la armó la plantilla, no la
+            // IA. «No es esto» cierra el run como fallback (sin
+            // `fallback_key`: ya no queda pregunta pendiente) y sigue con el
+            // clarificador de verdad. Literal de la web (`templateFallback`).
+            if (_templateRun case final run? when run.live)
+              TextButton(
+                onPressed: _busy
+                    ? null
+                    : () => _fallBackToAi(
+                          'Lo anterior no encaja del todo; sigue preguntando tú lo que falte.',
+                          null,
+                        ),
+                child: const Text('No es esto'),
+              ),
           ],
         ),
       ],
