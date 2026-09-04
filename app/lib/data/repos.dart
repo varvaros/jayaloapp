@@ -280,8 +280,14 @@ Future<List<Map<String, dynamic>>> _fetchMyRequests() async {
   );
 }
 
+// `customer_id` tiene SELECT concedido a `authenticated` (comprobado en
+// information_schema.column_privileges el 2026-09-04) y lo necesita
+// `showOfferContactSheet` para resolver el nombre del cliente con
+// `customerPublicProfile` — la vía que NO marca `whatsapp_revealed_at`.
+// No hay fuga hacia el cliente: quien lee estas ofertas ES el customer_id.
 const offerCols =
-    'id,request_id,business_id,user_id,price,price_min,price_max,pricing_mode,'
+    'id,request_id,business_id,user_id,customer_id,price,price_min,price_max,'
+    'pricing_mode,'
     'hourly_rate,estimated_hours,message,status,unlocked_at,created_at,'
     // Fotos de la oferta (marquesina en la hoja de detalle) + logística de
     // envío (para sumar al precio en el badge "Más económica").

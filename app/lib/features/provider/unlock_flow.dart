@@ -301,13 +301,22 @@ Future<void> showOfferContactSheet(
   try {
     canWhatsapp = await canRevealOffer(offer['id'] as String);
   } catch (_) {}
-  ({String? firstName, String? phone}) contact = (firstName: null, phone: null);
-  if (canWhatsapp) {
+  // El NOMBRE sale del perfil público, que NO marca nada. Antes salía de
+  // `get_unlocked_offer_contact`, que hace `UPDATE … SET whatsapp_revealed_at
+  // = now()`: abrir esta hoja le quitaba al proveedor el derecho a la
+  // devolución de créditos aunque nunca llegara a ver el WhatsApp
+  // (bug 2026-09-04). El teléfono ya no se pide aquí: lo pide el cargador de
+  // `WhatsappReveal`, tras el hold.
+  String? firstName;
+  final customerId = offer['customer_id'] as String?;
+  if (customerId != null) {
     try {
-      contact = await unlockedContact(offer['id'] as String);
+      final p = await customerPublicProfile(customerId,
+          offerId: offer['id'] as String);
+      firstName = p.firstName;
     } catch (_) {
-      // Inesperado (el gate dijo que sí): cae a chat-only sin romper nada.
-      canWhatsapp = false;
+      // best-effort: la hoja cae a «Cliente»/«tu cliente», como ya hacía
+      // cuando `first_name` venía null.
     }
   }
   if (!context.mounted) return;
@@ -327,9 +336,9 @@ Future<void> showOfferContactSheet(
             Text('✅ Contacto desbloqueado',
                 style: Theme.of(ctx).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text(canWhatsapp && contact.phone != null
-                ? (contact.firstName ?? 'Cliente')
-                : 'Escríbele a ${contact.firstName ?? 'tu cliente'} por el '
+            Text(canWhatsapp
+                ? (firstName ?? 'Cliente')
+                : 'Escríbele a ${firstName ?? 'tu cliente'} por el '
                     'chat de Jayalo.'),
             const SizedBox(height: 4),
             Text(
@@ -356,17 +365,19 @@ Future<void> showOfferContactSheet(
                 }
                 Navigator.pop(ctx);
                 context.push('/messages/$convId',
-                    extra: {'peer_name': contact.firstName});
+                    extra: {'peer_name': firstName});
               },
               icon: const Icon(Icons.forum_outlined),
               label: const Text('Escribir al cliente por el chat'),
             ),
-            if (canWhatsapp && contact.phone != null) ...[
+            if (canWhatsapp) ...[
               const SizedBox(height: 12),
               // Hoja de contacto de una OFERTA: aquí la devolución sí existe.
+              // El teléfono se pide DENTRO del cargador, ya pasado el hold.
               WhatsappReveal(
-                  loadPhone: () async => contact.phone,
-                  firstName: contact.firstName,
+                  loadPhone: () async =>
+                      (await unlockedContact(offer['id'] as String)).phone,
+                  firstName: firstName,
                   refundApplies: true),
             ],
             // "¿Se concretó la venta? Marcar completada" RETIRADO (pedido PO
