@@ -1,24 +1,34 @@
-/// Orden de la bandeja del proveedor. El PO lo dictó en dos vueltas el
-/// 2026-09-04, y esta es la segunda, que manda:
+/// Orden de la bandeja del proveedor. El PO lo dictó en tres vueltas el
+/// 2026-09-04, y esta es la tercera, que manda:
 ///
-///   **Aceptadas · sin ofertar · actualizadas · ofertadas · rechazadas.**
+///   0. te aceptaron y **falta desbloquear** — dinero esperando, acción tuya
+///   1. **no has ofertado y NADIE ha ofertado** (el chip «¡Haz la primera
+///      oferta!», ver `first_offer_chip.dart`)
+///   2. no has ofertado, pero ya hay ofertas de otros
+///   3. ya ofertaste y **te la cambiaron** desde que la abriste
+///   4. ya ofertaste
+///   5. **desbloqueada o completada**
+///   6. rechazada / cancelada
 ///
-/// «Aceptadas» son dos grupos, no uno: primero la que está PENDIENTE DE
-/// DESBLOQUEO —te aceptaron y aún no pagaste el contacto, la tarjeta que
-/// enseña «Conversar · N crédito(s)» (ver `inbox_offer_action.dart`)— y
-/// detrás la ya desbloqueada o completada. Es la acción que más urge y va
-/// arriba del todo, sin importar la fecha.
+/// Lo que movió la tercera vuelta, y por qué: las desbloqueadas estaban en el
+/// puesto 1 y **bajan al 5**. Se midió la bandeja real del PO contra prod: sus
+/// tres primeras filas eran ventas de agosto ya aceptadas, ya pagadas y ya en
+/// el chat, y tapaban lo único fresco que tenía — unos audífonos del 09-02 que
+/// nadie había ofertado. Una desbloqueada **no pide nada**: el dinero ya se
+/// cobró y la conversación ya existe. Encabezar con trabajo terminado empuja
+/// hacia abajo, cada día, la única fila donde aún se puede ganar algo.
 ///
-/// Lo que cambió respecto de la primera vuelta: **«no has ofertado» sube por
-/// delante de «ya ofertaste»** (antes iba detrás, copiando a la web), y **«la
-/// actualizaron» pasa de desempate a GRUPO**, partiendo en dos las que ya
-/// ofertaste: si el cliente tocó algo después de que la abrieras, sube. La
-/// web (`ProviderInboxSection.tsx`, `priority()`) se queda con el orden
-/// viejo hasta que se porte; a partir de aquí los dos criterios ya no son el
-/// mismo. La web además desempata por `match_level` (tu especialidad); la app
-/// no tiene esa columna en la fila de la bandeja, así que ese paso se omite.
+/// Y «no has ofertado» se parte en dos por el mismo motivo: que NADIE haya
+/// ofertado es la mejor posición que puede tener un proveedor, y hasta ahora
+/// solo se pintaba (chip) sin ordenar. Quien decide es `showFirstOfferChip`,
+/// la MISMA función que pinta el chip — no un segundo criterio que pueda
+/// discrepar con lo que el ojo ve.
 ///
-/// Decisión pura, sin BuildContext ni red, para poder probarla sin widgets
+/// Historia de las otras dos vueltas: la 1ª subió las pendientes de desbloqueo
+/// al puesto 0; la 2ª subió «no has ofertado» por delante de «ya ofertaste» y
+/// convirtió «la actualizaron» de desempate en grupo. La web
+/// (`providerInboxStatus.ts`) va en paralelo con la misma escala.
+////// Decisión pura, sin BuildContext ni red, para poder probarla sin widgets
 /// (mismo espíritu que `inbox_load.dart`/`inbox_offer_action.dart`): la
 /// pantalla ordena en `build()` con el estado que YA tiene, para que el
 /// orden se actualice solo en cuanto llega el mapa de estados (asíncrono,
@@ -51,20 +61,25 @@ int inboxPriority({
   required String? status,
   required bool unlocked,
   bool updated = false,
+  bool firstOffer = false,
 }) {
   final action = inboxOfferActionFor(status: status, unlocked: unlocked);
   return switch (action) {
-    // Pendiente de desbloqueo: la acción que más urge, siempre primera.
+    // Te aceptaron y falta pagar el contacto: la acción que más urge.
     InboxOfferAction.unlock => 0,
-    // Ya desbloqueado o venta 'completed' (misma regla que la tarjeta: una
-    // venta cerrada NUNCA cuenta como pendiente).
-    InboxOfferAction.unlocked => 1,
     // `inboxOfferActionFor` junta bajo `none` tanto "nunca ofertó" como
-    // "rechazada/cancelada", y aquí quedan en los dos extremos opuestos: sin
-    // oferta es lo que más se puede ganar (2), rechazada es lo último (5).
-    InboxOfferAction.none => status == null ? 2 : 5,
+    // "rechazada/cancelada", y aquí acaban en los dos extremos. Sin oferta
+    // mía se parte en dos: si además NADIE ha ofertado, va lo primero que
+    // se puede ganar (1); si ya hay ofertas de otros, detrás (2).
+    InboxOfferAction.none =>
+      status == null ? (firstOffer ? 1 : 2) : 6,
     // Ya ofertaste: sube si te la cambiaron desde que la abriste.
     InboxOfferAction.offered => updated ? 3 : 4,
+    // Desbloqueada o venta 'completed': trabajo TERMINADO. Ya pagaste el
+    // contacto y ya tienes el chat, así que no pide nada — por eso deja de
+    // encabezar la lista (3ª vuelta del PO) y se va al fondo, solo por
+    // delante de lo rechazado.
+    InboxOfferAction.unlocked => 5,
   };
 }
 
@@ -95,12 +110,17 @@ int inboxPriority({
 /// [updatedIds] son los ids que el cliente cambió después de que los
 /// abrieras (`OpenedRequestsStore.hasUpdateSinceSeen`). Forman grupo propio
 /// dentro de las ya ofertadas — ver [inboxPriority].
+///
+/// [firstOfferIds] son los ids que llevan el chip «¡Haz la primera oferta!».
+/// La pantalla los calcula con la MISMA llamada a `showFirstOfferChip` que
+/// pinta el chip, para que el orden y lo que se ve no puedan discrepar.
 List<Map<String, dynamic>> sortInboxItems(
   List<Map<String, dynamic>> items, {
   required Map<String, String> statuses,
   required Set<String> unlockedIds,
   required Set<String> unseenIds,
   required Set<String> updatedIds,
+  required Set<String> firstOfferIds,
 }) {
   String? idOf(Map<String, dynamic> r) =>
       r['id'] is String ? r['id'] as String : null;
@@ -117,11 +137,13 @@ List<Map<String, dynamic>> sortInboxItems(
       status: idA == null ? null : statuses[idA],
       unlocked: idA != null && unlockedIds.contains(idA),
       updated: idA != null && updatedIds.contains(idA),
+      firstOffer: idA != null && firstOfferIds.contains(idA),
     );
     final priorityB = inboxPriority(
       status: idB == null ? null : statuses[idB],
       unlocked: idB != null && unlockedIds.contains(idB),
       updated: idB != null && updatedIds.contains(idB),
+      firstOffer: idB != null && firstOfferIds.contains(idB),
     );
     if (priorityA != priorityB) return priorityA - priorityB;
 

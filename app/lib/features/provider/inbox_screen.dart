@@ -420,9 +420,10 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                         _ => true, // todas
                       };
                     }).toList();
-                    // Orden de la bandeja (pedido PO 2026-09-04, 2ª vuelta):
-                    // aceptadas · sin ofertar · actualizadas · ofertadas ·
-                    // rechazadas (`domain/inbox_order.dart`).
+                    // Orden de la bandeja (pedido PO 2026-09-04, 3ª vuelta):
+                    // falta desbloquear · nadie ha ofertado · sin ofertar ·
+                    // actualizadas · ofertadas · desbloqueadas · rechazadas
+                    // (`domain/inbox_order.dart`).
                     // Se ordena AQUÍ, en `build()`, y no dentro de
                     // `inbox_load.dart`: los estados de la oferta
                     // (`_offeredStatuses`) llegan DESPUÉS, en la oleada B
@@ -464,6 +465,25 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                                 r['id'] as String,
                                 _updatedAt[r['id']],
                               ))
+                            r['id'] as String,
+                      },
+                      // Las del chip «¡Haz la primera oferta!». Se calcula con
+                      // la MISMA llamada que pinta el chip unas líneas abajo,
+                      // no con un segundo chequeo: si alguna vez discreparan,
+                      // el proveedor vería una tarjeta invitándole a ser el
+                      // primero colocada donde van las que ya tienen ofertas.
+                      // Sin gate de `_todas` a propósito: esto no es una marca
+                      // de "algo nuevo para ti" —que en «Todas» es exploración
+                      // y no cuenta— sino un hecho de la solicitud, cierto en
+                      // las dos pestañas.
+                      firstOfferIds: {
+                        for (final r in filteredItems)
+                          if (showFirstOfferChip(
+                            offersCount: _offersCounts[r['id']],
+                            hasMyOffer:
+                                _offeredStatuses[r['id']] != null,
+                            isMarketplace: r['source'] != 'store',
+                          ))
                             r['id'] as String,
                       },
                     );

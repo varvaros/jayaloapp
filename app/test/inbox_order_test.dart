@@ -15,19 +15,18 @@ void main() {
   // Orden del PO (2026-09-04, 2a vuelta):
   // aceptadas · sin ofertar · actualizadas · ofertadas · rechazadas.
   group('inboxPriority', () {
-    test('aceptada y SIN desbloquear → 0 (la más urgente)', () {
+    test('te aceptaron y falta desbloquear → 0 (lo más urgente)', () {
       expect(inboxPriority(status: 'accepted', unlocked: false), 0);
     });
 
-    test('desbloqueada → 1', () {
-      expect(inboxPriority(status: 'unlocked', unlocked: true), 1);
+    test('nadie ha ofertado (el chip) → 1', () {
+      expect(
+        inboxPriority(status: null, unlocked: false, firstOffer: true),
+        1,
+      );
     });
 
-    test('completada nunca es 0: cae en el grupo desbloqueado (1)', () {
-      expect(inboxPriority(status: 'completed', unlocked: false), 1);
-    });
-
-    test('sin oferta (null) → 2: por delante de todo lo ya ofertado', () {
+    test('sin ofertar pero ya hay ofertas de otros → 2', () {
       expect(inboxPriority(status: null, unlocked: false), 2);
     });
 
@@ -42,34 +41,56 @@ void main() {
       expect(inboxPriority(status: 'pending', unlocked: false), 4);
     });
 
-    test('rechazada → 5 (la última)', () {
-      expect(inboxPriority(status: 'rejected', unlocked: false), 5);
+    test('desbloqueada → 5: trabajo TERMINADO, deja de encabezar', () {
+      // 3ª vuelta del PO. Se midió su bandeja real: tres ventas de agosto ya
+      // pagadas y ya en el chat tapaban lo único que nadie había ofertado.
+      expect(inboxPriority(status: 'unlocked', unlocked: true), 5);
     });
 
-    test('cancelada → 5 (la última, igual que rechazada)', () {
-      expect(inboxPriority(status: 'cancelled', unlocked: false), 5);
+    test('completada cae con las desbloqueadas (5), nunca en 0', () {
+      expect(inboxPriority(status: 'completed', unlocked: false), 5);
+    });
+
+    test('rechazada → 6 (la última)', () {
+      expect(inboxPriority(status: 'rejected', unlocked: false), 6);
+    });
+
+    test('cancelada → 6 (la última, igual que rechazada)', () {
+      expect(inboxPriority(status: 'cancelled', unlocked: false), 6);
     });
 
     test('unlocked=true gana siempre, sea cual sea el status', () {
-      expect(inboxPriority(status: 'pending', unlocked: true), 1);
-      expect(inboxPriority(status: null, unlocked: true), 1);
+      expect(inboxPriority(status: 'pending', unlocked: true), 5);
+      expect(inboxPriority(status: null, unlocked: true), 5);
     });
 
-    test('`updated` NO mueve nada fuera del grupo de las ya ofertadas', () {
-      // Por delante no hay nada que partir y por detrás no interesa: una
-      // rechazada editada sigue siendo una rechazada.
+    test('el chip NO puede sacar una fila de su grupo si ya ofertaste', () {
+      // `showFirstOfferChip` ya exige `hasMyOffer == false`, pero la escala no
+      // se apoya en eso: si alguna vez llegara un true de más, no debe colarse
+      // por delante una fila que en realidad ya tiene oferta tuya.
       expect(
-        inboxPriority(status: 'accepted', unlocked: false, updated: true),
+        inboxPriority(status: 'pending', unlocked: false, firstOffer: true),
+        4,
+      );
+      expect(
+        inboxPriority(status: 'accepted', unlocked: false, firstOffer: true),
         0,
       );
       expect(
+        inboxPriority(status: 'rejected', unlocked: false, firstOffer: true),
+        6,
+      );
+    });
+
+    test('`updated` solo parte el grupo de las ya ofertadas', () {
+      expect(
         inboxPriority(status: 'completed', unlocked: false, updated: true),
-        1,
+        5,
       );
       expect(inboxPriority(status: null, unlocked: false, updated: true), 2);
       expect(
         inboxPriority(status: 'rejected', unlocked: false, updated: true),
-        5,
+        6,
       );
     });
   });
@@ -86,6 +107,7 @@ void main() {
         unlockedIds: const {},
         unseenIds: const {},
         updatedIds: const {},
+        firstOfferIds: const {},
       );
       expect(sorted.first['id'], 'nueva-pendiente-desbloqueo');
       expect(sorted.last['id'], 'vieja-sin-oferta');
@@ -108,6 +130,7 @@ void main() {
           unlockedIds: const {},
           unseenIds: const {},
           updatedIds: const {},
+          firstOfferIds: const {},
         );
         expect(sorted.first['id'], 'pendiente-desbloqueo');
       },
@@ -125,6 +148,7 @@ void main() {
         unlockedIds: const {},
         unseenIds: const {},
         updatedIds: const {},
+        firstOfferIds: const {},
       );
       expect(sorted.first['id'], 'sin-ofertar');
       expect(sorted.last['id'], 'ya-ofertaste');
@@ -144,6 +168,7 @@ void main() {
         unlockedIds: const {},
         unseenIds: const {},
         updatedIds: const {'ofertada-cambiada'},
+        firstOfferIds: const {},
       );
       expect(sorted.first['id'], 'ofertada-cambiada');
     });
@@ -159,39 +184,73 @@ void main() {
         unlockedIds: const {},
         unseenIds: const {},
         updatedIds: const {'ofertada-cambiada'},
+        firstOfferIds: const {},
       );
       expect(sorted.first['id'], 'sin-ofertar');
     });
 
-    test('el orden completo de los cinco grupos, entrando al revés', () {
+    test('la bandeja del PO: una que NADIE ha ofertado le gana a tres '
+        'desbloqueadas, aunque sean más viejas', () {
+      // Reproduce la queja del 2026-09-04 medida contra prod: tres ventas de
+      // agosto ya pagadas encabezaban la lista y tapaban unos audífonos del
+      // 09-02 que nadie había ofertado.
+      final items = [
+        req('camisas-desbloqueada', createdAt: '2026-08-22T00:00:00Z'),
+        req('funda-desbloqueada', createdAt: '2026-08-20T00:00:00Z'),
+        req('llaveros-desbloqueada', createdAt: '2026-08-18T00:00:00Z'),
+        req('audifonos-sin-ofertas', createdAt: '2026-09-02T00:00:00Z'),
+      ];
+      final sorted = sortInboxItems(
+        items,
+        statuses: const {
+          'camisas-desbloqueada': 'unlocked',
+          'funda-desbloqueada': 'unlocked',
+          'llaveros-desbloqueada': 'unlocked',
+        },
+        unlockedIds: const {
+          'camisas-desbloqueada',
+          'funda-desbloqueada',
+          'llaveros-desbloqueada',
+        },
+        unseenIds: const {},
+        updatedIds: const {},
+        firstOfferIds: const {'audifonos-sin-ofertas'},
+      );
+      expect(sorted.first['id'], 'audifonos-sin-ofertas');
+    });
+
+    test('el orden completo de los siete grupos, entrando al revés', () {
       final entrada = [
-        req('5-rechazada'),
+        req('6-rechazada'),
+        req('5-desbloqueada'),
         req('4-ofertada'),
         req('3-ofertada-cambiada'),
-        req('2-sin-ofertar'),
-        req('1-desbloqueada'),
-        req('0-pendiente-desbloqueo'),
+        req('2-sin-ofertar-con-ofertas-de-otros'),
+        req('1-nadie-ha-ofertado'),
+        req('0-falta-desbloquear'),
       ];
       final sorted = sortInboxItems(
         entrada,
         statuses: const {
-          '5-rechazada': 'rejected',
+          '6-rechazada': 'rejected',
+          '5-desbloqueada': 'unlocked',
           '4-ofertada': 'pending',
           '3-ofertada-cambiada': 'pending',
-          '1-desbloqueada': 'unlocked',
-          '0-pendiente-desbloqueo': 'accepted',
+          '0-falta-desbloquear': 'accepted',
         },
-        unlockedIds: const {'1-desbloqueada'},
+        unlockedIds: const {'5-desbloqueada'},
         unseenIds: const {},
         updatedIds: const {'3-ofertada-cambiada'},
+        firstOfferIds: const {'1-nadie-ha-ofertado'},
       );
       expect(sorted.map((r) => r['id']).toList(), [
-        '0-pendiente-desbloqueo',
-        '1-desbloqueada',
-        '2-sin-ofertar',
+        '0-falta-desbloquear',
+        '1-nadie-ha-ofertado',
+        '2-sin-ofertar-con-ofertas-de-otros',
         '3-ofertada-cambiada',
         '4-ofertada',
-        '5-rechazada',
+        '5-desbloqueada',
+        '6-rechazada',
       ]);
     });
 
@@ -210,6 +269,7 @@ void main() {
         unlockedIds: const {},
         unseenIds: const {},
         updatedIds: const {},
+        firstOfferIds: const {},
       );
       expect(sorted.last['id'], 'rechazada');
       expect(sorted.first['id'], 'pendiente-desbloqueo');
@@ -227,6 +287,7 @@ void main() {
         unlockedIds: const {},
         unseenIds: const {'sin-abrir-mas-vieja'},
         updatedIds: const {},
+        firstOfferIds: const {},
       );
       expect(sorted.first['id'], 'sin-abrir-mas-vieja');
     });
@@ -243,6 +304,7 @@ void main() {
         unlockedIds: const {},
         unseenIds: const {},
         updatedIds: const {},
+        firstOfferIds: const {},
       );
       expect(sorted.map((r) => r['id']).toList(), ['a', 'b', 'c']);
     });
@@ -264,6 +326,7 @@ void main() {
         unlockedIds: const {},
         unseenIds: const {},
         updatedIds: const {},
+        firstOfferIds: const {},
       );
       expect(sorted.map((r) => r['id']).toList(), [
         'pendiente-desbloqueo',
@@ -280,6 +343,7 @@ void main() {
           unlockedIds: const {},
           unseenIds: const {},
           updatedIds: const {},
+          firstOfferIds: const {},
         ),
         isEmpty,
       );
