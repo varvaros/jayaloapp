@@ -26,16 +26,18 @@ class SlotSignal {
 
 /// Escalera de FOMO que ve el proveedor según finalistas seleccionados.
 SlotSignal providerSlotSignal(int acceptedCount, int offersCount) {
+  // Copy del PO (2026-09-04): «N de 3 seleccionados» no se entendía; el
+  // proveedor quiere saber si TODAVÍA puede ofertar. Espejo exacto de la web
+  // (`src/lib/finalistSlots.ts`): si cambia aquí, cambia allá.
   if (acceptedCount >= 3) {
-    return const SlotSignal(
-        SlotTone.red, '3 de 3 seleccionados — comparación completa');
+    return const SlotSignal(SlotTone.red, 'Esta solicitud ya está llena');
   }
   if (acceptedCount == 2) {
     return const SlotSignal(
-        SlotTone.orange, '2 de 3 seleccionados — ¡último lugar!');
+        SlotTone.orange, 'Aún puedes ofertar — ¡último lugar!');
   }
   if (acceptedCount == 1) {
-    return const SlotSignal(SlotTone.yellow, '1 de 3 seleccionado');
+    return const SlotSignal(SlotTone.yellow, 'Aún puedes ofertar');
   }
   if (offersCount == 0) {
     return const SlotSignal(SlotTone.green, '¡Haz la primera oferta!');
