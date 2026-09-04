@@ -178,7 +178,6 @@ class _TemplateRun {
 
   String get id => turn.id;
   int get version => turn.version;
-  String get scope => turn.scope;
 }
 
 class CreateRequestScreen extends StatefulWidget {
@@ -359,7 +358,13 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     takeBackStep(
       owner: this,
       step: () {
-        if (_messages.isEmpty || _busy) return false;
+        // Solo si esta pantalla es la ruta VISIBLE: una empujada encima (p. ej.
+        // un chat abierto desde una notificación push) debe conservar su
+        // propio atrás, no el de esta.
+        if (!(ModalRoute.of(context)?.isCurrent ?? true)) return false;
+        // Publicada no hay nada que deshacer: `_submitted` mantiene la vista
+        // de éxito y el gesto vuelve a salir como siempre.
+        if (_messages.isEmpty || _busy || _submitted) return false;
         _goBack();
         return true;
       },
@@ -432,7 +437,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// constructor de plantillas lee ese formato. La corrección tras la ficha
   /// (`_correcting`) y todo lo que no responde a un `question` van sueltos.
   Future<void> _send(String text, {bool force = false, bool raw = false}) async {
-    if (text.trim().isEmpty || (_busy && !force)) return;
+    // Paridad web: se recorta ANTES de guardar, no solo para el chequeo de
+    // vacío — sin esto un «  Panasonic  \n» llegaba tal cual al transcript.
+    text = text.trim();
+    if (text.isEmpty || (_busy && !force)) return;
     // Modo plantilla (§8.3): las respuestas a una pregunta de plantilla se
     // resuelven LOCAL, y una corrección tras la ficha es el handoff al
     // clarificador. `force`/`raw` son caminos internos (auto-«ok», foto,
@@ -504,12 +512,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         return true;
       }
       _messages.add(AiMessage('assistant', jsonEncode(turnToJson(turn))));
-      // `sendTurn` tarda 2-8 s en datos móviles y el usuario puede cerrar el
-      // compositor mientras tanto. Sin este guard, `_handleTurn` y los dos
-      // `catch` de abajo llamaban `setState` sobre un State ya desmontado
-      // ("setState() called after dispose()"): el turno se perdía y el error
-      // ensuciaba el tracking. El `finally` ya lo hacía bien; estas ramas no.
-      if (!mounted) return true;
       // La correccion se da por consumida SOLO cuando el turno llego. Si la
       // IA falla, `_correcting` sigue en true y el usuario vuelve a ver el
       // campo de corregir con su formulario intacto detras, en vez de
@@ -744,10 +746,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   /// Título de la ficha cuando la plantilla no conoce el `tipo`: el nombre
   /// de la primera categoría del routing si la app lo tiene (catálogo local
-  /// `kCategories`), si no el `scope` tal cual.
+  /// `kCategories`), si no «Solicitud» (paridad web: nunca se filtra el
+  /// `scope` crudo, tipo `categoria:…/producto`, a un título visible).
   String _scopeLabelFor(AiTemplate t) {
     final first = t.categories.isEmpty ? null : t.categories.first;
-    return categoryNameById(first) ?? t.scope;
+    return categoryNameById(first) ?? 'Solicitud';
   }
 
   /// Respuesta a una pregunta de plantilla: par assistant+user al historial,
@@ -1265,6 +1268,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       //
       // Publicada: nada que perder — que ninguna salida pregunte.
       releaseUnsavedGuard(this);
+      // Publicada = nada que deshacer: si se deja el gancho puesto, cada
+      // gesto ATRÁS siguiente vuelve a llamar `_goBack()` sobre la
+      // conversación YA publicada (en modo plantilla, hasta marca el run
+      // `abandoned` con `outcome='published'` puesto).
+      releaseBackStep(this);
       setState(() => _submitted = true);
       // Fase 0 del registro de patrones (spec §7): DESPUÉS del «Publicada»,
       // fire-and-forget. Nunca bloquea ni enseña error.

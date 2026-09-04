@@ -128,7 +128,7 @@ desde la web; el constructor lo exige (`request_template_qa_pairs` lee `\nRespue
   question, options:[...]}]}, routing:{categories, rubros}, known_attributes:{k:v}, aiTicket}`.
   Cualquier forma inesperada ⇒ `null` (nunca lanza) ⇒ se trata como turno de IA fallido: toast
   «Algo falló» + el usuario reintenta, que es el fallback natural (el servidor volverá a mandar la
-  plantilla; si vuelve a fallar el parseo, el flag se deja de mandar en esa conversación).
+  plantilla; al primer fallo de parseo, el flag se deja de mandar en esa conversación).
 
 ### 8.2 Lógica pura (`domain/template_run.dart`, calcada de `templateRun.ts`)
 
@@ -151,7 +151,7 @@ promptVersion:'<scope>@v<version>'}`, `wholesale: false`.
 - Cada respuesta: `answerMsgs` al historial, `answers[key] = texto`, `otherCount++` si `isOther`;
   siguiente pendiente o, si no quedan, `buildTemplateReady` ⇒ `routing` + `ready` locales al
   historial (mismos JSON que `turnToJson`) y `_handleTurn(ready)` sin POST. `scopeLabel` = nombre
-  de la categoría del routing si la app lo tiene cargado, si no el `scope` tal cual.
+  de la categoría del routing si la app lo tiene cargado, si no «Solicitud».
 - «No es esto» (en la ficha) y cualquier corrección (`_correcting`) en modo plantilla ⇒
   `_fallBackToAi(handoff, fallbackKey)`: marca `fellBack`, `UPDATE request_template_runs SET
   outcome='fallback', fallback_key, answered_count, other_count, ended_at WHERE id=runId`

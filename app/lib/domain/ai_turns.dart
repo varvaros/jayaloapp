@@ -139,8 +139,9 @@ class AiTemplate extends AiTurn {
 
 /// `parseAiTurn` la lanza cuando el servidor manda `type: 'template'` con una
 /// forma inesperada. Es un `FormatException` (la pantalla lo trata como un
-/// turno de IA fallido: toast + reintento) pero distinguible: a la segunda
-/// vez la pantalla deja de pedir plantillas en esa conversación (§8.1).
+/// turno de IA fallido: toast + reintento) pero distinguible: al primer
+/// fallo de parseo la pantalla deja de pedir plantillas en esa conversación
+/// (§8.1).
 class TemplateFormatException extends FormatException {
   const TemplateFormatException() : super('Turno template malformado');
 }
