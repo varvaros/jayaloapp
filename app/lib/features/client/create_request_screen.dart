@@ -274,6 +274,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// `_input`; «Atrás» hasta el inicio lo devuelve al campo (§5.2).
   String _composerText = '';
 
+  /// «Prefiero escribirla yo» (pedido PO 2026-09-05, smoke en el teléfono):
+  /// el enlace YA NO manda nada — solo convierte el compositor en un cuadro
+  /// de texto largo («Buscar proveedores» es quien manda). `false` vuelve al
+  /// compositor de siempre («Volver al asistente» o un turno que sí llegó).
+  bool _manualMode = false;
+
   /// Run de plantilla en curso (null = flujo de IA de siempre).
   _TemplateRun? _templateRun;
 
@@ -606,6 +612,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       // quedarse en una pantalla sin nada que tocar.
       setState(() => _correcting = false);
       await _handleTurn(turn);
+      // Un turno que SÍ llegó deja atrás el cuadro manual (spec 2026-09-05):
+      // un «Atrás» posterior al compositor debe mostrar el de siempre, no el
+      // que el usuario abandonó al mandar.
+      if (mounted) setState(() => _manualMode = false);
       return true;
     } on AiHttpException catch (e) {
       if (!mounted) return false;
@@ -1468,8 +1478,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   }
 
   /// Toast de un turno fallido. Si era el PRIMER turno de la entrevista, ofrece
-  /// la salida manual (spec 2026-09-05 §5): el texto ya volvió al campo, así
-  /// que la acción lo reenvía tal cual con `manual: true`.
+  /// la salida manual (spec 2026-09-05 §5): el texto ya volvió al campo, y la
+  /// acción SOLO convierte el compositor en el cuadro manual (no reenvía) —
+  /// mismo enlace que «Prefiero escribirla yo», con el texto ya escrito.
   void _toastFallo(String m, {required bool manual}) {
     if (!mounted) return;
     final primero = _messages.length == 1 && !manual;
@@ -1477,7 +1488,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       context,
       m,
       actionLabel: primero ? 'Prefiero escribirla yo' : null,
-      onAction: primero ? () => _startSend(_input.text, manual: true) : null,
+      onAction: primero
+          ? () {
+              if (mounted) setState(() => _manualMode = true);
+            }
+          : null,
     );
   }
 
@@ -1625,13 +1640,28 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          // La barra de búsqueda, con BORDE VIOLETA (pedido PO).
+          // La barra de búsqueda, con BORDE VIOLETA (pedido PO). En modo
+          // manual (spec 2026-09-05: «Prefiero escribirla yo» ya NO manda,
+          // solo convierte esto en un cuadro largo) pasa a varias líneas y
+          // pierde el `suffixIcon` «Buscar»: quien manda es el botón «Buscar
+          // proveedores» de abajo. El `prefixIcon` de la foto tampoco cabe
+          // bien centrado en un campo alto, así que en manual baja a una
+          // fila propia debajo del campo (mismo `_showPickSheet`).
           TextField(
             controller: _input,
             enabled: !_busy,
-            onSubmitted: _startSend,
+            onSubmitted: _manualMode ? null : _startSend,
+            minLines: _manualMode ? 4 : null,
+            maxLines: _manualMode ? 8 : 1,
+            keyboardType:
+                _manualMode ? TextInputType.multiline : TextInputType.text,
+            textInputAction:
+                _manualMode ? TextInputAction.newline : TextInputAction.done,
             decoration: InputDecoration(
-              hintText: 'Describe lo que quieres encontrar.',
+              hintText: _manualMode
+                  ? 'Describe lo que necesitas con todo el detalle que '
+                      'quieras: marca, modelo, medidas, dónde, cuándo…'
+                  : 'Describe lo que quieres encontrar.',
               filled: true,
               fillColor: cs.surface,
               enabledBorder: OutlineInputBorder(
@@ -1642,42 +1672,59 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 borderRadius: BorderRadius.circular(28),
                 borderSide: BorderSide(color: cs.primary, width: 2),
               ),
-              prefixIcon: OnboardingGuide(
-                guideKey: 'client.request_photo.v1',
-                steps: onboardingCopy['client.request_photo.v1']!,
-                order: 2,
-                child: IconButton(
-                  tooltip: 'Tomar o subir foto',
-                  icon: const Icon(Icons.photo_camera_outlined),
-                  onPressed: _busy ? null : _showPickSheet,
-                ),
-              ),
-              // Botón con TEXTO "Buscar" en vez del avioncito (pedido PO
-              // 2026-08-11): dice lo que hace.
-              suffixIcon: OnboardingGuide(
-                guideKey: 'client.create_request.v2',
-                steps: onboardingCopy['client.create_request.v2']!,
-                order: 3,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(0, 40),
-                      padding: const EdgeInsets.symmetric(horizontal: 18),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(22)),
-                      textStyle: const TextStyle(
-                          fontSize: 14.5, fontWeight: FontWeight.w600),
+              prefixIcon: _manualMode
+                  ? null
+                  : OnboardingGuide(
+                      guideKey: 'client.request_photo.v1',
+                      steps: onboardingCopy['client.request_photo.v1']!,
+                      order: 2,
+                      child: IconButton(
+                        tooltip: 'Tomar o subir foto',
+                        icon: const Icon(Icons.photo_camera_outlined),
+                        onPressed: _busy ? null : _showPickSheet,
+                      ),
                     ),
-                    onPressed: _busy ? null : () => _startSend(_input.text),
-                    child: const Text('Buscar'),
-                  ),
-                ),
-              ),
+              // Botón con TEXTO "Buscar" en vez del avioncito (pedido PO
+              // 2026-08-11): dice lo que hace. En manual se quita: «Buscar
+              // proveedores» de abajo es quien manda.
+              suffixIcon: _manualMode
+                  ? null
+                  : OnboardingGuide(
+                      guideKey: 'client.create_request.v2',
+                      steps: onboardingCopy['client.create_request.v2']!,
+                      order: 3,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(0, 40),
+                            padding: const EdgeInsets.symmetric(horizontal: 18),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(22)),
+                            textStyle: const TextStyle(
+                                fontSize: 14.5, fontWeight: FontWeight.w600),
+                          ),
+                          onPressed:
+                              _busy ? null : () => _startSend(_input.text),
+                          child: const Text('Buscar'),
+                        ),
+                      ),
+                    ),
               suffixIconConstraints:
                   const BoxConstraints(minWidth: 0, minHeight: 0),
             ),
           ),
+          if (_manualMode) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _busy ? null : _showPickSheet,
+                icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                label: const Text('Añadir foto'),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           // Tipo de solicitud DEBAJO de la barra (pedido PO). Sin default.
           // Flujo (PO 2026-07-22): inicial Producto|Servicio; al elegir
@@ -1710,17 +1757,45 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               ],
             ),
           ),
+          if (_manualMode) ...[
+            const SizedBox(height: 12),
+            // Quien manda de verdad en modo manual (pedido PO 2026-09-05,
+            // smoke en el teléfono): el enlace de abajo YA NO envía nada.
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 48),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24)),
+                  textStyle: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+                onPressed: _busy
+                    ? null
+                    : () => _startSend(_input.text, manual: true),
+                child: const Text('Buscar proveedores'),
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
           // Salida sin entrevista (spec 2026-09-05-solicitud-manual): discreta a
-          // propósito — la IA sigue siendo el camino principal.
+          // propósito — la IA sigue siendo el camino principal. Ya NO manda
+          // nada: solo alterna entre el compositor de siempre y el cuadro de
+          // descripción larga («Volver al asistente» deshace).
           Center(
             child: TextButton(
-              onPressed: _busy ? null : () => _startSend(_input.text, manual: true),
+              onPressed: _busy
+                  ? null
+                  : _manualMode
+                      ? () => setState(() => _manualMode = false)
+                      : () => setState(() => _manualMode = true),
               style: TextButton.styleFrom(
                 foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
                 textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
               ),
-              child: const Text('Prefiero escribirla yo'),
+              child: Text(
+                  _manualMode ? 'Volver al asistente' : 'Prefiero escribirla yo'),
             ),
           ),
           if (_photos.isNotEmpty) ...[
