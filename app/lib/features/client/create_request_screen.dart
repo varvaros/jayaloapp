@@ -616,8 +616,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           );
           if (!mounted) return true;
           // Ids de la respuesta → a las fotos que viajaron (por ranura).
-          if (f1 != null) f1.cacheId = _ai.lastImageIds.first ?? (forceBase64 ? null : f1.cacheId);
-          if (f2 != null) f2.cacheId = _ai.lastImageIds.second ?? (forceBase64 ? null : f2.cacheId);
+          // Cada foto toma EXACTAMENTE lo que dijo el servidor: sin id → se borra
+          // el que tuviera (un servidor que ignora el id no puede dejarlo pegado,
+          // o el modelo no volvería a ver la foto — spec §3/§7).
+          if (f1 != null) f1.cacheId = _ai.lastImageIds.first;
+          if (f2 != null) f2.cacheId = _ai.lastImageIds.second;
           if (turn is AiTemplate) {
             // El turno `template` NUNCA va al historial (paridad web): la
             // conversación sigue siendo [primer mensaje] + los pares locales.
