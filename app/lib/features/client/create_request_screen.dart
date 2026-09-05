@@ -480,6 +480,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     if (!ok && mounted) {
       setState(() {
         _messages.removeLast();
+        // Si era el PRIMER turno, `_messages` queda vacío y `build` vuelve al
+        // compositor: sin esto el usuario aterrizaba en un campo VACÍO (lo
+        // escrito se fue en el `_input.clear()` de arriba) y «salía de la
+        // solicitud» a reescribirla. Mismo gesto que `_goBack` (spec §5.2):
+        // el texto vuelve al campo; las fotos y el tipo nunca se tocaron.
+        if (_messages.isEmpty) _input.text = _composerText;
       });
     }
   }
