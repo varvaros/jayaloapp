@@ -30,6 +30,8 @@ import '../../domain/request_seed.dart';
 import '../../domain/request_transcript.dart';
 import '../../domain/template_run.dart';
 import '../../domain/wholesale.dart';
+import '../../domain/ai_wait_steps.dart';
+import 'widgets/ai_wait_thread.dart';
 import '../shell/floating_nav_bar.dart';
 import '../verification/verify_banner.dart';
 import 'request_success_view.dart';
@@ -273,6 +275,56 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// reintento cae al clarificador de siempre en vez de repetir el fallo.
   bool _templateBroken = false;
 
+  // ── Reloj de la espera de la IA (spec 2026-09-05 hilo de pasos) ──────────
+  /// Qué turno es; se decide en `_ask` ANTES de mandar (regla §5.2 de la spec).
+  AiWaitContext _waitContext = AiWaitContext.primerEnvio;
+  DateTime? _waitStart;
+  Timer? _waitTicker;
+  int _waitElapsedMs = 0;
+
+  /// El reporte de los 30 s se manda UNA vez por turno.
+  bool _waitReported = false;
+
+  /// Turnos mandados en esta conversación (va en el reporte).
+  int _turnos = 0;
+
+  void _startWaitClock() {
+    _waitTicker?.cancel();
+    _waitStart = DateTime.now();
+    _waitElapsedMs = 0;
+    _waitReported = false;
+    _waitTicker = Timer.periodic(const Duration(milliseconds: kAiWaitTickMs), (_) {
+      if (!mounted) return;
+      final ms = DateTime.now().difference(_waitStart!).inMilliseconds;
+      final st = aiWaitState(
+        contexto: _waitContext,
+        primerMensaje: _messages.isEmpty ? '' : _messages.first.content,
+        elapsedMs: ms,
+        yaReportado: _waitReported,
+      );
+      if (st.reportar) {
+        // «Reportando la tardanza» es verdad: cae en `error_events` como
+        // `AiTurnSlow` por el reporter de siempre (best-effort, nunca bloquea).
+        _waitReported = true;
+        unawaited(reportError(
+          AiTurnSlow(
+            contexto: _waitContext,
+            turno: _turnos,
+            conFoto: _photos.isNotEmpty,
+            elapsedMs: ms,
+          ),
+          null,
+        ));
+      }
+      setState(() => _waitElapsedMs = ms);
+    });
+  }
+
+  void _stopWaitClock() {
+    _waitTicker?.cancel();
+    _waitTicker = null;
+  }
+
   // Detalles de mayoreo (obligatorios cuando la solicitud es al por mayor —
   // paridad web requests/new.tsx). Slugs de `domain/wholesale.dart`.
   String _wsQuantity = '';
@@ -385,6 +437,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     // cada apertura dejaba colgando un TextEditingController con sus listeners
     // y un ScrollController con su ScrollPosition viva. En una sesión larga se
     // degrada, y en la gama baja que es el parque real en RD termina en OOM.
+    _waitTicker?.cancel();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -495,6 +548,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// ya con su toast. Quien añadió un mensaje antes de llamar decide qué
   /// hacer con él (`_send` lo quita; `_restartWithKind` restaura el anterior).
   Future<bool> _ask({bool useTemplates = false}) async {
+    // Contexto del hilo de espera, en este orden (spec §5.2): el auto-«ok»
+    // del ruteo (aún `_current` es routing) → armando; un solo mensaje en el
+    // historial (primer envío, o el reinicio de «Sí, cambiar») → primer
+    // envío; todo lo demás → respondiendo.
+    _waitContext = _current is AiRouting
+        ? AiWaitContext.armando
+        : _messages.length == 1
+            ? AiWaitContext.primerEnvio
+            : AiWaitContext.respondiendo;
+    _turnos++;
+    _startWaitClock();
     setState(() => _busy = true);
     try {
       // El JWT de la sesión exime el Turnstile del primer turno (ADR-0032);
@@ -546,6 +610,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _toast('Algo falló. Intenta de nuevo.');
       return false;
     } finally {
+      _stopWaitClock();
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -1749,24 +1814,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           _finalForm(cs)
         else ...[
           if (_busy)
-            Column(
-              children: [
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const JayaloSpinner(size: 14),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Pensando…',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            AiWaitThread(
+              state: aiWaitState(
+                contexto: _waitContext,
+                primerMensaje: _messages.isEmpty ? '' : _messages.first.content,
+                elapsedMs: _waitElapsedMs,
+                // El reporte lo decide el reloj (`_startWaitClock`), no el
+                // build: aquí solo se pinta.
+                yaReportado: true,
+              ),
+              reduced: JayaloMotion.reduced(context),
             )
           else
             _questionArea(cs),
