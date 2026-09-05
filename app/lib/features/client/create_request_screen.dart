@@ -219,6 +219,13 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   AiTurn? _current;
   int _pop = 0; // key de la reacción de la mascota (cambia por turno)
   AiReady? _ready;
+
+  /// Título de una ficha MANUAL (spec 2026-09-05 §3.4). Solo se usa cuando el
+  /// `ready` viene con `meta.model == 'manual'`: ahí el servidor no redacta
+  /// nada — recorta la primera línea del texto, y con el relleno de solo-foto
+  /// lo deja VACÍO a propósito, así que el cliente TIENE que escribirlo. En la
+  /// entrevista normal la ficha sigue pintando `r.title` en texto plano.
+  final _tituloCtrl = TextEditingController();
   bool _showOther = false; // composer visible para "Otra respuesta…"
 
   // ── Formulario final (paridad requests/new.tsx) ────────────────────────
@@ -446,6 +453,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     // degrada, y en la gama baja que es el parque real en RD termina en OOM.
     _waitTicker?.cancel();
     _input.dispose();
+    _tituloCtrl.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -1131,6 +1139,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         }
       case AiReady rd:
         setState(() {
+          // Ficha MANUAL: el título es editable y obligatorio (§3.4). Se
+          // siembra con lo que propuso el servidor — cadena vacía cuando el
+          // envío fue solo foto, que es justo el caso en el que el cliente
+          // tiene que escribirlo.
+          if (rd.meta?.model == 'manual') _tituloCtrl.text = rd.title;
           // Solicitud manual (spec 2026-09-05): el `ready` trae la
           // clasificación silenciosa; en la entrevista normal viene vacía y
           // las categorías ya las fijó el turno `routing`.
@@ -1217,6 +1230,19 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   Future<void> _submit() async {
     final r = _ready!;
     final isService = _kind == 'servicio';
+    // Solicitud MANUAL (spec 2026-09-05 §3.4): el título lo pone el cliente en
+    // el campo de la ficha (puede llegar vacío del servidor) y la descripción
+    // es el texto COMPLETO que escribió — no `bullets.join(' • ')`, que en
+    // manual sería la cadena vacía.
+    final isManual = r.meta?.model == 'manual';
+    final title = isManual ? _tituloCtrl.text.trim() : r.title;
+    if (isManual && title.isEmpty) {
+      _toast('Ponle un título a tu solicitud.');
+      return;
+    }
+    final description = isManual
+        ? (_messages.isEmpty ? '' : _messages.first.content)
+        : r.bullets.join(' • ');
     // Combina el "al por mayor" que dijo la IA con el toggle manual — mismo
     // criterio que ya usa esta pantalla para el chip/persistencia (L432/1108).
     final effectiveWholesale = r.wholesale || _wholesale;
@@ -1293,8 +1319,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         ? _wsNote.trim()
         : '';
     final contactCheckValues = <String>[
-      r.title,
-      r.bullets.join(' • '),
+      title,
+      description,
       wholesaleNoteValue,
     ];
     if (contactCheckValues.any(containsContactInfo)) {
@@ -1312,8 +1338,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         _photos.map((p) => uploadRequestImage(p.file.path)),
       );
       final requestId = await submitRequest(
-        title: r.title,
+        title: title,
         bullets: r.bullets,
+        description: description,
         kind: _kind,
         wholesale: r.wholesale || _wholesale,
         categories: _categories,
@@ -1814,7 +1841,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     // silencio y el botón parecía muerto.
     if (text.trim().isEmpty) {
       if (_kind == 'producto' && _photos.isNotEmpty) {
-        _send('Esto es lo que busco.', manual: manual);
+        // Constante compartida a propósito: el `manualTitle.ts` del servidor
+        // reconoce esta cadena LETRA A LETRA para devolver el título vacío en
+        // una solicitud manual (`APP_PHOTO_FILLER`). Cambiar el copy aquí sin
+        // cambiarlo allí publicaría «Esto es lo que busco.» como título, y
+        // ningún test lo cazaría.
+        _send(kAiWaitFotoSola, manual: manual);
       } else if (_kind == 'producto') {
         _toast('Escribe qué buscas o sube una foto.');
       } else {
@@ -2498,14 +2530,34 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              Text(
-                r.title,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: jayaloHead(context),
+              // Ficha MANUAL: el título es del cliente y es obligatorio (§3.4).
+              // La ficha de la entrevista normal no cambia: sigue en texto plano.
+              if (r.meta?.model == 'manual')
+                TextField(
+                  controller: _tituloCtrl,
+                  maxLength: 120,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: jayaloHead(context),
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Título de la solicitud',
+                    hintText: '¿Qué necesitas?',
+                    counterText: '',
+                    isDense: true,
+                  ),
+                )
+              else
+                Text(
+                  r.title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: jayaloHead(context),
+                  ),
                 ),
-              ),
               const SizedBox(height: 8),
               for (final b in r.bullets) Text('• $b'),
               if (r.wholesale || _wholesale)

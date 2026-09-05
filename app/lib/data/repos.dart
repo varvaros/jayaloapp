@@ -555,6 +555,12 @@ String newRequestClientId() {
 Future<String?> submitRequest({
   required String title,
   required List<String> bullets,
+  // Descripción de la solicitud. Por defecto los bullets unidos con ' • ',
+  // que es lo que produce la entrevista de la IA. La solicitud MANUAL (spec
+  // 2026-09-05 §3.4) la manda EXPLÍCITA: ahí `bullets` es `[]` y el texto que
+  // escribió el cliente es lo único que hay que publicar — sin este parámetro
+  // la descripción salía VACÍA y el proveedor solo veía el título recortado.
+  String? description,
   required String kind, // 'producto' | 'servicio'
   required bool wholesale,
   required List<String> categories,
@@ -631,7 +637,7 @@ Future<String?> submitRequest({
       'client_request_id': clientRequestId,
       'kind': kind,
       'title': title,
-      'description': bullets.join(' • '),
+      'description': description ?? bullets.join(' • '),
       'bullets': bullets,
       // image_url = primaria (paridad web requests/new.tsx L570); image_urls = todas.
       'image_url': imageUrls.isEmpty ? '' : imageUrls.first,
