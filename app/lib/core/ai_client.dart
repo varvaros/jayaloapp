@@ -58,6 +58,7 @@ class AiClient {
     String? imageDataUrl,
     String? imageDataUrl2,
     bool useTemplates = false,
+    bool manual = false,
   }) async {
     final res = await _http
         .post(
@@ -83,6 +84,9 @@ class AiClient {
             // Modo plantilla (spec §8.1): solo en el primer mensaje. Un
             // servidor viejo o con el interruptor apagado lo ignora.
             if (useTemplates && messages.length == 1) 'useTemplates': true,
+            // Solicitud MANUAL (spec 2026-09-05): salta la entrevista. Solo
+            // tiene sentido en el primer mensaje; el servidor lo ignora en 2+.
+            if (manual && messages.length == 1) 'manual': true,
           }),
         )
         .timeout(_timeout);

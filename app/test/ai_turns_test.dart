@@ -105,4 +105,32 @@ void main() {
     }) as AiReady;
     expect(invalido.condition, isNull);
   });
+
+  group('ready manual (spec 2026-09-05): categorías y rubros en el ready', () {
+    test('parsea categories/rubros y meta manual; sin ellos quedan vacíos', () {
+      final t = parseAiTurn({
+        'type': 'ready',
+        'title': 'nevera samsung',
+        'bullets': <String>[],
+        'categories': ['hogar'],
+        'rubros': ['11111111-1111-1111-1111-111111111111'],
+        'meta': {'model': 'manual', 'promptVersion': '2026-09-03.1'},
+      }) as AiReady;
+      expect(t.categories, ['hogar']);
+      expect(t.rubros, ['11111111-1111-1111-1111-111111111111']);
+      expect(t.meta?.model, 'manual');
+      final normal = parseAiTurn({'type': 'ready', 'title': 'x', 'bullets': <String>[]}) as AiReady;
+      expect(normal.categories, isEmpty);
+      expect(normal.rubros, isEmpty);
+    });
+    test('turnToJson conserva categories/rubros solo cuando hay', () {
+      const conRubros = AiReady(
+          title: 'x', bullets: [], wholesale: false, categories: ['hogar'], rubros: ['r1']);
+      expect(turnToJson(conRubros)['categories'], ['hogar']);
+      expect(turnToJson(conRubros)['rubros'], ['r1']);
+      const sin = AiReady(title: 'x', bullets: [], wholesale: false);
+      expect(turnToJson(sin).containsKey('categories'), isFalse);
+      expect(turnToJson(sin).containsKey('rubros'), isFalse);
+    });
+  });
 }

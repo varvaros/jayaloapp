@@ -204,4 +204,20 @@ void main() {
         c.sendTurn(messages: [const AiMessage('user', 'hola')], useTemplates: true),
         throwsA(isA<TemplateFormatException>()));
   });
+
+  test('manual viaja SOLO en el primer turno y solo si el caller lo pide', () async {
+    final bodies = <Map<String, dynamic>>[];
+    final client = AiClient(inner: MockClient((req) async {
+      bodies.add(jsonDecode(req.body) as Map<String, dynamic>);
+      return http.Response('{"type":"ready","title":"x","bullets":[]}', 200);
+    }));
+    await client.sendTurn(messages: const [AiMessage('user', 'silla')], manual: true);
+    await client.sendTurn(
+        messages: const [AiMessage('user', 'silla'), AiMessage('assistant', '{}')],
+        manual: true);
+    await client.sendTurn(messages: const [AiMessage('user', 'silla')]);
+    expect(bodies[0]['manual'], isTrue);
+    expect(bodies[1].containsKey('manual'), isFalse);
+    expect(bodies[2].containsKey('manual'), isFalse);
+  });
 }

@@ -75,7 +75,9 @@ class AiReady extends AiTurn {
       required this.wholesale,
       this.condition,
       this.attributes = const {},
-      this.meta});
+      this.meta,
+      this.categories = const [],
+      this.rubros = const []});
   final String title;
   final List<String> bullets;
   final bool wholesale;
@@ -93,6 +95,12 @@ class AiReady extends AiTurn {
   /// Modelo y versión del prompt que produjeron la ficha; null si el
   /// servidor no los mandó. Va a `model`/`prompt_version` de la transcripción.
   final ({String model, String promptVersion})? meta;
+
+  /// Solo en el `ready` de una solicitud MANUAL (spec 2026-09-05): la
+  /// clasificación silenciosa del servidor. Un `ready` de la entrevista normal
+  /// los trae vacíos (las categorías vienen del turno `routing`).
+  final List<String> categories;
+  final List<String> rubros;
 }
 
 class AiKindSwitch extends AiTurn {
@@ -298,7 +306,9 @@ AiTurn parseAiTurn(Map<String, dynamic> json) => switch (json['type']) {
             _ => null,
           },
           attributes: sanitizeAttributes(json['attributes']),
-          meta: _metaOf(json['meta'])),
+          meta: _metaOf(json['meta']),
+          categories: _strs(json['categories']),
+          rubros: _strs(json['rubros'])),
       'kind_switch' => AiKindSwitch(
           message: json['message'] as String? ?? '',
           suggestedKind: json['suggested_kind'] as String? ?? 'servicio',
@@ -341,6 +351,8 @@ Map<String, dynamic> turnToJson(AiTurn t) => switch (t) {
           if (r.attributes.isNotEmpty) 'attributes': r.attributes,
           if (r.meta case final m?)
             'meta': {'model': m.model, 'promptVersion': m.promptVersion},
+          if (r.categories.isNotEmpty) 'categories': r.categories,
+          if (r.rubros.isNotEmpty) 'rubros': r.rubros,
         },
       AiKindSwitch k => {
           'type': 'kind_switch',
