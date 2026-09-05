@@ -10,6 +10,8 @@
 /// tarde a los 42 s se rinde — decirlo a los 12 y a los 30 es sincero.
 library;
 
+import 'ai_turns.dart' show AiMessage;
+
 /// Qué turno es. Se decide al MANDAR (ver `_ask` en la pantalla).
 enum AiWaitContext { primerEnvio, respondiendo, armando }
 
@@ -56,6 +58,32 @@ const kAiWaitAviso1Texto = 'Veré qué pasa.';
 const kAiWaitAviso2Titulo = 'Ya esto es demasiado.';
 const kAiWaitAviso2Texto = 'Reportando la tardanza.';
 
+/// Pares [paso 1, paso 2] del contexto «respondiendo». Ese contexto se pinta
+/// en CADA respuesta del cliente (4-5 veces por conversación), así que un par
+/// fijo se repetía en todas las ventanas (PO, 2026-09-05: «podemos variarlo»).
+/// Se rota por número de respuesta, no al azar: determinista y con la misma
+/// batería en TS (`AI_WAIT_RESPONDIENDO`). Los TEXTOS son del PO, literales —
+/// no reescribir.
+const kAiWaitRespondiendo = <List<String>>[
+  ['Anotando eso en mi libreta de detective', 'Buscando qué más preguntarte sin caer pesado'],
+  ['Pista guardada, gracias', 'Pensando una pregunta corta, lo prometo'],
+  ['Ajá, esto encaja', 'Revisando qué detalle me falta'],
+  ['Apuntado con lápiz y todo', 'Afinando la siguiente pregunta'],
+  ['Cada vez más cerca del caso', 'Viendo si ya me sé la historia completa'],
+];
+
+/// Número del mensaje del cliente que sale en este turno: 1 = primer envío,
+/// 2 = primera respuesta… Cuenta SOLO los mensajes `user` del historial que
+/// se manda (el asistente intercala uno por pregunta). Espejo de
+/// `aiWaitTurno` en TS. Con un historial vacío devuelve 1.
+int aiWaitTurno(Iterable<AiMessage> messages) {
+  var n = 0;
+  for (final m in messages) {
+    if (m.role == 'user') n++;
+  }
+  return n < 1 ? 1 : n;
+}
+
 const _kRecorte = 30;
 
 /// Lo que escribió el cliente, recortado a 30 caracteres sin partir palabra.
@@ -68,7 +96,7 @@ String aiWaitRecorte(String s) {
   return '${corte.trimRight()}…';
 }
 
-List<String> _textos(AiWaitContext c, String primerMensaje) {
+List<String> _textos(AiWaitContext c, String primerMensaje, int turno) {
   switch (c) {
     case AiWaitContext.primerEnvio:
       final soloFoto = primerMensaje.trim() == kAiWaitFotoSola;
@@ -80,10 +108,11 @@ List<String> _textos(AiWaitContext c, String primerMensaje) {
         'Ya casi…',
       ];
     case AiWaitContext.respondiendo:
-      return [
-        'Anotando eso en mi libreta de detective',
-        'Buscando qué más preguntarte sin caer pesado',
-      ];
+      // La primera respuesta es el turno 2 → par 0; a partir del 6º par vuelve
+      // a empezar. El `< 0 ? 0` cubre un turno ≤ 1 que llegue con este contexto.
+      final k = turno - 2;
+      final par = kAiWaitRespondiendo[(k < 0 ? 0 : k) % kAiWaitRespondiendo.length];
+      return [par[0], par[1]];
     case AiWaitContext.armando:
       return [
         'Pasando tu solicitud en limpio',
@@ -96,10 +125,12 @@ List<String> _textos(AiWaitContext c, String primerMensaje) {
 AiWaitState aiWaitState({
   required AiWaitContext contexto,
   required String primerMensaje,
+  /// Ver `aiWaitTurno`. Solo cambia los textos de «respondiendo».
+  required int turno,
   required int elapsedMs,
   required bool yaReportado,
 }) {
-  final textos = _textos(contexto, primerMensaje);
+  final textos = _textos(contexto, primerMensaje, turno);
   final n = textos.length;
   final pasos = <AiWaitStep>[];
   for (var k = 0; k < n; k++) {

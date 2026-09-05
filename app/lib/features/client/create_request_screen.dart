@@ -291,6 +291,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   // ── Reloj de la espera de la IA (spec 2026-09-05 hilo de pasos) ──────────
   /// Qué turno es; se decide en `_ask` ANTES de mandar (regla §5.2 de la spec).
   AiWaitContext _waitContext = AiWaitContext.primerEnvio;
+
+  /// Número del mensaje del cliente en la conversación (1 = primer envío):
+  /// elige el par de textos de «respondiendo» (rotan, PO 2026-09-05). Es por
+  /// CONVERSACIÓN — a diferencia de `_turnos`, que es por pantalla y solo
+  /// sirve al reporte.
+  int _waitTurno = 1;
   DateTime? _waitStart;
   Timer? _waitTicker;
   int _waitElapsedMs = 0;
@@ -319,6 +325,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       final st = aiWaitState(
         contexto: _waitContext,
         primerMensaje: _messages.isEmpty ? '' : _messages.first.content,
+        turno: _waitTurno,
         elapsedMs: ms,
         yaReportado: _waitReported,
       );
@@ -580,6 +587,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         : _messages.length == 1
             ? AiWaitContext.primerEnvio
             : AiWaitContext.respondiendo;
+    _waitTurno = aiWaitTurno(_messages);
     _turnos++;
     _startWaitClock();
     setState(() => _busy = true);
@@ -1980,6 +1988,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               state: aiWaitState(
                 contexto: _waitContext,
                 primerMensaje: _messages.isEmpty ? '' : _messages.first.content,
+                turno: _waitTurno,
                 elapsedMs: _waitElapsedMs,
                 // El reporte lo decide el reloj (`_startWaitClock`), no el
                 // build: aquí solo se pinta.

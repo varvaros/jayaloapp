@@ -1,11 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jayalo_app/domain/ai_turns.dart' show AiMessage;
 import 'package:jayalo_app/domain/ai_wait_steps.dart';
 
 void main() {
   AiWaitState st(AiWaitContext c, int ms,
-          {String primer = 'nevera samsung', bool yaReportado = false}) =>
+          {String primer = 'nevera samsung', bool yaReportado = false, int? turno}) =>
       aiWaitState(
-          contexto: c, primerMensaje: primer, elapsedMs: ms, yaReportado: yaReportado);
+          contexto: c,
+          primerMensaje: primer,
+          turno: turno ?? (c == AiWaitContext.primerEnvio ? 1 : 2),
+          elapsedMs: ms,
+          yaReportado: yaReportado);
 
   List<AiWaitStepState> estados(AiWaitState s) => s.pasos.map((p) => p.estado).toList();
 
@@ -36,6 +41,42 @@ void main() {
         'Olfateando el rubro correcto',
         'Reclutando a los proveedores que sí saben de esto',
       ]);
+    });
+  });
+
+  group('respondiendo rota por número de respuesta (spec §4, PO 2026-09-05)', () {
+    List<String> textos(int turno) =>
+        st(AiWaitContext.respondiendo, 0, turno: turno).pasos.map((p) => p.texto).toList();
+    test('cinco pares, dos textos cada uno, todos distintos entre sí', () {
+      expect(kAiWaitRespondiendo.length, 5);
+      final todos = kAiWaitRespondiendo.expand((p) => p).toList();
+      expect(todos.length, 10);
+      expect(todos.toSet().length, 10);
+    });
+    test('turno 2 → par 1 … turno 6 → par 5; el 7 vuelve al par 1', () {
+      for (var k = 0; k < 5; k++) {
+        expect(textos(k + 2), kAiWaitRespondiendo[k]);
+      }
+      expect(textos(7), kAiWaitRespondiendo[0]);
+      expect(textos(12), kAiWaitRespondiendo[0]);
+    });
+    test('turno 1 o 0 con este contexto (no debería pasar) → par 1, nunca lanza', () {
+      expect(textos(1), kAiWaitRespondiendo[0]);
+      expect(textos(0), kAiWaitRespondiendo[0]);
+    });
+    test('el turno no toca a los otros contextos', () {
+      final a = st(AiWaitContext.armando, 0, turno: 3).pasos.map((p) => p.texto).toList();
+      final b = st(AiWaitContext.armando, 0, turno: 9).pasos.map((p) => p.texto).toList();
+      expect(a, b);
+      expect(st(AiWaitContext.primerEnvio, 0, turno: 4).pasos[0].texto, 'Ok… déjame ver esto…');
+    });
+    test('aiWaitTurno cuenta los mensajes del cliente (mínimo 1)', () {
+      const u = AiMessage('user', 'x');
+      const a = AiMessage('assistant', 'y');
+      expect(aiWaitTurno(const <AiMessage>[]), 1);
+      expect(aiWaitTurno(const [u]), 1);
+      expect(aiWaitTurno(const [u, a, u]), 2);
+      expect(aiWaitTurno(const [u, a, u, a, u, a, u]), 4);
     });
   });
 

@@ -9,6 +9,7 @@ void main() {
   testWidgets('pinta los pasos del contexto y ningún aviso al principio', (t) async {
     final st = aiWaitState(
         contexto: AiWaitContext.primerEnvio,
+        turno: 2,
         primerMensaje: 'nevera samsung',
         elapsedMs: 0,
         yaReportado: false);
@@ -23,6 +24,7 @@ void main() {
   testWidgets('el paso hecho lleva check y el activo lleva el punto', (t) async {
     final st = aiWaitState(
         contexto: AiWaitContext.respondiendo,
+        turno: 2,
         primerMensaje: '',
         elapsedMs: 1500,
         yaReportado: false);
@@ -35,6 +37,7 @@ void main() {
   testWidgets('a los 0 ms el 2º paso de "respondiendo" está pendiente', (t) async {
     final st = aiWaitState(
         contexto: AiWaitContext.respondiendo,
+        turno: 2,
         primerMensaje: '',
         elapsedMs: 0,
         yaReportado: false);
@@ -45,6 +48,7 @@ void main() {
   testWidgets('a los 12 s aparece el aviso 1; a los 30 s lo sustituye el 2', (t) async {
     AiWaitState a(int ms) => aiWaitState(
         contexto: AiWaitContext.armando,
+        turno: 2,
         primerMensaje: '',
         elapsedMs: ms,
         yaReportado: false);
@@ -61,6 +65,7 @@ void main() {
       (t) async {
     final st = aiWaitState(
         contexto: AiWaitContext.respondiendo,
+        turno: 2,
         primerMensaje: '',
         elapsedMs: 0,
         yaReportado: false);
