@@ -285,7 +285,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// El reporte de los 30 s se manda UNA vez por turno.
   bool _waitReported = false;
 
-  /// Turnos mandados en esta conversación (va en el reporte).
+  /// Turnos mandados en esta conversación (va en el reporte). Deliberadamente
+  /// por PANTALLA, no por conversación: `_restartWithKind` («Sí, cambiar»)
+  /// reinicia `_messages` y el contexto de espera, pero NO este contador. Así,
+  /// dos turnos lentos dentro de la misma pantalla que caen en la ventana de
+  /// dedup de 60 s del reporter (`error_reporter.dart`) llevan `turno`
+  /// distinto en el texto de `AiTurnSlow` y no se comen entre sí — si se
+  /// reiniciara con «Sí, cambiar», el segundo `AiTurnSlow turno=1` sería
+  /// idéntico al primero y el dedup se tragaría el reporte real.
   int _turnos = 0;
 
   void _startWaitClock() {

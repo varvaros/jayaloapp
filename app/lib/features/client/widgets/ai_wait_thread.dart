@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/brand.dart';
 import '../../../domain/ai_wait_steps.dart';
 
 /// El hilo de pasos que ocupa el hueco de «Pensando…» mientras la IA
@@ -19,9 +20,6 @@ class AiWaitThread extends StatelessWidget {
   /// `JayaloMotion.reduced(context)`: sin pulso ni entradas animadas.
   final bool reduced;
 
-  static const _ambar = Color(0xFFB8862B);
-  static const _ambarFondo = Color(0xFFFBF1DC);
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -37,10 +35,15 @@ class AiWaitThread extends StatelessWidget {
           ],
           if (state.aviso > 0) ...[
             const SizedBox(height: 12),
-            _Aviso(
-              titulo: state.aviso == 2 ? kAiWaitAviso2Titulo : kAiWaitAviso1Titulo,
-              texto: state.aviso == 2 ? kAiWaitAviso2Texto : kAiWaitAviso1Texto,
-              reduced: reduced,
+            // Los dos avisos (12 s y 30 s) se anuncian igual que el paso
+            // activo: son la otra mitad de la sinceridad del hilo.
+            Semantics(
+              liveRegion: true,
+              child: _Aviso(
+                titulo: state.aviso == 2 ? kAiWaitAviso2Titulo : kAiWaitAviso1Titulo,
+                texto: state.aviso == 2 ? kAiWaitAviso2Texto : kAiWaitAviso1Texto,
+                reduced: reduced,
+              ),
             ),
           ],
         ],
@@ -98,7 +101,9 @@ class _Paso extends StatelessWidget {
         color: switch (estado) {
           AiWaitStepState.activo => cs.onSurface,
           AiWaitStepState.hecho => cs.onSurface.withValues(alpha: .8),
-          AiWaitStepState.pendiente => cs.onSurfaceVariant.withValues(alpha: .55),
+          // El texto pendiente NO lleva el 55 % (eso se queda en el círculo
+          // marcador, arriba): a ese alpha el texto quedaba ilegible.
+          AiWaitStepState.pendiente => cs.onSurface.withValues(alpha: .85),
         },
       ),
     );
@@ -208,19 +213,21 @@ class _Aviso extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final tono = dark ? JayaloStatus.avisoDark : JayaloStatus.avisoLight;
     final caja = Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AiWaitThread._ambarFondo,
+        color: tono.bg,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Text.rich(
         TextSpan(
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12.5,
             height: 1.4,
-            color: AiWaitThread._ambar,
+            color: tono.ink,
             fontWeight: FontWeight.w500,
           ),
           children: [

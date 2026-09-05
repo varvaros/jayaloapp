@@ -29,6 +29,17 @@ void main() {
     await t.pumpWidget(_app(AiWaitThread(state: st, reduced: true)));
     expect(find.byKey(const ValueKey('ai-wait-hecho-0')), findsOneWidget);
     expect(find.byKey(const ValueKey('ai-wait-activo-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-wait-pendiente-1')), findsNothing);
+  });
+
+  testWidgets('a los 0 ms el 2º paso de "respondiendo" está pendiente', (t) async {
+    final st = aiWaitState(
+        contexto: AiWaitContext.respondiendo,
+        primerMensaje: '',
+        elapsedMs: 0,
+        yaReportado: false);
+    await t.pumpWidget(_app(AiWaitThread(state: st, reduced: true)));
+    expect(find.byKey(const ValueKey('ai-wait-pendiente-1')), findsOneWidget);
   });
 
   testWidgets('a los 12 s aparece el aviso 1; a los 30 s lo sustituye el 2', (t) async {
@@ -45,7 +56,9 @@ void main() {
     expect(find.textContaining(kAiWaitAviso2Texto), findsOneWidget);
   });
 
-  testWidgets('con reduced=false el pulso anima sin colgar el test', (t) async {
+  testWidgets(
+      'con reduced=false construye sin reventar (el pulso queda parado bajo flutter test)',
+      (t) async {
     final st = aiWaitState(
         contexto: AiWaitContext.respondiendo,
         primerMensaje: '',

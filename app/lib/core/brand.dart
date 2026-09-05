@@ -147,6 +147,16 @@ abstract final class JayaloStatus {
   /// contra `--status-pending`, que da exactamente el `pendingLight` de arriba.
   static const requisitoLight = (bg: Color(0xFFBCF8FB), ink: Color(0xFF005961));
   static const requisitoDark = (bg: Color(0xFF00383C), ink: Color(0xFF6FEAF1));
+
+  /// Aviso ámbar del hilo de espera de la IA (spec 2026-09-05, §5.4). El
+  /// ORIGINAL `#B8862B` sobre `#FBF1DC` medía 2,89:1 — por debajo del 4,5:1
+  /// de WCAG AA para texto. Corregido a `#7A5410` (6,03:1 sobre la misma
+  /// crema). El oscuro espeja los tokens `--fallo` oscuros de la web
+  /// (`oklch(0.27 0.04 75)` fondo / `oklch(0.87 0.1 80)` tinta): pardo
+  /// oscuro con tinta ámbar clara. Nunca rojo: el rojo queda para errores
+  /// de verdad.
+  static const avisoLight = (bg: Color(0xFFFBF1DC), ink: Color(0xFF7A5410));
+  static const avisoDark = (bg: Color(0xFF2C2417), ink: Color(0xFFF6D28C));
 }
 
 /// Esquemas M3 con los roles clave clavados a los tokens de la web. Se parte de
