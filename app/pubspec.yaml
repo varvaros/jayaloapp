@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # El +N es el versionCode: cada subida a Play lo QUEMA para siempre. Los APK
 # de device van por numeros intermedios sin commitear (45, 47...); aqui queda
 # commiteado el del AAB para que nadie recompile a ciegas con uno ya usado.
-version: 1.0.4+113
+version: 1.0.4+114
 
 environment:
   sdk: ^3.12.2
