@@ -65,11 +65,11 @@ const kAiWaitAviso2Texto = 'Reportando la tardanza.';
 /// batería en TS (`AI_WAIT_RESPONDIENDO`). Los TEXTOS son del PO, literales —
 /// no reescribir.
 const kAiWaitRespondiendo = <List<String>>[
-  ['Anotando eso en mi libreta de detective', 'Buscando qué más preguntarte sin caer pesado'],
+  ['Anotando eso en mi libreta de detective', 'Ajá… déjame buscar eso.'],
   ['Pista guardada, gracias', 'Pensando una pregunta corta, lo prometo'],
   ['Ajá, esto encaja', 'Revisando qué detalle me falta'],
-  ['Apuntado con lápiz y todo', 'Afinando la siguiente pregunta'],
-  ['Cada vez más cerca del caso', 'Viendo si ya me sé la historia completa'],
+  ['Apuntado con lápiz y todo', 'Mirando algo por aquí…'],
+  ['Mmm… Interesante.', 'Ya casi…'],
 ];
 
 /// Número del mensaje del cliente que sale en este turno: 1 = primer envío,

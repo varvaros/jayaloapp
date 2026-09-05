@@ -31,7 +31,7 @@ void main() {
       final s = st(AiWaitContext.respondiendo, 0);
       expect(s.pasos.map((p) => p.texto).toList(), [
         'Anotando eso en mi libreta de detective',
-        'Buscando qué más preguntarte sin caer pesado',
+        'Ajá… déjame buscar eso.',
       ]);
     });
     test('armando: tres pasos', () {
