@@ -158,6 +158,11 @@ class _PendingPhoto {
   _PendingPhoto(this.file, this.dataUrl);
   final XFile file;
   final String dataUrl;
+
+  /// Id con el que el servidor guardó este base64 en KV (spec
+  /// 2026-09-05-foto-cacheada-kv); nulo hasta la primera respuesta o si la
+  /// caché no está. Viaja CON la foto: quitar la 1 promueve la 2 con su id.
+  String? cacheId;
 }
 
 /// Modo plantilla (spec §8.3): el turno `template` reemplaza al clarificador
@@ -583,61 +588,88 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     _turnos++;
     _startWaitClock();
     setState(() => _busy = true);
+    // Foto cacheada (spec 2026-09-05-foto-cacheada-kv): el bucle da como
+    // mucho DOS vueltas — la segunda solo si el servidor dijo que el id
+    // caducó, y ya con el base64. Todas las salidas son `return`.
+    var forceBase64 = false;
     try {
-      // El JWT de la sesión exime el Turnstile del primer turno (ADR-0032);
-      // el WebView del CAPTCHA se quitó: se pintaba negro en MIUI y colgaba
-      // el flujo completo de crear solicitud.
-      final turn = await _ai.sendTurn(
-        messages: _messages,
-        kind: _kind,
-        wholesale: _wholesale,
-        accessToken: supa.auth.currentSession?.accessToken,
-        imageDataUrl: _photos.isNotEmpty ? _photos[0].dataUrl : null,
-        imageDataUrl2: _photos.length > 1 ? _photos[1].dataUrl : null,
-        useTemplates: useTemplates && !_templateBroken,
-        manual: manual,
-      );
-      if (!mounted) return true;
-      if (turn is AiTemplate) {
-        // El turno `template` NUNCA va al historial (paridad web): la
-        // conversación sigue siendo [primer mensaje] + los pares locales.
-        setState(() => _correcting = false);
-        await _startTemplate(turn);
-        return true;
+      for (var intento = 0; ; intento++) {
+        try {
+          // El JWT de la sesión exime el Turnstile del primer turno (ADR-0032);
+          // el WebView del CAPTCHA se quitó: se pintaba negro en MIUI y colgaba
+          // el flujo completo de crear solicitud.
+          final f1 = _photos.isNotEmpty ? _photos[0] : null;
+          final f2 = _photos.length > 1 ? _photos[1] : null;
+          final turn = await _ai.sendTurn(
+            messages: _messages,
+            kind: _kind,
+            wholesale: _wholesale,
+            accessToken: supa.auth.currentSession?.accessToken,
+            // Foto cacheada: id si ya lo tiene, base64 si no (o si el servidor
+            // dijo que caducó y estamos reintentando).
+            imageDataUrl: f1 != null && (forceBase64 || f1.cacheId == null) ? f1.dataUrl : null,
+            imageId: f1 != null && !forceBase64 ? f1.cacheId : null,
+            imageDataUrl2: f2 != null && (forceBase64 || f2.cacheId == null) ? f2.dataUrl : null,
+            imageId2: f2 != null && !forceBase64 ? f2.cacheId : null,
+            useTemplates: useTemplates && !_templateBroken,
+            manual: manual,
+          );
+          if (!mounted) return true;
+          // Ids de la respuesta → a las fotos que viajaron (por ranura).
+          if (f1 != null) f1.cacheId = _ai.lastImageIds.first ?? (forceBase64 ? null : f1.cacheId);
+          if (f2 != null) f2.cacheId = _ai.lastImageIds.second ?? (forceBase64 ? null : f2.cacheId);
+          if (turn is AiTemplate) {
+            // El turno `template` NUNCA va al historial (paridad web): la
+            // conversación sigue siendo [primer mensaje] + los pares locales.
+            setState(() => _correcting = false);
+            await _startTemplate(turn);
+            return true;
+          }
+          _messages.add(AiMessage('assistant', jsonEncode(turnToJson(turn))));
+          // La correccion se da por consumida SOLO cuando el turno llego. Si la
+          // IA falla, `_correcting` sigue en true y el usuario vuelve a ver el
+          // campo de corregir con su formulario intacto detras, en vez de
+          // quedarse en una pantalla sin nada que tocar.
+          setState(() => _correcting = false);
+          await _handleTurn(turn);
+          // Un turno que SÍ llegó deja atrás el cuadro manual (spec 2026-09-05):
+          // un «Atrás» posterior al compositor debe mostrar el de siempre, no el
+          // que el usuario abandonó al mandar.
+          if (mounted) setState(() => _manualMode = false);
+          return true;
+        } on AiHttpException catch (e) {
+          if (e.status == 409 && e.code == 'image_expired' && intento == 0) {
+            // La foto caducó en KV (30 min) o no estaba replicada: se repite el
+            // MISMO turno una vez con base64. El reloj del hilo sigue (mismo
+            // turno), así que el usuario no ve el contador reiniciarse.
+            for (final p in _photos) {
+              p.cacheId = null;
+            }
+            forceBase64 = true;
+            continue;
+          }
+          if (!mounted) return false;
+          _toastFallo(
+            e.status == 429
+                ? 'Un momento… demasiadas solicitudes. Espera 1 minuto.'
+                : e.message,
+            manual: manual,
+          );
+          return false;
+        } on TemplateFormatException {
+          // Turno `template` malformado (§8.1): se trata como un turno de IA
+          // fallido — toast + reintento — pero a la siguiente ya no se piden
+          // plantillas en esta conversación.
+          if (!mounted) return false;
+          _templateBroken = true;
+          _toastFallo('Algo falló. Intenta de nuevo.', manual: manual);
+          return false;
+        } catch (e) {
+          if (!mounted) return false;
+          _toastFallo('Algo falló. Intenta de nuevo.', manual: manual);
+          return false;
+        }
       }
-      _messages.add(AiMessage('assistant', jsonEncode(turnToJson(turn))));
-      // La correccion se da por consumida SOLO cuando el turno llego. Si la
-      // IA falla, `_correcting` sigue en true y el usuario vuelve a ver el
-      // campo de corregir con su formulario intacto detras, en vez de
-      // quedarse en una pantalla sin nada que tocar.
-      setState(() => _correcting = false);
-      await _handleTurn(turn);
-      // Un turno que SÍ llegó deja atrás el cuadro manual (spec 2026-09-05):
-      // un «Atrás» posterior al compositor debe mostrar el de siempre, no el
-      // que el usuario abandonó al mandar.
-      if (mounted) setState(() => _manualMode = false);
-      return true;
-    } on AiHttpException catch (e) {
-      if (!mounted) return false;
-      _toastFallo(
-        e.status == 429
-            ? 'Un momento… demasiadas solicitudes. Espera 1 minuto.'
-            : e.message,
-        manual: manual,
-      );
-      return false;
-    } on TemplateFormatException {
-      // Turno `template` malformado (§8.1): se trata como un turno de IA
-      // fallido — toast + reintento — pero a la siguiente ya no se piden
-      // plantillas en esta conversación.
-      if (!mounted) return false;
-      _templateBroken = true;
-      _toastFallo('Algo falló. Intenta de nuevo.', manual: manual);
-      return false;
-    } catch (e) {
-      if (!mounted) return false;
-      _toastFallo('Algo falló. Intenta de nuevo.', manual: manual);
-      return false;
     } finally {
       _stopWaitClock();
       if (mounted) setState(() => _busy = false);

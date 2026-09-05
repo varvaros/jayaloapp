@@ -9,9 +9,12 @@ import 'config.dart';
 export '../domain/ai_turns.dart' show AiMessage;
 
 class AiHttpException implements Exception {
-  AiHttpException(this.status, this.message);
+  AiHttpException(this.status, this.message, {this.code});
   final int status;
   final String message;
+
+  /// `code` del JSON de error del servidor (p. ej. `image_expired`), si lo trae.
+  final String? code;
   @override
   String toString() => 'AiHttpException($status): $message';
 }
@@ -36,6 +39,10 @@ class AiClient {
   /// cliente porque hay un AiClient por conversación (pantalla de crear).
   String? _ticket;
 
+  /// Ids de foto cacheada (spec 2026-09-05-foto-cacheada-kv) que devolvió la
+  /// ÚLTIMA respuesta 200; la pantalla los copia a sus fotos.
+  ({String? first, String? second}) lastImageIds = (first: null, second: null);
+
   /// Un turno = un POST. `accessToken` (JWT de la sesión de Supabase) exime
   /// el Turnstile del primer turno (ADR-0032) — la app siempre está
   /// autenticada, así que no monta WebView de CAPTCHA. El header Origin es
@@ -44,7 +51,12 @@ class AiClient {
   /// `imageDataUrl` / `imageDataUrl2` (data URL base64, máx 8 MB c/u) son el
   /// contrato multimodal de la web: el cliente los manda en CADA POST y el
   /// servidor decide a qué mensaje del historial adjuntarlos
-  /// (`chat-stream.ts` L408). El modelo ve la foto.
+  /// (`chat-stream.ts` L408). El modelo ve la foto. Desde la spec
+  /// 2026-09-05-foto-cacheada-kv el servidor guarda ese base64 en KV (30 min)
+  /// y devuelve su id: si la ranura ya tiene id, el caller manda `imageId` /
+  /// `imageId2` EN VEZ del base64 y el POST deja de arrastrar la foto entera.
+  /// Base64 y id en la misma ranura ⇒ gana el base64 (es el reintento tras un
+  /// `409 image_expired`).
   /// `useTemplates`: pide al servidor que mire plantillas por rubro (spec
   /// §8.1). Solo tiene sentido en el PRIMER turno (`messages.length == 1`):
   /// el servidor solo lo consulta ahí (chat-stream.ts L331) y el fallback a
@@ -57,6 +69,8 @@ class AiClient {
     String? accessToken,
     String? imageDataUrl,
     String? imageDataUrl2,
+    String? imageId,
+    String? imageId2,
     bool useTemplates = false,
     bool manual = false,
   }) async {
@@ -72,8 +86,12 @@ class AiClient {
             'messages': messages.map((m) => m.toJson()).toList(),
             'kind': ?kind,
             if (wholesale) 'wholesale': true,
+            // Foto cacheada: id si la ranura ya tiene, base64 si no (la
+            // pantalla decide; en el reintento tras un 409 manda base64).
             'imageDataUrl': ?imageDataUrl,
             'imageDataUrl2': ?imageDataUrl2,
+            'imageId': ?imageId,
+            'imageId2': ?imageId2,
             'aiTicket': ?_ticket,
             // F3: pide el `ready` adjunto al routing (ahorra el POST del
             // auto-«ok»). Va en TODOS los turnos porque el cliente no puede
@@ -97,8 +115,16 @@ class AiClient {
     final t = body['aiTicket'];
     if (t is String && t.isNotEmpty) _ticket = t;
     if (res.statusCode != 200) {
-      throw AiHttpException(res.statusCode, body['error']?.toString() ?? 'Error');
+      throw AiHttpException(res.statusCode, body['error']?.toString() ?? 'Error',
+          code: body['code'] is String ? body['code'] as String : null);
     }
+    // Solo en 200: un error no trae ids y no debe pisar los que ya había.
+    lastImageIds = (first: _hex32(body['imageId']), second: _hex32(body['imageId2']));
     return parseAiTurn(body);
   }
+
+  /// Un id de foto de KV es exactamente 32 hex (un uuid v4 sin guiones).
+  /// Cualquier otra cosa se descarta: no se reenvía basura al servidor.
+  String? _hex32(Object? v) =>
+      v is String && RegExp(r'^[0-9a-f]{32}$').hasMatch(v) ? v : null;
 }

@@ -220,4 +220,53 @@ void main() {
     expect(bodies[1].containsKey('manual'), isFalse);
     expect(bodies[2].containsKey('manual'), isFalse);
   });
+
+  test('manda imageId en vez del base64 cuando la ranura tiene id; el mixto va por ranura',
+      () async {
+    final sent = <Map<String, dynamic>>[];
+    final c = AiClient(inner: MockClient((req) async {
+      sent.add(bodyOf(req));
+      return turnWithTicket();
+    }));
+    await c.sendTurn(
+        messages: [const AiMessage('user', 'hola')],
+        imageId: 'a' * 32,
+        imageDataUrl2: 'data:image/jpeg;base64,BBBB');
+    expect(sent.single['imageId'], 'a' * 32);
+    expect(sent.single.containsKey('imageDataUrl'), isFalse);
+    expect(sent.single['imageDataUrl2'], 'data:image/jpeg;base64,BBBB');
+    expect(sent.single.containsKey('imageId2'), isFalse);
+  });
+
+  test('expone los ids que devuelve el servidor en lastImageIds (nulos si no vienen)', () async {
+    var conIds = true;
+    final c = AiClient(inner: MockClient((req) async => http.Response(
+        jsonEncode({
+          'type': 'question',
+          'question': 'Marca?',
+          'options': ['A'],
+          if (conIds) 'imageId': 'a' * 32,
+          if (conIds) 'imageId2': 'b' * 32,
+        }),
+        200)));
+    await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+    expect(c.lastImageIds.first, 'a' * 32);
+    expect(c.lastImageIds.second, 'b' * 32);
+    conIds = false;
+    await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+    expect(c.lastImageIds.first, isNull);
+    expect(c.lastImageIds.second, isNull);
+  });
+
+  test('un 409 image_expired lanza AiHttpException con code', () async {
+    final c = AiClient(inner: MockClient((_) async => http.Response(
+        jsonEncode({'error': 'caduco', 'code': 'image_expired'}), 409)));
+    try {
+      await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+      fail('debia lanzar');
+    } on AiHttpException catch (e) {
+      expect(e.status, 409);
+      expect(e.code, 'image_expired');
+    }
+  });
 }
