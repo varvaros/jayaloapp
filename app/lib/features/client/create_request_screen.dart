@@ -1240,8 +1240,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _toast('Ponle un título a tu solicitud.');
       return;
     }
+    // Solo foto: el primer mensaje es el relleno `kAiWaitFotoSola`, no texto
+    // del cliente — la descripción va vacía, igual que el título.
+    final primerTexto = _messages.isEmpty ? '' : _messages.first.content;
     final description = isManual
-        ? (_messages.isEmpty ? '' : _messages.first.content)
+        ? (primerTexto == kAiWaitFotoSola ? '' : primerTexto)
         : r.bullets.join(' • ');
     // Combina el "al por mayor" que dijo la IA con el toggle manual — mismo
     // criterio que ya usa esta pantalla para el chip/persistencia (L432/1108).
@@ -2520,7 +2523,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                   Icon(Icons.check_circle, size: 18, color: cs.primary),
                   const SizedBox(width: 6),
                   Text(
-                    'Esto es lo que entendí',
+                    // Paridad web: en manual nadie «entendió» nada, lo escribió
+                    // el cliente.
+                    r.meta?.model == 'manual'
+                        ? 'Así quedará tu solicitud'
+                        : 'Esto es lo que entendí',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
