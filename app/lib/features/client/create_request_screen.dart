@@ -496,7 +496,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// guarda como `Pregunta: …\nRespuesta: …` (spec §6, paridad web): el
   /// constructor de plantillas lee ese formato. La corrección tras la ficha
   /// (`_correcting`) y todo lo que no responde a un `question` van sueltos.
-  Future<void> _send(String text, {bool force = false, bool raw = false}) async {
+  Future<void> _send(String text,
+      {bool force = false, bool raw = false, bool manual = false}) async {
     // Paridad web: se recorta ANTES de guardar, no solo para el chequeo de
     // vacío — sin esto un «  Panasonic  \n» llegaba tal cual al transcript.
     text = text.trim();
@@ -533,7 +534,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     });
     // `useTemplates` solo cuando el historial es el primer mensaje (§8.3);
     // `sendTurn` lo filtra otra vez por longitud.
-    final ok = await _ask(useTemplates: _messages.length == 1);
+    final ok =
+        await _ask(useTemplates: _messages.length == 1, manual: manual);
     // El mensaje que provocó el fallo se quita: el usuario reintenta desde el
     // mismo punto. Las respuestas ya no se cuentan aparte (`answerTexts` lee
     // el historial), así que no hay contador que revertir.
@@ -554,12 +556,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// llegó un turno (o la pantalla murió mientras tanto); `false` si falló,
   /// ya con su toast. Quien añadió un mensaje antes de llamar decide qué
   /// hacer con él (`_send` lo quita; `_restartWithKind` restaura el anterior).
-  Future<bool> _ask({bool useTemplates = false}) async {
-    // Contexto del hilo de espera, en este orden (spec §5.2): el auto-«ok»
-    // del ruteo (aún `_current` es routing) → armando; un solo mensaje en el
-    // historial (primer envío, o el reinicio de «Sí, cambiar») → primer
-    // envío; todo lo demás → respondiendo.
-    _waitContext = _current is AiRouting
+  Future<bool> _ask({bool useTemplates = false, bool manual = false}) async {
+    // Contexto del hilo de espera, en este orden (spec §5.2): la solicitud
+    // MANUAL o el auto-«ok» del ruteo (aún `_current` es routing) → armando;
+    // un solo mensaje en el historial (primer envío, o el reinicio de «Sí,
+    // cambiar») → primer envío; todo lo demás → respondiendo.
+    _waitContext = manual || _current is AiRouting
         ? AiWaitContext.armando
         : _messages.length == 1
             ? AiWaitContext.primerEnvio
@@ -579,6 +581,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         imageDataUrl: _photos.isNotEmpty ? _photos[0].dataUrl : null,
         imageDataUrl2: _photos.length > 1 ? _photos[1].dataUrl : null,
         useTemplates: useTemplates && !_templateBroken,
+        manual: manual,
       );
       if (!mounted) return true;
       if (turn is AiTemplate) {
@@ -598,10 +601,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       return true;
     } on AiHttpException catch (e) {
       if (!mounted) return false;
-      _toast(
+      _toastFallo(
         e.status == 429
             ? 'Un momento… demasiadas solicitudes. Espera 1 minuto.'
             : e.message,
+        manual: manual,
       );
       return false;
     } on TemplateFormatException {
@@ -610,11 +614,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       // plantillas en esta conversación.
       if (!mounted) return false;
       _templateBroken = true;
-      _toast('Algo falló. Intenta de nuevo.');
+      _toastFallo('Algo falló. Intenta de nuevo.', manual: manual);
       return false;
     } catch (e) {
       if (!mounted) return false;
-      _toast('Algo falló. Intenta de nuevo.');
+      _toastFallo('Algo falló. Intenta de nuevo.', manual: manual);
       return false;
     } finally {
       _stopWaitClock();
@@ -1127,6 +1131,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         }
       case AiReady rd:
         setState(() {
+          // Solicitud manual (spec 2026-09-05): el `ready` trae la
+          // clasificación silenciosa; en la entrevista normal viene vacía y
+          // las categorías ya las fijó el turno `routing`.
+          if (rd.categories.isNotEmpty) {
+            _categories = rd.categories;
+            _rubros = rd.rubros;
+            _selectedRubros = rd.rubros.toSet();
+          }
           _ready = rd;
           _current = rd;
           _pop++;
@@ -1397,6 +1409,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   /// (null si el servidor no los mandó); `attributes` de `AiReady.attributes`.
   Future<void> _saveTranscript(String requestId) async {
     final rd = _ready;
+    // Una solicitud MANUAL no habló con la IA: no hay nada que minar para las
+    // plantillas, y `source` no admite «manual». (spec 2026-09-05 §6)
+    if (rd?.meta?.model == 'manual') return;
     final run = _templateRun;
     final row = buildTranscript(
       requestId,
@@ -1420,6 +1435,20 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   void _toast(String m) {
     if (mounted) showJayaloToast(context, m);
+  }
+
+  /// Toast de un turno fallido. Si era el PRIMER turno de la entrevista, ofrece
+  /// la salida manual (spec 2026-09-05 §5): el texto ya volvió al campo, así
+  /// que la acción lo reenvía tal cual con `manual: true`.
+  void _toastFallo(String m, {required bool manual}) {
+    if (!mounted) return;
+    final primero = _messages.length == 1 && !manual;
+    showJayaloToast(
+      context,
+      m,
+      actionLabel: primero ? 'Prefiero escribirla yo' : null,
+      onAction: primero ? () => _startSend(_input.text, manual: true) : null,
+    );
   }
 
   /// Convierte lo escrito en el campo de presupuesto (admite "5,000", "RD$5000")
@@ -1651,6 +1680,19 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 6),
+          // Salida sin entrevista (spec 2026-09-05-solicitud-manual): discreta a
+          // propósito — la IA sigue siendo el camino principal.
+          Center(
+            child: TextButton(
+              onPressed: _busy ? null : () => _startSend(_input.text, manual: true),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+              child: const Text('Prefiero escribirla yo'),
+            ),
+          ),
           if (_photos.isNotEmpty) ...[
             const SizedBox(height: 16),
             Wrap(
@@ -1755,7 +1797,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   /// Gate del primer envío (pedido PO 2026-07-21): sin tipo elegido no se
   /// envía la solicitud.
-  void _startSend(String text) {
+  ///
+  /// `manual` (spec 2026-09-05): salida sin entrevista, desde el enlace del
+  /// compositor o la acción del toast de fallo.
+  void _startSend(String text, {bool manual = false}) {
     if (_kind.isEmpty) {
       _toast('Elige Producto, Servicio o Al por mayor para continuar.');
       return;
@@ -1769,7 +1814,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     // silencio y el botón parecía muerto.
     if (text.trim().isEmpty) {
       if (_kind == 'producto' && _photos.isNotEmpty) {
-        _send('Esto es lo que busco.');
+        _send('Esto es lo que busco.', manual: manual);
       } else if (_kind == 'producto') {
         _toast('Escribe qué buscas o sube una foto.');
       } else {
@@ -1777,7 +1822,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       }
       return;
     }
-    _send(text);
+    _send(text, manual: manual);
   }
 
   /// El corazón del rediseño: mascota expresiva + pregunta en grande +
