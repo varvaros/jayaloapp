@@ -34,9 +34,12 @@ presentación de `OnboardingGuide` + dos comportamientos del toque. Sin backend,
 6. **Tocar fuera no quema la guía.** Tap en el velo → `_snoozed` (entra en `_shouldShow`), cierre
    animado, libera el turno, SIN `markDone`. Se limpia cuando `enabled` pasa false→true, al
    «Reiniciar tutorial» y al remontar. «Saltar» y «Entendido» siguen marcando vista.
-7. **`tapThrough`** (default false; true solo en `client.plus.v1`). El toque dentro del hueco pasa al
-   widget real (el `GestureDetector` del velo no hace hit-test dentro del hueco) y un `Listener`
-   translucent sobre el hueco marca la guía como vista y la cierra. `markDone` se dispara ANTES de
+7. **`tapThrough`** (default false; true solo en `client.plus.v1`). El toque sobre el elemento REAL
+   —su rect medido con su misma redondez, SIN los 6 px de aire del hueco— pasa al widget de debajo
+   (el `GestureDetector` del velo no hace hit-test ahí) y un `Listener` translucent sobre esa misma
+   forma marca la guía como vista y la cierra. Un toque en el aire del hueco o en las esquinas del
+   cuadrado que rodea al círculo es un toque en el velo: cierra por esta vez, no marca (reserva del
+   verificador, 2026-09-05). `markDone` se dispara ANTES de
    esperar la animación de cierre (hoy se pierde si el widget se desmonta a mitad).
 
 ## Tests
