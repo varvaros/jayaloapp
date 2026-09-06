@@ -31,6 +31,15 @@ void main() {
       expect(url.path.endsWith(objeto), isTrue);
     });
 
+    // Sin `resize=contain` el transformador recorta en vez de escalar: con
+    // solo `width` conserva el alto original y devuelve una tira vertical
+    // (medido en prod 2026-09-06: ?width=184 → 184x1600; con contain → 184x184).
+    test('pide resize=contain para que el servidor ESCALE y no recorte', () {
+      final url = Uri.parse(transformedImageUrl(publica, width: 200));
+
+      expect(url.queryParameters['resize'], 'contain');
+    });
+
     test('usa calidad 80 por defecto', () {
       final url = Uri.parse(transformedImageUrl(publica, width: 200));
 

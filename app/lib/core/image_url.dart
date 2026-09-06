@@ -66,9 +66,20 @@ String transformedImageUrl(
 
   // Se REEMPLAZAN, no se anaden: reescribir una URL ya transformada debe
   // cambiar el ancho, no dejar dos `width` que el servidor resolveria a ciegas.
+  //
+  // `resize=contain` es OBLIGATORIO: sin el, el transformador aplica su
+  // `cover` por defecto y, al no llevar `height`, conserva el alto ORIGINAL y
+  // recorta el ancho — devuelve una TIRA vertical, no una miniatura. Medido
+  // contra prod el 2026-09-06 (logo 1600x1600 y foto 1200x1600):
+  //
+  //   ?width=184                 184x1600  (recortada, se veia el logo cortado)
+  //   ?width=184&resize=contain  184x184
+  //   ?width=470                 470x1600   95.623 B
+  //   ?width=470&resize=contain  470x627    23.964 B
   final params = Map<String, String>.from(url.queryParameters)
     ..['width'] = _anchoValido(width).toString()
-    ..['quality'] = quality.toString();
+    ..['quality'] = quality.toString()
+    ..['resize'] = 'contain';
 
   return url.replace(path: path, queryParameters: params).toString();
 }
