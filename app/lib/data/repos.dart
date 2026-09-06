@@ -3995,22 +3995,38 @@ Future<String?> myDeliveryAddress() async {
 Future<String> uploadInterestImage(String filePath) =>
     _uploadMarketplaceImage(filePath, 'interest');
 
-/// Ids de categoría con artículos PUBLICADOS del kind dado ('producto' o
-/// 'servicio'). Alimenta el filtrado de categorías «navegables» de la hoja de
-/// filtros del catálogo (decisión PO 2026-08-31, paridad con la web). Sale de
-/// la RPC `get_product_counts` — agregado en servidor, el mismo que usa la web
-/// para su sidebar. Ante cualquier error devuelve `null`: el caller enseña la
-/// lista completa (degradar a como era antes, nunca a una hoja vacía).
-Future<Set<String>?> categoriasConCatalogo(String kind) async {
+/// Pura: de las filas de la RPC `get_product_counts` (`kind, category_id, n`)
+/// al mapa categoría → cantidad de artículos publicados del kind pedido. Un
+/// `kind` nulo cuenta como 'producto' (fila legada); sin `category_id` se
+/// ignora. Separada para probarse sin red.
+Map<String, int> countsForKind(List<Map<String, dynamic>> rows, String kind) => {
+      for (final r in rows)
+        if ((r['kind'] ?? 'producto') == kind && r['category_id'] != null)
+          r['category_id'] as String: (r['n'] as num?)?.toInt() ?? 0,
+    };
+
+/// Conteo de artículos publicados por categoría del kind dado ('producto' |
+/// 'servicio'). Alimenta la tira de chips y la sección «Por categoría» de la
+/// portada del catálogo. Sale de la RPC `get_product_counts` — agregado en
+/// servidor, el mismo que usa la web para su sidebar. Ante cualquier error
+/// devuelve `null`: el caller enseña la lista completa de categorías y oculta
+/// la sección de conteos (degradar, nunca una pantalla vacía).
+///
+/// ⚠️ La RPC cuenta sin distinguir mayoreo: con «Al por mayor» encendido los
+/// conteos no cambian. No se ven a la vez (con mayoreo el cuerpo es la rejilla).
+Future<Map<String, int>?> categoryCountsForKind(String kind) async {
   try {
     final rows =
         List<Map<String, dynamic>>.from(await supa.rpc('get_product_counts'));
-    return {
-      for (final r in rows)
-        if ((r['kind'] ?? 'producto') == kind && r['category_id'] != null)
-          r['category_id'] as String,
-    };
+    return countsForKind(rows, kind);
   } catch (_) {
     return null;
   }
 }
+
+/// Ids de categoría con artículos PUBLICADOS del kind dado. Alimenta el
+/// filtrado de categorías «navegables» de la hoja de filtros (decisión PO
+/// 2026-08-31, paridad web). Derivada de [categoryCountsForKind]: `null` si la
+/// RPC falla (el caller enseña la lista completa).
+Future<Set<String>?> categoriasConCatalogo(String kind) async =>
+    (await categoryCountsForKind(kind))?.keys.toSet();
