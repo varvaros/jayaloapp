@@ -294,30 +294,29 @@ class _CatalogViewState extends State<CatalogView> {
                     );
                   }
                   // Rejilla de tienda a 2 columnas (mockup aprobado PO
-                  // 2026-08-10): la foto manda y se ve el doble de artículos
-                  // por pantalla — sustituye a la lista ancha de una columna.
-                  return GridView.builder(
-                    controller: _scrollController,
-                    padding: EdgeInsets.only(
-                        left: 16,
-                        right: 16,
-                        top: 10,
-                        bottom: 12 + navBarReservedSpace(context)),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 11,
-                      mainAxisSpacing: 11,
-                      // 238 → 256: hueco para la fila de atributos
-                      // (envío/estado/color) de la Variante A (PO 2026-08-11).
-                      // Ese 256 era fijo y el precio se salía por abajo con la
-                      // fuente del sistema en grande: ahora lo calcula la
-                      // tarjeta a partir de la escala tipográfica.
-                      mainAxisExtent: catalogGridCardExtent(context),
-                    ),
-                    itemCount: items.length,
-                    itemBuilder: (_, i) =>
-                        ProductGridCard(item: items[i]).cascadeIn(i),
-                  );
+                  // 2026-08-10). La celda mide el ancho real para que la foto
+                  // sea cuadrada (PO 2026-09-05).
+                  return LayoutBuilder(builder: (context, box) {
+                    final cellWidth = (box.maxWidth - 32 - 11) / 2;
+                    return GridView.builder(
+                      controller: _scrollController,
+                      padding: EdgeInsets.only(
+                          left: 16,
+                          right: 16,
+                          top: 10,
+                          bottom: 12 + navBarReservedSpace(context)),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 11,
+                        mainAxisSpacing: 11,
+                        mainAxisExtent:
+                            catalogGridCardExtent(context, cellWidth),
+                      ),
+                      itemCount: items.length,
+                      itemBuilder: (_, i) =>
+                          ProductGridCard(item: items[i]).cascadeIn(i),
+                    );
+                  });
                 },
               ),
             ),

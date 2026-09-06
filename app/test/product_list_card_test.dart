@@ -80,7 +80,7 @@ void main() {
                     alignment: Alignment.topLeft,
                     child: SizedBox(
                       width: width,
-                      height: catalogGridCardExtent(context),
+                      height: catalogGridCardExtent(context, width),
                       child: const ProductGridCard(item: peor),
                     ),
                   ),
@@ -105,5 +105,86 @@ void main() {
         });
       }
     }
+  });
+
+  group('ProductGridCard: línea de tienda y forma', () {
+    const negocioFisico = (
+      name: 'Barbería El Conde',
+      logoUrl: null,
+      whatsappVerified: false,
+      identityVerified: false,
+      businessVerified: false,
+      hasPhysicalLocation: true,
+    );
+    const negocioSinLocal = (
+      name: 'Otaku Store RD',
+      logoUrl: null,
+      whatsappVerified: false,
+      identityVerified: false,
+      businessVerified: false,
+      hasPhysicalLocation: false,
+    );
+    const item = {
+      'id': 'p1',
+      'name': 'Máquina de cortar pelo Remington',
+      'category_id': 'belleza',
+      'price': 1850,
+      'offers_shipping': true,
+      'condition': 'nuevo',
+    };
+
+    Widget celda(Widget child) => MaterialApp(
+          theme: jayaloTheme(Brightness.light),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(width: 160, height: 300, child: child),
+            ),
+          ),
+        );
+
+    testWidgets('con negocio y local pinta nombre y «Tienda física»',
+        (tester) async {
+      await tester.pumpWidget(celda(const ProductGridCard(
+          item: item, negocio: negocioFisico)));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Barbería El Conde'), findsOneWidget);
+      expect(find.textContaining('Tienda física'), findsOneWidget);
+      expect(find.byIcon(Icons.storefront_outlined), findsOneWidget);
+    });
+
+    testWidgets('sin local no pinta el sello', (tester) async {
+      await tester.pumpWidget(celda(const ProductGridCard(
+          item: item, negocio: negocioSinLocal)));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Otaku Store RD'), findsOneWidget);
+      expect(find.textContaining('Tienda física'), findsNothing);
+    });
+
+    testWidgets('sin negocio no pinta la línea (ni un «Proveedor» fantasma)',
+        (tester) async {
+      await tester.pumpWidget(celda(const ProductGridCard(item: item)));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.storefront_outlined), findsNothing);
+      expect(find.textContaining('Proveedor'), findsNothing);
+    });
+
+    testWidgets('ya no pinta eyebrow de categoría ni atributos (PO 2026-09-05)',
+        (tester) async {
+      await tester.pumpWidget(celda(const ProductGridCard(item: item)));
+      await tester.pumpAndSettle();
+      expect(find.text('BELLEZA'), findsNothing);
+      expect(find.text('Traslado'), findsNothing);
+      expect(find.text('Nuevo'), findsNothing);
+    });
+
+    testWidgets('la foto es cuadrada: tan alta como ancha la tarjeta',
+        (tester) async {
+      await tester.pumpWidget(celda(const ProductGridCard(item: item)));
+      await tester.pumpAndSettle();
+      final foto = tester.getSize(find.byType(AspectRatio));
+      expect(foto.width, 160);
+      expect(foto.height, 160);
+    });
   });
 }

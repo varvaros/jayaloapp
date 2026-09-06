@@ -144,8 +144,8 @@ void main() {
   });
 
   testWidgets(
-      'la fila de atributos pinta envío/estado/color y calla cuando faltan '
-      '(Variante A, PO 2026-08-11)', (tester) async {
+      'la rejilla ya no pinta envío/estado/color (PO 2026-09-05: viven en la ficha)',
+      (tester) async {
     final conAtributos = {
       ...fixedItem,
       'condition': 'nuevo',
@@ -161,25 +161,10 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
-    expect(find.text('Traslado'), findsOneWidget);
-    expect(find.text('Nuevo'), findsOneWidget);
-    // La lista de offer_defaults.colors gana sobre la columna legada.
-    expect(find.text('Rojo, Azul'), findsOneWidget);
-  });
-
-  testWidgets('sin atributos declarados no hay fila (ni icono suelto)',
-      (tester) async {
-    // `fixedItem` no declara envío/estado/color.
-    await tester.pumpWidget(host(CatalogView(
-      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
-          [fixedItem],
-      actions: const [],
-    )));
-    await tester.pumpAndSettle();
-
     expect(find.text('Taladro inalámbrico'), findsOneWidget);
     expect(find.text('Traslado'), findsNothing);
     expect(find.text('Nuevo'), findsNothing);
+    expect(find.text('Rojo, Azul'), findsNothing);
   });
 
   testWidgets('estado vacío muestra una guía, no una rejilla en blanco',

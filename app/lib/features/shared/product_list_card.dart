@@ -3,9 +3,9 @@ import 'network_image.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
+import '../../data/repos.dart' show BusinessCardInfo;
 import '../../domain/catalog.dart';
 import '../../domain/money.dart';
-import '../../domain/offer_defaults.dart';
 import 'brand_kit.dart';
 import 'star_score.dart';
 
@@ -215,68 +215,168 @@ class ProductListCard extends StatelessWidget {
       );
 }
 
-/// Alto de la foto de [ProductGridCard]: lo ÚNICO de la tarjeta que NO crece
-/// con la fuente del sistema.
-const double _kGridImageHeight = 118;
-
-/// Padding vertical del bloque de texto (10 arriba + 12 abajo).
+/// Padding vertical del bloque de texto de [ProductGridCard] (10 arriba + 12
+/// abajo).
 const double _kGridTextPadding = 22;
 
 /// Alto del bloque de texto de [ProductGridCard] a escala 1, en el CASO PEOR:
-/// eyebrow + nombre a 2 líneas + reputación + DOS renglones de atributos +
-/// precio, con sus huecos. Medido con el test de `product_list_card_test.dart`,
-/// que es quien vigila que siga alcanzando (el caso peor ocupa 261 con la
-/// tipografía del entorno de test, ~253 con Roboto: se toma la mayor + margen).
-const double _kGridTextBlock = 122;
+/// nombre a 2 líneas + línea de tienda + reputación + precio, con sus huecos
+/// (≈94 medidos; se toma 104 para dejar margen a la fuente del entorno de
+/// test). `product_list_card_test.dart` vigila que siga alcanzando.
+const double _kGridTextBlock = 104;
 
-/// Alto de la celda de la rejilla del catálogo. La tarjeta vive en un
-/// `mainAxisExtent` FIJO y todo lo que va bajo la foto es texto, así que con
-/// la fuente del sistema en grande —o en una pantalla estrecha, donde la fila
-/// de atributos se parte en dos renglones— el bloque crecía, el precio se
-/// salía por debajo y quedaba recortado (reporte PO 2026-08-14). Con la fuente
-/// por defecto son 262 (6 más que el 256 aprobado — el margen que le faltaba a
-/// una tarjeta con dos renglones de atributos), y de ahí crece con el texto.
-double catalogGridCardExtent(BuildContext context) {
+/// Alto de la celda de la rejilla del catálogo: la foto es CUADRADA (tan alta
+/// como ancha la celda, [cellWidth]) y debajo va el bloque de texto, que crece
+/// con la fuente del sistema. Antes la foto medía 118 fijos y el bloque de
+/// texto la superaba (PO 2026-09-05: «manda el texto, no la foto»).
+double catalogGridCardExtent(BuildContext context, double cellWidth) {
   // Escala tipográfica efectiva (Android 14 la aplica de forma no lineal, por
-  // eso se mide sobre un tamaño representativo del bloque en vez de asumirla).
+  // eso se mide sobre un tamaño representativo del bloque).
   final scale = MediaQuery.textScalerOf(context).scale(13) / 13;
-  return _kGridImageHeight +
+  return cellWidth +
       _kGridTextPadding +
       _kGridTextBlock * scale.clamp(1.0, 1.8);
 }
 
-/// Alto de un renglón de la fila de atributos: el icono (12) o su texto a la
-/// escala del sistema, lo que mida más.
-double _attrRunHeight(BuildContext context) {
-  final text = MediaQuery.textScalerOf(context).scale(10) * 1.25;
-  return text < 12 ? 12 : text;
+/// Foto de catálogo: `cover`, fundido suave al cargar (doctrina de
+/// movimiento) y placeholder neutro sin foto o con error. Compartida por la
+/// tarjeta de rejilla y la de carrusel.
+Widget catalogImage(String? url, ColorScheme cs) {
+  Widget placeholder() => Container(
+        color: cs.surfaceContainerHighest,
+        alignment: Alignment.center,
+        child: Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
+      );
+  if (url == null) return placeholder();
+  return JayaloNetworkImage(
+    url,
+    fit: BoxFit.cover,
+    frameBuilder: (_, child, frame, wasSync) => wasSync
+        ? child
+        : AnimatedOpacity(
+            opacity: frame == null ? 0 : 1,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+            child: child,
+          ),
+    errorBuilder: (_, _, _) => placeholder(),
+  );
 }
 
-/// Tarjeta de REJILLA del catálogo (mockup aprobado PO 2026-08-10): la foto
-/// llena el ancho de la tarjeta arriba; abajo solo lo que decide un vistazo —
-/// categoría en eyebrow violeta, nombre a 2 líneas y precio. La descripción
-/// NO viaja aquí: vive en la ficha del producto. [ProductListCard] (fila
-/// ancha) sigue siendo la de "Mi negocio"/tienda del proveedor.
+/// Línea «de quién es»: icono de tienda + nombre del negocio y, si declara
+/// local y [sello] lo permite, el sufijo «· Tienda física» en la tinta teal
+/// del tono `requisito` (AUTODECLARADO: nunca el verde de verificado — ver
+/// `PhysicalLocationBadge`). Va como texto y no como píldora porque en media
+/// tarjeta la píldora no cabe. `null` sin negocio: la tarjeta se encoge, no
+/// inventa un «Proveedor» fantasma.
+Widget? storeLine(BuildContext context, BusinessCardInfo? negocio,
+    {bool sello = true}) {
+  if (negocio == null) return null;
+  final cs = Theme.of(context).colorScheme;
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  final teal =
+      (dark ? JayaloStatus.requisitoDark : JayaloStatus.requisitoLight).ink;
+  return Padding(
+    padding: const EdgeInsets.only(top: 4),
+    child: Row(children: [
+      Icon(Icons.storefront_outlined, size: 12, color: cs.onSurfaceVariant),
+      const SizedBox(width: 4),
+      Flexible(
+        child: Text.rich(
+          TextSpan(
+            text: negocio.name,
+            style: TextStyle(
+                fontSize: 11, height: 1.25, color: cs.onSurfaceVariant),
+            children: [
+              if (sello && negocio.hasPhysicalLocation)
+                TextSpan(
+                  text: ' · Tienda física',
+                  style: TextStyle(color: teal, fontWeight: FontWeight.w600),
+                ),
+            ],
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    ]),
+  );
+}
+
+/// Precio del catálogo a un [size] dado — misma semántica que [_priceLine] de
+/// la fila ancha (fijo / rango / «desde» / «Consultar precio»). Un
+/// [FittedBox] encoge un rango largo a una línea sin achicar los cortos.
+Widget catalogPriceLine(ColorScheme cs, Map<String, dynamic> item,
+    {required double size}) {
+  final price = item['price'] as num?;
+  final min = item['price_min'] as num?;
+  final max = item['price_max'] as num?;
+  final big = TextStyle(
+    fontSize: size,
+    height: 1,
+    fontWeight: FontWeight.w700,
+    color: cs.primary,
+    letterSpacing: -.2,
+    fontFeatures: const [FontFeature.tabularFigures()],
+  );
+  if (price == null && min == null) {
+    return Text('Consultar precio',
+        maxLines: 1,
+        style: TextStyle(
+            fontSize: size * .78,
+            fontWeight: FontWeight.w600,
+            color: cs.onSurfaceVariant));
+  }
+  final Widget line;
+  if (price != null) {
+    line = Text(fmtRD(price), maxLines: 1, style: big);
+  } else if (max != null) {
+    // Guion simple con espacios: paridad EXACTA con `catalogPriceLabel` de la web.
+    line = Text('${fmtRD(min)} - ${fmtRD(max)}', maxLines: 1, style: big);
+  } else {
+    line = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Text('desde ',
+            style: TextStyle(
+                fontSize: size * .72,
+                fontWeight: FontWeight.w500,
+                color: cs.onSurfaceVariant)),
+        Text(fmtRD(min), style: big),
+      ],
+    );
+  }
+  return Align(
+    alignment: Alignment.centerLeft,
+    child: FittedBox(
+        fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: line),
+  );
+}
+
+/// Tarjeta de REJILLA del catálogo (mockup aprobado PO 2026-09-05, camino 3):
+/// foto CUADRADA arriba y debajo solo lo que decide un vistazo — nombre a 2
+/// líneas, de quién es ([storeLine]), reputación si la hay y precio. La
+/// categoría ya no viaja aquí (la dice el chip o la sección) ni los atributos
+/// envío/estado/color (viven en la ficha del producto). [ProductListCard]
+/// (fila ancha) sigue siendo la de «Mi negocio»/tienda del proveedor.
 class ProductGridCard extends StatelessWidget {
-  const ProductGridCard({super.key, required this.item});
+  const ProductGridCard({super.key, required this.item, this.negocio});
   final Map<String, dynamic> item;
+
+  /// Cabecera del negocio dueño del producto (nombre, local). `null` = no
+  /// resolvió (consulta caída o negocio borrado): la línea no se pinta.
+  final BusinessCardInfo? negocio;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final name = item['name'] as String? ?? '';
-    final catName = categoryNameById(item['category_id'] as String?);
     final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
     final img = images.isEmpty ? null : images.first;
     final avg = (item['avg_rating'] as num?)?.toDouble() ?? 0;
     final count = (item['reviews_count'] as num?)?.toInt() ?? 0;
-
-    Widget placeholder() => Container(
-          color: cs.surfaceContainerHighest,
-          alignment: Alignment.center,
-          child:
-              Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
-        );
 
     return JayaloCard(
       padding: EdgeInsets.zero,
@@ -289,24 +389,7 @@ class ProductGridCard extends StatelessWidget {
           ClipRRect(
             borderRadius:
                 const BorderRadius.vertical(top: Radius.circular(kCardRadius)),
-            child: SizedBox(
-              height: 118,
-              child: img == null
-                  ? placeholder()
-                  : JayaloNetworkImage(
-                      img,
-                      fit: BoxFit.cover,
-                      frameBuilder: (_, child, frame, wasSync) => wasSync
-                          ? child
-                          : AnimatedOpacity(
-                              opacity: frame == null ? 0 : 1,
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeOut,
-                              child: child,
-                            ),
-                      errorBuilder: (_, _, _) => placeholder(),
-                    ),
-            ),
+            child: AspectRatio(aspectRatio: 1, child: catalogImage(img, cs)),
           ),
           Expanded(
             child: Padding(
@@ -314,17 +397,6 @@ class ProductGridCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (catName != null) ...[
-                    Text(catName.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1.1,
-                            color: cs.primary)),
-                    const SizedBox(height: 3),
-                  ],
                   Text(name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -333,17 +405,14 @@ class ProductGridCard extends StatelessWidget {
                           height: 1.3,
                           fontWeight: FontWeight.w600,
                           color: jayaloHead(context))),
+                  ?storeLine(context, negocio),
                   if (avg > 0 && count > 0) ...[
                     const SizedBox(height: 3),
                     Row(mainAxisSize: MainAxisSize.min, children: [
-                      // Estrellas a 11 px: en media tarjeta las cinco más el texto
-                      // van justas. ⚠️ Es el sitio más apretado de los diez y el
-                      // que hay que mirar primero en el smoke del device.
+                      // Estrellas a 11 px: en media tarjeta las cinco más el
+                      // texto van justas — mirar primero en el smoke del device.
                       StarScore(score: avg, size: 11, showNumber: false),
                       const SizedBox(width: 3),
-                      // Flexible: con muchas reseñas y la fuente en grande
-                      // ("9.8/10 (1204)") la línea no cabe en media tarjeta —
-                      // se corta con puntos suspensivos en vez de desbordar.
                       Flexible(
                         child: Text(
                             '${StarScore.formatScore(avg)}/10 ($count)',
@@ -354,123 +423,14 @@ class ProductGridCard extends StatelessWidget {
                       ),
                     ]),
                   ],
-                  ?_attrsRow(context, cs),
                   const Spacer(),
-                  _gridPrice(cs),
+                  catalogPriceLine(cs, item, size: 16),
                 ],
               ),
             ),
           ),
         ],
       ),
-    );
-  }
-
-  /// Fila de atributos (Variante A del mockup, PO 2026-08-11): iconitos con
-  /// texto micro entre el nombre y el precio — envío, estado y color, en ese
-  /// orden. Solo pinta lo que el producto declara; sin nada, ni el hueco.
-  /// El color sigue la regla de la ficha: la lista de `offer_defaults.colors`
-  /// gana sobre la columna legada `color`. Texto en `onSurface` (no el muted):
-  /// mismo motivo de contraste documentado en la descripción de la fila ancha.
-  Widget? _attrsRow(BuildContext context, ColorScheme cs) {
-    final condition = item['condition'] as String?;
-    final conditionLabel =
-        condition == 'nuevo' ? 'Nuevo' : condition == 'usado' ? 'Usado' : null;
-    final colorsList = (((item['offer_defaults'] as Map?)
-                ?.cast<String, dynamic>())?[OfferDefaults.colors] as List?)
-            ?.cast<String>() ??
-        const [];
-    final colorLabel = colorsList.isNotEmpty
-        ? colorsList.join(', ')
-        : (item['color'] as String?);
-    final attrs = <(IconData, String)>[
-      if (item['offers_shipping'] == true)
-        (Icons.local_shipping_outlined, 'Traslado'),
-      if (conditionLabel != null) (Icons.inventory_2_outlined, conditionLabel),
-      if (colorLabel != null && colorLabel.trim().isNotEmpty)
-        (Icons.palette_outlined, colorLabel.trim()),
-    ];
-    if (attrs.isEmpty) return null;
-    return Padding(
-      padding: const EdgeInsets.only(top: 5),
-      // DOS renglones como máximo: la celda de la rejilla tiene alto fijo (ver
-      // [catalogGridCardExtent], que reserva justo esos dos), así que un tercer
-      // renglón —pantalla muy estrecha + fuente muy grande— se recorta aquí en
-      // vez de empujar el precio fuera de la tarjeta.
-      child: ClipRect(
-        child: ConstrainedBox(
-          constraints:
-              BoxConstraints(maxHeight: _attrRunHeight(context) * 2 + 3),
-          child: Wrap(spacing: 10, runSpacing: 3, children: [
-            for (final (icon, label) in attrs)
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(icon, size: 12, color: cs.onSurfaceVariant),
-                const SizedBox(width: 3.5),
-                ConstrainedBox(
-                  // Una lista larga de colores se corta con puntos suspensivos
-                  // en vez de reventar el ancho de la media tarjeta.
-                  constraints: const BoxConstraints(maxWidth: 96),
-                  child: Text(label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          color: cs.onSurface)),
-                ),
-              ]),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  /// Precio compacto de la rejilla — misma semántica que [_priceLine] de la
-  /// fila ancha (fijo / rango / "desde" / "Consultar precio"), a 16px.
-  Widget _gridPrice(ColorScheme cs) {
-    final price = item['price'] as num?;
-    final min = item['price_min'] as num?;
-    final max = item['price_max'] as num?;
-    final big = TextStyle(
-      fontSize: 16,
-      height: 1,
-      fontWeight: FontWeight.w700,
-      color: cs.primary,
-      letterSpacing: -.2,
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
-    if (price == null && min == null) {
-      return Text('Consultar precio',
-          maxLines: 1,
-          style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: cs.onSurfaceVariant));
-    }
-    final Widget line;
-    if (price != null) {
-      line = Text(fmtRD(price), maxLines: 1, style: big);
-    } else if (max != null) {
-      line = Text('${fmtRD(min)} - ${fmtRD(max)}', maxLines: 1, style: big);
-    } else {
-      line = Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          Text('desde ',
-              style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurfaceVariant)),
-          Text(fmtRD(min), style: big),
-        ],
-      );
-    }
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: FittedBox(
-          fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: line),
     );
   }
 }
