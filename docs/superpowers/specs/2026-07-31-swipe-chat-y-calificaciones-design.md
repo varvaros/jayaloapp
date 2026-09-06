@@ -343,7 +343,7 @@ app y web**, y es aceptado: lo que importa es que ninguno lea como IA.
 `Icons.psychology_outlined` se descartó pese a ser "pensamiento": es un cerebro, y leería como
 IA *más* que las chispitas.
 
-El copy del onboarding (`onboarding_copy.dart:58`, *"Aquí eliges mensajes predefinidos para
+El copy del onboarding (`onboarding_copy.dart:58`, *"Con este botón eliges mensajes predefinidos para
 responder rápido"*) sigue siendo correcto: no se toca ni se sube la versión de
 `chat.quick_replies.v1`.
 

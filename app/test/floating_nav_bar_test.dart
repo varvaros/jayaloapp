@@ -724,4 +724,30 @@ void main() {
       handle.dispose();
     });
   });
+
+  testWidgets('itemKeys: cada ítem lateral lleva su ancla, ceñida al ícono',
+      (t) async {
+    final keys = {
+      for (final d in dests)
+        if (!d.isCenter) d.route: GlobalKey(),
+    };
+    await t.pumpWidget(MaterialApp(
+      theme: jayaloTheme(Brightness.light),
+      home: Scaffold(
+        bottomNavigationBar: FloatingNavBar(
+          destinations: dests,
+          currentIndex: 0,
+          onSelected: (_) {},
+          itemKeys: keys,
+        ),
+      ),
+    ));
+    await t.pumpAndSettle();
+    for (final e in keys.entries) {
+      final box = e.value.currentContext?.findRenderObject() as RenderBox?;
+      expect(box, isNotNull, reason: e.key);
+      expect(box!.size.width, lessThanOrEqualTo(40),
+          reason: '${e.key}: el hueco debe ceñirse al ícono, no al ancho del ítem');
+    }
+  });
 }

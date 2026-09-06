@@ -138,9 +138,12 @@ descarte del overlay. Las guías de gesto se marcan hechas al **primer hold exit
 
 ## Comportamiento UX
 
-- **Guías informativas:** botones **[Saltar]** y **[Siguiente]/[Entendido]**. Cerrar, saltar
-  o terminar → `markDone` **permanente** (cumple "una vez cerrada no vuelve"). Tap fuera del
-  elemento = también cierra y marca visto.
+- **Guías informativas:** botones **[Saltar]** y **[Siguiente]/[Entendido]**. Saltar o
+  terminar → `markDone` **permanente** (cumple "una vez cerrada no vuelve").
+  **Cambio 2026-09-05** (spec `2026-09-05-guia-mas-notable-design.md`): tap fuera del elemento
+  ya NO marca visto — cierra solo por esta vez y la guía vuelve al remontar la pantalla. Con
+  `tapThrough` (hoy solo el `+`), tocar DENTRO del hueco llega al elemento real y ese toque sí
+  la marca vista.
 - **Guías de gesto (excepción):** reaparecen hasta el **primer hold exitoso real**. Tap fuera
   las descarta *esa vez* pero reaparecen hasta lograr el gesto. Comportamiento actual
   conservado.

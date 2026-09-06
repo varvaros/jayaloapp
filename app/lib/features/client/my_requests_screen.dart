@@ -16,6 +16,7 @@ import '../shared/swipe_to_actions.dart';
 import '../shared/violet_header.dart';
 import '../shared/onboarding_guide.dart';
 import '../shared/onboarding_copy.dart';
+import '../shared/tour_anchors.dart';
 
 String timeAgo(DateTime d) {
   final diff = DateTime.now().difference(d);
@@ -162,20 +163,15 @@ class MyRequestsScreen extends StatefulWidget {
 }
 
 class _MyRequestsScreenState extends State<MyRequestsScreen> {
+  /// Anclas del recorrido de primera vez que viven en ESTA pantalla.
+  final _searchKey = GlobalKey(debugLabel: 'tour.home.search');
+  final _mineKey = GlobalKey(debugLabel: 'tour.home.mine');
+  final _todasKey = GlobalKey(debugLabel: 'tour.home.todas');
+
   late Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
   _load = _startLoad();
   int _seenTick = requestsChanged.value;
 
-  /// True mientras NO hay una carga de "mis solicitudes" en vuelo (la última
-  /// resolvió). Gatea la guía `client.others_requests.v1`: si esa guía pudiera
-  /// pedir turno de inmediato (su botón siempre está visible) mientras la de
-  /// `client.my_requests.v1` recién aparece al resolver `_load` (estado vacío,
-  /// su ancla es la tarjeta de ejemplo), la de MAYOR `order` ganaba la carrera
-  /// por llegar primero al coordinador — el de MENOR order (2, mis solicitudes)
-  /// dejaba de "ganar el turno primero" pese a la doctrina. `_startLoad` lo
-  /// pone en false en CADA recarga y en true al resolver, así ambas guías
-  /// compiten por `order` y no por quién carga antes — no sólo en la 1ª carga.
-  bool _myLoadSettled = false;
 
   /// Solicitudes con al menos una oferta NUEVA sin leer (= con notificación
   /// `offer_new` sin leer). Van PRIMERO en la lista, con punto rojo + borde
@@ -195,18 +191,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
   _fetchMine() => (widget.myFetch ?? _fetch)();
 
-  /// Arranca (o rearranca) la carga de "mis solicitudes" sincronizando
-  /// [_myLoadSettled]: vuelve a false mientras la nueva carga está en vuelo y
-  /// se pone en true al resolver. Se usa en TODAS las rutas de carga (inicial,
-  /// listener `_reload`, staleness y pull-to-refresh) para que el gate de la
-  /// guía de "otros" valga en cada recarga, no sólo en la primera.
+  /// Arranca (o rearranca) la carga de "mis solicitudes". Se usa en TODAS las
+  /// rutas de carga (inicial, listener `_reload`, staleness y pull-to-refresh).
+  /// (Hasta 2026-09-05 sincronizaba un gate para la guía suelta de «otros»,
+  /// absorbida por el recorrido `client.home_tour.v1`.)
   Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
   _startLoad() {
-    _myLoadSettled = false;
     final f = _fetchMine();
-    f.whenComplete(() {
-      if (mounted) setState(() => _myLoadSettled = true);
-    });
     return f;
   }
 
@@ -318,9 +309,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   /// 2026-08-10, doctrina "las tarjetas son las protagonistas, no los
   /// filtros"): la activa en violeta pleno, la inactiva en neutro tenue —
   /// sustituye a los dos botones violeta del pedido 2026-07-22.
-  Widget _filterButton(String label, bool selected, VoidCallback onTap) {
+  Widget _filterButton(String label, bool selected, VoidCallback onTap,
+      {Key? key}) {
     final cs = Theme.of(context).colorScheme;
     return Material(
+      key: key,
       color: selected ? cs.primary : cs.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(999),
       clipBehavior: Clip.antiAlias,
@@ -469,6 +462,32 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           //
           // Incrustada no lleva header: el de la pantalla anfitriona ya está
           // arriba, y dos headers violeta apilados serían absurdos.
+          // Recorrido de la primera vez (PO 2026-09-05): cada elemento de esta
+          // pantalla, en orden. Vive aquí (no en el shell) porque la mayoría
+          // de sus anclas son de esta pantalla; las del shell (el `+`, la
+          // barra) llegan por `TourAnchors`. Incrustada en Mis ofertas del
+          // proveedor no hay buscador ni píldoras ni barra de cliente: ahí no
+          // sale. Los textos, en `onboarding_copy.dart`.
+          OnboardingGuide(
+            guideKey: 'client.home_tour.v1',
+            enabled: !widget.embedded,
+            steps: anchorSteps(
+              onboardingCopy['client.home_tour.v1']!,
+              [
+                _searchKey,
+                _mineKey,
+                _todasKey,
+                TourAnchors.plus,
+                TourAnchors.nav('/catalog'),
+                TourAnchors.nav('/messages'),
+                TourAnchors.nav('/client/reputation'),
+              ],
+              // Tocar el `+` real a través del hueco crea la solicitud Y da el
+              // recorrido por visto: se aprende haciéndolo.
+              tapThroughAt: 3,
+            ),
+            child: const SizedBox.shrink(),
+          ),
           if (!widget.embedded)
           CollapsibleHeader(
             hidden: _searchHidden,
@@ -493,6 +512,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
               // "Filtrar" abre el catálogo (su hoja de filtros llega con la
               // feature de filtros del catálogo).
               below: WarmSearchField(
+                key: _searchKey,
                 hint: 'Buscar en Jayalo',
                 onTap: () => context.push('/catalog?focus=1'),
                 onFilter: () => context.push('/catalog'),
@@ -513,19 +533,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
               children: [
                 _filterButton('Mis solicitudes', !_others, () {
                   if (_others) setState(() => _others = false);
-                }),
-                OnboardingGuide(
-                  guideKey: 'client.others_requests.v1',
-                  steps: onboardingCopy['client.others_requests.v1']!,
-                  order: 3,
-                  enabled: _myLoadSettled,
-                  child: _filterButton('Todas las solicitudes', _others, () {
-                    setState(() {
-                      _others = true;
-                      _othersLoad ??= _fetchOthers();
-                    });
-                  }),
-                ),
+                }, key: _mineKey),
+                _filterButton('Todas las solicitudes', _others, () {
+                  setState(() {
+                    _others = true;
+                    _othersLoad ??= _fetchOthers();
+                  });
+                }, key: _todasKey),
               ],
             ),
           ),
@@ -603,13 +617,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                 bottom: navBarReservedSpace(context),
                               ),
                               children: [
-                                OnboardingGuide(
-                                  guideKey: 'client.my_requests.v1',
-                                  steps:
-                                      onboardingCopy['client.my_requests.v1']!,
-                                  order: 2,
-                                  child: const _ExampleRequestCard(),
-                                ),
+                                const _ExampleRequestCard(),
                                 const SizedBox(height: 12),
                                 Padding(
                                   padding:
@@ -1368,9 +1376,10 @@ class _OtherRequestCard extends StatelessWidget {
 }
 
 /// Tarjeta de solicitud de EJEMPLO (estado vacío): mismo lenguaje visual que
-/// `_RequestCard` pero atenuada, con etiqueta "Ejemplo" y SIN `onTap`. Sirve de
-/// ancla a la guía `client.my_requests.v1` y da sustancia al "aquí se verán tus
-/// solicitudes". Desaparece en cuanto el cliente tiene una solicitud real.
+/// `_RequestCard` pero atenuada, con etiqueta "Ejemplo" y SIN `onTap`. Da
+/// sustancia al estado vacío (hasta 2026-09-05 fue además el ancla de la guía
+/// suelta `client.my_requests.v1`, absorbida por el recorrido de la pantalla).
+/// Desaparece en cuanto el cliente tiene una solicitud real.
 class _ExampleRequestCard extends StatelessWidget {
   const _ExampleRequestCard();
 

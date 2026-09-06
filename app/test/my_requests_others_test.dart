@@ -15,8 +15,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     onboardingStore.reset();
-    await onboardingStore.markDone('client.my_requests.v1');
-    await onboardingStore.markDone('client.others_requests.v1');
+    await onboardingStore.markDone('client.home_tour.v1');
   });
 
   Widget host(Widget child) =>
