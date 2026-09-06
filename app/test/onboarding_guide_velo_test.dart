@@ -421,6 +421,30 @@ void main() {
       },
     );
 
+    testWidgets('un toque en el velo MIENTRAS el hueco viaja no cierra nada', (
+      t,
+    ) async {
+      final top = GlobalKey();
+      final bottom = GlobalKey();
+      await t.pumpWidget(
+        scene(
+          top: top,
+          bottom: bottom,
+          steps: [
+            OnboardingStep('Uno', anchorKey: top),
+            OnboardingStep('Dos', anchorKey: bottom),
+          ],
+        ),
+      );
+      await t.pumpAndSettle();
+      await t.tap(find.text('Siguiente'));
+      await t.pump(const Duration(milliseconds: 80)); // a mitad del viaje
+      await t.tapAt(const Offset(700, 300)); // velo, lejos de todo
+      await t.pumpAndSettle();
+      expect(card, findsOneWidget, reason: 'el toque impaciente no cierra');
+      expect(find.text('Dos'), findsOneWidget);
+    });
+
     testWidgets('Saltar marca el recorrido ENTERO, no un paso', (t) async {
       final top = GlobalKey();
       final bottom = GlobalKey();

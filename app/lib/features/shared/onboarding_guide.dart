@@ -502,6 +502,10 @@ class _OnboardingGuideState extends State<OnboardingGuide>
   /// `enabled` pasa otra vez a true.
   Future<void> _snooze() async {
     if (_closing || _done) return;
+    // Mientras el hueco viaja al paso siguiente, un toque impaciente (el
+    // segundo toque sobre «Siguiente», que ya se movió) caería en el velo:
+    // no cuenta como «cerrar por esta vez».
+    if (_stepAnim.isAnimating) return;
     _closing = true;
     final gen = onboardingStore.resetGeneration;
     await _hideAnimated();
@@ -516,6 +520,7 @@ class _OnboardingGuideState extends State<OnboardingGuide>
   }
 
   void _next() {
+    if (_closing || _done) return;
     if (_step < widget.steps.length - 1) {
       // Al cambiar de paso se mide el ancla NUEVA y el hueco viaja desde la
       // vieja. Sin ancla visible en alguno de los dos lados no hay viaje: el
