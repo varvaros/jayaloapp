@@ -119,45 +119,52 @@ class SeccionTitulo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Ritmo vertical (smoke PO 2026-09-06, «está todo muy pegado»): 24 de
+    // aire sobre el título y 10 debajo, y la fila mide SIEMPRE 44 (la altura
+    // del área táctil de «Ver todo»), así los títulos sin enlace respiran
+    // igual que los que lo llevan.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 12, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              titulo,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: jayaloHead(context),
+      padding: const EdgeInsets.fromLTRB(16, 24, 12, 10),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 44),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                titulo,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: jayaloHead(context),
+                ),
               ),
             ),
-          ),
-          if (onMore != null)
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
-              child: InkWell(
-                onTap: onMore,
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 12,
-                  ),
-                  child: Text(
-                    'Ver todo',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: cs.primary,
+            if (onMore != null)
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+                child: InkWell(
+                  onTap: onMore,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 12,
+                    ),
+                    child: Text(
+                      'Ver todo',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: cs.primary,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
