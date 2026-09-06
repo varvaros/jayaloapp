@@ -1577,16 +1577,92 @@ Future<void> saveIdDoc({
   }, onConflict: 'business_id');
 }
 
+/// Columnas de `provider_businesses` que `authenticated` NO puede leer por
+/// SELECT. Comprobado en prod contra `information_schema.column_privileges`:
+/// son estas SEIS, ni una más.
+///
+/// 🔴🔥 Meter UNA de ellas en un `.select()` **no la devuelve nula: tumba la
+/// consulta ENTERA** con `42501 permission denied for table
+/// provider_businesses`. Se las revocó a propósito la migración
+/// `20260710011825_close_rnc_address_grant` (ALTO-1 de la auditoría), que dejó
+/// una RPC `SECURITY DEFINER` de repuesto para cada dato:
+/// `get_my_business_private` (rnc, address) y `get_business_whatsapp`.
+///
+/// Ya ha mordido DOS veces, las dos en silencio y las dos durante meses:
+/// `rnc` en [myBusinessForVerification] y `whatsapp` en `_verifyBusiness`
+/// (Ajustes). El test de `business_identity_repos_test.dart` candea esta lista
+/// contra [kBusinessVerificationColumns].
+const kProviderBusinessesSinSelect = <String>[
+  'address',
+  'country_code',
+  'lat',
+  'lng',
+  'rnc',
+  'whatsapp',
+];
+
+/// Columnas de `provider_businesses` que `authenticated` SÍ puede leer, y que
+/// necesita Ajustes para decidir qué filas de verificación pinta.
+///
+/// Ninguna de [kProviderBusinessesSinSelect] puede entrar aquí — en particular
+/// `rnc`, que es lo que tumbaba esta consulta entera y dejaba a Ajustes sin
+/// «Validar RNC» NI «Validar negocio (cédula)». El RNC llega aparte, por RPC.
+const kBusinessVerificationColumns =
+    'id,business_type,identity_verified_at,business_verified_at';
+
+/// Pega el `rnc` que devuelve `get_my_business_private` sobre la fila pública.
+///
+/// La RPC es `RETURNS TABLE` (`proretset`), así que por PostgREST **siempre**
+/// llega como lista: `[]` si el llamante no es dueño/staff/admin o el id no
+/// existe (la función es SQL puro, no lanza), `[{rnc, address}]` si lo es.
+/// `postgrest 2.8.0` solo desenvuelve lista→objeto con `maybeSingle` sobre GET,
+/// y `rpc()` es POST — así que el Map suelto NO es un contrato de PostgREST,
+/// se tolera por barato. Lo que sí ocurre de verdad es `null`: el cliente deja
+/// el cuerpo en null cuando llega vacío. Mismo criterio que [latLngFromRpcRow].
+/// Pura a propósito: es lo único de este camino que se puede probar sin red.
+Map<String, dynamic> mergeBusinessRnc(
+    Map<String, dynamic> base, dynamic privado) {
+  final fila = privado is List
+      ? (privado.isEmpty ? null : privado.first)
+      : privado;
+  return {
+    ...base,
+    'rnc': fila is Map ? fila['rnc'] as String? : null,
+  };
+}
+
 /// Contexto de verificación del negocio del proveedor (para Ajustes): tipo,
 /// RNC y los sellos (identidad/negocio) que la web fija al aprobar.
+///
+/// Dos viajes, no uno: el RNC no se puede leer por SELECT (ver
+/// [kBusinessVerificationColumns]) y sale de la RPC `get_my_business_private`,
+/// que ya comprueba dueño/staff/admin por dentro.
 Future<Map<String, dynamic>?> myBusinessForVerification() async {
   final uid = supa.auth.currentUser!.id;
-  return await supa
+  final base = await supa
       .from('provider_businesses')
-      .select('id,business_type,rnc,identity_verified_at,business_verified_at')
+      .select(kBusinessVerificationColumns)
       .eq('user_id', uid)
       .limit(1)
       .maybeSingle();
+  if (base == null) return null;
+  // La RPC va en su PROPIO try: el `rnc` es OPCIONAL (solo lo lee la fila
+  // "Validar RNC", y solo si business_type == 'formal'), mientras que `base`
+  // trae `business_type`, que es lo que decide si se pinta "Validar negocio
+  // (cédula)" — la fila que destraba poder ofertar. Sin este aislamiento un
+  // fallo de red en lo opcional tumbaría lo esencial y reaparecería el mismo
+  // síntoma que este arreglo viene a cerrar. Misma doctrina que
+  // `businessesPhysicalLocation` más abajo.
+  try {
+    final privado = await supa.rpc(
+      'get_my_business_private',
+      params: {'_business_id': base['id']},
+    );
+    return mergeBusinessRnc(base, privado);
+  } catch (e, s) {
+    unawaited(reportError(e, s));
+    return mergeBusinessRnc(base, null);
+  }
 }
 
 /// Confirma/actualiza el RNC del negocio formal — update directo (el dueño
