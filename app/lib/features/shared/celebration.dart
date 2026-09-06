@@ -196,6 +196,11 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
               ? const Duration(milliseconds: 3000)
               : const Duration(milliseconds: 2600));
     _ctrl.forward();
+    // Golpe en la mano. Va FUERA del `if (!reduced)` a propósito: "reducir
+    // animaciones" es una preferencia de MOVIMIENTO, no de vibración — el
+    // criterio está razonado en `JayaloHaptics`. Justo a quien apagó las
+    // animaciones es a quien menos hay que quitarle la confirmación.
+    JayaloHaptics.success();
     // Sonido de la celebración (pedido PO 2026-07-21: sonido en ambas). El
     // audio es decorativo — playSfx nunca lanza.
     if (!reduced) {
