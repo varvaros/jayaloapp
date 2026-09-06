@@ -177,9 +177,13 @@ void main() {
               ),
               OnboardingGuide(
                 guideKey: 'x.tap.v1',
-                anchorKey: anchor,
-                tapThrough: tapThrough,
-                steps: const [OnboardingStep('Toca el botón')],
+                steps: [
+                  OnboardingStep(
+                    'Toca el botón',
+                    anchorKey: anchor,
+                    tapThrough: tapThrough,
+                  ),
+                ],
                 child: const SizedBox.shrink(),
               ),
             ],
@@ -253,20 +257,26 @@ void main() {
   });
 
   group('cabecera del tour', () {
-    testWidgets('pinta «PASO 1 DE 3» con tourIndex/tourLength', (t) async {
+    testWidgets('con varios pasos pinta «PASO n DE N» y avanza', (t) async {
       await t.pumpWidget(
         _host(
           const OnboardingGuide(
             guideKey: 'x.tour.v1',
-            tourIndex: 1,
-            tourLength: 3,
-            steps: [OnboardingStep('Hola guia')],
+            steps: [
+              OnboardingStep('Uno'),
+              OnboardingStep('Dos'),
+              OnboardingStep('Tres'),
+            ],
             child: _kDest,
           ),
         ),
       );
       await t.pumpAndSettle();
       expect(find.text('PASO 1 DE 3'), findsOneWidget);
+      await t.tap(find.text('Siguiente'));
+      await t.pumpAndSettle();
+      expect(find.text('PASO 2 DE 3'), findsOneWidget);
+      expect(find.text('Dos'), findsOneWidget);
     });
 
     testWidgets('sin tour no hay cabecera', (t) async {
@@ -281,6 +291,170 @@ void main() {
       );
       await t.pumpAndSettle();
       expect(find.textContaining('PASO'), findsNothing);
+    });
+  });
+
+  group('recorrido multi-ancla', () {
+    Widget scene({
+      required GlobalKey top,
+      required GlobalKey bottom,
+      required List<OnboardingStep> steps,
+    }) {
+      return MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            fit: StackFit.expand, // sin esto el Stack mide 0 y «abajo» no existe
+            children: [
+              Positioned(
+                left: 20,
+                top: 20,
+                child: SizedBox(
+                  key: top,
+                  width: 80,
+                  height: 40,
+                  child: const Text('arriba'),
+                ),
+              ),
+              Positioned(
+                left: 20,
+                bottom: 20,
+                child: SizedBox(
+                  key: bottom,
+                  width: 80,
+                  height: 40,
+                  child: const Text('abajo'),
+                ),
+              ),
+              OnboardingGuide(
+                guideKey: 'x.multi.v1',
+                steps: steps,
+                child: const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    testWidgets('cada paso mide SU ancla: la burbuja cambia de lado', (
+      t,
+    ) async {
+      final top = GlobalKey();
+      final bottom = GlobalKey();
+      await t.pumpWidget(
+        scene(
+          top: top,
+          bottom: bottom,
+          steps: [
+            OnboardingStep('Uno', anchorKey: top),
+            OnboardingStep('Dos', anchorKey: bottom),
+          ],
+        ),
+      );
+      await t.pumpAndSettle();
+      final screenH = t.view.physicalSize.height / t.view.devicePixelRatio;
+      final r1 = t.getRect(card);
+      expect(
+        r1.top,
+        greaterThan(60),
+        reason: 'paso 1: debajo del ancla de arriba',
+      );
+
+      await t.tap(find.text('Siguiente'));
+      await t.pumpAndSettle();
+      final r2 = t.getRect(card);
+      expect(find.text('Dos'), findsOneWidget);
+      expect(
+        r2.bottom,
+        lessThanOrEqualTo(screenH - 60),
+        reason: 'paso 2: encima del ancla de abajo',
+      );
+      expect(
+        r2.top,
+        greaterThan(r1.top),
+        reason: 'el hueco viajó de arriba abajo; la burbuja lo sigue',
+      );
+    });
+
+    testWidgets('un paso cuya ancla no está sale centrado, no se pierde', (
+      t,
+    ) async {
+      final top = GlobalKey();
+      final bottom = GlobalKey();
+      final missing = GlobalKey(); // nunca se monta
+      await t.pumpWidget(
+        scene(
+          top: top,
+          bottom: bottom,
+          steps: [
+            OnboardingStep('Uno', anchorKey: top),
+            OnboardingStep('Dos', anchorKey: missing),
+          ],
+        ),
+      );
+      await t.pumpAndSettle();
+      await t.tap(find.text('Siguiente'));
+      await t.pumpAndSettle();
+      expect(find.text('Dos'), findsOneWidget);
+      expect(card, findsOneWidget);
+    });
+
+    testWidgets(
+      'si el PRIMER paso no tiene ancla montada, el recorrido sale igual',
+      (t) async {
+        final top = GlobalKey();
+        final bottom = GlobalKey();
+        final missing = GlobalKey();
+        await t.pumpWidget(
+          scene(
+            top: top,
+            bottom: bottom,
+            steps: [
+              OnboardingStep('Uno', anchorKey: missing),
+              OnboardingStep('Dos', anchorKey: top),
+            ],
+          ),
+        );
+        await t.pumpAndSettle();
+        expect(find.text('Uno'), findsOneWidget);
+        expect(onboardingStore.isDone('x.multi.v1'), isFalse);
+      },
+    );
+
+    testWidgets('Saltar marca el recorrido ENTERO, no un paso', (t) async {
+      final top = GlobalKey();
+      final bottom = GlobalKey();
+      await t.pumpWidget(
+        scene(
+          top: top,
+          bottom: bottom,
+          steps: [
+            OnboardingStep('Uno', anchorKey: top),
+            OnboardingStep('Dos', anchorKey: bottom),
+          ],
+        ),
+      );
+      await t.pumpAndSettle();
+      await t.tap(find.text('Saltar'));
+      await t.pumpAndSettle();
+      expect(card, findsNothing);
+      expect(onboardingStore.isDone('x.multi.v1'), isTrue);
+    });
+
+    test('anchorSteps casa copys con anclas y marca el tapThrough', () {
+      final a = GlobalKey();
+      final b = GlobalKey();
+      final steps = anchorSteps(
+        const [OnboardingStep('Uno'), OnboardingStep('Dos')],
+        [a, b],
+        tapThroughAt: 1,
+      );
+      expect(steps.map((s) => s.anchorKey), [a, b]);
+      expect(steps.map((s) => s.tapThrough), [false, true]);
+      expect(
+        () => anchorSteps(const [OnboardingStep('Uno')], [a, b]),
+        throwsA(isA<AssertionError>()),
+      );
     });
   });
 

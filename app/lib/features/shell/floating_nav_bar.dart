@@ -72,6 +72,7 @@ class FloatingNavBar extends StatelessWidget {
     required this.onSelected,
     this.badges = const {},
     this.centerButtonKey,
+    this.itemKeys,
     this.centerIconOverride,
     this.centerLabelOverride,
     this.centerMenuItems,
@@ -95,6 +96,12 @@ class FloatingNavBar extends StatelessWidget {
   /// Key opcional para anclar una guía de onboarding sobre el botón central
   /// (no cambia el aspecto: solo permite medir su rect). Ver home_shell.
   final GlobalKey? centerButtonKey;
+
+  /// Keys opcionales por `route` para anclar los recorridos de primera vez
+  /// sobre los ítems laterales (Catálogo, Mensajes, Mi negocio…). La key va
+  /// sobre el ÍCONO del ítem: el hueco de la guía sale ceñido, no del alto de
+  /// la píldora.
+  final Map<String, GlobalKey>? itemKeys;
 
   /// Ícono y etiqueta con los que se pinta el centro cuando la pantalla al
   /// frente se APROPIÓ del botón (ver `core/center_action.dart`). `null` = los
@@ -159,6 +166,8 @@ class FloatingNavBar extends StatelessWidget {
                                   active: i == currentIndex,
                                   badge: badges[destinations[i].route] ?? 0,
                                   onTap: () => onSelected(i),
+                                  anchorKey:
+                                      itemKeys?[destinations[i].route],
                                 ),
                         ),
                     ],
@@ -288,7 +297,11 @@ class _SideItem extends StatelessWidget {
     required this.active,
     required this.onTap,
     this.badge = 0,
+    this.anchorKey,
   });
+
+  /// Ancla de recorrido de primera vez, sobre el ícono. Ver [FloatingNavBar.itemKeys].
+  final GlobalKey? anchorKey;
 
   final NavDestination destination;
   final bool active;
@@ -330,6 +343,7 @@ class _SideItem extends StatelessWidget {
             // El ícono con su badge encima (Stack sin recorte para que la
             // píldora roja pueda sobresalir por la esquina superior derecha).
             Stack(
+              key: anchorKey,
               clipBehavior: Clip.none,
               children: [
                 Icon(destination.icon, color: color, size: 24),

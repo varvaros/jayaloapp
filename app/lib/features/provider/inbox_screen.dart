@@ -20,6 +20,7 @@ import '../shell/home_scroll.dart';
 import '../shared/brand_kit.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
+import '../shared/tour_anchors.dart';
 import '../shared/swipe_to_actions.dart';
 import '../shared/violet_header.dart';
 import 'hidden_requests_store.dart';
@@ -64,7 +65,9 @@ class ProviderInboxView extends StatefulWidget {
     super.key,
     required this.fetch,
     this.leading = const HeaderAvatar(),
-    this.actions = const [HeaderSaldo(), HeaderBell()],
+    // La monedita lleva `TourAnchors.saldo`: el recorrido de primera vez la
+    // señala en su paso de créditos (PO 2026-09-05).
+    this.actions = const [HeaderSaldo(key: TourAnchors.saldo), HeaderBell()],
   });
 
   final InboxFetch fetch;
@@ -79,6 +82,11 @@ class ProviderInboxView extends StatefulWidget {
 }
 
 class _ProviderInboxViewState extends State<ProviderInboxView> {
+  /// Anclas del recorrido de primera vez que viven en ESTA pantalla.
+  final _firstCardKey = GlobalKey(debugLabel: 'tour.inbox.firstCard');
+  final _paraTiKey = GlobalKey(debugLabel: 'tour.inbox.paraTi');
+  final _tipoKey = GlobalKey(debugLabel: 'tour.inbox.tipo');
+
   String? _kind;
 
   /// Filtro de estado (pedido PO 2026-07-22): actúa EN CLIENTE sobre el feed ya
@@ -329,6 +337,27 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
     return Scaffold(
       body: Column(
         children: [
+          // Recorrido de la primera vez (PO 2026-09-05): cada elemento de esta
+          // pantalla, en orden. Vive aquí (no en el shell) porque la mayoría
+          // de sus anclas son de esta pantalla; las del shell y el encabezado
+          // llegan por `TourAnchors`. Los textos, en `onboarding_copy.dart`.
+          OnboardingGuide(
+            guideKey: 'provider.inbox_tour.v1',
+            steps: anchorSteps(
+              onboardingCopy['provider.inbox_tour.v1']!,
+              [
+                _firstCardKey,
+                _paraTiKey,
+                _tipoKey,
+                TourAnchors.plus,
+                TourAnchors.saldo,
+                TourAnchors.nav('/provider/offers'),
+                TourAnchors.nav('/messages'),
+                TourAnchors.nav('/provider/business'),
+              ],
+            ),
+            child: const SizedBox.shrink(),
+          ),
           // Header violeta con los dos toggles reales del inbox (doctrina: van
           // compactos, en una fila; las tarjetas son las protagonistas). Se
           // pliega al bajar por la lista (pedido PO 2026-07-22).
@@ -348,6 +377,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                     child: Row(
                       children: [
                         HeaderSegmented(
+                          key: _paraTiKey,
                           options: const ['Para ti', 'Todas'],
                           index: _todas ? 1 : 0,
                           onChanged: (i) {
@@ -357,6 +387,7 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                         ),
                         const SizedBox(width: 8),
                         HeaderSegmented(
+                          key: _tipoKey,
                           options: const ['Todo', 'Productos', 'Servicios'],
                           index: _kind == null
                               ? 0
@@ -614,18 +645,17 @@ class _ProviderInboxViewState extends State<ProviderInboxView> {
                           child: card,
                         );
                         if (i == firstRegularIndex) {
-                          // cascadeIn(i) va DENTRO del child (no envolviendo
-                          // todo el OnboardingGuide): la guía mide su ancla con
-                          // localToGlobal en un post-frame callback, y si el
-                          // slide de entrada envuelve la guía, esa medición cae
-                          // en la posición A MITAD de camino de la animación —
-                          // el spotlight queda ~10% de una tarjeta desalineado.
-                          // Con cascadeIn solo en la tarjeta, la guía mide la
+                          // Ancla del paso 1 del recorrido. cascadeIn(i) va
+                          // DENTRO de la key (no envolviéndola): la guía mide
+                          // su ancla con localToGlobal en un post-frame
+                          // callback, y si el slide de entrada envolviera la
+                          // key, esa medición caería en la posición A MITAD
+                          // de camino de la animación — el spotlight quedaba
+                          // ~10% de una tarjeta desalineado. Así mide la
                           // posición YA asentada mientras la tarjeta sigue
                           // animando visualmente.
-                          return OnboardingGuide(
-                            guideKey: 'provider.requests_list.v1',
-                            steps: onboardingCopy['provider.requests_list.v1']!,
+                          return KeyedSubtree(
+                            key: _firstCardKey,
                             child: row.cascadeIn(i),
                           );
                         }

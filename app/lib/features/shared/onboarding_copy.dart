@@ -18,10 +18,6 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
   'client.chat_reveal.v1': [
     OnboardingStep('Aquí coordinas los detalles con el proveedor antes de cerrar el trato.'),
   ],
-  'provider.requests_list.v1': [
-    OnboardingStep(
-        'Aquí encontrarás personas que están buscando servicios como los que tú ofreces.'),
-  ],
   // v2 (2026-08-22): la v1 se marcaba como "vista" sin que nadie la viera —
   // anclaba el botón de enviar, que nace FUERA de la pantalla al final del
   // formulario, y el usuario solo veía el velo oscuro. Arreglado el anclaje
@@ -39,19 +35,44 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
     OnboardingStep(
         'Ofertar siempre es gratis. Los créditos solo se usan para desbloquear el contacto de un cliente que aceptó tu oferta.'),
   ],
-  // PO 2026-09-05: en las guías ancladas a un botón o pestaña el copy nombra
-  // el elemento («este botón», «esta pestaña») en vez de un «Aquí» que, sin
-  // flecha, no apuntaba a nada. Sin subir claves: es redacción, no información
-  // nueva, y solo importa junto al diseño nuevo (cola + chevron).
-  'client.plus.v1': [
-    OnboardingStep('Con este botón creas una nueva solicitud.'),
-  ],
-  'client.my_requests.v1': [
-    OnboardingStep('Aquí se verán tus solicitudes y en qué van.'),
-  ],
-  'client.others_requests.v1': [
+  // Recorridos de la PRIMERA pantalla (PO 2026-09-05: «no solo el header:
+  // las solicitudes, el +, los créditos, Para ti/Todas, Productos/Servicios,
+  // la barra»). Un paso por elemento, en orden. Los mensajes viven aquí; las
+  // anclas se casan en la pantalla con `anchorSteps` (mismo orden y cantidad,
+  // hay un assert). Absorben las guías sueltas `client.plus.v1`,
+  // `client.my_requests.v1`, `client.others_requests.v1` y
+  // `provider.requests_list.v1`; con clave nueva, quien ya gastó aquellas ve
+  // el recorrido entero una vez.
+  //
+  // Copy (PO 2026-09-05): en pasos anclados a un botón o pestaña se nombra el
+  // elemento («este botón», «esta pestaña») en vez de un «Aquí» que, sin
+  // flecha, no apuntaba a nada.
+  'client.home_tour.v1': [
+    OnboardingStep('Busca productos y tiendas de los proveedores.'),
+    OnboardingStep('Aquí quedan tus solicitudes y en qué van.'),
     OnboardingStep(
         'Y en esta pestaña ves qué están pidiendo otros usuarios.'),
+    OnboardingStep(
+        'Con este botón creas una nueva solicitud. Los proveedores te responden con ofertas.'),
+    OnboardingStep(
+        'Productos y tiendas de los proveedores, para comprar sin pedir.'),
+    OnboardingStep(
+        'Aquí coordinas con el proveedor cuando aceptas su oferta.'),
+    OnboardingStep('Tus estadísticas como comprador.'),
+  ],
+  'provider.inbox_tour.v1': [
+    OnboardingStep(
+        'Aquí llegan las solicitudes de personas que buscan lo que ofreces.'),
+    OnboardingStep(
+        'Para ti: solicitudes de tu rubro. Todas: de cualquier rubro.'),
+    OnboardingStep('Filtra por lo que piden: productos o servicios.'),
+    OnboardingStep('Con este botón también pides tú, como comprador.'),
+    OnboardingStep(
+        'Estos son tus créditos; tócalos para recargar. Ofertar es gratis: solo desbloquean el contacto de un cliente que aceptó.'),
+    OnboardingStep('Tus ofertas y en qué van.'),
+    OnboardingStep(
+        'Aquí coordinas con el cliente cuando acepta tu oferta.'),
+    OnboardingStep('Tu tienda, tus trabajos y tus estadísticas.'),
   ],
   'client.request_kind.v1': [
     OnboardingStep('Aquí eliges si buscas un producto o un servicio.'),

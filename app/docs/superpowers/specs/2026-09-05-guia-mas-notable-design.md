@@ -12,6 +12,13 @@ presentación de `OnboardingGuide` + dos comportamientos del toque. Sin backend,
 - La tarjeta es un `Card` suelto a 8 px del hueco, sin cola ni flecha; el copy «Aquí…» no apunta a nada.
 - Tocar el velo llama `markDone`: un toque instintivo quema la guía para siempre.
 
+> **Sustituido en parte el mismo día** por `2026-09-05-recorrido-primera-pantalla-design.md`:
+> los parámetros `tourIndex`/`tourLength` y el `tapThrough` a nivel de guía (§4 y §7) dejaron de
+> existir; ahora cada paso lleva su ancla y su `tapThrough` (`OnboardingStep`), la cabecera
+> «PASO n DE N» sale sola con más de un paso, y las guías sueltas del `+`, la tarjeta de ejemplo y
+> la pestaña «Todas» las absorbió el recorrido `client.home_tour.v1`. Lo demás (hueco con forma,
+> halo, burbuja con cola, chevron, velo que no quema) sigue vigente.
+
 ## Diseño
 
 1. **Hueco con la forma del ancla.** Sobre el rect MEDIDO: círculo si `|w-h| <= 4`, si no estadio

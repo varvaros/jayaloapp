@@ -10,8 +10,41 @@ import 'onboarding_store.dart';
 enum OnboardingMode { anchored, welcome }
 
 class OnboardingStep {
-  const OnboardingStep(this.message);
+  const OnboardingStep(this.message, {this.anchorKey, this.tapThrough = false});
+
   final String message;
+
+  /// Ancla PROPIA del paso: la guía mide el widget que lleve este [GlobalKey]
+  /// en cualquier parte del árbol (la pantalla, el shell, el encabezado). Sin
+  /// ella, el paso mide el [OnboardingGuide.child] envuelto, como siempre.
+  /// Un recorrido de N pasos con N anclas va saltando de elemento en elemento.
+  final GlobalKey? anchorKey;
+
+  /// El toque DENTRO del elemento real pasa al widget de debajo (se aprende
+  /// haciéndolo) y, a la vez, la guía se da por vista y se cierra. Solo tiene
+  /// sentido cuando tocar el elemento es la acción que el paso enseña (el `+`).
+  final bool tapThrough;
+}
+
+/// Casa los mensajes de un recorrido (que viven en `onboarding_copy.dart`, para
+/// que el PO los edite sin tocar pantallas) con sus anclas (que solo existen en
+/// tiempo de ejecución, en el `State` de la pantalla o en `TourAnchors`).
+/// [tapThroughAt] marca el índice del paso cuyo elemento se puede tocar.
+List<OnboardingStep> anchorSteps(
+  List<OnboardingStep> copy,
+  List<GlobalKey?> anchors, {
+  int? tapThroughAt,
+}) {
+  assert(copy.length == anchors.length,
+      'recorrido de ${copy.length} pasos con ${anchors.length} anclas');
+  return [
+    for (var i = 0; i < copy.length; i++)
+      OnboardingStep(
+        copy[i].message,
+        anchorKey: anchors[i],
+        tapThrough: i == tapThroughAt,
+      ),
+  ];
 }
 
 /// Guía contextual tipo spotlight. Envuelve el elemento objetivo ([child]).
@@ -21,17 +54,21 @@ class OnboardingStep {
 /// a través del hueco; o un velo lleno con tarjeta centrada (modo
 /// [OnboardingMode.welcome]). Muestra el mensaje del paso actual en una burbuja
 /// con cola y un chevron que señalan el hueco, y botones Saltar / Siguiente /
-/// Entendido. Saltar o terminar → `markDone` permanente. Tocar el velo la
-/// cierra SOLO por esta vez (PO 2026-09-05: un toque instintivo no puede
-/// quemar la guía); con [tapThrough], tocar DENTRO del hueco llega al
-/// elemento real y ese toque sí la da por vista.
+/// Entendido. Con varios pasos es un RECORRIDO: cada paso puede llevar su
+/// propia ancla ([OnboardingStep.anchorKey]), el hueco se desliza de una a
+/// otra y la cabecera dice «PASO n DE N». Saltar o terminar → `markDone`
+/// permanente del recorrido entero. Tocar el velo la cierra SOLO por esta vez
+/// (PO 2026-09-05: un toque instintivo no puede quemar la guía); con
+/// [OnboardingStep.tapThrough], tocar DENTRO del elemento real llega a él y
+/// ese toque sí la da por vista.
 ///
 /// El elemento NO se clona en el overlay (eso rompería con hijos que llevan
 /// `GlobalKey`, como botones/forms): se mide su rect global y el velo se pinta
 /// con un recorte (`BlendMode.clear`) en esa zona. Reúsa el fallback de anclaje
 /// de [HoldCoachMark]: si el ancla no se puede medir tras un reintento, renderiza
 /// el hijo en línea sin overlay (nunca deja la UI tapada ni el elemento
-/// inaccesible).
+/// inaccesible). Un paso cuya ancla no existe o no se ve se muestra centrado,
+/// sin hueco: mejor el texto sin foco que perder el paso.
 class OnboardingGuide extends StatefulWidget {
   const OnboardingGuide({
     super.key,
@@ -41,10 +78,6 @@ class OnboardingGuide extends StatefulWidget {
     this.enabled = true,
     this.mode = OnboardingMode.anchored,
     this.order = 0,
-    this.anchorKey,
-    this.tourIndex,
-    this.tourLength,
-    this.tapThrough = false,
   });
 
   final String guideKey;
@@ -56,21 +89,6 @@ class OnboardingGuide extends StatefulWidget {
   /// Prioridad en el tour encadenado: menor = se muestra antes (coordinador
   /// global). Guías condicionales que aparecen tarde usan un `order` alto.
   final int order;
-
-  /// Ancla EXTERNA: si se pasa, la guía NO envuelve al hijo para medirlo, sino
-  /// que mide el widget que lleve este [GlobalKey] en otra parte del árbol
-  /// (p. ej. el botón `+` de la barra). El [child] puede ser `SizedBox.shrink`.
-  final GlobalKey? anchorKey;
-
-  /// Cabecera «PASO n DE N» con puntos: solo para guías que forman un recorrido
-  /// visible (el tour del cliente al aterrizar). Ambos o ninguno.
-  final int? tourIndex;
-  final int? tourLength;
-
-  /// El toque DENTRO del hueco pasa al elemento real de debajo (se aprende
-  /// haciéndolo) y, a la vez, la guía se da por vista y se cierra. Solo tiene
-  /// sentido cuando tocar el elemento es la acción que la guía enseña (el `+`).
-  final bool tapThrough;
 
   @override
   State<OnboardingGuide> createState() => _OnboardingGuideState();
@@ -92,6 +110,11 @@ const Color _kScrimColor = Color(0xC71A1230);
 
 /// Ciclo del chevron: sube y baja 8 px hacia el hueco.
 const Duration _kNudgeCycle = Duration(milliseconds: 1100);
+
+/// Un ancla más chica que esto no es un elemento: es un `SizedBox.shrink`
+/// esperando datos (la monedita del saldo antes de saber el número). Se trata
+/// como «sin ancla» → paso centrado, no un hueco de 12 px sobre nada.
+const double _kMinAnchorSide = 8;
 
 /// Forma del hueco: el rect del ancla con 6 px de aire y el radio a la mitad
 /// del lado corto — círculo para un botón cuadrado (el `+`), estadio para una
@@ -129,6 +152,11 @@ class _OnboardingGuideState extends State<OnboardingGuide>
   late final AnimationController _pulse;
   late final AnimationController _nudge;
 
+  /// Cambio de paso: el hueco se desliza del ancla anterior ([_holeFrom]) a la
+  /// nueva. Un solo tick de `setState` por frame mientras dura.
+  late final AnimationController _stepAnim;
+  Rect? _holeFrom;
+
   Rect? _anchorRect; // rect GLOBAL del elemento a resaltar (para el hueco)
 
   /// Scroll que contiene al ancla, mientras la guía espera a que el ancla
@@ -152,25 +180,27 @@ class _OnboardingGuideState extends State<OnboardingGuide>
       !_snoozed &&
       !onboardingStore.isDone(widget.guideKey);
 
+  OnboardingStep get _current => widget.steps[_step];
+
+  /// Ancla del paso actual: la propia del paso o, si no tiene, el hijo envuelto.
+  GlobalKey get _currentAnchorKey => _current.anchorKey ?? _anchorKey;
+
   @override
   void initState() {
     super.initState();
     _anim = AnimationController(vsync: this, duration: JayaloMotion.base);
     _fade = CurvedAnimation(
-      parent: _anim,
-      curve: JayaloMotion.enter,
-      reverseCurve: JayaloMotion.exit,
-    );
-    _pulse = AnimationController(
-      vsync: this,
-      duration: JayaloMotion.pulseCycle,
-    );
+        parent: _anim, curve: JayaloMotion.enter, reverseCurve: JayaloMotion.exit);
+    _pulse =
+        AnimationController(vsync: this, duration: JayaloMotion.pulseCycle);
     _nudge = AnimationController(vsync: this, duration: _kNudgeCycle);
+    _stepAnim = AnimationController(vsync: this, duration: JayaloMotion.base)
+      ..addListener(() {
+        if (mounted) setState(() {});
+      });
     onboardingStore.addListener(_onStore);
     if (widget.enabled) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _measureAndMaybeShow(),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) => _measureAndMaybeShow());
     }
   }
 
@@ -189,9 +219,7 @@ class _OnboardingGuideState extends State<OnboardingGuide>
     // otra vez.
     if (widget.enabled && !old.enabled) {
       _snoozed = false;
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _measureAndMaybeShow(),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) => _measureAndMaybeShow());
     }
     // enabled pasa de true a false: liberar el coordinador si estaba
     // mostrándose, para no bloquear otras guías. No hace falta llamar
@@ -217,6 +245,7 @@ class _OnboardingGuideState extends State<OnboardingGuide>
     _anim.dispose();
     _pulse.dispose();
     _nudge.dispose();
+    _stepAnim.dispose();
     super.dispose();
   }
 
@@ -259,13 +288,19 @@ class _OnboardingGuideState extends State<OnboardingGuide>
     setState(() {});
   }
 
-  /// Rect GLOBAL del ancla (coords de pantalla). Usa el ancla externa si se dio.
-  Rect? _measureAnchor() {
-    final ctx = (widget.anchorKey ?? _anchorKey).currentContext;
+  /// Rect GLOBAL (coords de pantalla) del widget que lleva [key], o null si no
+  /// está montado, no tiene tamaño o es un hueco esperando datos (ver
+  /// [_kMinAnchorSide]).
+  Rect? _measureKey(GlobalKey key) {
+    final ctx = key.currentContext;
     final box = ctx?.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return null;
+    if (box.size.shortestSide < _kMinAnchorSide) return null;
     return box.localToGlobal(Offset.zero) & box.size;
   }
+
+  /// Rect GLOBAL del ancla del paso actual.
+  Rect? _measureAnchor() => _measureKey(_currentAnchorKey);
 
   /// Franja de pantalla que el usuario VE de verdad: sin la zona del sistema
   /// de arriba y sin lo que tape el teclado. Fuera de aquí no hay guía que
@@ -294,9 +329,7 @@ class _OnboardingGuideState extends State<OnboardingGuide>
   bool _anchorVisible(Rect r, Rect vp) {
     final visibleHeight =
         math.min(r.bottom, vp.bottom) - math.max(r.top, vp.top);
-    return visibleHeight >= r.height * .6 &&
-        r.left < vp.right &&
-        r.right > vp.left;
+    return visibleHeight >= r.height * .6 && r.left < vp.right && r.right > vp.left;
   }
 
   void _measureAndMaybeShow() {
@@ -330,24 +363,38 @@ class _OnboardingGuideState extends State<OnboardingGuide>
             return;
           }
           _tryShow();
+        } else if (_current.anchorKey != null) {
+          // Un recorrido cuyo primer elemento aún no está (lista vacía,
+          // saldo sin cargar) se muestra igual, con ese paso centrado: el
+          // hijo envuelto es un `SizedBox.shrink`, no hay nada que dejar
+          // «en línea».
+          setState(() => _anchorRect = null); // agenda el frame del turno
+          _tryShow();
         } else {
           setState(() => _measureFailed = true); // fallback: hijo en línea
         }
       });
+      // Un post-frame no agenda frame por sí solo: sin esto, el reintento
+      // esperaría al siguiente frame que otro provocara (en una pantalla
+      // quieta, nunca).
+      WidgetsBinding.instance.ensureVisualUpdate();
     }
   }
 
-  /// Se engancha al scroll que contiene al ancla para volver a intentarlo
-  /// cuando el elemento entre en pantalla. Sin esto, una guía cuyo botón nace
-  /// bajo el pliegue no se mostraría nunca: un scroll no reconstruye a la guía,
-  /// así que ningún `post-frame` la despertaría.
-  /// Devuelve `false` si el ancla NO vive dentro de ningún scroll: ahí no hay
-  /// nada que esperar, así que la guía se muestra igual — con la tarjeta
-  /// centrada y sin hueco (ver [_buildOverlay]). Perder una guía por callada
-  /// sería peor que enseñarla sin foco.
+  /// Se engancha al scroll VERTICAL que contiene al ancla para volver a
+  /// intentarlo cuando el elemento entre en pantalla. Sin esto, una guía cuyo
+  /// botón nace bajo el pliegue no se mostraría nunca: un scroll no
+  /// reconstruye a la guía, así que ningún `post-frame` la despertaría.
+  /// Devuelve `false` si el ancla NO vive dentro de ningún scroll vertical:
+  /// ahí no hay nada que esperar, así que la guía se muestra igual — con la
+  /// tarjeta centrada y sin hueco (ver [_buildOverlay]). Perder una guía por
+  /// callada sería peor que enseñarla sin foco. Los scrolls HORIZONTALES (los
+  /// segmentados del encabezado) no cuentan: un ancla que asoma por arriba no
+  /// va a entrar por mucho que se deslice de lado.
   bool _watchScroll() {
-    final ctx = (widget.anchorKey ?? _anchorKey).currentContext;
-    final pos = ctx == null ? null : Scrollable.maybeOf(ctx)?.position;
+    final ctx = _currentAnchorKey.currentContext;
+    var pos = ctx == null ? null : Scrollable.maybeOf(ctx)?.position;
+    if (pos != null && pos.axis != Axis.vertical) pos = null;
     if (identical(pos, _watched)) return _watched != null;
     _watched?.removeListener(_onScroll);
     _watched = pos;
@@ -389,13 +436,11 @@ class _OnboardingGuideState extends State<OnboardingGuide>
       // guía espera en cola detrás de otra, o el ancla venía animando su
       // entrada), y abrir con un rect viejo deja el foco desalineado.
       if (widget.mode == OnboardingMode.anchored) {
-        final fresh = _measureAnchor();
-        if (fresh != null) _anchorRect = fresh;
+        _anchorRect = _measureAnchor();
       }
       _portal.show();
-      _anim.duration = JayaloMotion.reduced(context)
-          ? Duration.zero
-          : JayaloMotion.base;
+      _anim.duration =
+          JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base;
       _anim.forward(from: 0);
       _syncLoops();
     }
@@ -419,9 +464,8 @@ class _OnboardingGuideState extends State<OnboardingGuide>
   /// Cierra el overlay con la animación de salida y luego desmonta el portal.
   Future<void> _hideAnimated() async {
     if (!_portal.isShowing) return;
-    _anim.duration = JayaloMotion.reduced(context)
-        ? Duration.zero
-        : JayaloMotion.base;
+    _anim.duration =
+        JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base;
     await _anim.reverse();
     if (mounted && _portal.isShowing) _portal.hide();
     _syncLoops();
@@ -473,7 +517,18 @@ class _OnboardingGuideState extends State<OnboardingGuide>
 
   void _next() {
     if (_step < widget.steps.length - 1) {
-      setState(() => _step++);
+      // Al cambiar de paso se mide el ancla NUEVA y el hueco viaja desde la
+      // vieja. Sin ancla visible en alguno de los dos lados no hay viaje: el
+      // hueco aparece o desaparece con el paso.
+      final from = _anchorRect;
+      setState(() {
+        _step++;
+        _anchorRect = _measureAnchor();
+      });
+      _holeFrom = from;
+      _stepAnim.duration =
+          JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.base;
+      _stepAnim.forward(from: 0);
     } else {
       _complete();
     }
@@ -485,10 +540,9 @@ class _OnboardingGuideState extends State<OnboardingGuide>
     // animación de cierre sigue en curso — el portal se queda hasta que acabe.
     if ((!_shouldShow && !_closing) || _measureFailed) return widget.child;
 
-    // Con ancla externa NO se envuelve el hijo (el GlobalKey vive en el target).
-    final wrap =
-        widget.mode == OnboardingMode.anchored && widget.anchorKey == null;
-    final content = wrap
+    // El hijo se envuelve para poder medirlo (los pasos sin ancla propia lo
+    // señalan). Con anclas por paso el `KeyedSubtree` sobra pero no estorba.
+    final content = widget.mode == OnboardingMode.anchored
         ? KeyedSubtree(key: _anchorKey, child: widget.child)
         : widget.child;
 
@@ -515,7 +569,7 @@ class _OnboardingGuideState extends State<OnboardingGuide>
     // El color de tarjeta del proyecto en ambos temas (blanco en claro,
     // tarjeta elevada en oscuro). La cola lo comparte para no dejar costura.
     final bubbleColor = cs.surfaceContainerLowest;
-    final tour = widget.tourIndex != null && widget.tourLength != null;
+    final tour = widget.steps.length > 1;
 
     final card = Container(
       key: const Key('onboardingCard'),
@@ -526,10 +580,7 @@ class _OnboardingGuideState extends State<OnboardingGuide>
         borderRadius: BorderRadius.circular(_kBubbleRadius),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x59140C28),
-            blurRadius: 40,
-            offset: Offset(0, 18),
-          ),
+              color: Color(0x59140C28), blurRadius: 40, offset: Offset(0, 18)),
         ],
       ),
       child: Column(
@@ -537,35 +588,45 @@ class _OnboardingGuideState extends State<OnboardingGuide>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (tour) ...[
-            Row(
-              children: [
-                Text(
-                  'PASO ${widget.tourIndex} DE ${widget.tourLength}',
-                  style: tt.labelSmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                    letterSpacing: .8,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                for (var i = 1; i <= widget.tourLength!; i++)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 5),
-                    child: Container(
-                      width: i == widget.tourIndex ? 16 : 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: i == widget.tourIndex
-                            ? cs.primary
-                            : cs.primaryContainer,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
+            Row(children: [
+              Text(
+                'PASO ${_step + 1} DE ${widget.steps.length}',
+                style: tt.labelSmall
+                    ?.copyWith(color: cs.onSurfaceVariant, letterSpacing: .8),
+              ),
+              const SizedBox(width: 8),
+              for (var i = 0; i < widget.steps.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(right: 5),
+                  child: Container(
+                    width: i == _step ? 16 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: i == _step ? cs.primary : cs.primaryContainer,
+                      borderRadius: BorderRadius.circular(3),
                     ),
                   ),
-              ],
-            ),
+                ),
+            ]),
             const SizedBox(height: 8),
           ],
-          Text(widget.steps[_step].message, style: tt.bodyLarge),
+          // El texto se funde al cambiar de paso (el hueco viaja a la vez).
+          AnimatedSwitcher(
+            duration: JayaloMotion.reduced(context)
+                ? Duration.zero
+                : JayaloMotion.base,
+            switchInCurve: JayaloMotion.enter,
+            switchOutCurve: JayaloMotion.exit,
+            layoutBuilder: (current, previous) => Stack(
+              alignment: Alignment.topLeft,
+              children: [...previous, ?current],
+            ),
+            child: Text(
+              _current.message,
+              key: ValueKey(_step),
+              style: tt.bodyLarge,
+            ),
+          ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -585,25 +646,28 @@ class _OnboardingGuideState extends State<OnboardingGuide>
     final view = View.of(context);
     final screenH = view.physicalSize.height / view.devicePixelRatio;
     // Solo se recorta el hueco si el ancla se ve de verdad. Si no (rect viejo,
-    // teclado que la tapó, pantalla que cambió entre medir y abrir), la guía
-    // degrada a tarjeta centrada: mejor el texto sin foco que una pantalla
-    // oscura y muda.
-    final measured = widget.mode == OnboardingMode.anchored
-        ? _anchorRect
-        : null;
-    final hole = measured != null && _anchorVisible(measured, vp)
-        ? measured
-        : null;
+    // teclado que la tapó, pantalla que cambió entre medir y abrir, o el paso
+    // señala algo que aún no está), la guía degrada a tarjeta centrada: mejor
+    // el texto sin foco que una pantalla oscura y muda.
+    final measured = widget.mode == OnboardingMode.anchored ? _anchorRect : null;
+    final target =
+        measured != null && _anchorVisible(measured, vp) ? measured : null;
+    // Viaje del hueco entre pasos: solo si hay hueco a ambos lados.
+    final from = _holeFrom;
+    final hole = _stepAnim.isAnimating && from != null && target != null
+        ? Rect.lerp(from, target, JayaloMotion.enter.transform(_stepAnim.value))
+        : target;
     final shape = hole == null ? null : onboardingHoleShape(hole);
     // Zona que deja pasar el toque con `tapThrough`: el elemento REAL con su
     // misma redondez (círculo en el `+`), sin los 6 px de aire del hueco. Un
     // toque en el aire o en las esquinas del cuadrado que rodea al círculo no
     // llega al botón, así que no puede contar como «Entendido»: es un toque en
-    // el velo (reserva del verificador 2026-09-05).
-    final pass = hole == null || !widget.tapThrough
+    // el velo (reserva del verificador 2026-09-05). Mientras el hueco viaja no
+    // se deja pasar nada: el elemento aún no está debajo.
+    final pass = target == null || !_current.tapThrough || hole != target
         ? null
         : RRect.fromRectAndRadius(
-            hole, Radius.circular(hole.shortestSide / 2));
+            target, Radius.circular(target.shortestSide / 2));
 
     // La tarjeta va al lado del hueco donde QUEPA — con el ancla abajo va
     // encima (si no, la taparía: el `+` de la barra, el ✨ del composer) y con
@@ -611,10 +675,10 @@ class _OnboardingGuideState extends State<OnboardingGuide>
     // no por "mitad de pantalla": el botón de enviar la oferta puede quedar a
     // 20 px del borde inferior con el teclado abierto, y ahí la regla vieja
     // empujaba la tarjeta fuera de cuadro.
-    final spaceBelow = hole == null
-        ? 0.0
-        : vp.bottom - (hole.bottom + _kArrowSpace);
-    final spaceAbove = hole == null ? 0.0 : (hole.top - _kArrowSpace) - vp.top;
+    final spaceBelow =
+        hole == null ? 0.0 : vp.bottom - (hole.bottom + _kArrowSpace);
+    final spaceAbove =
+        hole == null ? 0.0 : (hole.top - _kArrowSpace) - vp.top;
     final below = spaceBelow >= spaceAbove;
     final space = math.max(spaceBelow, spaceAbove);
     final anchored = hole != null && space >= _kMinCardSpace;
@@ -671,7 +735,9 @@ class _OnboardingGuideState extends State<OnboardingGuide>
       placedCard = Positioned.fill(
         child: Padding(
           padding: EdgeInsets.only(top: vp.top, bottom: screenH - vp.bottom),
-          child: Center(child: SingleChildScrollView(child: slidCard)),
+          child: Center(
+            child: SingleChildScrollView(child: slidCard),
+          ),
         ),
       );
     } else {
@@ -720,10 +786,9 @@ class _OnboardingGuideState extends State<OnboardingGuide>
                 color: Colors.white,
                 shadows: const [
                   Shadow(
-                    color: Color(0x73000000),
-                    blurRadius: 6,
-                    offset: Offset(0, 2),
-                  ),
+                      color: Color(0x73000000),
+                      blurRadius: 6,
+                      offset: Offset(0, 2)),
                 ],
               ),
             ),
@@ -766,8 +831,8 @@ class _OnboardingGuideState extends State<OnboardingGuide>
           ),
         // Captura de toques a pantalla completa: cerrar por esta vez. Va
         // debajo de la tarjeta para que sus botones reciban tap. Con
-        // `tapThrough`, el hueco queda FUERA de su hit-test para que el toque
-        // llegue al elemento real de debajo.
+        // `tapThrough`, el elemento real queda FUERA de su hit-test para que
+        // el toque llegue a él.
         Positioned.fill(
           child: _HoleHitTest(
             hole: pass,
@@ -779,7 +844,7 @@ class _OnboardingGuideState extends State<OnboardingGuide>
             ),
           ),
         ),
-        // Con `tapThrough`: el toque dentro del hueco también cuenta como
+        // Con `tapThrough`: el toque dentro del elemento también cuenta como
         // «Entendido». `translucent` recibe el puntero sin consumir el hit, y
         // como un `Listener` no entra en la arena de gestos, el botón real
         // sigue recibiendo su tap. (Un arrastre que termine dentro también
@@ -813,7 +878,7 @@ class _OnboardingGuideState extends State<OnboardingGuide>
 class _HoleHitTest extends SingleChildRenderObjectWidget {
   const _HoleHitTest({required this.hole, required super.child});
 
-  /// En coordenadas GLOBALES (el overlay raíz nace en el origen).
+  /// En coordenadas GLOBALES (las mismas en que se midió el ancla).
   final RRect? hole;
 
   @override
@@ -822,9 +887,8 @@ class _HoleHitTest extends SingleChildRenderObjectWidget {
 
   @override
   void updateRenderObject(
-    BuildContext context,
-    _RenderHoleHitTest renderObject,
-  ) => renderObject.hole = hole;
+          BuildContext context, _RenderHoleHitTest renderObject) =>
+      renderObject.hole = hole;
 }
 
 class _RenderHoleHitTest extends RenderProxyBox {
@@ -847,11 +911,8 @@ class _RenderHoleHitTest extends RenderProxyBox {
 /// el elemento real se vea, más un anillo blanco fino y un halo del color de
 /// acción. El recorte usa `saveLayer` + `BlendMode.clear`.
 class _ScrimPainter extends CustomPainter {
-  _ScrimPainter({
-    required this.hole,
-    required this.color,
-    required this.haloColor,
-  });
+  _ScrimPainter(
+      {required this.hole, required this.color, required this.haloColor});
 
   final RRect? hole;
   final Color color;

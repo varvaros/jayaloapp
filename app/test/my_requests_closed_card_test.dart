@@ -96,8 +96,7 @@ void main() {
         onboardingStore.reset();
         // Las guías de esta pantalla montan un velo a pantalla completa; sin
         // esto tapa la fila (mismo patrón que my_requests_completed_card_test.dart).
-        await onboardingStore.markDone('client.my_requests.v1');
-        await onboardingStore.markDone('client.others_requests.v1');
+        await onboardingStore.markDone('client.home_tour.v1');
       });
 
       Widget host(Widget child) =>
@@ -156,8 +155,7 @@ void main() {
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
       onboardingStore.reset();
-      await onboardingStore.markDone('client.my_requests.v1');
-      await onboardingStore.markDone('client.others_requests.v1');
+      await onboardingStore.markDone('client.home_tour.v1');
     });
 
     Widget host(Widget child) =>
@@ -197,8 +195,7 @@ void main() {
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
       onboardingStore.reset();
-      await onboardingStore.markDone('client.my_requests.v1');
-      await onboardingStore.markDone('client.others_requests.v1');
+      await onboardingStore.markDone('client.home_tour.v1');
     });
 
     Widget host(Widget child) =>
