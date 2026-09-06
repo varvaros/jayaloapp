@@ -48,8 +48,7 @@ class CatalogPortada extends StatelessWidget {
       children: [
         ?header,
         if (items.isNotEmpty) ...[
-          SeccionTitulo('Recién publicados', onMore: onVerTodo)
-              .cascadeIn(i++),
+          SeccionTitulo('Recién publicados', onMore: onVerTodo).cascadeIn(i++),
           _Carrusel(
             items: items.take(kPortadaRecientes).toList(),
             negocios: negocios,
@@ -60,12 +59,17 @@ class CatalogPortada extends StatelessWidget {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(children: [
-              for (final id in tiendas) ...[
-                _StoreCircle(negocio: negocios[id]!, onTap: () => onStore(id)),
-                const SizedBox(width: 14),
+            child: Row(
+              children: [
+                for (final id in tiendas) ...[
+                  _StoreCircle(
+                    negocio: negocios[id]!,
+                    onTap: () => onStore(id),
+                  ),
+                  const SizedBox(width: 14),
+                ],
               ],
-            ]),
+            ),
           ).cascadeIn(i++),
         ],
         if (categorias.isNotEmpty) ...[
@@ -90,9 +94,10 @@ class CatalogPortada extends StatelessWidget {
           ).cascadeIn(i++),
         ],
         for (final c in carruseles) ...[
-          SeccionTitulo(c.categoria.name,
-                  onMore: () => onCategory(c.categoria.id))
-              .cascadeIn(i++),
+          SeccionTitulo(
+            c.categoria.name,
+            onMore: () => onCategory(c.categoria.id),
+          ).cascadeIn(i++),
           _Carrusel(items: c.items, negocios: negocios).cascadeIn(i++),
         ],
       ],
@@ -111,31 +116,45 @@ class SeccionTitulo extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-      child: Row(children: [
-        Expanded(
-          child: Text(titulo,
+      padding: const EdgeInsets.fromLTRB(16, 6, 12, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              titulo,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: jayaloHead(context))),
-        ),
-        if (onMore != null)
-          InkWell(
-            onTap: onMore,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              child: Text('Ver todo',
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: cs.primary)),
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: jayaloHead(context),
+              ),
             ),
           ),
-      ]),
+          if (onMore != null)
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+              child: InkWell(
+                onTap: onMore,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 12,
+                  ),
+                  child: Text(
+                    'Ver todo',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: cs.primary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -150,21 +169,20 @@ class _Carrusel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final it in items) ...[
-                ProductCarouselCard(
-                    item: it, negocio: negocios[it['business_id']]),
-                const SizedBox(width: 10),
-              ],
-            ],
-          ),
-        ),
-      );
+    scrollDirection: Axis.horizontal,
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final it in items) ...[
+            ProductCarouselCard(item: it, negocio: negocios[it['business_id']]),
+            const SizedBox(width: 10),
+          ],
+        ],
+      ),
+    ),
+  );
 }
 
 /// Círculo de tienda: logo `cover` o la inicial sobre lila, y el nombre a dos
@@ -177,49 +195,64 @@ class _StoreCircle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final inicial =
-        negocio.name.trim().isEmpty ? '?' : negocio.name.trim()[0].toUpperCase();
+    final inicial = negocio.name.trim().isEmpty
+        ? '?'
+        : negocio.name.trim()[0].toUpperCase();
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
         width: 64,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: cs.primaryContainer,
-              boxShadow: const [
-                BoxShadow(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: cs.primaryContainer,
+                boxShadow: const [
+                  BoxShadow(
                     color: JayaloColors.warmShadow,
                     blurRadius: 14,
-                    offset: Offset(0, 6)),
-              ],
-            ),
-            clipBehavior: Clip.antiAlias,
-            alignment: Alignment.center,
-            child: negocio.logoUrl == null
-                ? Text(inicial,
-                    style: TextStyle(
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              alignment: Alignment.center,
+              child: negocio.logoUrl == null
+                  ? Text(
+                      inicial,
+                      style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w600,
-                        color: cs.onPrimaryContainer))
-                : JayaloNetworkImage(negocio.logoUrl!,
-                    width: 54, height: 54, fit: BoxFit.cover),
-          ),
-          const SizedBox(height: 5),
-          Text(negocio.name,
+                        color: cs.onPrimaryContainer,
+                      ),
+                    )
+                  : JayaloNetworkImage(
+                      negocio.logoUrl!,
+                      width: 54,
+                      height: 54,
+                      fit: BoxFit.cover,
+                    ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              negocio.name,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: TextStyle(
-                  fontSize: 10.5,
-                  height: 1.2,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurface)),
-        ]),
+                fontSize: 10.5,
+                height: 1.2,
+                fontWeight: FontWeight.w500,
+                color: cs.onSurface,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -241,43 +274,55 @@ class CategoryTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       margin: EdgeInsets.zero,
       onTap: onTap,
-      child: Row(children: [
-        Container(
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
               color: cs.primaryContainer,
-              borderRadius: BorderRadius.circular(10)),
-          child: Text(name[0].toUpperCase(),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              name[0].toUpperCase(),
               style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onPrimaryContainer)),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(name,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: cs.onPrimaryContainer,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: jayaloHead(context))),
-              Text(articulosLabel(conteo.n),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: jayaloHead(context),
+                  ),
+                ),
+                Text(
+                  articulosLabel(conteo.n),
                   maxLines: 1,
                   style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: cs.onSurfaceVariant)),
-            ],
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }

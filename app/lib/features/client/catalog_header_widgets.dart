@@ -23,53 +23,65 @@ class CatalogSearchField extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(999)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+      ),
       padding: const EdgeInsets.only(left: 16, right: 6),
-      child: Row(children: [
-        Icon(Icons.search, size: 18, color: cs.onSurfaceVariant),
-        const SizedBox(width: 10),
-        Expanded(
-          child: TextField(
-            controller: controller,
-            autofocus: autofocus,
-            textInputAction: TextInputAction.search,
-            onSubmitted: (_) => onSubmitted(),
-            style: TextStyle(fontSize: 14, color: cs.onSurface),
-            decoration: InputDecoration(
-              isCollapsed: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              hintText: hint,
-              hintStyle: TextStyle(fontSize: 13.5, color: cs.onSurfaceVariant),
-              filled: false,
-              border: InputBorder.none,
+      child: Row(
+        children: [
+          Icon(Icons.search, size: 18, color: cs.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              autofocus: autofocus,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => onSubmitted(),
+              style: TextStyle(fontSize: 14, color: cs.onSurface),
+              decoration: InputDecoration(
+                isCollapsed: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                hintText: hint,
+                hintStyle: TextStyle(
+                  fontSize: 13.5,
+                  color: cs.onSurfaceVariant,
+                ),
+                filled: false,
+                border: InputBorder.none,
+              ),
             ),
           ),
-        ),
-        ValueListenableBuilder<TextEditingValue>(
-          valueListenable: controller,
-          builder: (_, value, _) => value.text.isEmpty
-              ? const SizedBox(width: 8)
-              : IconButton(
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(Icons.close, size: 18, color: cs.onSurfaceVariant),
-                  onPressed: onClear,
-                ),
-        ),
-      ]),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (_, value, _) => value.text.isEmpty
+                ? const SizedBox(width: 8)
+                : IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(
+                      Icons.close,
+                      size: 18,
+                      color: cs.onSurfaceVariant,
+                    ),
+                    onPressed: onClear,
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-/// Píldora "Filtrar" de la fila de búsqueda (Task 6): abre
-/// [showCatalogFilterSheet]; cuando hay categoría activa muestra su nombre y
-/// una ✕ para limpiar sin reabrir la hoja.
+/// Píldora "Filtrar" de la fila de búsqueda: abre `showCatalogFilterSheet`
+/// (en `catalog_filter_sheet.dart`); cuando hay categoría activa muestra su
+/// nombre y una ✕ para limpiar sin reabrir la hoja.
 class CatalogFilterPill extends StatelessWidget {
-  const CatalogFilterPill(
-      {super.key,
-      required this.label,
-      required this.active,
-      required this.onTap,
-      this.onClear});
+  const CatalogFilterPill({
+    super.key,
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.onClear,
+  });
   final String label;
   final bool active;
   final VoidCallback onTap;
@@ -86,27 +98,33 @@ class CatalogFilterPill extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.tune, size: 15, color: Colors.white),
-            const SizedBox(width: 6),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 90),
-              child: Text(label,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.tune, size: 15, color: Colors.white),
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 90),
+                child: Text(
+                  label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white)),
-            ),
-            if (active && onClear != null) ...[
-              const SizedBox(width: 6),
-              GestureDetector(
-                onTap: onClear,
-                child: const Icon(Icons.close, size: 15, color: Colors.white),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                  ),
+                ),
               ),
+              if (active && onClear != null) ...[
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: onClear,
+                  child: const Icon(Icons.close, size: 15, color: Colors.white),
+                ),
+              ],
             ],
-          ]),
+          ),
         ),
       ),
     );

@@ -16,7 +16,7 @@ const int kPortadaItemsPorCarrusel = 8;
 typedef CategoriaConteo = ({Category categoria, int n});
 typedef CarruselCategoria = ({
   Category categoria,
-  List<Map<String, dynamic>> items
+  List<Map<String, dynamic>> items,
 });
 
 /// Ids de negocio DISTINTOS de los ítems, en orden de aparición, solo los que

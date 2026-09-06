@@ -6,42 +6,58 @@ import 'package:jayalo_app/features/shared/star_score.dart';
 
 void main() {
   Widget host(Widget child) => MaterialApp(
-        theme: jayaloTheme(Brightness.light),
-        home: Scaffold(body: child),
-      );
+    theme: jayaloTheme(Brightness.light),
+    home: Scaffold(body: child),
+  );
 
   testWidgets('muestra nombre y precio', (tester) async {
-    await tester.pumpWidget(host(const ProductListCard(item: {
-      'id': 'p1',
-      'name': 'Taladro',
-      'price': 2500,
-      'category_id': 'ferreteria',
-    })));
+    await tester.pumpWidget(
+      host(
+        const ProductListCard(
+          item: {
+            'id': 'p1',
+            'name': 'Taladro',
+            'price': 2500,
+            'category_id': 'ferreteria',
+          },
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Taladro'), findsOneWidget);
     expect(find.textContaining('2,500'), findsOneWidget);
   });
 
-  testWidgets('sin avg_rating/reviews_count no dibuja la línea de reputación',
-      (tester) async {
-    await tester.pumpWidget(host(const ProductListCard(item: {
-      'id': 'p1',
-      'name': 'Taladro',
-      'price': 2500,
-    })));
+  testWidgets('sin avg_rating/reviews_count no dibuja la línea de reputación', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        const ProductListCard(
+          item: {'id': 'p1', 'name': 'Taladro', 'price': 2500},
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.byType(StarScore), findsNothing);
   });
 
-  testWidgets('con reputación dibuja las estrellas con su escala',
-      (tester) async {
-    await tester.pumpWidget(host(const ProductListCard(item: {
-      'id': 'p1',
-      'name': 'Taladro',
-      'price': 2500,
-      'avg_rating': 8.6, // 1-10; era 4.5, de cuando esto se leía como /5
-      'reviews_count': 8,
-    })));
+  testWidgets('con reputación dibuja las estrellas con su escala', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        const ProductListCard(
+          item: {
+            'id': 'p1',
+            'name': 'Taladro',
+            'price': 2500,
+            'avg_rating': 8.6, // 1-10; era 4.5, de cuando esto se leía como /5
+            'reviews_count': 8,
+          },
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     // Se busca el WIDGET, no el icono: cada estrella son DOS iconos apilados
     // (gris debajo, dorada recortada encima), así que `find.byIcon` cuenta 10.
@@ -51,9 +67,10 @@ void main() {
   });
 
   group('ProductGridCard no desborda la celda de la rejilla', () {
-    // El caso peor real que reportó el PO (2026-08-14): nombre a 2 líneas,
-    // reputación y TRES atributos (envío + estado + color), que en media
-    // tarjeta se parten en dos renglones.
+    // El caso peor ACTUAL (revisión final 2026-09-05): nombre a 2 líneas +
+    // línea de tienda (con «· Tienda física») + reputación + precio. La
+    // eyebrow de categoría y los atributos envío/estado/color ya no se
+    // pintan en la rejilla (viven en la ficha del producto).
     const peor = {
       'id': 'p1',
       'name': 'Máquina de cortar pelo Remington profesional',
@@ -61,34 +78,43 @@ void main() {
       'price': 7500,
       'avg_rating': 8.0,
       'reviews_count': 1,
-      'offers_shipping': true,
-      'condition': 'nuevo',
-      'color': 'Rojo',
     };
+    const negocioPeor = (
+      name: 'Ferretería y Materiales Don Pepe del Este',
+      logoUrl: null,
+      whatsappVerified: false,
+      identityVerified: false,
+      businessVerified: false,
+      hasPhysicalLocation: true,
+    );
 
     /// Reproduce la celda de `catalog_screen`: ancho de media pantalla y alto
     /// el que pide [catalogGridCardExtent] para esa escala tipográfica.
     Widget celda(double width, double scale) => MaterialApp(
-          theme: jayaloTheme(Brightness.light),
-          home: Builder(
-            builder: (context) => MediaQuery(
-              data: MediaQuery.of(context)
-                  .copyWith(textScaler: TextScaler.linear(scale)),
-              child: Scaffold(
-                body: Builder(
-                  builder: (context) => Align(
-                    alignment: Alignment.topLeft,
-                    child: SizedBox(
-                      width: width,
-                      height: catalogGridCardExtent(context, width),
-                      child: const ProductGridCard(item: peor),
-                    ),
+      theme: jayaloTheme(Brightness.light),
+      home: Builder(
+        builder: (context) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(scale)),
+          child: Scaffold(
+            body: Builder(
+              builder: (context) => Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: width,
+                  height: catalogGridCardExtent(context, width),
+                  child: const ProductGridCard(
+                    item: peor,
+                    negocio: negocioPeor,
                   ),
                 ),
               ),
             ),
           ),
-        );
+        ),
+      ),
+    );
 
     // 158 = teléfono de 360dp; 138 = uno de 320dp (el que menos ancho deja).
     for (final width in const [158.0, 138.0]) {
@@ -134,19 +160,21 @@ void main() {
     };
 
     Widget celda(Widget child) => MaterialApp(
-          theme: jayaloTheme(Brightness.light),
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.topLeft,
-              child: SizedBox(width: 160, height: 300, child: child),
-            ),
-          ),
-        );
+      theme: jayaloTheme(Brightness.light),
+      home: Scaffold(
+        body: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(width: 160, height: 300, child: child),
+        ),
+      ),
+    );
 
-    testWidgets('con negocio y local pinta nombre y «Tienda física»',
-        (tester) async {
-      await tester.pumpWidget(celda(const ProductGridCard(
-          item: item, negocio: negocioFisico)));
+    testWidgets('con negocio y local pinta nombre y «Tienda física»', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        celda(const ProductGridCard(item: item, negocio: negocioFisico)),
+      );
       await tester.pumpAndSettle();
       expect(find.textContaining('Barbería El Conde'), findsOneWidget);
       expect(find.textContaining('Tienda física'), findsOneWidget);
@@ -154,32 +182,37 @@ void main() {
     });
 
     testWidgets('sin local no pinta el sello', (tester) async {
-      await tester.pumpWidget(celda(const ProductGridCard(
-          item: item, negocio: negocioSinLocal)));
+      await tester.pumpWidget(
+        celda(const ProductGridCard(item: item, negocio: negocioSinLocal)),
+      );
       await tester.pumpAndSettle();
       expect(find.textContaining('Otaku Store RD'), findsOneWidget);
       expect(find.textContaining('Tienda física'), findsNothing);
     });
 
-    testWidgets('sin negocio no pinta la línea (ni un «Proveedor» fantasma)',
-        (tester) async {
+    testWidgets('sin negocio no pinta la línea (ni un «Proveedor» fantasma)', (
+      tester,
+    ) async {
       await tester.pumpWidget(celda(const ProductGridCard(item: item)));
       await tester.pumpAndSettle();
       expect(find.byIcon(Icons.storefront_outlined), findsNothing);
       expect(find.textContaining('Proveedor'), findsNothing);
     });
 
-    testWidgets('ya no pinta eyebrow de categoría ni atributos (PO 2026-09-05)',
-        (tester) async {
-      await tester.pumpWidget(celda(const ProductGridCard(item: item)));
-      await tester.pumpAndSettle();
-      expect(find.text('BELLEZA'), findsNothing);
-      expect(find.text('Traslado'), findsNothing);
-      expect(find.text('Nuevo'), findsNothing);
-    });
+    testWidgets(
+      'ya no pinta eyebrow de categoría ni atributos (PO 2026-09-05)',
+      (tester) async {
+        await tester.pumpWidget(celda(const ProductGridCard(item: item)));
+        await tester.pumpAndSettle();
+        expect(find.text('BELLEZA'), findsNothing);
+        expect(find.text('Traslado'), findsNothing);
+        expect(find.text('Nuevo'), findsNothing);
+      },
+    );
 
-    testWidgets('la foto es cuadrada: tan alta como ancha la tarjeta',
-        (tester) async {
+    testWidgets('la foto es cuadrada: tan alta como ancha la tarjeta', (
+      tester,
+    ) async {
       await tester.pumpWidget(celda(const ProductGridCard(item: item)));
       await tester.pumpAndSettle();
       final foto = tester.getSize(find.byType(AspectRatio));

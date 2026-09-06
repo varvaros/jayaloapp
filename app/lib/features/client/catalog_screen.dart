@@ -20,17 +20,19 @@ import 'catalog_portada.dart';
 /// Signature de la fuente de datos del catálogo (paridad `productHitsQ` de la
 /// web). Inyectada en [CatalogView] para poder probar la pantalla sin red —
 /// mismo patrón que `InboxFetch` en `provider/inbox_screen.dart`.
-typedef CatalogFetch = Future<List<Map<String, dynamic>>> Function(
-    {required String kind,
-    String? search,
-    String? categoryId,
-    String? rubro,
-    bool wholesale});
+typedef CatalogFetch =
+    Future<List<Map<String, dynamic>>> Function({
+      required String kind,
+      String? search,
+      String? categoryId,
+      String? rubro,
+      bool wholesale,
+    });
 
 /// Cabecera de los negocios dueños de los ítems, por lote (nombre, logo, local).
 /// Best-effort: si falla, la pantalla se pinta sin tienda.
-typedef CatalogBusinessesFetch = Future<Map<String, BusinessCardInfo>> Function(
-    List<String> businessIds);
+typedef CatalogBusinessesFetch =
+    Future<Map<String, BusinessCardInfo>> Function(List<String> businessIds);
 
 /// Conteo de artículos por categoría del kind (RPC `get_product_counts`).
 /// `null` = no llegó: chips completos y sin sección «Por categoría».
@@ -39,7 +41,7 @@ typedef CatalogCountsFetch = Future<Map<String, int>?> Function(String kind);
 /// Una carga del catálogo: los ítems y la cabecera de sus negocios.
 typedef CatalogPage = ({
   List<Map<String, dynamic>> items,
-  Map<String, BusinessCardInfo> negocios
+  Map<String, BusinessCardInfo> negocios,
 });
 
 /// Pestaña Catálogo. `?focus=1` (desde el buscador de Mis solicitudes) abre
@@ -50,7 +52,9 @@ class CatalogScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CatalogView(
-      fetch: catalogProductsWithRatings, autofocusSearch: autofocusSearch);
+    fetch: catalogProductsWithRatings,
+    autofocusSearch: autofocusSearch,
+  );
 }
 
 /// Cabecera + tira de chips + UN cuerpo de dos posibles (PO 2026-09-05,
@@ -123,26 +127,39 @@ class _CatalogViewState extends State<CatalogView> {
 
   /// Productos (+ valoraciones, ya horneadas por `fetch`) y, en una segunda
   /// llamada por lote, la cabecera de sus negocios. La segunda es un adorno:
-  /// si falla, se sigue sin tienda — NUNCA se tira la pantalla a error.
+  /// si falla, se sigue sin tienda — NUNCA se tira la pantalla a error. Va
+  /// EN SERIE tras los productos (sus ids salen de ellos), con tope de 4 s.
   Future<CatalogPage> _fetchPage() async {
     final items = await widget.fetch(
-        kind: _kind,
-        search: _search,
-        categoryId: _categoryId,
-        rubro: _rubro,
-        wholesale: _wholesale);
+      kind: _kind,
+      search: _search,
+      categoryId: _categoryId,
+      rubro: _rubro,
+      wholesale: _wholesale,
+    );
     final ids = <String>{
       for (final it in items)
         if (it['business_id'] is String) it['business_id'] as String,
     }.toList();
     Map<String, BusinessCardInfo> negocios;
     try {
-      negocios = await widget.businesses(ids);
+      // Tope de 4 s: si la consulta de negocios se cuelga, sale sin tienda.
+      // `_negocios(ids)` (async, con tipo de retorno explícito) re-reifica el
+      // future: un `businesses` inyectado (test) cuyo cuerpo SOLO lanza se
+      // infiere como `Future<Never>`, y `.timeout()` DIRECTO sobre ese objeto
+      // revienta en tiempo de ejecución al comparar `onTimeout` contra
+      // `Never` (gotcha de Dart: covarianza de `Future`).
+      negocios = await _negocios(
+        ids,
+      ).timeout(const Duration(seconds: 4), onTimeout: () => const {});
     } catch (_) {
       negocios = const {};
     }
     return (items: items, negocios: negocios);
   }
+
+  Future<Map<String, BusinessCardInfo>> _negocios(List<String> ids) async =>
+      widget.businesses(ids);
 
   void _loadCounts() {
     final kind = _kind;
@@ -218,8 +235,12 @@ class _CatalogViewState extends State<CatalogView> {
   }
 
   Future<void> _openFilter() async {
-    final res = await showCatalogFilterSheet(context,
-        kind: _kind, categoryId: _categoryId, rubro: _rubro);
+    final res = await showCatalogFilterSheet(
+      context,
+      kind: _kind,
+      categoryId: _categoryId,
+      rubro: _rubro,
+    );
     if (res != null) _applyFilter(categoryId: res.categoryId, rubro: res.rubro);
   }
 
@@ -229,6 +250,7 @@ class _CatalogViewState extends State<CatalogView> {
   }
 
   void _changeKind(int i) {
+    if (i == (_kind == 'producto' ? 0 : 1)) return;
     setState(() {
       _kind = i == 0 ? 'producto' : 'servicio';
       _categoryId = null; // cambiar de kind limpia el filtro
@@ -250,102 +272,114 @@ class _CatalogViewState extends State<CatalogView> {
   }
 
   Widget _chips() => CatalogChipStrip(
-        categorias: categoriasNavegables(kCategories, _counts?.keys.toSet(),
-            seleccionada: _categoryId),
-        categoryId: _categoryId,
-        wholesale: _kind == 'producto' ? _wholesale : null,
-        onWholesale: _toggleWholesale,
-        onCategory: (id) => _applyFilter(categoryId: id),
-        onTodo: _volverAPortada,
-      );
+    categorias: categoriasNavegables(
+      kCategories,
+      _counts?.keys.toSet(),
+      seleccionada: _categoryId,
+    ),
+    categoryId: _categoryId,
+    wholesale: _kind == 'producto' ? _wholesale : null,
+    onWholesale: _toggleWholesale,
+    onCategory: (id) {
+      if (id != _categoryId) _applyFilter(categoryId: id);
+    },
+    onTodo: _volverAPortada,
+  );
 
-  Widget _rejilla(CatalogPage page) => LayoutBuilder(builder: (context, box) {
-        final cellWidth = (box.maxWidth - 32 - 11) / 2;
-        return CustomScrollView(
-          controller: _scrollController,
-          slivers: [
-            SliverToBoxAdapter(child: _chips()),
-            SliverPadding(
-              padding: EdgeInsets.only(
-                  left: 16,
-                  right: 16,
-                  top: 10,
-                  bottom: 12 + navBarReservedSpace(context)),
-              sliver: SliverGrid(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 11,
-                  mainAxisSpacing: 11,
-                  mainAxisExtent: catalogGridCardExtent(context, cellWidth),
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (_, i) => ProductGridCard(
-                    item: page.items[i],
-                    negocio: page.negocios[page.items[i]['business_id']],
-                  ).cascadeIn(i),
-                  childCount: page.items.length,
-                ),
+  Widget _rejilla(CatalogPage page) => LayoutBuilder(
+    builder: (context, box) {
+      final cellWidth = (box.maxWidth - 32 - 11) / 2;
+      return CustomScrollView(
+        controller: _scrollController,
+        slivers: [
+          SliverToBoxAdapter(child: _chips()),
+          SliverPadding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 10,
+              bottom: 12 + navBarReservedSpace(context),
+            ),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 11,
+                mainAxisSpacing: 11,
+                mainAxisExtent: catalogGridCardExtent(context, cellWidth),
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (_, i) => ProductGridCard(
+                  item: page.items[i],
+                  negocio: page.negocios[page.items[i]['business_id']],
+                ).cascadeIn(i),
+                childCount: page.items.length,
               ),
             ),
-          ],
-        );
-      });
+          ),
+        ],
+      );
+    },
+  );
 
   Widget _portada(CatalogPage page) => CatalogPortada(
-        controller: _scrollController,
-        header: _chips(),
-        items: page.items,
-        negocios: page.negocios,
-        counts: _counts,
-        onVerTodo: () => setState(() => _verTodo = true),
-        onCategory: (id) => _applyFilter(categoryId: id),
-        onStore: (id) => context.push('/store/$id'),
-      );
+    controller: _scrollController,
+    header: _chips(),
+    items: page.items,
+    negocios: page.negocios,
+    counts: _counts,
+    onVerTodo: () => setState(() => _verTodo = true),
+    onCategory: (id) => _applyFilter(categoryId: id),
+    onStore: (id) => context.push('/store/$id'),
+  );
 
-  Widget _vacio() => Column(children: [
-        _chips(),
-        Expanded(
-          child: EmptyState(
-            controller: _scrollController,
-            message: _filtrado
-                ? 'No hay artículos que coincidan con tu filtro.'
-                : 'Aún no hay artículos publicados en esta '
+  Widget _vacio() => Column(
+    children: [
+      _chips(),
+      Expanded(
+        child: EmptyState(
+          controller: _scrollController,
+          message: _filtrado
+              ? 'No hay artículos que coincidan con tu filtro.'
+              : 'Aún no hay artículos publicados en esta '
                     'categoría.\n\nVuelve más tarde: los '
                     'proveedores publican todos los días.',
-            ctaLabel: _filtrado ? 'Quitar filtro' : null,
-            onCta: _filtrado ? _quitarTodo : null,
-          ),
+          ctaLabel: _filtrado ? 'Quitar filtro' : null,
+          onCta: _filtrado ? _quitarTodo : null,
         ),
-      ]);
+      ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) => OnboardingGuide(
-        guideKey: 'client.catalog.v1',
-        steps: onboardingCopy['client.catalog.v1']!,
-        mode: OnboardingMode.welcome,
-        child: Scaffold(
-          body: Column(children: [
-            // Misma anatomía que las demás pestañas: avatar (o atrás si viene
-            // apilada como «Otros proveedores»), título a la izquierda,
-            // segmentado compacto y campana; debajo, UNA fila con buscador y
-            // Filtrar. Se pliega completo al navegar (PO 2026-07-21).
-            CollapsibleHeader(
-              hidden: _headerHidden,
-              onReveal: () => setState(() => _headerHidden = false),
-              child: VioletHeader(
-                leading: const HeaderLeading(),
-                title: 'Catálogo',
-                actions: [
-                  HeaderSegmented(
-                    compact: true,
-                    options: const ['Producto', 'Servicio'],
-                    index: _kind == 'producto' ? 0 : 1,
-                    onChanged: _changeKind,
-                  ),
-                  const SizedBox(width: 8),
-                  ...widget.actions,
-                ],
-                below: Row(children: [
+    guideKey: 'client.catalog.v1',
+    steps: onboardingCopy['client.catalog.v1']!,
+    mode: OnboardingMode.welcome,
+    child: Scaffold(
+      body: Column(
+        children: [
+          // Misma anatomía que las demás pestañas: avatar (o atrás si viene
+          // apilada como «Otros proveedores»), título a la izquierda,
+          // segmentado compacto y campana; debajo, UNA fila con buscador y
+          // Filtrar. Se pliega completo al navegar (PO 2026-07-21).
+          CollapsibleHeader(
+            hidden: _headerHidden,
+            onReveal: () => setState(() => _headerHidden = false),
+            child: VioletHeader(
+              leading: const HeaderLeading(),
+              title: 'Catálogo',
+              actions: [
+                HeaderSegmented(
+                  compact: true,
+                  options: const ['Producto', 'Servicio'],
+                  index: _kind == 'producto' ? 0 : 1,
+                  onChanged: _changeKind,
+                ),
+                const SizedBox(width: 8),
+                ...widget.actions,
+              ],
+              below: Row(
+                children: [
                   Expanded(
                     child: CatalogSearchField(
                       controller: _searchCtrl,
@@ -364,33 +398,42 @@ class _CatalogViewState extends State<CatalogView> {
                     onTap: _openFilter,
                     onClear: _categoryId != null ? _volverAPortada : null,
                   ),
-                ]),
+                ],
               ),
             ),
-            Expanded(
-              child: NotificationListener<ScrollNotification>(
-                onNotification: _onListScroll,
-                child: JayaloRefresh(
-                  onRefresh: () async => _refetch(),
-                  child: FutureBuilder<CatalogPage>(
-                    future: _load,
-                    builder: (context, snap) {
-                      if (snap.connectionState != ConnectionState.done) {
-                        return const JayaloLoaderBlock();
-                      }
-                      if (snap.hasError) {
-                        return ErrorRetry(onRetry: () async => _refetch());
-                      }
-                      final page = snap.data ??
-                          (items: const <Map<String, dynamic>>[], negocios: const <String, BusinessCardInfo>{});
-                      if (page.items.isEmpty) return _vacio();
-                      return _filtrado ? _rejilla(page) : _portada(page);
-                    },
-                  ),
+          ),
+          Expanded(
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onListScroll,
+              child: JayaloRefresh(
+                onRefresh: () async {
+                  _refetch();
+                  _loadCounts();
+                },
+                child: FutureBuilder<CatalogPage>(
+                  future: _load,
+                  builder: (context, snap) {
+                    if (snap.connectionState != ConnectionState.done) {
+                      return const JayaloLoaderBlock();
+                    }
+                    if (snap.hasError) {
+                      return ErrorRetry(onRetry: () async => _refetch());
+                    }
+                    final page =
+                        snap.data ??
+                        (
+                          items: const <Map<String, dynamic>>[],
+                          negocios: const <String, BusinessCardInfo>{},
+                        );
+                    if (page.items.isEmpty) return _vacio();
+                    return _filtrado ? _rejilla(page) : _portada(page);
+                  },
                 ),
               ),
             ),
-          ]),
-        ),
-      );
+          ),
+        ],
+      ),
+    ),
+  );
 }

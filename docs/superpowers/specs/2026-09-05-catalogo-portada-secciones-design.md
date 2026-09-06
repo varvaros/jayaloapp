@@ -156,9 +156,11 @@ tu filtro.» + «Quitar filtro»), con «Quitar filtro» limpiando también mayo
 embed — un embed revienta con PGRST200.
 
 Coste de red por apertura de la pestaña: hoy 2 peticiones (productos + valoraciones) + 1 al
-abrir Filtrar. Con esto: **4** (productos + valoraciones + negocios + conteos), las dos nuevas
-en paralelo con las valoraciones. Cada filtro re-pide solo productos + valoraciones (+ negocios
-de esos ítems); los conteos se piden una vez por kind y se cachean en el `State`.
+abrir Filtrar. Con esto: **4** (productos + valoraciones + negocios + conteos); los conteos se
+piden en paralelo con los productos; la de negocios va EN SERIE tras los productos (sus ids
+salen de ellos), con tope de 4 s para no retrasar el primer pintado. Cada filtro re-pide solo
+productos + valoraciones (+ negocios de esos ítems); los conteos se piden una vez por kind y se
+cachean en el `State`.
 
 ### 2.8 Estados y errores
 

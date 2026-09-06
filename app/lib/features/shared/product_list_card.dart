@@ -14,7 +14,12 @@ import 'star_score.dart';
 /// reusarse en "Mi tienda". La línea de reputación se oculta si el `item` no
 /// trae `avg_rating`/`reviews_count` (Mi tienda no la pasa).
 class ProductListCard extends StatelessWidget {
-  const ProductListCard({super.key, required this.item, this.onTap, this.onLongPress});
+  const ProductListCard({
+    super.key,
+    required this.item,
+    this.onTap,
+    this.onLongPress,
+  });
   final Map<String, dynamic> item;
 
   /// Sustituye la navegación por defecto al detalle del producto — usado por
@@ -43,12 +48,15 @@ class ProductListCard extends StatelessWidget {
       // la tienda y se veía vacío (QA PO 2026-07-21). En el catálogo (shell)
       // se conserva `/catalog/:id`, con su navbar. [onTap] la reemplaza
       // entera cuando viene dada (tarjeta propia en "Mi negocio").
-      onTap: onTap ??
+      onTap:
+          onTap ??
           () {
-            final inStore =
-                GoRouterState.of(context).uri.path.startsWith('/store/');
+            final inStore = GoRouterState.of(
+              context,
+            ).uri.path.startsWith('/store/');
             context.push(
-                inStore ? '/product/${item['id']}' : '/catalog/${item['id']}');
+              inStore ? '/product/${item['id']}' : '/catalog/${item['id']}',
+            );
           },
       onLongPress: onLongPress,
       child: Row(
@@ -84,37 +92,46 @@ class ProductListCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (catName != null) ...[
-                  Text(catName.toUpperCase(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: .8,
-                          color: cs.primary)),
-                  const SizedBox(height: 3),
-                ],
-                Text(name,
-                    maxLines: 2,
+                  Text(
+                    catName.toUpperCase(),
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 15,
-                        height: 1.25,
-                        fontWeight: FontWeight.w600,
-                        color: jayaloHead(context))),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: .8,
+                      color: cs.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                ],
+                Text(
+                  name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.25,
+                    fontWeight: FontWeight.w600,
+                    color: jayaloHead(context),
+                  ),
+                ),
                 ?_ratingLine(context, cs),
                 if (desc.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(desc,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      // onSurface (no onSurfaceVariant): el muted #847D8F sobre
-                      // la tarjeta blanca queda ~3.2:1, bajo el mínimo 4.5:1.
-                      // El peso normal + tamaño menor ya lo separan del nombre.
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          height: 1.3,
-                          color: cs.onSurface)),
+                  Text(
+                    desc,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    // onSurface (no onSurfaceVariant): el muted #847D8F sobre
+                    // la tarjeta blanca queda ~3.2:1, bajo el mínimo 4.5:1.
+                    // El peso normal + tamaño menor ya lo separan del nombre.
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.3,
+                      color: cs.onSurface,
+                    ),
+                  ),
                 ],
                 const SizedBox(height: 8),
                 _priceLine(cs),
@@ -138,18 +155,26 @@ class ProductListCard extends StatelessWidget {
     if (avg <= 0 || count <= 0) return null;
     return Padding(
       padding: const EdgeInsets.only(top: 4),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        StarScore(score: avg, size: 13, showNumber: false),
-        const SizedBox(width: 4),
-        Text('${StarScore.formatScore(avg)}/10',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          StarScore(score: avg, size: 13, showNumber: false),
+          const SizedBox(width: 4),
+          Text(
+            '${StarScore.formatScore(avg)}/10',
             style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: jayaloHead(context))),
-        const SizedBox(width: 4),
-        Text('($count)',
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-      ]),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: jayaloHead(context),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '($count)',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
+        ],
+      ),
     );
   }
 
@@ -171,12 +196,15 @@ class ProductListCard extends StatelessWidget {
     );
 
     if (price == null && min == null) {
-      return Text('Consultar precio',
-          maxLines: 1,
-          style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: cs.onSurfaceVariant));
+      return Text(
+        'Consultar precio',
+        maxLines: 1,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: cs.onSurfaceVariant,
+        ),
+      );
     }
 
     final Widget line;
@@ -192,11 +220,14 @@ class ProductListCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          Text('desde ',
-              style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurfaceVariant)),
+          Text(
+            'desde ',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w500,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
           Text(fmtRD(min), style: big),
         ],
       );
@@ -204,15 +235,18 @@ class ProductListCard extends StatelessWidget {
     return Align(
       alignment: Alignment.centerLeft,
       child: FittedBox(
-          fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: line),
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: line,
+      ),
     );
   }
 
   Widget _imagePlaceholder(ColorScheme cs) => Container(
-        color: cs.surfaceContainerHighest,
-        alignment: Alignment.center,
-        child: Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
-      );
+    color: cs.surfaceContainerHighest,
+    alignment: Alignment.center,
+    child: Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
+  );
 }
 
 /// Padding vertical del bloque de texto de [ProductGridCard] (10 arriba + 12
@@ -243,10 +277,10 @@ double catalogGridCardExtent(BuildContext context, double cellWidth) {
 /// tarjeta de rejilla y la de carrusel.
 Widget catalogImage(String? url, ColorScheme cs) {
   Widget placeholder() => Container(
-        color: cs.surfaceContainerHighest,
-        alignment: Alignment.center,
-        child: Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
-      );
+    color: cs.surfaceContainerHighest,
+    alignment: Alignment.center,
+    child: Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
+  );
   if (url == null) return placeholder();
   return JayaloNetworkImage(
     url,
@@ -269,8 +303,11 @@ Widget catalogImage(String? url, ColorScheme cs) {
 /// `PhysicalLocationBadge`). Va como texto y no como píldora porque en media
 /// tarjeta la píldora no cabe. `null` sin negocio: la tarjeta se encoge, no
 /// inventa un «Proveedor» fantasma.
-Widget? storeLine(BuildContext context, BusinessCardInfo? negocio,
-    {bool sello = true}) {
+Widget? storeLine(
+  BuildContext context,
+  BusinessCardInfo? negocio, {
+  bool sello = true,
+}) {
   if (negocio == null) return null;
   final cs = Theme.of(context).colorScheme;
   final dark = Theme.of(context).brightness == Brightness.dark;
@@ -278,36 +315,44 @@ Widget? storeLine(BuildContext context, BusinessCardInfo? negocio,
       (dark ? JayaloStatus.requisitoDark : JayaloStatus.requisitoLight).ink;
   return Padding(
     padding: const EdgeInsets.only(top: 4),
-    child: Row(children: [
-      Icon(Icons.storefront_outlined, size: 12, color: cs.onSurfaceVariant),
-      const SizedBox(width: 4),
-      Flexible(
-        child: Text.rich(
-          TextSpan(
-            text: negocio.name,
-            style: TextStyle(
-                fontSize: 11, height: 1.25, color: cs.onSurfaceVariant),
-            children: [
-              if (sello && negocio.hasPhysicalLocation)
-                TextSpan(
-                  text: ' · Tienda física',
-                  style: TextStyle(color: teal, fontWeight: FontWeight.w600),
-                ),
-            ],
+    child: Row(
+      children: [
+        Icon(Icons.storefront_outlined, size: 12, color: cs.onSurfaceVariant),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text.rich(
+            TextSpan(
+              text: negocio.name,
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.25,
+                color: cs.onSurfaceVariant,
+              ),
+              children: [
+                if (sello && negocio.hasPhysicalLocation)
+                  TextSpan(
+                    text: ' · Tienda física',
+                    style: TextStyle(color: teal, fontWeight: FontWeight.w600),
+                  ),
+              ],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
-      ),
-    ]),
+      ],
+    ),
   );
 }
 
 /// Precio del catálogo a un [size] dado — misma semántica que [_priceLine] de
 /// la fila ancha (fijo / rango / «desde» / «Consultar precio»). Un
 /// [FittedBox] encoge un rango largo a una línea sin achicar los cortos.
-Widget catalogPriceLine(ColorScheme cs, Map<String, dynamic> item,
-    {required double size}) {
+Widget catalogPriceLine(
+  ColorScheme cs,
+  Map<String, dynamic> item, {
+  required double size,
+}) {
   final price = item['price'] as num?;
   final min = item['price_min'] as num?;
   final max = item['price_max'] as num?;
@@ -320,12 +365,15 @@ Widget catalogPriceLine(ColorScheme cs, Map<String, dynamic> item,
     fontFeatures: const [FontFeature.tabularFigures()],
   );
   if (price == null && min == null) {
-    return Text('Consultar precio',
-        maxLines: 1,
-        style: TextStyle(
-            fontSize: size * .78,
-            fontWeight: FontWeight.w600,
-            color: cs.onSurfaceVariant));
+    return Text(
+      'Consultar precio',
+      maxLines: 1,
+      style: TextStyle(
+        fontSize: size * .78,
+        fontWeight: FontWeight.w600,
+        color: cs.onSurfaceVariant,
+      ),
+    );
   }
   final Widget line;
   if (price != null) {
@@ -339,11 +387,14 @@ Widget catalogPriceLine(ColorScheme cs, Map<String, dynamic> item,
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        Text('desde ',
-            style: TextStyle(
-                fontSize: size * .72,
-                fontWeight: FontWeight.w500,
-                color: cs.onSurfaceVariant)),
+        Text(
+          'desde ',
+          style: TextStyle(
+            fontSize: size * .72,
+            fontWeight: FontWeight.w500,
+            color: cs.onSurfaceVariant,
+          ),
+        ),
         Text(fmtRD(min), style: big),
       ],
     );
@@ -351,7 +402,10 @@ Widget catalogPriceLine(ColorScheme cs, Map<String, dynamic> item,
   return Align(
     alignment: Alignment.centerLeft,
     child: FittedBox(
-        fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: line),
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: line,
+    ),
   );
 }
 
@@ -387,8 +441,9 @@ class ProductGridCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ClipRRect(
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(kCardRadius)),
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(kCardRadius),
+            ),
             child: AspectRatio(aspectRatio: 1, child: catalogImage(img, cs)),
           ),
           Expanded(
@@ -397,31 +452,40 @@ class ProductGridCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 13.5,
-                          height: 1.3,
-                          fontWeight: FontWeight.w600,
-                          color: jayaloHead(context))),
+                  Text(
+                    name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      height: 1.3,
+                      fontWeight: FontWeight.w600,
+                      color: jayaloHead(context),
+                    ),
+                  ),
                   ?storeLine(context, negocio),
                   if (avg > 0 && count > 0) ...[
                     const SizedBox(height: 3),
-                    Row(mainAxisSize: MainAxisSize.min, children: [
-                      // Estrellas a 11 px: en media tarjeta las cinco más el
-                      // texto van justas — mirar primero en el smoke del device.
-                      StarScore(score: avg, size: 11, showNumber: false),
-                      const SizedBox(width: 3),
-                      Flexible(
-                        child: Text(
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Estrellas a 11 px: en media tarjeta las cinco más el
+                        // texto van justas — mirar primero en el smoke del device.
+                        StarScore(score: avg, size: 11, showNumber: false),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
                             '${StarScore.formatScore(avg)}/10 ($count)',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                fontSize: 11, color: cs.onSurfaceVariant)),
-                      ),
-                    ]),
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                   const Spacer(),
                   catalogPriceLine(cs, item, size: 16),
@@ -441,8 +505,12 @@ class ProductGridCard extends StatelessWidget {
 /// contenido: quien la apila la mete en un `Row` con `stretch` dentro de un
 /// `IntrinsicHeight`, así todas las tarjetas de la fila miden igual.
 class ProductCarouselCard extends StatelessWidget {
-  const ProductCarouselCard(
-      {super.key, required this.item, this.negocio, this.width = 138});
+  const ProductCarouselCard({
+    super.key,
+    required this.item,
+    this.negocio,
+    this.width = 138,
+  });
   final Map<String, dynamic> item;
   final BusinessCardInfo? negocio;
   final double width;
@@ -464,7 +532,8 @@ class ProductCarouselCard extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(kCardRadius)),
+                top: Radius.circular(kCardRadius),
+              ),
               child: SizedBox(height: 96, child: catalogImage(img, cs)),
             ),
             Padding(
@@ -473,14 +542,17 @@ class ProductCarouselCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 13,
-                          height: 1.3,
-                          fontWeight: FontWeight.w600,
-                          color: jayaloHead(context))),
+                  Text(
+                    name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.3,
+                      fontWeight: FontWeight.w600,
+                      color: jayaloHead(context),
+                    ),
+                  ),
                   ?storeLine(context, negocio, sello: false),
                   const SizedBox(height: 6),
                   catalogPriceLine(cs, item, size: 15),

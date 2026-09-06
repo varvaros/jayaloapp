@@ -3998,11 +3998,18 @@ Future<String> uploadInterestImage(String filePath) =>
 /// Pura: de las filas de la RPC `get_product_counts` (`kind, category_id, n`)
 /// al mapa categoría → cantidad de artículos publicados del kind pedido. Un
 /// `kind` nulo cuenta como 'producto' (fila legada); sin `category_id` se
-/// ignora. Separada para probarse sin red.
+/// ignora. `n` tolera `num` o `String` (y cualquier otra cosa cae a 0) — antes
+/// un `String` reventaba con una excepción que `categoryCountsForKind` tragaba
+/// como `null`, apagando TODOS los conteos en silencio. Separada para
+/// probarse sin red.
 Map<String, int> countsForKind(List<Map<String, dynamic>> rows, String kind) => {
       for (final r in rows)
         if ((r['kind'] ?? 'producto') == kind && r['category_id'] != null)
-          r['category_id'] as String: (r['n'] as num?)?.toInt() ?? 0,
+          r['category_id'] as String: switch (r['n']) {
+            final num n => n.toInt(),
+            final String s => int.tryParse(s) ?? 0,
+            _ => 0,
+          },
     };
 
 /// Conteo de artículos publicados por categoría del kind dado ('producto' |
