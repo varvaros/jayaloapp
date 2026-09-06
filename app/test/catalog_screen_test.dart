@@ -2,10 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jayalo_app/app.dart';
+import 'package:jayalo_app/data/repos.dart' show BusinessCardInfo;
+import 'package:jayalo_app/features/client/catalog_portada.dart';
 import 'package:jayalo_app/features/client/catalog_screen.dart';
 import 'package:jayalo_app/features/shared/onboarding_store.dart';
 import 'package:jayalo_app/features/shared/star_score.dart';
 import 'package:jayalo_app/features/shared/violet_header.dart';
+
+/// Dobles de las consultas de negocios y conteos, usados como valor por
+/// defecto de `catalogo()` — deben ser funciones de nivel superior: un
+/// closure local no es una "constant expression" válida para un default de
+/// parámetro nombrado.
+Future<Map<String, BusinessCardInfo>> sinNegocios(List<String> ids) async =>
+    const {};
+Future<Map<String, int>?> sinConteos(String kind) async => null;
 
 /// `/catalog` (Task 6, listado): el toggle Producto/Servicio decide el
 /// `kind` que se le pide a `fetch` (paridad con `productHitsQ` de la web,
@@ -42,6 +52,20 @@ void main() {
           String? rubro,
           bool wholesale = false}) async =>
       [];
+
+  /// `CatalogView` con las consultas de negocios y conteos dobladas: los
+  /// tests que solo miran productos no deben tocar la red.
+  Widget catalogo({
+    required CatalogFetch fetch,
+    CatalogBusinessesFetch businesses = sinNegocios,
+    CatalogCountsFetch counts = sinConteos,
+  }) =>
+      host(CatalogView(
+        fetch: fetch,
+        businesses: businesses,
+        counts: counts,
+        actions: const [],
+      ));
 
   final fixedItem = {
     'id': 'p1',
@@ -86,8 +110,7 @@ void main() {
       return [];
     }
 
-    await tester.pumpWidget(
-        host(CatalogView(fetch: recorder, actions: const [])));
+    await tester.pumpWidget(catalogo(fetch: recorder));
     await tester.pumpAndSettle();
 
     expect(calls, ['producto']);
@@ -108,8 +131,7 @@ void main() {
       return [];
     }
 
-    await tester.pumpWidget(
-        host(CatalogView(fetch: recorder, actions: const [])));
+    await tester.pumpWidget(catalogo(fetch: recorder));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Servicio'));
@@ -119,11 +141,12 @@ void main() {
   });
 
   testWidgets('la tarjeta muestra nombre y precio fijo', (tester) async {
-    await tester.pumpWidget(host(CatalogView(
+    await tester.pumpWidget(catalogo(
       fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
           [fixedItem],
-      actions: const [],
-    )));
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ver todo').first);
     await tester.pumpAndSettle();
 
     expect(find.text('Taladro inalámbrico'), findsOneWidget);
@@ -132,11 +155,12 @@ void main() {
 
   testWidgets('la tarjeta muestra el rango de precio cuando no hay precio fijo',
       (tester) async {
-    await tester.pumpWidget(host(CatalogView(
+    await tester.pumpWidget(catalogo(
       fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
           [rangeItem],
-      actions: const [],
-    )));
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ver todo').first);
     await tester.pumpAndSettle();
 
     expect(find.text('Instalación eléctrica'), findsOneWidget);
@@ -154,11 +178,12 @@ void main() {
         'colors': ['Rojo', 'Azul'],
       },
     };
-    await tester.pumpWidget(host(CatalogView(
+    await tester.pumpWidget(catalogo(
       fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
           [conAtributos],
-      actions: const [],
-    )));
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ver todo').first);
     await tester.pumpAndSettle();
 
     expect(find.text('Taladro inalámbrico'), findsOneWidget);
@@ -169,8 +194,7 @@ void main() {
 
   testWidgets('estado vacío muestra una guía, no una rejilla en blanco',
       (tester) async {
-    await tester
-        .pumpWidget(host(CatalogView(fetch: vacio, actions: const [])));
+    await tester.pumpWidget(catalogo(fetch: vacio));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Aún no hay artículos'), findsOneWidget);
@@ -197,8 +221,7 @@ void main() {
       throw Exception('caído');
     }
 
-    await tester.pumpWidget(
-        host(CatalogView(fetch: fallando, actions: const [])));
+    await tester.pumpWidget(catalogo(fetch: fallando));
     await tester.pumpAndSettle();
 
     expect(find.text('Reintentar'), findsOneWidget);
@@ -223,8 +246,7 @@ void main() {
       return [];
     }
 
-    await tester.pumpWidget(
-        host(CatalogView(fetch: recorder, actions: const [])));
+    await tester.pumpWidget(catalogo(fetch: recorder));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'taladro');
@@ -246,11 +268,12 @@ void main() {
       'id': 'p3',
       'name': 'Set de destornilladores de precisión de 32 piezas',
     };
-    await tester.pumpWidget(host(CatalogView(
+    await tester.pumpWidget(catalogo(
       fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
           [longName, rangeItem],
-      actions: const [],
-    )));
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ver todo').first);
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -262,7 +285,7 @@ void main() {
   // pestaña del cliente (sin apilar) no muestra flecha.
   testWidgets('sin apilar: no hay flecha de atrás, sí el segmentado',
       (tester) async {
-    await tester.pumpWidget(host(CatalogView(fetch: vacio, actions: const [])));
+    await tester.pumpWidget(catalogo(fetch: vacio));
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.arrow_back), findsNothing);
@@ -277,8 +300,11 @@ void main() {
         body: Builder(
           builder: (context) => ElevatedButton(
             onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                builder: (_) =>
-                    CatalogView(fetch: vacio, actions: const []))),
+                builder: (_) => CatalogView(
+                    fetch: vacio,
+                    businesses: sinNegocios,
+                    counts: sinConteos,
+                    actions: const []))),
             child: const Text('ir al catálogo'),
           ),
         ),
@@ -296,11 +322,12 @@ void main() {
   testWidgets('la tarjeta muestra la reputación (★ + promedio + conteo)',
       (tester) async {
     final rated = {...fixedItem, 'avg_rating': 8.7, 'reviews_count': 34};
-    await tester.pumpWidget(host(CatalogView(
+    await tester.pumpWidget(catalogo(
       fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
           [rated],
-      actions: const [],
-    )));
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ver todo').first);
     await tester.pumpAndSettle();
 
     // La rejilla (mockup aprobado 2026-08-10) une promedio y conteo en un solo
@@ -310,51 +337,60 @@ void main() {
     expect(find.byType(StarScore), findsOneWidget);
   });
 
-  testWidgets('cambiar de kind limpia categoría y rubro', (tester) async {
+  testWidgets('cambiar de kind limpia categoría, rubro, mayoreo y Ver todo',
+      (tester) async {
     final seen = <Map<String, dynamic>>[];
-    await tester.pumpWidget(host(CatalogView(
+    await tester.pumpWidget(catalogo(
       fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async {
-        seen.add({'kind': kind, 'categoryId': categoryId, 'rubro': rubro});
-        return [];
+        seen.add({'kind': kind, 'categoryId': categoryId, 'wholesale': wholesale});
+        return [fixedItem];
       },
-      actions: const [],
-    )));
+      counts: (_) async => {'ferreteria': 1},
+    ));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Ferretería').first); // el chip, no el tile
+    await tester.pumpAndSettle();
+    expect(seen.last['categoryId'], 'ferreteria');
+
     await tester.tap(find.text('Servicio'));
     await tester.pumpAndSettle();
 
     expect(seen.last['kind'], 'servicio');
     expect(seen.last['categoryId'], isNull);
-    expect(seen.last['rubro'], isNull);
+    expect(seen.last['wholesale'], isFalse);
+    expect(find.byType(CatalogPortada), findsOneWidget);
   });
 
-  testWidgets('el toggle Al por mayor filtra el catálogo', (tester) async {
+  testWidgets('el chip Al por mayor filtra el catálogo y pasa a la rejilla',
+      (tester) async {
     final wholesaleSeen = <bool>[];
-    await tester.pumpWidget(host(CatalogView(
+    await tester.pumpWidget(catalogo(
       fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async {
         wholesaleSeen.add(wholesale);
-        return [];
+        return [fixedItem];
       },
-      actions: const [],
-    )));
+    ));
     await tester.pumpAndSettle();
+    expect(find.byType(CatalogPortada), findsOneWidget);
+
     await tester.tap(find.text('Al por mayor'));
     await tester.pumpAndSettle();
 
     expect(wholesaleSeen.last, isTrue);
+    expect(find.byType(CatalogPortada), findsNothing);
+    expect(find.byType(SliverGrid), findsOneWidget);
   });
 
   testWidgets(
       'en Servicio se oculta el toggle de mayoreo y se re-pide con '
       'wholesale=false (mayoreo es solo productos)', (tester) async {
     final wholesaleSeen = <bool>[];
-    await tester.pumpWidget(host(CatalogView(
+    await tester.pumpWidget(catalogo(
       fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async {
         wholesaleSeen.add(wholesale);
         return [];
       },
-      actions: const [],
-    )));
+    ));
     await tester.pumpAndSettle();
     // En Producto el toggle está visible.
     expect(find.text('Al por mayor'), findsOneWidget);
@@ -365,7 +401,150 @@ void main() {
     await tester.pumpAndSettle();
     // El toggle desaparece y el catálogo se re-pide sin mayoreo.
     expect(find.text('Al por mayor'), findsNothing);
-    expect(find.text('Al detalle'), findsNothing);
     expect(wholesaleSeen.last, isFalse);
+  });
+
+  testWidgets('sin filtro se ve la portada y no la rejilla', (tester) async {
+    await tester.pumpWidget(catalogo(
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
+          [fixedItem, rangeItem],
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byType(CatalogPortada), findsOneWidget);
+    expect(find.text('Recién publicados'), findsOneWidget);
+    expect(find.byType(SliverGrid), findsNothing);
+  });
+
+  testWidgets('tocar un chip de categoría filtra y pasa a la rejilla; «Todo» vuelve',
+      (tester) async {
+    final cats = <String?>[];
+    await tester.pumpWidget(catalogo(
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async {
+        cats.add(categoryId);
+        return [fixedItem];
+      },
+      counts: (_) async => {'ferreteria': 1, 'hogar': 2},
+    ));
+    await tester.pumpAndSettle();
+    // El chip Y el tile de «Por categoría» dicen «Ferretería»; el chip va
+    // primero en el árbol (cabecera de la lista).
+    expect(find.text('Ferretería'), findsWidgets);
+
+    await tester.tap(find.text('Ferretería').first);
+    await tester.pumpAndSettle();
+    expect(cats.last, 'ferreteria');
+    expect(find.byType(SliverGrid), findsOneWidget);
+    expect(find.byType(CatalogPortada), findsNothing);
+
+    await tester.tap(find.text('Todo'));
+    await tester.pumpAndSettle();
+    expect(cats.last, isNull);
+    expect(find.byType(CatalogPortada), findsOneWidget);
+  });
+
+  testWidgets('«Ver todo» enseña la rejilla sin re-pedir ni filtrar; «Todo» vuelve',
+      (tester) async {
+    var llamadas = 0;
+    await tester.pumpWidget(catalogo(
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async {
+        llamadas++;
+        expect(categoryId, isNull);
+        expect(wholesale, isFalse);
+        return [fixedItem];
+      },
+    ));
+    await tester.pumpAndSettle();
+    expect(llamadas, 1);
+
+    await tester.tap(find.text('Ver todo').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(SliverGrid), findsOneWidget);
+    expect(llamadas, 1); // misma carga, otro cuerpo
+
+    await tester.tap(find.text('Todo'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CatalogPortada), findsOneWidget);
+    expect(llamadas, 1);
+  });
+
+  testWidgets('la rejilla pinta la tienda del negocio resuelto', (tester) async {
+    await tester.pumpWidget(catalogo(
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
+          [fixedItem],
+      businesses: (ids) async => {
+        'b1': (
+          name: 'Ferretería Don Pepe',
+          logoUrl: null,
+          whatsappVerified: false,
+          identityVerified: false,
+          businessVerified: false,
+          hasPhysicalLocation: true,
+        ),
+      },
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ver todo').first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Ferretería Don Pepe'), findsOneWidget);
+    expect(find.textContaining('Tienda física'), findsOneWidget);
+  });
+
+  testWidgets('si la consulta de negocios falla, el catálogo se pinta igual',
+      (tester) async {
+    // Función NOMBRADA con tipo de retorno explícito, no closure anónima:
+    // una closure `async` sin anotación que nunca completa normalmente
+    // (siempre lanza) reifica su Future como `Future<Null>` en tiempo de
+    // ejecución pese a la inferencia estática por contexto, y el
+    // `.catchError` de `_fetchPage` revienta con "must return a value of
+    // the future's type" — gotcha de Dart, no del código de producción.
+    Future<Map<String, BusinessCardInfo>> negociosQueFallan(
+        List<String> ids) async {
+      await Future<void>.delayed(Duration.zero);
+      throw Exception('caído');
+    }
+
+    await tester.pumpWidget(catalogo(
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
+          [fixedItem],
+      businesses: negociosQueFallan,
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Reintentar'), findsNothing);
+    expect(find.text('Recién publicados'), findsOneWidget);
+    expect(find.text('Tiendas'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('«Quitar filtro» del estado vacío limpia todo y vuelve a la portada',
+      (tester) async {
+    var vez = 0;
+    await tester.pumpWidget(catalogo(
+      fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async {
+        vez++;
+        // Primera carga: hay artículos. Con filtro: nada.
+        return wholesale ? [] : [fixedItem];
+      },
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Al por mayor'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('No hay artículos que coincidan'), findsOneWidget);
+
+    await tester.tap(find.text('Quitar filtro'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CatalogPortada), findsOneWidget);
+    expect(vez, 3);
+  });
+
+  testWidgets('la cabecera lleva el título a la izquierda y el segmentado compacto',
+      (tester) async {
+    await tester.pumpWidget(catalogo(fetch: vacio));
+    await tester.pumpAndSettle();
+    final header = tester.widget<VioletHeader>(find.byType(VioletHeader));
+    expect(header.title, 'Catálogo');
+    expect(header.titleAlign, HeaderTitleAlign.start);
+    final seg = tester.widget<HeaderSegmented>(kindSegmented());
+    expect(seg.compact, isTrue);
+    expect(find.text('Al detalle'), findsNothing);
   });
 }
