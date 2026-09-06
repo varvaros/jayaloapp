@@ -135,9 +135,12 @@ class _CatalogViewState extends State<CatalogView> {
       for (final it in items)
         if (it['business_id'] is String) it['business_id'] as String,
     }.toList();
-    final negocios = await widget
-        .businesses(ids)
-        .catchError((_) => <String, BusinessCardInfo>{});
+    Map<String, BusinessCardInfo> negocios;
+    try {
+      negocios = await widget.businesses(ids);
+    } catch (_) {
+      negocios = const {};
+    }
     return (items: items, negocios: negocios);
   }
 

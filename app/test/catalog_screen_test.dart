@@ -491,22 +491,13 @@ void main() {
 
   testWidgets('si la consulta de negocios falla, el catálogo se pinta igual',
       (tester) async {
-    // Función NOMBRADA con tipo de retorno explícito, no closure anónima:
-    // una closure `async` sin anotación que nunca completa normalmente
-    // (siempre lanza) reifica su Future como `Future<Null>` en tiempo de
-    // ejecución pese a la inferencia estática por contexto, y el
-    // `.catchError` de `_fetchPage` revienta con "must return a value of
-    // the future's type" — gotcha de Dart, no del código de producción.
-    Future<Map<String, BusinessCardInfo>> negociosQueFallan(
-        List<String> ids) async {
-      await Future<void>.delayed(Duration.zero);
-      throw Exception('caído');
-    }
-
     await tester.pumpWidget(catalogo(
       fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async =>
           [fixedItem],
-      businesses: negociosQueFallan,
+      businesses: (ids) async {
+        await Future<void>.delayed(Duration.zero);
+        throw Exception('caído');
+      },
     ));
     await tester.pumpAndSettle();
     expect(find.text('Reintentar'), findsNothing);
