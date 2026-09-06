@@ -13,10 +13,7 @@ import 'package:jayalo_app/features/shell/home_shell.dart';
 void main() {
   setUp(() async {
     roleStore.value = RoleState.consumer;
-    // Sin esto, el velo del spotlight `client.plus.v1` (HomeShell lo muestra
-    // en `/client`) se come el PRIMER toque a la navbar y el test miente.
     onboardingStore.reset();
-    await onboardingStore.markDone('client.plus.v1');
   });
 
   GoRouter router() => GoRouter(

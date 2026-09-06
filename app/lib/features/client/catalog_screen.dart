@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
+import 'package:go_router/go_router.dart';
 
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
@@ -11,50 +12,70 @@ import '../shared/onboarding_guide.dart';
 import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
+import 'catalog_chip_strip.dart';
 import 'catalog_filter_sheet.dart';
+import 'catalog_header_widgets.dart';
+import 'catalog_portada.dart';
 
 /// Signature de la fuente de datos del catálogo (paridad `productHitsQ` de la
 /// web). Inyectada en [CatalogView] para poder probar la pantalla sin red —
 /// mismo patrón que `InboxFetch` en `provider/inbox_screen.dart`.
-typedef CatalogFetch = Future<List<Map<String, dynamic>>> Function(
-    {required String kind,
-    String? search,
-    String? categoryId,
-    String? rubro,
-    bool wholesale});
+typedef CatalogFetch =
+    Future<List<Map<String, dynamic>>> Function({
+      required String kind,
+      String? search,
+      String? categoryId,
+      String? rubro,
+      bool wholesale,
+    });
 
-/// Task 6 (2026-07-18): SOLO el listado. El detalle del producto y el botón
-/// "Me interesa" son la tarea siguiente — por eso las tarjetas de esta
-/// pantalla no navegan a ningún lado todavía. El cableado de la pestaña en la
-/// barra flotante es posterior (no se toca `nav_destinations.dart`); hoy se
-/// llega aquí navegando a `/catalog` a mano, como `/provider/business`.
+/// Cabecera de los negocios dueños de los ítems, por lote (nombre, logo, local).
+/// Best-effort: si falla, la pantalla se pinta sin tienda.
+typedef CatalogBusinessesFetch =
+    Future<Map<String, BusinessCardInfo>> Function(List<String> businessIds);
+
+/// Conteo de artículos por categoría del kind (RPC `get_product_counts`).
+/// `null` = no llegó: chips completos y sin sección «Por categoría».
+typedef CatalogCountsFetch = Future<Map<String, int>?> Function(String kind);
+
+/// Una carga del catálogo: los ítems y la cabecera de sus negocios.
+typedef CatalogPage = ({
+  List<Map<String, dynamic>> items,
+  Map<String, BusinessCardInfo> negocios,
+});
+
+/// Pestaña Catálogo. `?focus=1` (desde el buscador de Mis solicitudes) abre
+/// con el buscador enfocado.
 class CatalogScreen extends StatelessWidget {
   const CatalogScreen({super.key, this.autofocusSearch = false});
-
-  /// Cuando se llega tocando el buscador de otra pantalla (p. ej. "Buscar en
-  /// Jayalo" de Mis solicitudes), el buscador del catálogo abre con el foco
-  /// puesto y el teclado arriba, listo para escribir.
   final bool autofocusSearch;
 
   @override
-  Widget build(BuildContext context) =>
-      CatalogView(fetch: catalogProductsWithRatings, autofocusSearch: autofocusSearch);
+  Widget build(BuildContext context) => CatalogView(
+    fetch: catalogProductsWithRatings,
+    autofocusSearch: autofocusSearch,
+  );
 }
 
-/// Dibuja el toggle Producto/Servicio, la búsqueda y la rejilla. StatefulWidget
-/// con su propio [ScrollController] (nunca `homeScrollController`: esta
-/// pantalla todavía no es una pestaña raíz del shell, mismo motivo que
-/// `ReputationView`/`StatsView` — el `AnimatedSwitcher` del shell y `BackGuard`
+/// Cabecera + tira de chips + UN cuerpo de dos posibles (PO 2026-09-05,
+/// camino 3): la PORTADA por secciones cuando no hay filtro, la REJILLA de dos
+/// columnas cuando lo hay (categoría, mayoreo, búsqueda o «Ver todo»).
+/// StatefulWidget con su propio [ScrollController] (nunca
+/// `homeScrollController`: el `AnimatedSwitcher` del shell y `BackGuard`
 /// revientan si dos pantallas comparten un único controller).
 class CatalogView extends StatefulWidget {
   const CatalogView({
     super.key,
     required this.fetch,
+    this.businesses = businessesCardInfo,
+    this.counts = categoryCountsForKind,
     this.actions = const [HeaderBell()],
     this.autofocusSearch = false,
   });
 
   final CatalogFetch fetch;
+  final CatalogBusinessesFetch businesses;
+  final CatalogCountsFetch counts;
   final List<Widget> actions;
   final bool autofocusSearch;
 
@@ -68,6 +89,15 @@ class _CatalogViewState extends State<CatalogView> {
   String? _categoryId;
   String? _rubro;
   bool _wholesale = false;
+
+  /// «Ver todo» de Recién publicados: la rejilla SIN filtro. Se apaga al tocar
+  /// «Todo» o al cambiar de kind. No re-pide nada: misma carga, otro cuerpo.
+  bool _verTodo = false;
+
+  /// Conteos por categoría del kind activo; `null` mientras llegan o si la
+  /// RPC falló. Se piden una vez por kind.
+  Map<String, int>? _counts;
+
   final _searchCtrl = TextEditingController();
   final _scrollController = ScrollController();
 
@@ -75,10 +105,13 @@ class _CatalogViewState extends State<CatalogView> {
   /// la flecha — mismo gesto que Tus solicitudes).
   bool _headerHidden = false;
 
+  /// Regla de la spec §2.3: con cualquier filtro se pinta la rejilla.
+  bool get _filtrado =>
+      _categoryId != null || _wholesale || _search != null || _verTodo;
+
   /// Esconde/muestra el header COMPLETO según la DIRECCIÓN del gesto (calco de
-  /// `my_requests_screen`): arrastrar hacia arriba pliega, hacia abajo baja.
-  /// Solo `UserScrollNotification` — ignora el relayout del propio colapso, que
-  /// antes reabría el header solo (bug "no se oculta", 2026-07-21).
+  /// `my_requests_screen`). Solo `UserScrollNotification` — ignora el relayout
+  /// del propio colapso, que antes reabría el header solo (bug 2026-07-21).
   bool _onListScroll(ScrollNotification n) {
     if (n is! UserScrollNotification) return false;
     if (n.metrics.axis != Axis.vertical) return false;
@@ -90,34 +123,67 @@ class _CatalogViewState extends State<CatalogView> {
     return false;
   }
 
-  late Future<List<Map<String, dynamic>>> _load = widget.fetch(
+  late Future<CatalogPage> _load = _fetchPage();
+
+  /// Productos (+ valoraciones, ya horneadas por `fetch`) y, en una segunda
+  /// llamada por lote, la cabecera de sus negocios. La segunda es un adorno:
+  /// si falla, se sigue sin tienda — NUNCA se tira la pantalla a error. Va
+  /// EN SERIE tras los productos (sus ids salen de ellos), con tope de 4 s.
+  Future<CatalogPage> _fetchPage() async {
+    final items = await widget.fetch(
       kind: _kind,
       search: _search,
       categoryId: _categoryId,
       rubro: _rubro,
-      wholesale: _wholesale);
+      wholesale: _wholesale,
+    );
+    final ids = <String>{
+      for (final it in items)
+        if (it['business_id'] is String) it['business_id'] as String,
+    }.toList();
+    Map<String, BusinessCardInfo> negocios;
+    try {
+      // Tope de 4 s: si la consulta de negocios se cuelga, sale sin tienda.
+      // `_negocios(ids)` (async, con tipo de retorno explícito) re-reifica el
+      // future: un `businesses` inyectado (test) cuyo cuerpo SOLO lanza se
+      // infiere como `Future<Never>`, y `.timeout()` DIRECTO sobre ese objeto
+      // revienta en tiempo de ejecución al comparar `onTimeout` contra
+      // `Never` (gotcha de Dart: covarianza de `Future`).
+      negocios = await _negocios(
+        ids,
+      ).timeout(const Duration(seconds: 4), onTimeout: () => const {});
+    } catch (_) {
+      negocios = const {};
+    }
+    return (items: items, negocios: negocios);
+  }
+
+  Future<Map<String, BusinessCardInfo>> _negocios(List<String> ids) async =>
+      widget.businesses(ids);
+
+  void _loadCounts() {
+    final kind = _kind;
+    widget.counts(kind).then((c) {
+      if (mounted && _kind == kind) setState(() => _counts = c);
+    }, onError: (_) {});
+  }
 
   // Bloque, no expresión: el mismo gotcha documentado en inbox_screen.dart —
   // `setState(() => _load = future)` hace que la closure DEVUELVA el Future.
-  //
-  // `.ignore()`: `setState` no reconstruye sincrónicamente (recién en el
-  // próximo frame `FutureBuilder` reengancha su listener sobre el `Future`
-  // nuevo), así que si `next` se resuelve en error ANTES de ese frame, la
-  // zona de Dart lo reporta como "no manejado" aunque `FutureBuilder` sí lo
-  // vaya a mostrar bien vía `snapshot.hasError` un instante después. Marca
-  // el `Future` como atendido sin tocar su valor — `FutureBuilder` sigue
-  // escuchando la MISMA instancia por su cuenta.
+  // `.ignore()`: si `next` falla ANTES del frame en que `FutureBuilder`
+  // reengancha su listener, Dart lo reportaría como no manejado aunque la UI
+  // sí lo muestre después vía `snapshot.hasError`.
   void _refetch() {
-    final next = widget.fetch(
-        kind: _kind,
-        search: _search,
-        categoryId: _categoryId,
-        rubro: _rubro,
-        wholesale: _wholesale)
-      ..ignore();
+    final next = _fetchPage()..ignore();
     setState(() {
       _load = next;
     });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCounts();
   }
 
   void _applySearch() {
@@ -132,28 +198,70 @@ class _CatalogViewState extends State<CatalogView> {
     _refetch();
   }
 
-  /// Mutador de categoría/rubro (lo usan los filtros de Task 5/6): reemplaza
-  /// ambos a la vez porque un rubro siempre vive dentro de una categoría — no
-  /// tiene sentido aplicar uno sin el otro.
+  /// Mutador de categoría/rubro: reemplaza ambos a la vez porque un rubro
+  /// siempre vive dentro de una categoría.
   void _applyFilter({String? categoryId, String? rubro}) {
     setState(() {
       _categoryId = categoryId;
       _rubro = rubro;
+      _verTodo = false;
     });
     _refetch();
   }
 
-  /// Abre la hoja de filtro (Task 6) y aplica el resultado — `null` significa
-  /// que el usuario cerró sin cambiar nada.
+  /// Chip «Todo»: quita categoría/rubro y apaga «Ver todo». Solo re-pide si
+  /// había categoría (apagar «Ver todo» no cambia la carga).
+  void _volverAPortada() {
+    final habiaCategoria = _categoryId != null || _rubro != null;
+    setState(() {
+      _categoryId = null;
+      _rubro = null;
+      _verTodo = false;
+    });
+    if (habiaCategoria) _refetch();
+  }
+
+  /// «Quitar filtro» del estado vacío: limpia TODO y vuelve a la portada.
+  void _quitarTodo() {
+    _searchCtrl.clear();
+    setState(() {
+      _search = null;
+      _categoryId = null;
+      _rubro = null;
+      _wholesale = false;
+      _verTodo = false;
+    });
+    _refetch();
+  }
+
   Future<void> _openFilter() async {
-    final res = await showCatalogFilterSheet(context,
-        kind: _kind, categoryId: _categoryId, rubro: _rubro);
+    final res = await showCatalogFilterSheet(
+      context,
+      kind: _kind,
+      categoryId: _categoryId,
+      rubro: _rubro,
+    );
     if (res != null) _applyFilter(categoryId: res.categoryId, rubro: res.rubro);
   }
 
   void _toggleWholesale(bool on) {
     setState(() => _wholesale = on);
     _refetch();
+  }
+
+  void _changeKind(int i) {
+    if (i == (_kind == 'producto' ? 0 : 1)) return;
+    setState(() {
+      _kind = i == 0 ? 'producto' : 'servicio';
+      _categoryId = null; // cambiar de kind limpia el filtro
+      _rubro = null;
+      _verTodo = false;
+      _counts = null;
+      // El mayoreo es SOLO de productos (paridad web).
+      if (_kind == 'servicio') _wholesale = false;
+    });
+    _refetch();
+    _loadCounts();
   }
 
   @override
@@ -163,75 +271,117 @@ class _CatalogViewState extends State<CatalogView> {
     super.dispose();
   }
 
+  Widget _chips() => CatalogChipStrip(
+    categorias: categoriasNavegables(
+      kCategories,
+      _counts?.keys.toSet(),
+      seleccionada: _categoryId,
+    ),
+    categoryId: _categoryId,
+    wholesale: _kind == 'producto' ? _wholesale : null,
+    onWholesale: _toggleWholesale,
+    onCategory: (id) {
+      if (id != _categoryId) _applyFilter(categoryId: id);
+    },
+    onTodo: _volverAPortada,
+  );
+
+  Widget _rejilla(CatalogPage page) => LayoutBuilder(
+    builder: (context, box) {
+      final cellWidth = (box.maxWidth - 32 - 11) / 2;
+      return CustomScrollView(
+        controller: _scrollController,
+        slivers: [
+          SliverToBoxAdapter(child: _chips()),
+          SliverPadding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 10,
+              bottom: 12 + navBarReservedSpace(context),
+            ),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 11,
+                mainAxisSpacing: 11,
+                mainAxisExtent: catalogGridCardExtent(context, cellWidth),
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (_, i) => ProductGridCard(
+                  item: page.items[i],
+                  negocio: page.negocios[page.items[i]['business_id']],
+                ).cascadeIn(i),
+                childCount: page.items.length,
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+
+  Widget _portada(CatalogPage page) => CatalogPortada(
+    controller: _scrollController,
+    header: _chips(),
+    items: page.items,
+    negocios: page.negocios,
+    counts: _counts,
+    onVerTodo: () => setState(() => _verTodo = true),
+    onCategory: (id) => _applyFilter(categoryId: id),
+    onStore: (id) => context.push('/store/$id'),
+  );
+
+  Widget _vacio() => Column(
+    children: [
+      _chips(),
+      Expanded(
+        child: EmptyState(
+          controller: _scrollController,
+          message: _filtrado
+              ? 'No hay artículos que coincidan con tu filtro.'
+              : 'Aún no hay artículos publicados en esta '
+                    'categoría.\n\nVuelve más tarde: los '
+                    'proveedores publican todos los días.',
+          ctaLabel: _filtrado ? 'Quitar filtro' : null,
+          onCta: _filtrado ? _quitarTodo : null,
+        ),
+      ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) => OnboardingGuide(
-        guideKey: 'client.catalog.v1',
-        steps: onboardingCopy['client.catalog.v1']!,
-        mode: OnboardingMode.welcome,
-        child: Scaffold(
-        body: Column(children: [
-          // Header violeta: segmento Producto/Servicio a la izquierda, título
-          // "Catálogo" a la derecha, campana, y el buscador (funcional) debajo.
-          // Se pliega completo al navegar la lista (pedido PO 2026-07-21).
+    guideKey: 'client.catalog.v1',
+    steps: onboardingCopy['client.catalog.v1']!,
+    mode: OnboardingMode.welcome,
+    child: Scaffold(
+      body: Column(
+        children: [
+          // Misma anatomía que las demás pestañas: avatar (o atrás si viene
+          // apilada como «Otros proveedores»), título a la izquierda,
+          // segmentado compacto y campana; debajo, UNA fila con buscador y
+          // Filtrar. Se pliega completo al navegar (PO 2026-07-21).
           CollapsibleHeader(
             hidden: _headerHidden,
             onReveal: () => setState(() => _headerHidden = false),
             child: VioletHeader(
-            // Como pantalla "Otros proveedores" (apilada desde el menú del
-            // proveedor) se antepone una flecha de atrás SIN perder el toggle
-            // Producto/Servicio; como pestaña del cliente (sin apilar) va solo
-            // el segmentado. `Navigator.canPop` para funcionar bajo un
-            // Navigator pelado en los tests.
-            leading: Row(mainAxisSize: MainAxisSize.min, children: [
-              if (Navigator.of(context).canPop()) ...[
-                HeaderCircleButton(
-                  icon: Icons.arrow_back,
-                  tooltip: 'Atrás',
-                  onTap: () => Navigator.of(context).maybePop(),
+              leading: const HeaderLeading(),
+              title: 'Catálogo',
+              actions: [
+                HeaderSegmented(
+                  compact: true,
+                  options: const ['Producto', 'Servicio'],
+                  index: _kind == 'producto' ? 0 : 1,
+                  onChanged: _changeKind,
                 ),
                 const SizedBox(width: 8),
+                ...widget.actions,
               ],
-              HeaderSegmented(
-                options: const ['Producto', 'Servicio'],
-                index: _kind == 'producto' ? 0 : 1,
-                onChanged: (i) {
-                  setState(() {
-                    _kind = i == 0 ? 'producto' : 'servicio';
-                    _categoryId = null; // cambiar de kind limpia el filtro
-                    _rubro = null;
-                    // El mayoreo es SOLO de productos (paridad web): al pasar a
-                    // servicio se apaga para que el toggle oculto no deje un
-                    // filtro invisible activo.
-                    if (_kind == 'servicio') _wholesale = false;
-                  });
-                  _refetch();
-                },
-              ),
-            ]),
-            title: 'Catálogo',
-            titleAlign: HeaderTitleAlign.end,
-            actions: widget.actions,
-            below: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // "Al detalle / Al por mayor" es SOLO de productos (paridad
-                // web: el mayoreo no aplica a servicios). En Servicio se oculta;
-                // la distinción de servicios (Único/Por contrato) llegará con la
-                // Tienda del proveedor — hoy no hay dato para filtrarla.
-                if (_kind == 'producto') ...[
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: HeaderSegmented(
-                      options: const ['Al detalle', 'Al por mayor'],
-                      index: _wholesale ? 1 : 0,
-                      onChanged: (i) => _toggleWholesale(i == 1),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                Row(children: [
+              below: Row(
+                children: [
                   Expanded(
-                    child: _HeaderSearchField(
+                    child: CatalogSearchField(
                       controller: _searchCtrl,
                       hint: 'Buscar en el catálogo',
                       autofocus: widget.autofocusSearch,
@@ -240,201 +390,50 @@ class _CatalogViewState extends State<CatalogView> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _FilterPill(
+                  CatalogFilterPill(
                     label: _categoryId == null
                         ? 'Filtrar'
                         : (categoryNameById(_categoryId) ?? 'Filtrar'),
                     active: _categoryId != null,
                     onTap: _openFilter,
-                    onClear:
-                        _categoryId != null ? () => _applyFilter() : null,
+                    onClear: _categoryId != null ? _volverAPortada : null,
                   ),
-                ]),
-              ],
-            ),
+                ],
+              ),
             ),
           ),
           Expanded(
             child: NotificationListener<ScrollNotification>(
               onNotification: _onListScroll,
               child: JayaloRefresh(
-              onRefresh: () async => _refetch(),
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _load,
-                builder: (context, snap) {
-                  if (snap.connectionState != ConnectionState.done) {
-                    return const JayaloLoaderBlock();
-                  }
-                  if (snap.hasError) {
-                    return ErrorRetry(onRetry: () async => _refetch());
-                  }
-                  final items = snap.data ?? const [];
-                  if (items.isEmpty) {
-                    return EmptyState(
-                      controller: _scrollController,
-                      message: (_search != null || _categoryId != null)
-                          ? 'No hay artículos que coincidan con tu filtro.'
-                          : 'Aún no hay artículos publicados en esta '
-                              'categoría.\n\nVuelve más tarde: los '
-                              'proveedores publican todos los días.',
-                      ctaLabel: (_search != null || _categoryId != null)
-                          ? 'Quitar filtro'
-                          : null,
-                      onCta: (_search != null || _categoryId != null)
-                          ? () {
-                              _searchCtrl.clear();
-                              setState(() {
-                                _search = null;
-                                _categoryId = null;
-                                _rubro = null;
-                              });
-                              _refetch();
-                            }
-                          : null,
-                    );
-                  }
-                  // Rejilla de tienda a 2 columnas (mockup aprobado PO
-                  // 2026-08-10): la foto manda y se ve el doble de artículos
-                  // por pantalla — sustituye a la lista ancha de una columna.
-                  return GridView.builder(
-                    controller: _scrollController,
-                    padding: EdgeInsets.only(
-                        left: 16,
-                        right: 16,
-                        top: 10,
-                        bottom: 12 + navBarReservedSpace(context)),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 11,
-                      mainAxisSpacing: 11,
-                      // 238 → 256: hueco para la fila de atributos
-                      // (envío/estado/color) de la Variante A (PO 2026-08-11).
-                      // Ese 256 era fijo y el precio se salía por abajo con la
-                      // fuente del sistema en grande: ahora lo calcula la
-                      // tarjeta a partir de la escala tipográfica.
-                      mainAxisExtent: catalogGridCardExtent(context),
-                    ),
-                    itemCount: items.length,
-                    itemBuilder: (_, i) =>
-                        ProductGridCard(item: items[i]).cascadeIn(i),
-                  );
+                onRefresh: () async {
+                  _refetch();
+                  _loadCounts();
                 },
-              ),
-            ),
-            ),
-          ),
-        ]),
-        ),
-      );
-}
-
-/// Buscador funcional del catálogo, vestido de píldora blanca para el header
-/// violeta (a diferencia del buscador del home, este SÍ filtra).
-class _HeaderSearchField extends StatelessWidget {
-  const _HeaderSearchField({
-    required this.controller,
-    required this.hint,
-    required this.onSubmitted,
-    required this.onClear,
-    this.autofocus = false,
-  });
-
-  final TextEditingController controller;
-  final String hint;
-  final VoidCallback onSubmitted;
-  final VoidCallback onClear;
-  final bool autofocus;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(999)),
-      padding: const EdgeInsets.only(left: 16, right: 6),
-      child: Row(children: [
-        Icon(Icons.search, size: 18, color: cs.onSurfaceVariant),
-        const SizedBox(width: 10),
-        Expanded(
-          child: TextField(
-            controller: controller,
-            autofocus: autofocus,
-            textInputAction: TextInputAction.search,
-            onSubmitted: (_) => onSubmitted(),
-            style: TextStyle(fontSize: 14, color: cs.onSurface),
-            decoration: InputDecoration(
-              isCollapsed: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              hintText: hint,
-              hintStyle: TextStyle(fontSize: 13.5, color: cs.onSurfaceVariant),
-              filled: false,
-              border: InputBorder.none,
-            ),
-          ),
-        ),
-        ValueListenableBuilder<TextEditingValue>(
-          valueListenable: controller,
-          builder: (_, value, _) => value.text.isEmpty
-              ? const SizedBox(width: 8)
-              : IconButton(
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(Icons.close, size: 18, color: cs.onSurfaceVariant),
-                  onPressed: onClear,
+                child: FutureBuilder<CatalogPage>(
+                  future: _load,
+                  builder: (context, snap) {
+                    if (snap.connectionState != ConnectionState.done) {
+                      return const JayaloLoaderBlock();
+                    }
+                    if (snap.hasError) {
+                      return ErrorRetry(onRetry: () async => _refetch());
+                    }
+                    final page =
+                        snap.data ??
+                        (
+                          items: const <Map<String, dynamic>>[],
+                          negocios: const <String, BusinessCardInfo>{},
+                        );
+                    if (page.items.isEmpty) return _vacio();
+                    return _filtrado ? _rejilla(page) : _portada(page);
+                  },
                 ),
-        ),
-      ]),
-    );
-  }
-}
-
-/// Píldora "Filtrar" de la fila de búsqueda (Task 6): abre
-/// [showCatalogFilterSheet]; cuando hay categoría activa muestra su nombre y
-/// una ✕ para limpiar sin reabrir la hoja.
-class _FilterPill extends StatelessWidget {
-  const _FilterPill(
-      {required this.label,
-      required this.active,
-      required this.onTap,
-      this.onClear});
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  final VoidCallback? onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.onPrimaryContainer,
-      borderRadius: BorderRadius.circular(999),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.tune, size: 15, color: Colors.white),
-            const SizedBox(width: 6),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 90),
-              child: Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white)),
-            ),
-            if (active && onClear != null) ...[
-              const SizedBox(width: 6),
-              GestureDetector(
-                onTap: onClear,
-                child: const Icon(Icons.close, size: 15, color: Colors.white),
               ),
-            ],
-          ]),
-        ),
+            ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }

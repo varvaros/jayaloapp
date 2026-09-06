@@ -9,10 +9,9 @@ void main() {
     // `chat.report.v1`, en el composer/⋮ del chat) ya aterrizaron y suman las
     // suyas, para que la suite quede verde en cada frontera de task.
     const keys = [
-      'client.plus.v1',
+      'client.home_tour.v1',
+      'provider.inbox_tour.v1',
       'client.create_request.v2',
-      'client.my_requests.v1',
-      'client.others_requests.v1',
       'client.request_kind.v1',
       'client.request_photo.v1',
       'client.request_wholesale.v1',
@@ -27,8 +26,9 @@ void main() {
     for (final k in keys) {
       expect(onboardingCopy.containsKey(k), isTrue, reason: 'falta $k');
       expect(onboardingCopy[k]!, isNotEmpty, reason: '$k sin pasos');
-      expect(onboardingCopy[k]!.first.message.trim(), isNotEmpty,
-          reason: '$k con mensaje vacío');
+      for (final step in onboardingCopy[k]!) {
+        expect(step.message.trim(), isNotEmpty, reason: '$k con mensaje vacío');
+      }
     }
   });
 
@@ -53,5 +53,22 @@ void main() {
         reason: 'la v1 debe desaparecer: si sobrevive, quien ya la vio nunca ve el texto nuevo');
     expect(onboardingCopy['chat.menu.provider.v2']!.first.message,
         contains('pides su WhatsApp'));
+  });
+
+  test('los recorridos de la primera pantalla absorben las guías sueltas', () {
+    // PO 2026-09-05: un paso por elemento visible. Las anclas se casan en la
+    // pantalla por POSICIÓN (`anchorSteps` tiene un assert de longitud), así
+    // que el número de pasos es parte del contrato.
+    expect(onboardingCopy['client.home_tour.v1'], hasLength(7));
+    expect(onboardingCopy['provider.inbox_tour.v1'], hasLength(8));
+    for (final retired in [
+      'client.plus.v1',
+      'client.my_requests.v1',
+      'client.others_requests.v1',
+      'provider.requests_list.v1',
+    ]) {
+      expect(onboardingCopy.containsKey(retired), isFalse,
+          reason: '$retired la absorbió un recorrido');
+    }
   });
 }

@@ -167,6 +167,9 @@ class _ProductInterestDetailScreenState
     final res = await unlocking;
     if (!mounted) return;
     if (!res.ok) {
+      // Acción PAGADA que no se consumó: el pulso pesado la separa del acierto
+      // sin que haya que leer el aviso.
+      JayaloHaptics.error();
       _snack('No se pudo desbloquear. Intenta de nuevo.');
       return;
     }

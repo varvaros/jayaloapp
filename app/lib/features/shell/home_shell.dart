@@ -11,6 +11,7 @@ import '../../core/unsaved_guard.dart';
 import '../../data/repos.dart' show solicitudesBadge, messagesBadge, AppCaches;
 import '../shared/new_offers_popup.dart';
 import '../shared/onboarding_guide.dart';
+import '../shared/tour_anchors.dart';
 import '../shared/onboarding_copy.dart';
 import 'floating_nav_bar.dart';
 import 'nav_destinations.dart';
@@ -24,8 +25,6 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
-  final GlobalKey _plusAnchorKey = GlobalKey();
-
   /// Hay un `confirmDiscard` de la barra abierto. Ver el uso en `onSelected`.
   bool _asking = false;
 
@@ -114,7 +113,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final loc = GoRouterState.of(context).uri.path;
     final idx = activeIndex(dests, loc);
     final showNavBar = showsNavBar(loc);
-    final isClient = roleStore.value != RoleState.provider;
 
     return Scaffold(
       // La barra FLOTA: el cuerpo se extiende por debajo de ella. Cada
@@ -186,17 +184,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 Opacity(opacity: t, child: bodyChild),
             child: widget.child,
           ),
-          // Guía spotlight del botón `+`: solo cliente y solo en su pantalla de
-          // aterrizaje (`/client`). Ancla EXTERNA sobre el botón central.
-          if (isClient)
-            OnboardingGuide(
-              anchorKey: _plusAnchorKey,
-              guideKey: 'client.plus.v1',
-              steps: onboardingCopy['client.plus.v1']!,
-              order: 1,
-              enabled: loc == '/client',
-              child: const SizedBox.shrink(),
-            ),
+          // La guía del botón `+` del cliente vive ahora en el recorrido de su
+          // pantalla de aterrizaje (`client.home_tour.v1`, my_requests_screen),
+          // anclada por `TourAnchors.plus`.
           // Guía spotlight del menú en arco: la PRIMERA vez que la pantalla al
           // frente registra un menú para el botón central (hoy: redactar una
           // oferta) se enseña que el botón dejó de navegar y ahora abre el
@@ -208,9 +198,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             listenable:
                 Listenable.merge([centerActionMenu, centerActionRoute]),
             builder: (context, _) => OnboardingGuide(
-              anchorKey: _plusAnchorKey,
               guideKey: 'provider.offer_menu.v1',
-              steps: onboardingCopy['provider.offer_menu.v1']!,
+              steps: anchorSteps(
+                onboardingCopy['provider.offer_menu.v1']!,
+                [TourAnchors.plus],
+              ),
               order: 2,
               enabled: centerActionMenu.value != null &&
                   loc == centerActionRoute.value,
@@ -283,7 +275,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                     key: const ValueKey('nav-bar-visible'),
                     // Para AMBOS roles: la guía del ＋ (cliente) y la del menú
                     // en arco (proveedor redactando una oferta) anclan aquí.
-                    centerButtonKey: _plusAnchorKey,
+                    centerButtonKey: TourAnchors.plus,
+                    // Los recorridos de la primera pantalla señalan los ítems
+                    // laterales por su ruta (Catálogo, Mensajes, Mi negocio…).
+                    itemKeys: {
+                      for (final d in dests)
+                        if (!d.isCenter) d.route: TourAnchors.nav(d.route),
+                    },
                     destinations: dests,
                     currentIndex: idx,
                     // Cuando la pantalla al frente se apropió del centro (hoy:

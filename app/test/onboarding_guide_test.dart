@@ -149,9 +149,8 @@ void main() {
             ),
           ),
           OnboardingGuide(
-            anchorKey: anchor,
             guideKey: 'x.ext.v1',
-            steps: const [OnboardingStep('Externa')],
+            steps: [OnboardingStep('Externa', anchorKey: anchor)],
             order: 1,
             child: const SizedBox.shrink(),
           ),

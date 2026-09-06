@@ -657,11 +657,17 @@ class HeaderSegmented extends StatelessWidget {
     required this.options,
     required this.index,
     required this.onChanged,
+    this.compact = false,
   });
 
   final List<String> options;
   final int index;
   final ValueChanged<int> onChanged;
+
+  /// Versión estrecha para convivir en la fila del título con el avatar y la
+  /// campana (Catálogo, 2026-09-05): padding 10×4 y fuente 10,5 en vez de 12×5
+  /// y 11. Misma pista, mismos colores, mismo tic háptico.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -687,8 +693,9 @@ class HeaderSegmented extends StatelessWidget {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOut,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                padding: compact
+                    ? const EdgeInsets.symmetric(horizontal: 10, vertical: 4)
+                    : const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 decoration: BoxDecoration(
                   color: i == index ? Colors.white : Colors.transparent,
                   borderRadius: BorderRadius.circular(999),
@@ -696,7 +703,7 @@ class HeaderSegmented extends StatelessWidget {
                 child: Text(
                   options[i],
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: compact ? 10.5 : 11,
                     fontWeight: i == index ? FontWeight.w600 : FontWeight.w500,
                     // Píldora seleccionada = BLANCA en ambos temas → el texto
                     // debe ser oscuro. `onPrimaryContainer` es claro en oscuro

@@ -8,11 +8,20 @@ import 'package:jayalo_app/features/provider/inbox_screen.dart';
 import 'package:jayalo_app/features/provider/opened_requests.dart';
 import 'package:jayalo_app/features/shared/brand_kit.dart' show JayaloCard;
 import 'package:jayalo_app/features/shared/violet_header.dart';
+import 'package:jayalo_app/features/shared/onboarding_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// El toggle "Para ti / Todas" del inbox del proveedor. `fetch` se inyecta
 /// (ver doc de [ProviderInboxView]) para poder probar el widget sin red.
 void main() {
+  setUp(() async {
+    // El recorrido de primera vez (`provider.inbox_tour.v1`) tapa header y
+    // lista con su velo y se comería los toques de estos tests.
+    SharedPreferences.setMockInitialValues({});
+    onboardingStore.reset();
+    await onboardingStore.markDone('provider.inbox_tour.v1');
+  });
+
   Widget host(Widget child) => MaterialApp(
         theme: jayaloTheme(Brightness.light),
         home: child,
