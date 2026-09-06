@@ -15,6 +15,12 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createNotificationChannels()
+        // El recortador de fotos (UCrop, de image_cropper) es una Activity de
+        // vistas nativas ajena a Flutter: no sabe nada del borde a borde que
+        // Android 15+ impone y su toolbar se metia debajo del reloj. El porque
+        // completo -y por que el arreglo va aqui y no en el tema- vive en
+        // UCropBordeABorde.kt.
+        UCropBordeABorde.instalar(application)
     }
 
     // El sello de build (rama y commit) lo hornea Gradle en el manifest; aqui

@@ -104,10 +104,27 @@
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/notification_color" />
 
-        <!-- image_cropper (UCrop): pantalla de recorte de la foto al solicitar. -->
+        <!-- image_cropper (UCrop): pantalla de recorte de la foto al solicitar.
+
+             SIN `screenOrientation="portrait"` a proposito (aviso de Play sobre
+             1.0.4+123: «Quita las restricciones de cambio de tamano y
+             orientacion»). Era la UNICA restriccion de orientacion de toda la
+             app —MainActivity nunca la tuvo, y en Dart no hay ningun
+             `setPreferredOrientations`— asi que ademas era incoherente: la app
+             giraba en todas partes menos al recortar.
+
+             Desde Android 16 el sistema IGNORA esa restriccion en pantallas
+             grandes (plegables y tabletas): dejarla puesta no habria sujetado
+             nada, solo habria hecho que Play marcara la ficha.
+
+             Contrapartida honesta: al girar, la Activity SE RECREA (no lleva
+             `configChanges`) y UCrop rearranca desde el Intent, asi que se
+             pierde el encuadre a medias. Es la contrapartida barata: el
+             recorte dura segundos y nadie gira el telefono a media faena. Se
+             prefiere eso a que UCrop absorba el cambio de configuracion con un
+             `configChanges` que su layout no esta preparado para digerir. -->
         <activity
             android:name="com.yalantis.ucrop.UCropActivity"
-            android:screenOrientation="portrait"
             android:theme="@style/Theme.Jayalo.UCrop" />
 
         <!-- Sello de build: de que rama y commit salio este binario. Lo

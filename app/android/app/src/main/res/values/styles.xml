@@ -19,14 +19,37 @@
     <!-- Tema del recortador (UCrop / image_cropper). Con targetSdk 35+ Android
          fuerza edge-to-edge y la toolbar de UCrop (con su botón "aceptar")
          quedaba DEBAJO de la barra de estado (batería/wifi) — QA PO
-         2026-07-21. `fitsSystemWindows` hace que el contenido reserve el
-         espacio del status bar; `windowOptOutEdgeToEdgeEnforcement` restaura
-         el comportamiento clásico donde el layout no consume los insets; el
-         status bar va violeta como la toolbar, con íconos claros. -->
+         2026-07-21.
+
+         Aquí solo queda el color de los ÍCONOS de la barra de estado: blancos,
+         porque detrás va el violeta de la toolbar de UCrop.
+
+         Lo que se fue, y por qué (aviso de Play sobre 1.0.4+123, «APIs o
+         parámetros obsoletos para la pantalla de borde a borde»):
+
+           • `windowOptOutEdgeToEdgeEnforcement` — era el botón de escape que
+             pedía el comportamiento clásico. Android 16 lo IGNORA para las apps
+             que apuntan a targetSdk 36, que es el caso de esta: ya no arreglaba
+             nada, solo disparaba el aviso.
+           • `statusBarColor` — obsoleto y sin efecto desde Android 15: con
+             borde a borde la barra de estado es SIEMPRE transparente. El
+             violeta ahora lo pinta la propia toolbar de UCrop, que crece hacia
+             arriba (ver UCropBordeABorde.kt).
+           • `fitsSystemWindows` — apartaba la ventana ENTERA de las barras y
+             dejaba dos franjas del color de fondo, arriba y abajo. El padding
+             va ahora a la toolbar y a los controles, que es lo que hace que se
+             vean como una sola pieza con las barras del sistema.
+
+         `colorPrimaryDark` NO es un sustituto disfrazado de `statusBarColor`:
+         es el color de marca del tema de AppCompat, que AppCompat propaga por
+         su cuenta a la barra de estado en Android 5–10. Está ahí solo por esos
+         teléfonos: el gancho de Kotlin arranca en Android 11 (`WindowInsets.
+         Type` es de API 30) y por debajo no hay borde a borde forzado, así que
+         sin esto la barra saldría del gris azulado por defecto de AppCompat en
+         vez del violeta de Jáyalo. En Android 15+ el sistema lo ignora, como
+         ignora cualquier color de barra. -->
     <style name="Theme.Jayalo.UCrop" parent="Theme.AppCompat.Light.NoActionBar">
-        <item name="android:fitsSystemWindows">true</item>
-        <item name="android:statusBarColor">#6D28D9</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+        <item name="colorPrimaryDark">#6D28D9</item>
     </style>
 </resources>
