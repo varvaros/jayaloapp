@@ -64,9 +64,9 @@ Copys centralizados en `onboarding_copy.dart`, claves versionadas `.v1`.
 
 | order | clave | ancla | copy |
 |---|---|---|---|
-| 1 | `client.plus.v1` | Botón central `+` de la barra flotante | "Aquí creas una nueva solicitud." |
+| 1 | `client.plus.v1` | Botón central `+` de la barra flotante | "Con este botón creas una nueva solicitud." (copy 2026-09-05; antes "Aquí creas…") |
 | 2 | `client.my_requests.v1` | **Tarjeta de ejemplo** del estado vacío | "Aquí se verán tus solicitudes y en qué van." |
-| 3 | `client.others_requests.v1` | Pestaña "Ver solicitudes de usuarios" | "Y aquí ves qué están pidiendo otros usuarios." |
+| 3 | `client.others_requests.v1` | Pestaña "Ver solicitudes de usuarios" | "Y en esta pestaña ves qué están pidiendo otros usuarios." (copy 2026-09-05) |
 
 - El `+` vive en `floating_nav_bar.dart` (barra compartida por ambos roles).
   La guía se limita al **rol cliente** y a la pantalla de aterrizaje del
@@ -85,7 +85,7 @@ La guía existente del botón **enviar** (`client.create_request.v1`) se
 | order | clave | ancla | copy |
 |---|---|---|---|
 | 1 | `client.request_kind.v1` | Fila de tipo (`_kindPill`: Producto/Servicio) | "Aquí eliges si buscas un producto o un servicio." |
-| 2 | `client.request_photo.v1` | Chips Tomar foto / Galería (**una** guía sobre ambos) | "Aquí tomas una foto o subes una imagen de lo que buscas." |
+| 2 | `client.request_photo.v1` | Chips Tomar foto / Galería (**una** guía sobre ambos) | "Con este botón tomas una foto o subes una imagen de lo que buscas." (copy 2026-09-05) |
 | 3 | `client.create_request.v1` (existe) | Botón enviar | (copy actual, sin cambio) |
 
 Fuera de la cadena inicial (disparo propio al aparecer su elemento):
@@ -115,7 +115,7 @@ La guía existente `*.chat_reveal.v1` (welcome) se mantiene como paso 1.
 | order | clave | ancla | copy |
 |---|---|---|---|
 | 1 | `client.chat_reveal.v1` / `provider.chat_reveal.v1` (existe) | welcome | (copy actual) |
-| 2 | `chat.quick_replies.v1` | Botón ✨ (`auto_awesome_outlined`) del composer | "Aquí eliges mensajes predefinidos para responder rápido." |
+| 2 | `chat.quick_replies.v1` | Botón ✨ (`auto_awesome_outlined`) del composer | "Con este botón eliges mensajes predefinidos para responder rápido." (copy 2026-09-05) |
 | 3 | `chat.report.v1` | Botón ⋮ (`more_vert`) del header | "¿Sientes algo deshonesto? Denúncialo desde aquí." |
 
 - `quick_replies` y `report` aplican a **ambos roles** (composer y header son

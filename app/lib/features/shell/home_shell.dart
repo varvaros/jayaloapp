@@ -194,6 +194,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               guideKey: 'client.plus.v1',
               steps: onboardingCopy['client.plus.v1']!,
               order: 1,
+              tourIndex: 1,
+              tourLength: 3,
+              // Tocar el `+` real a través del hueco crea la solicitud Y da la
+              // guía por vista: se aprende haciéndolo (PO 2026-09-05).
+              tapThrough: true,
               enabled: loc == '/client',
               child: const SizedBox.shrink(),
             ),

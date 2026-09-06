@@ -518,6 +518,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                   guideKey: 'client.others_requests.v1',
                   steps: onboardingCopy['client.others_requests.v1']!,
                   order: 3,
+                  tourIndex: 3,
+                  tourLength: 3,
                   enabled: _myLoadSettled,
                   child: _filterButton('Todas las solicitudes', _others, () {
                     setState(() {
@@ -608,6 +610,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                   steps:
                                       onboardingCopy['client.my_requests.v1']!,
                                   order: 2,
+                                  tourIndex: 2,
+                                  tourLength: 3,
                                   child: const _ExampleRequestCard(),
                                 ),
                                 const SizedBox(height: 12),

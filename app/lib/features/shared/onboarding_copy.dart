@@ -39,20 +39,26 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
     OnboardingStep(
         'Ofertar siempre es gratis. Los créditos solo se usan para desbloquear el contacto de un cliente que aceptó tu oferta.'),
   ],
+  // PO 2026-09-05: en las guías ancladas a un botón o pestaña el copy nombra
+  // el elemento («este botón», «esta pestaña») en vez de un «Aquí» que, sin
+  // flecha, no apuntaba a nada. Sin subir claves: es redacción, no información
+  // nueva, y solo importa junto al diseño nuevo (cola + chevron).
   'client.plus.v1': [
-    OnboardingStep('Aquí creas una nueva solicitud.'),
+    OnboardingStep('Con este botón creas una nueva solicitud.'),
   ],
   'client.my_requests.v1': [
     OnboardingStep('Aquí se verán tus solicitudes y en qué van.'),
   ],
   'client.others_requests.v1': [
-    OnboardingStep('Y aquí ves qué están pidiendo otros usuarios.'),
+    OnboardingStep(
+        'Y en esta pestaña ves qué están pidiendo otros usuarios.'),
   ],
   'client.request_kind.v1': [
     OnboardingStep('Aquí eliges si buscas un producto o un servicio.'),
   ],
   'client.request_photo.v1': [
-    OnboardingStep('Aquí tomas una foto o subes una imagen de lo que buscas.'),
+    OnboardingStep(
+        'Con este botón tomas una foto o subes una imagen de lo que buscas.'),
   ],
   'client.request_wholesale.v1': [
     OnboardingStep('¿Necesitas grandes cantidades? Actívalo aquí.'),
@@ -65,7 +71,8 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
         'Mientras redactas tu oferta, este botón abre un menú para añadir fotos: cámara, galería, tu tienda o tus trabajos.'),
   ],
   'chat.quick_replies.v1': [
-    OnboardingStep('Aquí eliges mensajes predefinidos para responder rápido.'),
+    OnboardingStep(
+        'Con este botón eliges mensajes predefinidos para responder rápido.'),
   ],
   // Sustituye a `chat.report.v1` (PO 2026-08-22: "botones que no se explican
   // bien"). Aquel copy nombraba SOLO denunciar, y ese ⋮ guarda hasta cinco
@@ -87,11 +94,11 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
   // adivina (mandar tu ubicación, tus datos, o bajar el precio de tu oferta).
   'chat.attach.client.v1': [
     OnboardingStep(
-        'Aquí adjuntas: una foto, tu ubicación actual o tus datos de contacto.'),
+        'Con este botón adjuntas: una foto, tu ubicación actual o tus datos de contacto.'),
   ],
   'chat.attach.provider.v1': [
     OnboardingStep(
-        'Aquí adjuntas: fotos, artículos de tu tienda, la dirección de tu local o una mejora de precio.'),
+        'Con este botón adjuntas: fotos, artículos de tu tienda, la dirección de tu local o una mejora de precio.'),
   ],
   // Formulario de la oferta: los dos controles que el PO señaló como mudos.
   'provider.offer_price_mode.v1': [
