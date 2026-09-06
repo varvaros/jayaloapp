@@ -78,6 +78,10 @@ class CatalogPortada extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: GridView.builder(
               shrinkWrap: true,
+              // Sin `padding` explícito un scrollable anidado se apropia de
+              // los insets del MediaQuery (barra de estado + reserva de la
+              // navbar) y deja un hueco de ~170 px bajo los tiles (PO 09-06).
+              padding: EdgeInsets.zero,
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
