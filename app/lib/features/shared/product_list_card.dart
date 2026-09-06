@@ -434,3 +434,62 @@ class ProductGridCard extends StatelessWidget {
     );
   }
 }
+
+/// Tarjeta de CARRUSEL de la portada del catálogo (PO 2026-09-05): 138 de
+/// ancho, foto apaisada de 96, nombre a 2 líneas, de quién es (sin sello: no
+/// cabe) y precio. Sin estrellas ni atributos — es de un vistazo. Alto por
+/// contenido: quien la apila la mete en un `Row` con `stretch` dentro de un
+/// `IntrinsicHeight`, así todas las tarjetas de la fila miden igual.
+class ProductCarouselCard extends StatelessWidget {
+  const ProductCarouselCard(
+      {super.key, required this.item, this.negocio, this.width = 138});
+  final Map<String, dynamic> item;
+  final BusinessCardInfo? negocio;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final name = item['name'] as String? ?? '';
+    final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
+    final img = images.isEmpty ? null : images.first;
+    return SizedBox(
+      width: width,
+      child: JayaloCard(
+        padding: EdgeInsets.zero,
+        margin: EdgeInsets.zero,
+        onTap: () => GoRouter.of(context).push('/catalog/${item['id']}'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(kCardRadius)),
+              child: SizedBox(height: 96, child: catalogImage(img, cs)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 13,
+                          height: 1.3,
+                          fontWeight: FontWeight.w600,
+                          color: jayaloHead(context))),
+                  ?storeLine(context, negocio, sello: false),
+                  const SizedBox(height: 6),
+                  catalogPriceLine(cs, item, size: 15),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
