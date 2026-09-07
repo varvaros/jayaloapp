@@ -47,14 +47,14 @@ void main() {
   );
 
   testWidgets(
-    'mide 138 de ancho y pinta nombre, tienda (sin sello) y «desde»',
+    'mide 150 de ancho y pinta nombre, tienda (sin sello) y «desde»',
     (tester) async {
       await tester.pumpWidget(
         host(const ProductCarouselCard(item: item, negocio: negocio)),
       );
       await tester.pumpAndSettle();
       final size = tester.getSize(find.byType(ProductCarouselCard).first);
-      expect(size.width, 138);
+      expect(size.width, 150);
       expect(find.textContaining('Audífonos'), findsNWidgets(2));
       expect(find.textContaining('TecnoCentro'), findsNWidgets(2));
       // En el carrusel no cabe el sello: solo el nombre.

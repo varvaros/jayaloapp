@@ -6,6 +6,7 @@ import '../../core/brand.dart';
 import '../../data/repos.dart' show BusinessCardInfo;
 import '../../domain/catalog.dart';
 import '../../domain/money.dart';
+import '../client/catalog_articulos.dart' show tipoDeItem;
 import 'brand_kit.dart';
 import 'star_score.dart';
 
@@ -263,24 +264,56 @@ const double _kGridTextBlock = 104;
 /// como ancha la celda, [cellWidth]) y debajo va el bloque de texto, que crece
 /// con la fuente del sistema. Antes la foto medía 118 fijos y el bloque de
 /// texto la superaba (PO 2026-09-05: «manda el texto, no la foto»).
-double catalogGridCardExtent(BuildContext context, double cellWidth) {
+/// [conIncluido] suma el alto de la línea «lo incluido» (paquetes con
+/// `items`), que se pinta bajo el nombre en las tarjetas de paquete.
+double catalogGridCardExtent(
+  BuildContext context,
+  double cellWidth, {
+  bool conIncluido = false,
+}) {
   // Escala tipográfica efectiva (Android 14 la aplica de forma no lineal, por
   // eso se mide sobre un tamaño representativo del bloque).
   final scale = MediaQuery.textScalerOf(context).scale(13) / 13;
+  final escala = scale.clamp(1.0, 1.8);
   return cellWidth +
       _kGridTextPadding +
-      _kGridTextBlock * scale.clamp(1.0, 1.8);
+      _kGridTextBlock * escala +
+      (conIncluido ? 28 * escala : 0);
 }
 
 /// Foto de catálogo: `cover`, fundido suave al cargar (doctrina de
 /// movimiento) y placeholder neutro sin foto o con error. Compartida por la
-/// tarjeta de rejilla y la de carrusel.
-Widget catalogImage(String? url, ColorScheme cs) {
-  Widget placeholder() => Container(
-    color: cs.surfaceContainerHighest,
-    alignment: Alignment.center,
-    child: Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
-  );
+/// tarjeta de rejilla y la de carrusel. Sin [url]: si el negocio tiene
+/// [logoUrl] se muestra su logo redondo (42 % del alto) centrado sobre
+/// `cs.primaryContainer` — mejor "de qué negocio es" que un icono genérico
+/// cuando el ítem no tiene foto propia (PO catálogo por artículos 09-07).
+Widget catalogImage(String? url, ColorScheme cs, {String? logoUrl}) {
+  Widget placeholder() {
+    if (logoUrl != null && logoUrl.isNotEmpty) {
+      return Container(
+        color: cs.primaryContainer,
+        alignment: Alignment.center,
+        child: FractionallySizedBox(
+          widthFactor: .42,
+          heightFactor: .42,
+          child: ClipOval(
+            child: JayaloNetworkImage(
+              logoUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) =>
+                  Icon(Icons.storefront_outlined, color: cs.onPrimaryContainer),
+            ),
+          ),
+        ),
+      );
+    }
+    return Container(
+      color: cs.surfaceContainerHighest,
+      alignment: Alignment.center,
+      child: Icon(Icons.image_outlined, size: 34, color: cs.onSurfaceVariant),
+    );
+  }
+
   if (url == null) return placeholder();
   return JayaloNetworkImage(
     url,
@@ -295,6 +328,79 @@ Widget catalogImage(String? url, ColorScheme cs) {
           ),
     errorBuilder: (_, _, _) => placeholder(),
   );
+}
+
+/// Insignia de tipo (Producto/Servicio/Paquete) sobre la foto — solo cuando la
+/// tarjeta la pide (`showTypeTag`, hoy únicamente el catálogo POR ARTÍCULOS
+/// separado por secciones: en la rejilla mixta de siempre el tipo ya lo dice
+/// la sección/chip). Colores por tipo: Producto en `cs.surface` (neutro, es
+/// el "default"), Servicio en `cs.primary` violeta y Paquete en
+/// `cs.onPrimaryContainer` (violeta oscuro), ambos con texto blanco para que
+/// se lean sobre la foto. Se pinta dentro de un `Stack` sobre la imagen,
+/// `Positioned(left: 8, top: 8)` — quien la usa la envuelve así.
+Widget catalogTypeBadge(BuildContext context, String tipo) {
+  final cs = Theme.of(context).colorScheme;
+  final (Color bg, Color fg, String label) = switch (tipo) {
+    'servicio' => (cs.primary, Colors.white, 'Servicio'),
+    'paquete' => (cs.onPrimaryContainer, Colors.white, 'Paquete'),
+    _ => (cs.surface, jayaloHead(context), 'Producto'),
+  };
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(999),
+      boxShadow: const [
+        BoxShadow(
+          color: JayaloColors.warmShadow,
+          blurRadius: 8,
+          offset: Offset(0, 3),
+        ),
+      ],
+    ),
+    child: Text(
+      label.toUpperCase(),
+      style: TextStyle(
+        fontSize: 9.5,
+        fontWeight: FontWeight.w600,
+        letterSpacing: .4,
+        color: fg,
+      ),
+    ),
+  );
+}
+
+/// «Lo incluido» de un paquete: la lista de `items` separada por «·», bajo el
+/// nombre, en ambas tarjetas (rejilla y carrusel). `null` para producto o
+/// servicio, o para un paquete sin `items` cargados.
+Widget? catalogIncluidoLine(Map<String, dynamic> item, ColorScheme cs) {
+  if (tipoDeItem(item) != 'paquete') return null;
+  final items = (item['items'] as List?)?.cast<String>() ?? const <String>[];
+  if (items.isEmpty) return null;
+  return Text(
+    items.join(' · '),
+    maxLines: 2,
+    overflow: TextOverflow.ellipsis,
+    style: TextStyle(
+      fontSize: 10.5,
+      height: 11 / 10.5,
+      color: cs.onSurfaceVariant,
+    ),
+  );
+}
+
+/// Ruta del detalle: los paquetes abren `/package/:id` (no tienen ficha en
+/// `/catalog` ni `/product`); producto y servicio conservan la ruta de
+/// siempre, resuelta según si la tarjeta vive en el shell del catálogo o en
+/// la tienda del proveedor (navigator raíz, ver comentario en
+/// [ProductListCard.onTap]).
+void _abrirDetalle(BuildContext context, Map<String, dynamic> item) {
+  final id = item['id'];
+  if (tipoDeItem(item) == 'paquete') {
+    context.push('/package/$id');
+    return;
+  }
+  context.push('/catalog/$id');
 }
 
 /// Línea «de quién es»: icono de tienda + nombre del negocio y, si declara
@@ -416,12 +522,23 @@ Widget catalogPriceLine(
 /// envío/estado/color (viven en la ficha del producto). [ProductListCard]
 /// (fila ancha) sigue siendo la de «Mi negocio»/tienda del proveedor.
 class ProductGridCard extends StatelessWidget {
-  const ProductGridCard({super.key, required this.item, this.negocio});
+  const ProductGridCard({
+    super.key,
+    required this.item,
+    this.negocio,
+    this.showTypeTag = false,
+  });
   final Map<String, dynamic> item;
 
   /// Cabecera del negocio dueño del producto (nombre, local). `null` = no
   /// resolvió (consulta caída o negocio borrado): la línea no se pinta.
   final BusinessCardInfo? negocio;
+
+  /// Insignia de tipo (Producto/Servicio/Paquete) sobre la foto — apagada por
+  /// defecto porque la rejilla mixta de siempre ya lo dice por chip/sección;
+  /// la enciende el catálogo POR ARTÍCULOS, donde una sección puede traer
+  /// paquetes mezclados con productos.
+  final bool showTypeTag;
 
   @override
   Widget build(BuildContext context) {
@@ -431,12 +548,12 @@ class ProductGridCard extends StatelessWidget {
     final img = images.isEmpty ? null : images.first;
     final avg = (item['avg_rating'] as num?)?.toDouble() ?? 0;
     final count = (item['reviews_count'] as num?)?.toInt() ?? 0;
+    final incluido = catalogIncluidoLine(item, cs);
 
     return JayaloCard(
       padding: EdgeInsets.zero,
       margin: EdgeInsets.zero,
-      // Solo vive en el catálogo (shell): misma ruta que la fila ancha.
-      onTap: () => GoRouter.of(context).push('/catalog/${item['id']}'),
+      onTap: () => _abrirDetalle(context, item),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -444,7 +561,20 @@ class ProductGridCard extends StatelessWidget {
             borderRadius: const BorderRadius.vertical(
               top: Radius.circular(kCardRadius),
             ),
-            child: AspectRatio(aspectRatio: 1, child: catalogImage(img, cs)),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: Stack(
+                children: [
+                  catalogImage(img, cs, logoUrl: negocio?.logoUrl),
+                  if (showTypeTag)
+                    Positioned(
+                      left: 8,
+                      top: 8,
+                      child: catalogTypeBadge(context, tipoDeItem(item)),
+                    ),
+                ],
+              ),
+            ),
           ),
           Expanded(
             child: Padding(
@@ -463,6 +593,10 @@ class ProductGridCard extends StatelessWidget {
                       color: jayaloHead(context),
                     ),
                   ),
+                  if (incluido != null) ...[
+                    const SizedBox(height: 3),
+                    incluido,
+                  ],
                   ?storeLine(context, negocio),
                   if (avg > 0 && count > 0) ...[
                     const SizedBox(height: 3),
@@ -499,21 +633,28 @@ class ProductGridCard extends StatelessWidget {
   }
 }
 
-/// Tarjeta de CARRUSEL de la portada del catálogo (PO 2026-09-05): 138 de
-/// ancho, foto apaisada de 96, nombre a 2 líneas, de quién es (sin sello: no
-/// cabe) y precio. Sin estrellas ni atributos — es de un vistazo. Alto por
-/// contenido: quien la apila la mete en un `Row` con `stretch` dentro de un
-/// `IntrinsicHeight`, así todas las tarjetas de la fila miden igual.
+/// Tarjeta de CARRUSEL de la portada del catálogo (PO 2026-09-05, ancho
+/// 150 desde el catálogo por artículos 09-07): foto CUADRADA (antes apaisada
+/// de 96 — «manda el texto, no la foto», mismo criterio que [ProductGridCard]
+/// desde 09-05), nombre a 2 líneas, lo incluido si es paquete, de quién es
+/// (sin sello: no cabe) y precio. Sin estrellas ni atributos — es de un
+/// vistazo. Alto por contenido: quien la apila la mete en un `Row` con
+/// `stretch` dentro de un `IntrinsicHeight`, así todas las tarjetas de la
+/// fila miden igual.
 class ProductCarouselCard extends StatelessWidget {
   const ProductCarouselCard({
     super.key,
     required this.item,
     this.negocio,
-    this.width = 138,
+    this.width = 150,
+    this.showTypeTag = false,
   });
   final Map<String, dynamic> item;
   final BusinessCardInfo? negocio;
   final double width;
+
+  /// Ver [ProductGridCard.showTypeTag]: apagada por defecto.
+  final bool showTypeTag;
 
   @override
   Widget build(BuildContext context) {
@@ -521,12 +662,13 @@ class ProductCarouselCard extends StatelessWidget {
     final name = item['name'] as String? ?? '';
     final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
     final img = images.isEmpty ? null : images.first;
+    final incluido = catalogIncluidoLine(item, cs);
     return SizedBox(
       width: width,
       child: JayaloCard(
         padding: EdgeInsets.zero,
         margin: EdgeInsets.zero,
-        onTap: () => GoRouter.of(context).push('/catalog/${item['id']}'),
+        onTap: () => _abrirDetalle(context, item),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -534,7 +676,20 @@ class ProductCarouselCard extends StatelessWidget {
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(kCardRadius),
               ),
-              child: SizedBox(height: 96, child: catalogImage(img, cs)),
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: Stack(
+                  children: [
+                    catalogImage(img, cs, logoUrl: negocio?.logoUrl),
+                    if (showTypeTag)
+                      Positioned(
+                        left: 8,
+                        top: 8,
+                        child: catalogTypeBadge(context, tipoDeItem(item)),
+                      ),
+                  ],
+                ),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
@@ -553,6 +708,10 @@ class ProductCarouselCard extends StatelessWidget {
                       color: jayaloHead(context),
                     ),
                   ),
+                  if (incluido != null) ...[
+                    const SizedBox(height: 3),
+                    incluido,
+                  ],
                   ?storeLine(context, negocio, sello: false),
                   const SizedBox(height: 6),
                   catalogPriceLine(cs, item, size: 15),

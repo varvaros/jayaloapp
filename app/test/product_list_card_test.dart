@@ -226,4 +226,78 @@ void main() {
       expect(foto.height, 160);
     });
   });
+
+  testWidgets(
+    'ProductGridCard: insignia solo con showTypeTag; paquete pinta lo incluido',
+    (tester) async {
+      final paquete = {
+        'id': 'k1',
+        'name': 'Chicha',
+        'kind': 'paquete',
+        'price': 3000,
+        'image_urls': <String>[],
+        'items': ['4 chichas', '3 vasos'],
+      };
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 180,
+            height: 320,
+            child: ProductGridCard(item: paquete),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('PAQUETE'), findsNothing);
+      expect(find.textContaining('4 chichas · 3 vasos'), findsOneWidget);
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 180,
+            height: 320,
+            child: ProductGridCard(item: paquete, showTypeTag: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('PAQUETE'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'sin foto y con logo del negocio, la foto de respaldo es el logo',
+    (tester) async {
+      const negocio = (
+        name: 'getto',
+        logoUrl: 'https://x/logo.png',
+        whatsappVerified: false,
+        identityVerified: false,
+        businessVerified: false,
+        hasPhysicalLocation: false,
+        description: null,
+        city: null,
+      );
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 180,
+            height: 300,
+            child: ProductGridCard(
+              item: const {
+                'id': 'p',
+                'name': 'Aire',
+                'kind': 'servicio',
+                'price_min': 6000,
+                'image_urls': <String>[],
+              },
+              negocio: negocio,
+              showTypeTag: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byIcon(Icons.image_outlined), findsNothing);
+      expect(find.text('SERVICIO'), findsOneWidget);
+    },
+  );
 }
