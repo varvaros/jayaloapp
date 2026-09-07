@@ -14,6 +14,7 @@ import '../domain/credit_shop.dart' show ShopPackage;
 import '../domain/phase.dart';
 import '../domain/profile_address.dart';
 import '../domain/request_requirements.dart';
+import '../features/client/catalog_articulos.dart';
 import 'location_body.dart';
 
 final supa = Supabase.instance.client;
@@ -224,7 +225,8 @@ void wireCacheInvalidation() {
 /// había y refresca por detrás. Si lo que vuelve es distinto, sube
 /// `requestsChanged` — el mismo tick que ya escuchan las pantallas para
 /// recargarse, así que no hace falta que ninguna sepa que existe un caché.
-Future<List<Map<String, dynamic>>> myRequests() => AppCaches.myRequests.readFresh(
+Future<List<Map<String, dynamic>>> myRequests() =>
+    AppCaches.myRequests.readFresh(
       _fetchMyRequests,
       equals: AppCaches.sameRows,
       onChanged: () => requestsChanged.value++,
@@ -258,9 +260,7 @@ Future<Map<String, RequestRequirements>> requirementsForRequests(
         .select('id,$requestRequirementCols')
         .inFilter('id', ids),
   );
-  return {
-    for (final r in rows) r['id'] as String: requirementsFromRow(r),
-  };
+  return {for (final r in rows) r['id'] as String: requirementsFromRow(r)};
 }
 
 Future<List<Map<String, dynamic>>> _fetchMyRequests() async {
@@ -491,7 +491,8 @@ OfferLite offerLite(Map<String, dynamic> o, {ClosedReason? closedReason}) =>
 /// Best-effort, como `_fetchUnseenRequests`: si la consulta falla, la lista se
 /// pinta sin la fase "Cerrada" en vez de romperse.
 Future<Map<String, ClosedReason>> closedConversationReasons(
-    List<String> offerIds) async {
+  List<String> offerIds,
+) async {
   if (offerIds.isEmpty) return {};
   try {
     final rows = List<Map<String, dynamic>>.from(
@@ -628,56 +629,62 @@ Future<String?> submitRequest({
   }
   String? id;
   try {
-    final row = await supa.from('customer_requests').insert({
-      'user_id': uid,
-      'city': prof?['city'] ?? '',
-      'sector': prof?['sector'] ?? '',
-      'lat': prof?['lat'],
-      'lng': prof?['lng'],
-      'client_request_id': clientRequestId,
-      'kind': kind,
-      'title': title,
-      'description': description ?? bullets.join(' • '),
-      'bullets': bullets,
-      // image_url = primaria (paridad web requests/new.tsx L570); image_urls = todas.
-      'image_url': imageUrls.isEmpty ? '' : imageUrls.first,
-      'image_urls': imageUrls,
-      'image_thumb_url': null,
-      'with_shipping': isService ? false : withShipping,
-      'with_installation': isService ? false : withInstallation,
-      'requires_evaluation': requiresEvaluation,
-      'requires_fiscal_receipt': requiresFiscalReceipt,
-      'requires_state_supplier': requiresStateSupplier,
-      'condition': isService ? '' : condition,
-      'urgency': urgency,
-      'status': 'open',
-      'target_categories': categories,
-      'target_rubros': rubros,
-      'service_modality': isService ? serviceModality : '',
-      'service_event_date':
-          isService && serviceModality == 'event' && serviceEventDate != null
-          ? serviceEventDate.toUtc().toIso8601String()
-          : null,
-      'urgency_level': isService ? urgencyLevel : '',
-      'budget_min': isService && budgetMin != null && budgetMin > 0
-          ? budgetMin
-          : null,
-      'budget_max': isService && budgetMax != null && budgetMax > 0
-          ? budgetMax
-          : null,
-      'is_recurring': isService && serviceFrequency.trim().isNotEmpty,
-      'recurrence_note': isService ? serviceFrequency.trim() : '',
-      'is_wholesale': !isService && wholesale,
-      'wholesale_quantity': (!isService && wholesale)
-          ? wholesaleQuantity
-          : null,
-      'wholesale_split': (!isService && wholesale) ? wholesaleSplit : null,
-      'wholesale_packaging': (!isService && wholesale)
-          ? wholesalePackaging
-          : null,
-      'wholesale_note': (!isService && wholesale) ? wholesaleNote : null,
-      'target_business_id': null,
-    }).select('id').single();
+    final row = await supa
+        .from('customer_requests')
+        .insert({
+          'user_id': uid,
+          'city': prof?['city'] ?? '',
+          'sector': prof?['sector'] ?? '',
+          'lat': prof?['lat'],
+          'lng': prof?['lng'],
+          'client_request_id': clientRequestId,
+          'kind': kind,
+          'title': title,
+          'description': description ?? bullets.join(' • '),
+          'bullets': bullets,
+          // image_url = primaria (paridad web requests/new.tsx L570); image_urls = todas.
+          'image_url': imageUrls.isEmpty ? '' : imageUrls.first,
+          'image_urls': imageUrls,
+          'image_thumb_url': null,
+          'with_shipping': isService ? false : withShipping,
+          'with_installation': isService ? false : withInstallation,
+          'requires_evaluation': requiresEvaluation,
+          'requires_fiscal_receipt': requiresFiscalReceipt,
+          'requires_state_supplier': requiresStateSupplier,
+          'condition': isService ? '' : condition,
+          'urgency': urgency,
+          'status': 'open',
+          'target_categories': categories,
+          'target_rubros': rubros,
+          'service_modality': isService ? serviceModality : '',
+          'service_event_date':
+              isService &&
+                  serviceModality == 'event' &&
+                  serviceEventDate != null
+              ? serviceEventDate.toUtc().toIso8601String()
+              : null,
+          'urgency_level': isService ? urgencyLevel : '',
+          'budget_min': isService && budgetMin != null && budgetMin > 0
+              ? budgetMin
+              : null,
+          'budget_max': isService && budgetMax != null && budgetMax > 0
+              ? budgetMax
+              : null,
+          'is_recurring': isService && serviceFrequency.trim().isNotEmpty,
+          'recurrence_note': isService ? serviceFrequency.trim() : '',
+          'is_wholesale': !isService && wholesale,
+          'wholesale_quantity': (!isService && wholesale)
+              ? wholesaleQuantity
+              : null,
+          'wholesale_split': (!isService && wholesale) ? wholesaleSplit : null,
+          'wholesale_packaging': (!isService && wholesale)
+              ? wholesalePackaging
+              : null,
+          'wholesale_note': (!isService && wholesale) ? wholesaleNote : null,
+          'target_business_id': null,
+        })
+        .select('id')
+        .single();
     id = row['id'] as String?;
   } on PostgrestException catch (e) {
     // 23505 = choque con `uq_customer_requests_client_idempotency`: el primer
@@ -969,7 +976,10 @@ Future<void> makeOffer({
   // una columna vigilada nueva no puede quedarse sin cobertura por olvido. El
   // JY422 del trigger sigue siendo la autoridad; esto solo evita el viaje.
   if (payloadHasContactInfo(fields)) {
-    throw PostgrestException(message: contactInfoMessage, code: contactInfoCode);
+    throw PostgrestException(
+      message: contactInfoMessage,
+      code: contactInfoCode,
+    );
   }
   try {
     await supa.from('provider_offers').insert({
@@ -1054,7 +1064,10 @@ Future<Map<String, dynamic>> updateOffer({
   );
   // Misma red de seguridad que en [makeOffer]: barrido del payload entero.
   if (payloadHasContactInfo(fields)) {
-    throw PostgrestException(message: contactInfoMessage, code: contactInfoCode);
+    throw PostgrestException(
+      message: contactInfoMessage,
+      code: contactInfoCode,
+    );
   }
   await supa.from('provider_offers').update(fields).eq('id', offerId);
   AppCaches.invalidateRequestLists();
@@ -1081,19 +1094,15 @@ Future<void> deleteOffer(String offerId) =>
 /// Mis ofertas, amortiguadas (ver [myRequests] para el porqué). No avisa por
 /// `requestsChanged`: esa pantalla no lo escucha, y su propio pull-to-refresh
 /// más el `onResume` del shell ya cubren el caso de datos viejos.
-Future<List<Map<String, dynamic>>> myOffers() => AppCaches.myOffers.readFresh(
-      _fetchMyOffers,
-      equals: AppCaches.sameRows,
-    );
+Future<List<Map<String, dynamic>>> myOffers() =>
+    AppCaches.myOffers.readFresh(_fetchMyOffers, equals: AppCaches.sameRows);
 
 Future<List<Map<String, dynamic>>> _fetchMyOffers() async {
   final uid = supa.auth.currentUser!.id;
   return List<Map<String, dynamic>>.from(
     await supa
         .from('provider_offers')
-        .select(
-          '$offerCols,request_title,points_charged,purchase_completed',
-        )
+        .select('$offerCols,request_title,points_charged,purchase_completed')
         .eq('user_id', uid)
         .order('created_at', ascending: false),
   );
@@ -1621,14 +1630,13 @@ const kBusinessVerificationColumns =
 /// el cuerpo en null cuando llega vacío. Mismo criterio que [latLngFromRpcRow].
 /// Pura a propósito: es lo único de este camino que se puede probar sin red.
 Map<String, dynamic> mergeBusinessRnc(
-    Map<String, dynamic> base, dynamic privado) {
+  Map<String, dynamic> base,
+  dynamic privado,
+) {
   final fila = privado is List
       ? (privado.isEmpty ? null : privado.first)
       : privado;
-  return {
-    ...base,
-    'rnc': fila is Map ? fila['rnc'] as String? : null,
-  };
+  return {...base, 'rnc': fila is Map ? fila['rnc'] as String? : null};
 }
 
 /// Contexto de verificación del negocio del proveedor (para Ajustes): tipo,
@@ -1746,13 +1754,15 @@ Future<List<ShopPackage>> activeCreditPackages() async {
       .order('sort_order');
   return (rows as List)
       .cast<Map<String, dynamic>>()
-      .map((r) => ShopPackage(
-            id: r['id'] as String,
-            points: (r['points'] as num).toInt(),
-            priceUSD: (r['price_usd'] as num).toDouble(),
-            label: r['label'] as String?,
-            playProductId: r['play_product_id'] as String?,
-          ))
+      .map(
+        (r) => ShopPackage(
+          id: r['id'] as String,
+          points: (r['points'] as num).toInt(),
+          priceUSD: (r['price_usd'] as num).toDouble(),
+          label: r['label'] as String?,
+          playProductId: r['play_product_id'] as String?,
+        ),
+      )
       .toList();
 }
 
@@ -1995,11 +2005,9 @@ const chatMsgCols = 'id,sender_id,kind,body,created_at';
 /// de no leídos. Se deja así a propósito — el badge de Mensajes tiene su propio
 /// store en vivo y el chat trae realtime, así que la lista no es la fuente por
 /// la que el usuario se entera de un mensaje nuevo.
-Future<List<Map<String, dynamic>>> conversationsList() =>
-    AppCaches.conversations.readFresh(
-      _fetchConversationsList,
-      equals: AppCaches.sameRows,
-    );
+Future<List<Map<String, dynamic>>> conversationsList() => AppCaches
+    .conversations
+    .readFresh(_fetchConversationsList, equals: AppCaches.sameRows);
 
 Future<List<Map<String, dynamic>>> _fetchConversationsList() async =>
     List<Map<String, dynamic>>.from(
@@ -2094,7 +2102,10 @@ Future<void> markConversationCompleted(String convId) async => supa.rpc(
 /// IRREVERSIBLE y no veía cambiar nada. `setConversationArchived` ya lo hacía;
 /// la asimetría era el olvido.
 Future<void> markConversationLost(String convId) async {
-  await supa.from('conversations').update({'status': 'perdido'}).eq('id', convId);
+  await supa
+      .from('conversations')
+      .update({'status': 'perdido'})
+      .eq('id', convId);
   AppCaches.conversations.clear();
 }
 
@@ -2142,11 +2153,10 @@ bool conversationArchived(Map<String, dynamic> c) => c['archived'] == true;
 /// Lanza `PostgrestException` con `code == 'P0001'` para las reglas de negocio
 /// (precio no menor, conversación cerrada, no eres el proveedor); pasarla por
 /// [improveOfferErrorCopy] para el mensaje al usuario.
-Future<void> improveOfferPrice(String convId, num newPrice) async =>
-    supa.rpc(
-      'improve_offer_price',
-      params: {'_conversation_id': convId, '_new_price': newPrice},
-    );
+Future<void> improveOfferPrice(String convId, num newPrice) async => supa.rpc(
+  'improve_offer_price',
+  params: {'_conversation_id': convId, '_new_price': newPrice},
+);
 
 /// Propone una fecha pautada en el chat. `startsAt` viaja como fue
 /// construido (hora LOCAL del dispositivo desde el selector de fecha/hora de
@@ -2178,12 +2188,14 @@ Future<void> proposeScheduledDate(
   String convId,
   String subject,
   DateTime startsAt,
-) async =>
-    supa.rpc('propose_scheduled_date', params: {
-      '_conversation_id': convId,
-      '_subject': subject,
-      '_starts_at': startsAt.toUtc().toIso8601String(),
-    });
+) async => supa.rpc(
+  'propose_scheduled_date',
+  params: {
+    '_conversation_id': convId,
+    '_subject': subject,
+    '_starts_at': startsAt.toUtc().toIso8601String(),
+  },
+);
 
 /// Responde (confirma/cancela) una fecha pautada propuesta. `_action` solo
 /// acepta 'confirm'/'cancel' server-side — 'propose_again' y 'calendar' que
@@ -2205,10 +2217,10 @@ Future<void> proposeScheduledDate(
 /// — a diferencia de `proposeScheduledDate` arriba, que sí puede tropezar
 /// con el anti-flood porque inserta `kind='appointment'`.
 Future<void> respondScheduledDate(String appointmentId, String action) async =>
-    supa.rpc('respond_scheduled_date', params: {
-      '_appointment_id': appointmentId,
-      '_action': action,
-    });
+    supa.rpc(
+      'respond_scheduled_date',
+      params: {'_appointment_id': appointmentId, '_action': action},
+    );
 
 /// Responde la tarjeta de SEGUIMIENTO («¿Se realizó?») que el servidor
 /// inserta 2 h después de una fecha confirmada. Cada lado contesta UNA vez;
@@ -2228,18 +2240,20 @@ Future<void> respondScheduledDate(String appointmentId, String action) async =>
 /// concluirlo. La UI (`bubbles.dart`) respeta esa asimetría y no vuelve a
 /// imponer la reja de conversación abierta para esta acción.
 Future<void> answerScheduledFollowup(String appointmentId, bool done) async =>
-    supa.rpc('answer_scheduled_followup', params: {
-      '_appointment_id': appointmentId,
-      '_done': done,
-    });
+    supa.rpc(
+      'answer_scheduled_followup',
+      params: {'_appointment_id': appointmentId, '_done': done},
+    );
 
 /// Horario de servicio del negocio de esta conversación, o `null` si no hay
 /// horario configurado (hoy: TODOS los negocios en prod) — indistinguible de
 /// "no soy participante de esta conversación". `null` es un estado válido,
 /// nunca un error: no debe mostrarse como fallo en la UI.
 Future<Map<String, dynamic>?> conversationServiceHours(String convId) async {
-  final raw = await supa.rpc('get_conversation_service_hours',
-      params: {'_conversation_id': convId});
+  final raw = await supa.rpc(
+    'get_conversation_service_hours',
+    params: {'_conversation_id': convId},
+  );
   return raw is Map ? Map<String, dynamic>.from(raw) : null;
 }
 
@@ -2577,8 +2591,9 @@ Future<Map<String, DateTime>> updatedAtForRequests(List<String> ids) async {
   return {
     for (final r in rows)
       if (DateTime.tryParse(r['content_updated_at'] as String? ?? '') != null)
-        r['id'] as String:
-            DateTime.parse(r['content_updated_at'] as String).toUtc(),
+        r['id'] as String: DateTime.parse(
+          r['content_updated_at'] as String,
+        ).toUtc(),
   };
 }
 
@@ -2691,8 +2706,10 @@ Future<String?> myBusinessAddressBody() async {
   // un error de permiso de columna, asi que esta accion no mandaba nada.
   double? lat, lng;
   try {
-    final loc = await supa
-        .rpc('get_business_location', params: {'_business_id': biz['id']});
+    final loc = await supa.rpc(
+      'get_business_location',
+      params: {'_business_id': biz['id']},
+    );
     final row = (loc is List && loc.isNotEmpty) ? loc.first : null;
     if (row is Map) {
       lat = (row['lat'] as num?)?.toDouble();
@@ -2704,10 +2721,10 @@ Future<String?> myBusinessAddressBody() async {
   return businessAddressBody(
     name: biz['name'] is String ? biz['name'] as String : '',
     address: address,
-    cityLine: [biz['sector'], biz['city']]
-        .whereType<String>()
-        .where((s) => s.isNotEmpty)
-        .join(', '),
+    cityLine: [
+      biz['sector'],
+      biz['city'],
+    ].whereType<String>().where((s) => s.isNotEmpty).join(', '),
     lat: lat,
     lng: lng,
   );
@@ -2741,8 +2758,10 @@ Future<String?> myBusinessAddressBody() async {
 /// ver [latLngFromRpcRow].
 Future<({double lat, double lng})?> requestLocation(String requestId) async {
   try {
-    final res = await supa
-        .rpc('get_request_location', params: {'_request_id': requestId});
+    final res = await supa.rpc(
+      'get_request_location',
+      params: {'_request_id': requestId},
+    );
     return latLngFromRpcRow(res);
   } catch (_) {
     return null;
@@ -2755,8 +2774,10 @@ Future<({double lat, double lng})?> requestLocation(String requestId) async {
 /// las dos formas a null igual.
 Future<({double lat, double lng})?> businessLocation(String businessId) async {
   try {
-    final res = await supa
-        .rpc('get_business_location', params: {'_business_id': businessId});
+    final res = await supa.rpc(
+      'get_business_location',
+      params: {'_business_id': businessId},
+    );
     return latLngFromRpcRow(res);
   } catch (_) {
     return null;
@@ -2824,18 +2845,21 @@ Future<void> updateMyAddress({
   double? lng,
 }) async {
   final uid = supa.auth.currentUser!.id;
-  await supa.from('profiles').update({
-    'address': address,
-    'city': city.isEmpty ? null : city,
-    'sector': sector.isEmpty ? null : sector,
-    'street': street.isEmpty ? null : street,
-    'street_number': streetNumber.isEmpty ? null : streetNumber,
-    'address_reference': reference.isEmpty ? null : reference,
-    'lat': ?lat,
-    'lng': ?lng,
-    if (lat != null && lng != null)
-      'location_captured_at': DateTime.now().toIso8601String(),
-  }).eq('user_id', uid);
+  await supa
+      .from('profiles')
+      .update({
+        'address': address,
+        'city': city.isEmpty ? null : city,
+        'sector': sector.isEmpty ? null : sector,
+        'street': street.isEmpty ? null : street,
+        'street_number': streetNumber.isEmpty ? null : streetNumber,
+        'address_reference': reference.isEmpty ? null : reference,
+        'lat': ?lat,
+        'lng': ?lng,
+        if (lat != null && lng != null)
+          'location_captured_at': DateTime.now().toIso8601String(),
+      })
+      .eq('user_id', uid);
 }
 
 /// Defaults idénticos a DEFAULT_CHAT_WELCOME de la web + override de app_settings.
@@ -2929,8 +2953,10 @@ Future<Map<String, dynamic>?> customerReputation([String? customerId]) async {
 /// ([interestId]) — y ese contexto es de ese cliente. Sin contexto o sin pago
 /// → `unlocked: false` y todo null: el perfil se pinta anónimo. El cliente
 /// NUNCA decide esto: el gate vive en la RPC, no aquí.
-Future<({bool unlocked, String? firstName, String? lastName, String? avatarUrl})>
-    customerPublicProfile(
+Future<
+  ({bool unlocked, String? firstName, String? lastName, String? avatarUrl})
+>
+customerPublicProfile(
   String customerId, {
   String? requestId,
   String? offerId,
@@ -2964,13 +2990,12 @@ Future<({bool unlocked, String? firstName, String? lastName, String? avatarUrl})
 Future<List<Map<String, dynamic>>> customerReviews(
   String customerId, {
   int limit = 5,
-}) async =>
-    List<Map<String, dynamic>>.from(
-      await supa.rpc(
-        'get_customer_reviews',
-        params: {'_customer_id': customerId, '_limit': limit},
-      ),
-    );
+}) async => List<Map<String, dynamic>>.from(
+  await supa.rpc(
+    'get_customer_reviews',
+    params: {'_customer_id': customerId, '_limit': limit},
+  ),
+);
 
 /// Estadísticas del usuario actual como PROVEEDOR: fusiona las dos RPCs en un
 /// solo mapa porque la pantalla las muestra juntas y ninguna tiene sentido
@@ -3021,12 +3046,11 @@ Map<String, dynamic> mergeProviderStats(
   List<Map<String, dynamic>> stats,
   List<Map<String, dynamic>> reviews,
   List<Map<String, dynamic>> buyer,
-) =>
-    {
-      ...(stats.isEmpty ? const <String, dynamic>{} : stats.first),
-      ...(reviews.isEmpty ? const <String, dynamic>{} : reviews.first),
-      kStatsBuyerKey: buyer.isEmpty ? null : buyer.first,
-    };
+) => {
+  ...(stats.isEmpty ? const <String, dynamic>{} : stats.first),
+  ...(reviews.isEmpty ? const <String, dynamic>{} : reviews.first),
+  kStatsBuyerKey: buyer.isEmpty ? null : buyer.first,
+};
 
 /// Cuántos productos y cuántos servicios tiene publicados el proveedor.
 /// Solo la CIFRA — el catálogo navegable es un spec aparte.
@@ -3197,8 +3221,11 @@ String sanitizeCatalogSearchTerm(String term) =>
 ///
 /// Task 4 (2026-07-20): además de `kind` + búsqueda por texto, ya soporta los
 /// filtros de categoría/rubro/mayoreo de la web.
+///
+/// `kind` nulo (Task 2 del catálogo por artículos, 2026-09-07 — portada
+/// "Todo") trae productos Y servicios juntos: sin `.eq('kind', ...)`.
 Future<List<Map<String, dynamic>>> catalogProducts({
-  required String kind,
+  String? kind,
   String? search,
   String? categoryId,
   String? rubro,
@@ -3223,10 +3250,8 @@ Future<List<Map<String, dynamic>>> catalogProducts({
     // `in.()` vacío, que PostgREST rechaza).
     if (wholesaleBizIds.isEmpty) return const [];
   }
-  var q = supa
-      .from('provider_products')
-      .select(catalogProductCols)
-      .eq('kind', kind);
+  var q = supa.from('provider_products').select(catalogProductCols);
+  if (kind != null) q = q.eq('kind', kind);
   if (wholesaleBizIds != null) q = q.inFilter('business_id', wholesaleBizIds);
   if (categoryId != null) q = q.eq('category_id', categoryId);
   if (rubro != null) q = q.ilike('rubro', rubro);
@@ -3316,6 +3341,10 @@ Future<BusinessIdentity?> businessPublicIdentity(String businessId) async {
 /// `identity_verified_at` y `business_verified_at`: son de lectura pública
 /// (grants por columna a `authenticated`/`anon`, RLS permite cualquier
 /// negocio no suspendido), así que no hace falta una RPC nueva.
+/// `description`/`city` (Task 2 del catálogo por artículos, 2026-09-07):
+/// mismas columnas públicas de `provider_businesses` (grants por columna a
+/// `anon`/`authenticated`, ya usadas en `businessPublicIdentity`), para que
+/// [negocioCatalogoDe] arme un `NegocioCatalogo` sin una segunda consulta.
 typedef BusinessCardInfo = ({
   String name,
   String? logoUrl,
@@ -3323,7 +3352,22 @@ typedef BusinessCardInfo = ({
   bool identityVerified,
   bool businessVerified,
   bool hasPhysicalLocation,
+  String? description,
+  String? city,
 });
+
+/// Traduce la cabecera "de red" ([BusinessCardInfo]) al negocio PURO que
+/// consume `catalog_articulos.dart` (filtros/orden/proveedores, sin red).
+/// `verificado` = identidad O negocio (paridad con el resto del archivo: el
+/// sello verde no distingue cuál de los dos trámites se completó).
+NegocioCatalogo negocioCatalogoDe(BusinessCardInfo b) => (
+  name: b.name,
+  logoUrl: b.logoUrl,
+  hasPhysicalLocation: b.hasPhysicalLocation,
+  verificado: b.identityVerified || b.businessVerified,
+  description: b.description,
+  city: b.city,
+);
 
 /// Versión POR LOTE de [businessPublicIdentity]: una sola consulta con
 /// `.inFilter('id', ...)` para toda una pantalla con N tarjetas, en vez de una
@@ -3339,8 +3383,10 @@ Future<Map<String, BusinessCardInfo>> businessesCardInfo(
   final rows = List<Map<String, dynamic>>.from(
     await supa
         .from('provider_businesses')
-        .select('id,name,logo_url,whatsapp_verified_at,'
-            'identity_verified_at,business_verified_at')
+        .select(
+          'id,name,logo_url,whatsapp_verified_at,'
+          'identity_verified_at,business_verified_at,description,city',
+        )
         .inFilter('id', ids),
   );
   // Consulta separada y con su propio try/catch (ver doc de
@@ -3361,6 +3407,8 @@ Future<Map<String, BusinessCardInfo>> businessesCardInfo(
         identityVerified: r['identity_verified_at'] != null,
         businessVerified: r['business_verified_at'] != null,
         hasPhysicalLocation: physical[r['id'] as String] ?? false,
+        description: r['description'] as String?,
+        city: r['city'] as String?,
       ),
   };
 }
@@ -3399,6 +3447,75 @@ Future<Map<String, bool>> businessesPhysicalLocation(
     };
   } catch (_) {
     return const {};
+  }
+}
+
+/// Negocios por NOMBRE para "Ver todo" de proveedores del catálogo por
+/// artículos (Task 2, 2026-09-07). [sanitizarIlike] antes de armar el patrón
+/// `ilike` (mismo saneo que el resto del archivo); término vacío tras sanear
+/// ⇒ `[]` sin llamar a la red. Sin `suspended_at` (no está en
+/// [BusinessCardInfo], RLS ya filtra negocios suspendidos). `has_physical_
+/// location` va en el mismo select — SÍ tiene grant público (ver
+/// [businessesPhysicalLocation]) — pero si esa columna nueva aún no existe en
+/// esta base, el select entero revienta con la vieja: se reintenta SIN ella y
+/// se pide aparte, mismo patrón que [businessesCardInfo]. Best-effort: ante
+/// cualquier otro fallo, `[]` (la búsqueda de proveedores es un atajo, no el
+/// catálogo principal).
+Future<List<Proveedor>> catalogBusinessesByName(String term) async {
+  final t = sanitizarIlike(term);
+  if (t.isEmpty) return const [];
+  const colsBase =
+      'id,name,logo_url,description,city,business_verified_at,'
+      'identity_verified_at';
+  try {
+    List<Map<String, dynamic>> rows;
+    Map<String, bool> physical;
+    try {
+      rows = List<Map<String, dynamic>>.from(
+        await supa
+            .from('provider_businesses')
+            .select('$colsBase,has_physical_location')
+            .ilike('name', '%$t%')
+            .limit(5),
+      );
+      physical = {
+        for (final r in rows)
+          r['id'] as String: r['has_physical_location'] == true,
+      };
+    } catch (_) {
+      rows = List<Map<String, dynamic>>.from(
+        await supa
+            .from('provider_businesses')
+            .select(colsBase)
+            .ilike('name', '%$t%')
+            .limit(5),
+      );
+      physical = await businessesPhysicalLocation([
+        for (final r in rows) r['id'] as String,
+      ]);
+    }
+    return [
+      for (final r in rows)
+        (
+          id: r['id'] as String,
+          name: (r['name'] as String?)?.trim().isNotEmpty == true
+              ? (r['name'] as String).trim()
+              : 'Proveedor',
+          logoUrl: (r['logo_url'] as String?)?.isNotEmpty == true
+              ? r['logo_url'] as String
+              : null,
+          hasPhysicalLocation: physical[r['id'] as String] ?? false,
+          city: (r['city'] as String?)?.trim().isNotEmpty == true
+              ? (r['city'] as String).trim()
+              : null,
+          verificado:
+              r['identity_verified_at'] != null ||
+              r['business_verified_at'] != null,
+          queHace: queHace(r['description'] as String?, null),
+        ),
+    ];
+  } catch (_) {
+    return const [];
   }
 }
 
@@ -3541,8 +3658,9 @@ Future<void> savePortfolioItem({
     'user_id': uid,
     'business_id': businessId,
     'title': title,
-    'description':
-        (description == null || description.trim().isEmpty) ? null : description.trim(),
+    'description': (description == null || description.trim().isEmpty)
+        ? null
+        : description.trim(),
     'image_urls': imageUrls,
   });
 }
@@ -3556,14 +3674,16 @@ Future<void> updatePortfolioItem(
   required String title,
   String? description,
   required List<String> imageUrls,
-}) =>
-    supa.from('provider_portfolio_items').update({
+}) => supa
+    .from('provider_portfolio_items')
+    .update({
       'title': title,
       'description': (description == null || description.trim().isEmpty)
           ? null
           : description.trim(),
       'image_urls': imageUrls,
-    }).eq('id', id);
+    })
+    .eq('id', id);
 
 /// Borra un trabajo propio del portafolio (RLS: dueño) — "mantener presionado
 /// → Eliminar" (Task 8), mismo trato que [deleteStoreItem].
@@ -3668,6 +3788,33 @@ Future<List<Map<String, dynamic>>> storePackages(String businessId) async =>
           .order('created_at', ascending: false)
           .limit(100),
     );
+
+/// Paquetes de TODOS los negocios para la portada del catálogo por artículos
+/// (Task 2, 2026-09-07): mismas columnas ([packageCols]) que [storePackages]
+/// pero sin filtrar por negocio, más recientes primero, mapeados con
+/// [paqueteComoItem] al mismo shape de ítem que productos/servicios. Un
+/// carrusel de "más notable" (spec §1), no la lista completa — `limit(30)`
+/// alcanza. Best-effort a propósito (paridad `[businessRatings]`/
+/// `[categoryCountsForKind]`): un paquete es un adorno del catálogo, nunca el
+/// motivo de una pantalla de error — `try/catch` y un `.timeout(4s)` (la RPC
+/// de conteos puede tardar en un día con mucho tráfico) devuelven `[]`.
+Future<List<Map<String, dynamic>>> catalogPackages() async {
+  try {
+    // [packageCols] ya incluye `created_at` (ver arriba): no se repite en el
+    // `.select(...)` para no mandarle a PostgREST una columna duplicada.
+    final rows = List<Map<String, dynamic>>.from(
+      await supa
+          .from('provider_packages')
+          .select(packageCols)
+          .order('created_at', ascending: false)
+          .limit(30)
+          .timeout(const Duration(seconds: 4)),
+    );
+    return rows.map(paqueteComoItem).toList();
+  } catch (_) {
+    return const [];
+  }
+}
 
 /// Foto de un paquete/plan → bucket `provider-products` (Task 7, espejo de
 /// `PackageEditorDialog.tsx:121`: `${user.id}/packages/${uuid}`). El
@@ -3927,16 +4074,31 @@ List<Map<String, dynamic>> mergeCatalogRatings(
   ];
 }
 
-/// Entrada de PRODUCCIÓN del catálogo: trae los productos y les fusiona la
-/// reputación de su negocio en una segunda llamada por lote. La `CatalogView`
-/// consume esto; los tests/harness inyectan su propio `fetch` con el rating ya
-/// horneado, así que no tocan la red.
-Future<List<Map<String, dynamic>>> catalogProductsWithRatings({
-  required String kind,
+/// Entrada de PRODUCCIÓN del catálogo por artículos (Task 2, 2026-09-07):
+/// productos/servicios ([catalogProducts]) más — cuando aplica — los paquetes
+/// ([catalogPackages]) de TODOS los negocios, con la reputación de ambos
+/// conjuntos fusionada en una sola llamada por lote a [businessRatings].
+///
+/// Los paquetes NO tienen columnas de servidor para categoría/rubro/mayoreo
+/// (`provider_packages` no las tiene — son de `provider_products`), así que
+/// solo entran cuando ninguno de esos filtros está activo (`categoryId` y
+/// `rubro` nulos, `wholesale` falso): con cualquiera de ellos encendido el
+/// paquete no podría respetarlo, y mostrarlo igual sería mentirle al filtro.
+/// La búsqueda de texto, en cambio, SÍ se les aplica — mas en el CLIENTE, con
+/// [coincideBusqueda] sobre nombre, descripción y cada ítem del paquete
+/// (`provider_packages` no tiene columna de texto libre que indexar del lado
+/// del servidor como si tiene `provider_products` con `.or(ilike...)`).
+///
+/// `conPaquetes` (default `true`) es la puerta de [catalogProductsWithRatings]
+/// para NO traer paquetes cuando algo más abajo ya los pide aparte (evita
+/// duplicarlos en la misma pantalla).
+Future<List<Map<String, dynamic>>> catalogItemsWithRatings({
+  String? kind,
   String? search,
   String? categoryId,
   String? rubro,
   bool wholesale = false,
+  bool conPaquetes = true,
 }) async {
   final items = await catalogProducts(
     kind: kind,
@@ -3945,8 +4107,25 @@ Future<List<Map<String, dynamic>>> catalogProductsWithRatings({
     rubro: rubro,
     wholesale: wholesale,
   );
+  var paquetes = const <Map<String, dynamic>>[];
+  if (conPaquetes && !wholesale && categoryId == null && rubro == null) {
+    final todos = await catalogPackages();
+    final q = search?.trim() ?? '';
+    paquetes = q.isEmpty
+        ? todos
+        : [
+            for (final p in todos)
+              if (coincideBusqueda(p['name'] as String? ?? '', q) ||
+                  coincideBusqueda(p['description'] as String? ?? '', q) ||
+                  (p['items'] as List).cast<String>().any(
+                    (it) => coincideBusqueda(it, q),
+                  ))
+                p,
+          ];
+  }
+  final completo = [...items, ...paquetes];
   final ids = <String>{
-    for (final it in items)
+    for (final it in completo)
       if (it['business_id'] is String) it['business_id'] as String,
   }.toList();
   // La reputación es un adorno (spec §2): si la RPC por lote falla, se ocultan
@@ -3954,8 +4133,27 @@ Future<List<Map<String, dynamic>>> catalogProductsWithRatings({
   final ratings = await businessRatings(
     ids,
   ).catchError((_) => <String, BusinessRating>{});
-  return mergeCatalogRatings(items, ratings);
+  return mergeCatalogRatings(completo, ratings);
 }
+
+/// Compatibilidad con los llamadores previos a la Task 2 (`CatalogFetch` de
+/// `catalog_screen.dart`, que exige `kind` requerido y no sabe de paquetes):
+/// envoltorio delgado sobre [catalogItemsWithRatings] con `conPaquetes:
+/// false`, para no duplicar lógica ni romper la firma que ya consumen.
+Future<List<Map<String, dynamic>>> catalogProductsWithRatings({
+  required String kind,
+  String? search,
+  String? categoryId,
+  String? rubro,
+  bool wholesale = false,
+}) => catalogItemsWithRatings(
+  kind: kind,
+  search: search,
+  categoryId: categoryId,
+  rubro: rubro,
+  wholesale: wholesale,
+  conPaquetes: false,
+);
 
 /// Cabecera pública de un negocio (nombre/logo/sello) — mismo shape que
 /// `BusinessProfile` de `my_business_screen.dart`, redefinido aquí (capa de
@@ -4078,7 +4276,8 @@ Future<String> uploadInterestImage(String filePath) =>
 /// un `String` reventaba con una excepción que `categoryCountsForKind` tragaba
 /// como `null`, apagando TODOS los conteos en silencio. Separada para
 /// probarse sin red.
-Map<String, int> countsForKind(List<Map<String, dynamic>> rows, String kind) => {
+Map<String, int> countsForKind(List<Map<String, dynamic>> rows, String kind) =>
+    {
       for (final r in rows)
         if ((r['kind'] ?? 'producto') == kind && r['category_id'] != null)
           r['category_id'] as String: switch (r['n']) {
@@ -4099,8 +4298,9 @@ Map<String, int> countsForKind(List<Map<String, dynamic>> rows, String kind) => 
 /// conteos no cambian. No se ven a la vez (con mayoreo el cuerpo es la rejilla).
 Future<Map<String, int>?> categoryCountsForKind(String kind) async {
   try {
-    final rows =
-        List<Map<String, dynamic>>.from(await supa.rpc('get_product_counts'));
+    final rows = List<Map<String, dynamic>>.from(
+      await supa.rpc('get_product_counts'),
+    );
     return countsForKind(rows, kind);
   } catch (_) {
     return null;
@@ -4113,3 +4313,29 @@ Future<Map<String, int>?> categoryCountsForKind(String kind) async {
 /// RPC falla (el caller enseña la lista completa).
 Future<Set<String>?> categoriasConCatalogo(String kind) async =>
     (await categoryCountsForKind(kind))?.keys.toSet();
+
+/// Conteo por categoría de productos Y servicios juntos (portada "Todo" del
+/// catálogo por artículos, Task 2, 2026-09-07): UNA sola llamada a
+/// `get_product_counts` — no dos como haría encadenar dos
+/// [categoryCountsForKind] — y [sumarConteos] junta ambos kinds sobre las
+/// mismas filas ya traídas. `null` si la RPC falla (mismo trato degradado que
+/// [categoryCountsForKind]).
+Future<Map<String, int>?> categoryCountsUnion() async {
+  try {
+    final rows = List<Map<String, dynamic>>.from(
+      await supa.rpc('get_product_counts'),
+    );
+    return sumarConteos(
+      countsForKind(rows, 'producto'),
+      countsForKind(rows, 'servicio'),
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Ids de categoría con artículos PUBLICADOS de CUALQUIER kind — espejo de
+/// [categoriasConCatalogo] pero para la portada "Todo". Derivada de
+/// [categoryCountsUnion]: `null` si la RPC falla.
+Future<Set<String>?> categoriasConCatalogoTodas() async =>
+    (await categoryCountsUnion())?.keys.toSet();

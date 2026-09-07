@@ -12,6 +12,8 @@ void main() {
     identityVerified: false,
     businessVerified: false,
     hasPhysicalLocation: true,
+    description: null,
+    city: null,
   );
   const item = {
     'id': 'p3',
@@ -23,47 +25,51 @@ void main() {
   };
 
   Widget host(Widget child, {double scale = 1}) => MaterialApp(
-        theme: jayaloTheme(Brightness.light),
-        home: Builder(
-          builder: (context) => MediaQuery(
-            data: MediaQuery.of(context)
-                .copyWith(textScaler: TextScaler.linear(scale)),
-            child: Scaffold(
-              body: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [child, child],
-                  ),
-                ),
+    theme: jayaloTheme(Brightness.light),
+    home: Builder(
+      builder: (context) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(scale)),
+        child: Scaffold(
+          body: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [child, child],
               ),
             ),
           ),
         ),
-      );
+      ),
+    ),
+  );
 
-  testWidgets('mide 138 de ancho y pinta nombre, tienda (sin sello) y «desde»',
-      (tester) async {
-    await tester.pumpWidget(
-        host(const ProductCarouselCard(item: item, negocio: negocio)));
-    await tester.pumpAndSettle();
-    final size = tester.getSize(find.byType(ProductCarouselCard).first);
-    expect(size.width, 138);
-    expect(find.textContaining('Audífonos'), findsNWidgets(2));
-    expect(find.textContaining('TecnoCentro'), findsNWidgets(2));
-    // En el carrusel no cabe el sello: solo el nombre.
-    expect(find.textContaining('Tienda física'), findsNothing);
-    expect(find.text('desde '), findsNWidgets(2));
-    expect(find.textContaining('1,200'), findsNWidgets(2));
-    // Sin estrellas: el carrusel es de un vistazo.
-    expect(find.byType(StarScore), findsNothing);
-  });
+  testWidgets(
+    'mide 138 de ancho y pinta nombre, tienda (sin sello) y «desde»',
+    (tester) async {
+      await tester.pumpWidget(
+        host(const ProductCarouselCard(item: item, negocio: negocio)),
+      );
+      await tester.pumpAndSettle();
+      final size = tester.getSize(find.byType(ProductCarouselCard).first);
+      expect(size.width, 138);
+      expect(find.textContaining('Audífonos'), findsNWidgets(2));
+      expect(find.textContaining('TecnoCentro'), findsNWidgets(2));
+      // En el carrusel no cabe el sello: solo el nombre.
+      expect(find.textContaining('Tienda física'), findsNothing);
+      expect(find.text('desde '), findsNWidgets(2));
+      expect(find.textContaining('1,200'), findsNWidgets(2));
+      // Sin estrellas: el carrusel es de un vistazo.
+      expect(find.byType(StarScore), findsNothing);
+    },
+  );
 
   testWidgets('con la fuente al doble no desborda', (tester) async {
-    await tester.pumpWidget(host(
-        const ProductCarouselCard(item: item, negocio: negocio),
-        scale: 2));
+    await tester.pumpWidget(
+      host(const ProductCarouselCard(item: item, negocio: negocio), scale: 2),
+    );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });

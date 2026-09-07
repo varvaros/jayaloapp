@@ -86,6 +86,8 @@ void main() {
       identityVerified: false,
       businessVerified: false,
       hasPhysicalLocation: true,
+      description: null,
+      city: null,
     );
 
     /// Reproduce la celda de `catalog_screen`: ancho de media pantalla y alto
@@ -141,6 +143,8 @@ void main() {
       identityVerified: false,
       businessVerified: false,
       hasPhysicalLocation: true,
+      description: null,
+      city: null,
     );
     const negocioSinLocal = (
       name: 'Otaku Store RD',
@@ -149,6 +153,8 @@ void main() {
       identityVerified: false,
       businessVerified: false,
       hasPhysicalLocation: false,
+      description: null,
+      city: null,
     );
     const item = {
       'id': 'p1',

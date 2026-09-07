@@ -12,6 +12,8 @@ BusinessCardInfo biz(String name, {bool local = false}) => (
   identityVerified: false,
   businessVerified: false,
   hasPhysicalLocation: local,
+  description: null,
+  city: null,
 );
 
 Map<String, dynamic> item(String id, {String? biz, String? cat}) => {

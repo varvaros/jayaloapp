@@ -3,20 +3,22 @@ import 'package:jayalo_app/data/repos.dart' show BusinessCardInfo;
 import 'package:jayalo_app/features/client/catalog_portada_secciones.dart';
 
 BusinessCardInfo biz(String name) => (
-      name: name,
-      logoUrl: null,
-      whatsappVerified: false,
-      identityVerified: false,
-      businessVerified: false,
-      hasPhysicalLocation: false,
-    );
+  name: name,
+  logoUrl: null,
+  whatsappVerified: false,
+  identityVerified: false,
+  businessVerified: false,
+  hasPhysicalLocation: false,
+  description: null,
+  city: null,
+);
 
 Map<String, dynamic> item(String id, {String? biz, String? cat}) => {
-      'id': id,
-      'name': 'Art $id',
-      'business_id': biz,
-      'category_id': cat,
-    };
+  'id': id,
+  'name': 'Art $id',
+  'business_id': biz,
+  'category_id': cat,
+};
 
 void main() {
   group('portadaTiendas', () {
@@ -68,24 +70,30 @@ void main() {
   });
 
   group('portadaCarruseles', () {
-    test('solo categorías con ≥2 ítems, por tamaño desc, empate por aparición',
-        () {
-      final items = [
-        item('1', cat: 'hogar'),
-        item('2', cat: 'belleza'),
-        item('3', cat: 'belleza'),
-        item('4', cat: 'hogar'),
-        item('5', cat: 'autos'), // solo uno: fuera
-        item('6', cat: 'electronica'),
-        item('7', cat: 'electronica'),
-        item('8', cat: 'electronica'),
-        item('9', cat: null),
-      ];
-      final out = portadaCarruseles(items);
-      expect(out.map((c) => c.categoria.id), ['electronica', 'hogar', 'belleza']);
-      expect(out.first.categoria.name, 'Electrónica');
-      expect(out[1].items.map((i) => i['id']), ['1', '4']);
-    });
+    test(
+      'solo categorías con ≥2 ítems, por tamaño desc, empate por aparición',
+      () {
+        final items = [
+          item('1', cat: 'hogar'),
+          item('2', cat: 'belleza'),
+          item('3', cat: 'belleza'),
+          item('4', cat: 'hogar'),
+          item('5', cat: 'autos'), // solo uno: fuera
+          item('6', cat: 'electronica'),
+          item('7', cat: 'electronica'),
+          item('8', cat: 'electronica'),
+          item('9', cat: null),
+        ];
+        final out = portadaCarruseles(items);
+        expect(out.map((c) => c.categoria.id), [
+          'electronica',
+          'hogar',
+          'belleza',
+        ]);
+        expect(out.first.categoria.name, 'Electrónica');
+        expect(out[1].items.map((i) => i['id']), ['1', '4']);
+      },
+    );
 
     test('tope de 3 carruseles y 8 ítems por carrusel', () {
       final items = [

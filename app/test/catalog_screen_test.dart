@@ -613,6 +613,8 @@ void main() {
             identityVerified: false,
             businessVerified: false,
             hasPhysicalLocation: true,
+            description: null,
+            city: null,
           ),
         },
       ),
