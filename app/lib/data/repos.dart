@@ -3795,9 +3795,10 @@ Future<List<Map<String, dynamic>>> storePackages(String businessId) async =>
 /// [paqueteComoItem] al mismo shape de ítem que productos/servicios. Un
 /// carrusel de "más notable" (spec §1), no la lista completa — `limit(30)`
 /// alcanza. Best-effort a propósito (paridad `[businessRatings]`/
-/// `[categoryCountsForKind]`): un paquete es un adorno del catálogo, nunca el
-/// motivo de una pantalla de error — `try/catch` y un `.timeout(4s)` (la RPC
-/// de conteos puede tardar en un día con mucho tráfico) devuelven `[]`.
+/// `[categoryCountsUnion]`): un paquete es un adorno del catálogo, nunca el
+/// motivo de una pantalla de error — `try/catch` y un `.timeout(4s)` (esta
+/// consulta a `provider_packages` puede tardar en un día con mucho tráfico)
+/// devuelven `[]`.
 Future<List<Map<String, dynamic>>> catalogPackages() async {
   try {
     // [packageCols] ya incluye `created_at` (ver arriba): no se repite en el
@@ -4089,9 +4090,9 @@ List<Map<String, dynamic>> mergeCatalogRatings(
 /// (`provider_packages` no tiene columna de texto libre que indexar del lado
 /// del servidor como si tiene `provider_products` con `.or(ilike...)`).
 ///
-/// `conPaquetes` (default `true`) es la puerta de [catalogProductsWithRatings]
-/// para NO traer paquetes cuando algo más abajo ya los pide aparte (evita
-/// duplicarlos en la misma pantalla).
+/// `conPaquetes` (default `true`) es la puerta para NO traer paquetes cuando
+/// algo más abajo ya los pide aparte (evita duplicarlos en la misma
+/// pantalla).
 Future<List<Map<String, dynamic>>> catalogItemsWithRatings({
   String? kind,
   String? search,
@@ -4135,25 +4136,6 @@ Future<List<Map<String, dynamic>>> catalogItemsWithRatings({
   ).catchError((_) => <String, BusinessRating>{});
   return mergeCatalogRatings(completo, ratings);
 }
-
-/// Compatibilidad con los llamadores previos a la Task 2 (`CatalogFetch` de
-/// `catalog_screen.dart`, que exige `kind` requerido y no sabe de paquetes):
-/// envoltorio delgado sobre [catalogItemsWithRatings] con `conPaquetes:
-/// false`, para no duplicar lógica ni romper la firma que ya consumen.
-Future<List<Map<String, dynamic>>> catalogProductsWithRatings({
-  required String kind,
-  String? search,
-  String? categoryId,
-  String? rubro,
-  bool wholesale = false,
-}) => catalogItemsWithRatings(
-  kind: kind,
-  search: search,
-  categoryId: categoryId,
-  rubro: rubro,
-  wholesale: wholesale,
-  conPaquetes: false,
-);
 
 /// Cabecera pública de un negocio (nombre/logo/sello) — mismo shape que
 /// `BusinessProfile` de `my_business_screen.dart`, redefinido aquí (capa de
@@ -4273,9 +4255,9 @@ Future<String> uploadInterestImage(String filePath) =>
 /// al mapa categoría → cantidad de artículos publicados del kind pedido. Un
 /// `kind` nulo cuenta como 'producto' (fila legada); sin `category_id` se
 /// ignora. `n` tolera `num` o `String` (y cualquier otra cosa cae a 0) — antes
-/// un `String` reventaba con una excepción que `categoryCountsForKind` tragaba
-/// como `null`, apagando TODOS los conteos en silencio. Separada para
-/// probarse sin red.
+/// un `String` reventaba con una excepción que el caller (`try/catch`)
+/// tragaba como `null`, apagando TODOS los conteos en silencio. Separada
+/// para probarse sin red.
 Map<String, int> countsForKind(List<Map<String, dynamic>> rows, String kind) =>
     {
       for (final r in rows)
@@ -4287,39 +4269,15 @@ Map<String, int> countsForKind(List<Map<String, dynamic>> rows, String kind) =>
           },
     };
 
-/// Conteo de artículos publicados por categoría del kind dado ('producto' |
-/// 'servicio'). Alimenta la tira de chips y la sección «Por categoría» de la
-/// portada del catálogo. Sale de la RPC `get_product_counts` — agregado en
-/// servidor, el mismo que usa la web para su sidebar. Ante cualquier error
-/// devuelve `null`: el caller enseña la lista completa de categorías y oculta
-/// la sección de conteos (degradar, nunca una pantalla vacía).
+/// Conteo por categoría de productos Y servicios juntos (portada "Todo" del
+/// catálogo por artículos, Task 2, 2026-09-07): UNA sola llamada a
+/// `get_product_counts` — no dos, una por kind — y [sumarConteos] junta
+/// ambos kinds sobre las mismas filas ya traídas. `null` si la RPC falla: el
+/// caller enseña la lista completa de categorías y oculta la sección de
+/// conteos (degradar, nunca una pantalla vacía).
 ///
 /// ⚠️ La RPC cuenta sin distinguir mayoreo: con «Al por mayor» encendido los
 /// conteos no cambian. No se ven a la vez (con mayoreo el cuerpo es la rejilla).
-Future<Map<String, int>?> categoryCountsForKind(String kind) async {
-  try {
-    final rows = List<Map<String, dynamic>>.from(
-      await supa.rpc('get_product_counts'),
-    );
-    return countsForKind(rows, kind);
-  } catch (_) {
-    return null;
-  }
-}
-
-/// Ids de categoría con artículos PUBLICADOS del kind dado. Alimenta el
-/// filtrado de categorías «navegables» de la hoja de filtros (decisión PO
-/// 2026-08-31, paridad web). Derivada de [categoryCountsForKind]: `null` si la
-/// RPC falla (el caller enseña la lista completa).
-Future<Set<String>?> categoriasConCatalogo(String kind) async =>
-    (await categoryCountsForKind(kind))?.keys.toSet();
-
-/// Conteo por categoría de productos Y servicios juntos (portada "Todo" del
-/// catálogo por artículos, Task 2, 2026-09-07): UNA sola llamada a
-/// `get_product_counts` — no dos como haría encadenar dos
-/// [categoryCountsForKind] — y [sumarConteos] junta ambos kinds sobre las
-/// mismas filas ya traídas. `null` si la RPC falla (mismo trato degradado que
-/// [categoryCountsForKind]).
 Future<Map<String, int>?> categoryCountsUnion() async {
   try {
     final rows = List<Map<String, dynamic>>.from(
@@ -4334,8 +4292,9 @@ Future<Map<String, int>?> categoryCountsUnion() async {
   }
 }
 
-/// Ids de categoría con artículos PUBLICADOS de CUALQUIER kind — espejo de
-/// [categoriasConCatalogo] pero para la portada "Todo". Derivada de
-/// [categoryCountsUnion]: `null` si la RPC falla.
+/// Ids de categoría con artículos PUBLICADOS de CUALQUIER kind — alimenta el
+/// filtrado de categorías «navegables» de la hoja de filtros (decisión PO
+/// 2026-08-31, paridad web). Derivada de [categoryCountsUnion]: `null` si la
+/// RPC falla (el caller enseña la lista completa).
 Future<Set<String>?> categoriasConCatalogoTodas() async =>
     (await categoryCountsUnion())?.keys.toSet();

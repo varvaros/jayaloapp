@@ -212,17 +212,6 @@ void main() {
     expect(s.paquetes.map((e) => e['id']), ['k1']);
   });
 
-  test('resumenConteos con singulares', () {
-    expect(
-      resumenConteos(productos: 7, servicios: 1, paquetes: 0, proveedores: 8),
-      '7 productos · 1 servicio · 0 paquetes · 8 proveedores',
-    );
-    expect(
-      resumenConteos(productos: 1, servicios: 0, paquetes: 1, proveedores: 1),
-      '1 producto · 0 servicios · 1 paquete · 1 proveedor',
-    );
-  });
-
   test(
     'ciudadesDe: distintas, ordenadas, y la seleccionada nunca se pierde',
     () {

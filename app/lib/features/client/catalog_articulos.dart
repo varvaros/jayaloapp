@@ -137,21 +137,6 @@ seccionesCatalogo(List<Map<String, dynamic>> items) {
   );
 }
 
-String _plural(int n, String uno, String varios) =>
-    '$n ${n == 1 ? uno : varios}';
-
-String resumenConteos({
-  required int productos,
-  required int servicios,
-  required int paquetes,
-  required int proveedores,
-}) => [
-  _plural(productos, 'producto', 'productos'),
-  _plural(servicios, 'servicio', 'servicios'),
-  _plural(paquetes, 'paquete', 'paquetes'),
-  _plural(proveedores, 'proveedor', 'proveedores'),
-].join(' · ');
-
 /// Ciudades distintas de los negocios, ordenadas. La SELECCIONADA nunca se
 /// oculta: si desapareciera, el filtro seguiría aplicado sin control visible.
 List<String> ciudadesDe(
