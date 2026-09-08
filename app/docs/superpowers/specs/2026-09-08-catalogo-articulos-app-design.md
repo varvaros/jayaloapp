@@ -143,7 +143,7 @@ Orden dentro de cada sección: `created_at` desc del servidor, y encima **con fo
   de ambos conjuntos). `CatalogFetch` pasa a `({String? kind, …})`; nueva firma inyectable
   `CatalogPackagesFetch` para tests.
 - Puras, con `test()`: `paqueteComoItem`, `filtrarLateral(items, negocios, filtros)`, `ordenarCatalogo`,
-  `seccionesCatalogo` (topes 8), `resumenConteos`, `ciudadesDe(negocios)`, `coincideBusqueda`,
+  `seccionesCatalogo` (topes 8), `ciudadesDe(negocios)`, `coincideBusqueda`,
   `esVerificado(negocio)`, `proveedoresDeItems(items, negocios)` (máx. 12, sin repetidos, orden de aparición,
   `queHace` con la misma prioridad que la web), `sumarConteos(a, b)`, `sanitizarIlike`.
 - Los conteos de la fila de tipo y de los títulos son del **conjunto cargado y filtrado** (≤ 60 + 30), como

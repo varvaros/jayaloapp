@@ -3255,9 +3255,14 @@ Future<List<Map<String, dynamic>>> catalogProducts({
   if (wholesaleBizIds != null) q = q.inFilter('business_id', wholesaleBizIds);
   if (categoryId != null) q = q.eq('category_id', categoryId);
   if (rubro != null) q = q.ilike('rubro', rubro);
-  final term = search?.trim();
-  if (term != null && term.isNotEmpty) {
-    final safe = sanitizeCatalogSearchTerm(term);
+  final safe = search == null ? '' : sanitizeCatalogSearchTerm(search);
+  // Una búsqueda hecha solo de símbolos («***», «()») queda vacía tras
+  // sanear: no hay artículo que la satisfaga, y omitir el filtro devolvería
+  // el catálogo entero.
+  if (search != null && search.trim().isNotEmpty && safe.isEmpty) {
+    return const [];
+  }
+  if (safe.isNotEmpty) {
     q = q.or(
       'name.ilike.%$safe%,description.ilike.%$safe%,rubro.ilike.%$safe%',
     );
