@@ -105,6 +105,29 @@ void main() {
         ['b'],
       ),
     );
+    test(
+      'ciudad con espacio final en la BD igual pasa el filtro recortado',
+      () {
+        final conEspacio = {
+          ...negocios,
+          'b2': neg('Dra', verif: true, city: 'Santiago '),
+        };
+        expect(
+          filtrarLateral(
+            [a, b],
+            conEspacio,
+            (
+              ciudad: 'Santiago',
+              precioMin: 0,
+              precioMax: 0,
+              soloVerificados: false,
+              conLocal: false,
+            ),
+          ),
+          hasLength(1),
+        );
+      },
+    );
     test('precio usa price o price_min; Consultar siempre pasa', () {
       expect(
         filtrarLateral(

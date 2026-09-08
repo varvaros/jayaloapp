@@ -98,7 +98,7 @@ List<Map<String, dynamic>> filtrarLateral(
 }
 
 bool _pasa(Map<String, dynamic> it, NegocioCatalogo? b, FiltrosLateral f) {
-  if (f.ciudad != null && (b?.city ?? '') != f.ciudad) return false;
+  if (f.ciudad != null && (b?.city?.trim() ?? '') != f.ciudad) return false;
   if (f.soloVerificados && b?.verificado != true) return false;
   if (f.conLocal && b?.hasPhysicalLocation != true) return false;
   final p = _precioDe(it);
