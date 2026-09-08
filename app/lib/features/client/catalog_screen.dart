@@ -9,15 +9,11 @@ import '../../domain/catalog.dart';
 import '../shared/brand_kit.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
-import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
-import '../shell/floating_nav_bar.dart';
 import 'catalog_articulos.dart';
-import 'catalog_chip_strip.dart';
 import 'catalog_filter_sheet.dart';
 import 'catalog_header_widgets.dart';
-import 'catalog_secciones.dart';
-import 'catalog_tipo_strip.dart';
+import 'catalog_screen_cuerpo.dart';
 
 /// Fuente de datos del catálogo POR ARTÍCULOS (productos, servicios y paquetes
 /// en la MISMA carga). Inyectada en [CatalogView] para probar la pantalla sin
@@ -347,227 +343,50 @@ class _CatalogViewState extends State<CatalogView> {
 
   void _abrirTienda(String id) => context.push('/store/$id');
 
-  Widget _chips(Map<String, int> conteos) => Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      CatalogTipoStrip(tipo: _tipo, conteos: conteos, onTipo: _setTipo),
-      CatalogChipStrip(
-        categorias: categoriasNavegables(
-          kCategories,
-          _counts?.keys.toSet(),
-          seleccionada: _categoryId,
-        ),
-        categoryId: _categoryId,
-        // El mayoreo es SOLO de productos (paridad web), pero si el mayoreo
-        // está encendido el chip se ve siempre: apagarlo es la única salida.
-        wholesale: (_tipo == 'todos' || _tipo == 'producto' || _wholesale)
-            ? _wholesale
-            : null,
-        onWholesale: _toggleWholesale,
-        onCategory: (id) {
-          if (id != _categoryId) _applyFilter(categoryId: id);
-        },
-        // «Todo»: sin categoría ni rubro no hay nada que re-pedir.
-        onTodo: () {
-          if (_categoryId != null || _rubro != null) _applyFilter();
-        },
-        rubros: _categoryId == null ? const [] : _rubros,
-        rubro: _rubro,
-        onRubro: (r) => _applyFilter(categoryId: _categoryId, rubro: r),
-      ),
-    ],
-  );
-
-  Widget _rejilla(
-    List<Map<String, dynamic>> items,
-    Map<String, BusinessCardInfo> negocios,
-    Map<String, int> conteos,
-    List<Proveedor> coinciden,
-  ) => LayoutBuilder(
-    builder: (context, box) {
-      final cellWidth = (box.maxWidth - 32 - 11) / 2;
-      final alto = catalogGridCardExtent(
-        context,
-        cellWidth,
-        conIncluido: _tipo == 'paquete',
-      );
-      return CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          SliverToBoxAdapter(child: _chips(conteos)),
-          if (_search != null)
-            SliverToBoxAdapter(
-              child: ProveedoresCoinciden(
-                proveedores: coinciden,
-                onStore: _abrirTienda,
-              ),
-            ),
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              10,
-              16,
-              12 + navBarReservedSpace(context),
-            ),
-            sliver: SliverGrid.builder(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 11,
-                mainAxisSpacing: 11,
-                mainAxisExtent: alto,
-              ),
-              itemCount: items.length,
-              itemBuilder: (_, i) => ProductGridCard(
-                item: items[i],
-                negocio: negocios[items[i]['business_id']],
-                showTypeTag: true,
-              ).cascadeIn(i),
-            ),
-          ),
-        ],
-      );
+  /// Tira de tipo + tira de chips, cabecera de los cuatro cuerpos posibles.
+  Widget _chips(Map<String, int> conteos) => chipsCatalogo(
+    tipo: _tipo,
+    conteos: conteos,
+    categoryId: _categoryId,
+    categoriasVistas: _counts?.keys.toSet(),
+    // El mayoreo es SOLO de productos (paridad web), pero si el mayoreo está
+    // encendido el chip se ve siempre: apagarlo es la única salida.
+    wholesale: (_tipo == 'todos' || _tipo == 'producto' || _wholesale)
+        ? _wholesale
+        : null,
+    rubros: _categoryId == null ? const [] : _rubros,
+    rubro: _rubro,
+    onTipo: _setTipo,
+    onWholesale: _toggleWholesale,
+    onCategory: (id) {
+      if (id != _categoryId) _applyFilter(categoryId: id);
     },
+    // «Todo»: sin categoría ni rubro no hay nada que re-pedir.
+    onTodo: () {
+      if (_categoryId != null || _rubro != null) _applyFilter();
+    },
+    onRubro: (r) => _applyFilter(categoryId: _categoryId, rubro: r),
   );
 
-  /// Sin artículos del tipo activo pero con proveedores que coinciden por
-  /// nombre (búsqueda tipo «ferreter» sobre «Ferretería Central» sin
-  /// artículos propios en el filtro actual): la píldoras + un aviso, en vez
-  /// del vacío.
-  Widget _soloCoinciden(List<Proveedor> coinciden, Map<String, int> conteos) =>
-      ListView(
-        controller: _scrollController,
-        padding: EdgeInsets.only(bottom: 12 + navBarReservedSpace(context)),
-        children: [
-          _chips(conteos),
-          ProveedoresCoinciden(proveedores: coinciden, onStore: _abrirTienda),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Text(
-              'Sin artículos para «$_search»; estos proveedores coinciden '
-              'por nombre.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ),
-        ],
-      );
-
-  /// Lista del tipo Proveedores: los que coinciden por nombre con la
-  /// búsqueda primero, luego los demás dueños de ítems, sin repetidos.
-  Widget _listaProveedores(
-    List<Proveedor> ps,
-    Map<String, int> conteos,
-    List<Proveedor> coinciden,
-  ) {
-    final vistos = <String>{};
-    final lista = [
-      for (final p in [...coinciden, ...ps])
-        if (vistos.add(p.id)) p,
-    ];
-    return ListView(
-      controller: _scrollController,
-      padding: EdgeInsets.only(bottom: 12 + navBarReservedSpace(context)),
-      children: [
-        _chips(conteos),
-        const SizedBox(height: 6),
-        for (var i = 0; i < lista.length; i++)
-          ProveedorCard(
-            p: lista[i],
-            onTap: () => _abrirTienda(lista[i].id),
-          ).cascadeIn(i),
-      ],
-    );
-  }
-
-  Widget _vacio(Map<String, int> conteos) => Column(
-    children: [
-      _chips(conteos),
-      Expanded(
-        child: EmptyState(
-          controller: _scrollController,
-          message: _tipo == 'proveedor'
-              ? 'No hay proveedores que coincidan con tu filtro.'
-              : _filtrado
-              ? 'No hay artículos que coincidan con tu filtro.'
-              : 'Aún no hay artículos publicados en esta '
-                    'categoría.\n\nVuelve más tarde: los '
-                    'proveedores publican todos los días.',
-          ctaLabel: _filtrado ? 'Quitar filtro' : null,
-          onCta: _filtrado ? _quitarTodo : null,
-        ),
-      ),
-    ],
+  /// Cuerpo con los derivados PUROS de la carga (`catalog_articulos.dart`,
+  /// vía `catalog_screen_cuerpo.dart`): nada pide red, todo sale de `page` y
+  /// de los filtros vigentes.
+  Widget _cuerpo(CatalogPage page) => cuerpoCatalogo(
+    context: context,
+    controller: _scrollController,
+    items: page.items,
+    negocios: page.negocios,
+    nombres: page.nombres,
+    filtros: _filtros,
+    tipo: _tipo,
+    verSecciones: _verSecciones,
+    search: _search,
+    filtrado: _filtrado,
+    chips: _chips,
+    onVerTodos: _setTipo,
+    onStore: _abrirTienda,
+    onQuitarFiltro: _quitarTodo,
   );
-
-  /// Cuerpo con los derivados PUROS de la carga (`catalog_articulos.dart`):
-  /// nada pide red, todo sale de `page` y de los filtros vigentes. El tope 90
-  /// es para la LISTA del tipo Proveedores (el riel recorta por su cuenta).
-  Widget _cuerpo(CatalogPage page) {
-    final negociosCat = {
-      for (final e in page.negocios.entries) e.key: negocioCatalogoDe(e.value),
-    };
-    final hits = ordenarCatalogo(
-      filtrarLateral(page.items, negociosCat, _filtros),
-    );
-    final proveedores = proveedoresDeItems(hits, negociosCat, tope: 90);
-    // Antes de decidir si hay algo que pintar: los proveedores que coinciden
-    // por NOMBRE con la búsqueda son alcanzables aunque 0 artículos matcheen.
-    final coinciden = _coinciden(proveedores, page);
-    int n(String k) => hits.where((it) => tipoDeItem(it) == k).length;
-    final conteos = {
-      'todos': hits.length,
-      'producto': n('producto'),
-      'servicio': n('servicio'),
-      'paquete': n('paquete'),
-      'proveedor': proveedores.length,
-    };
-    final hitsDeTipo = _tipo == 'todos'
-        ? hits
-        : hits.where((it) => tipoDeItem(it) == _tipo).toList();
-    final hayQuePintar = _tipo == 'proveedor'
-        ? (proveedores.isNotEmpty || coinciden.isNotEmpty)
-        : (hitsDeTipo.isNotEmpty || coinciden.isNotEmpty);
-
-    if (!hayQuePintar) return _vacio(conteos);
-    if (_verSecciones) {
-      return CatalogSecciones(
-        controller: _scrollController,
-        header: _chips(conteos),
-        items: hits,
-        negocios: page.negocios,
-        proveedores: proveedores,
-        conteos: (
-          productos: conteos['producto']!,
-          servicios: conteos['servicio']!,
-          paquetes: conteos['paquete']!,
-          proveedores: proveedores.length,
-        ),
-        onVerTodos: _setTipo,
-        onStore: _abrirTienda,
-      );
-    }
-    if (_tipo == 'proveedor') {
-      return _listaProveedores(proveedores, conteos, coinciden);
-    }
-    if (hitsDeTipo.isEmpty && coinciden.isNotEmpty) {
-      return _soloCoinciden(coinciden, conteos);
-    }
-    return _rejilla(hitsDeTipo, page.negocios, conteos, coinciden);
-  }
-
-  /// «Que coinciden» con la búsqueda: los de la consulta por nombre primero,
-  /// luego los dueños de ítems cuyo nombre encaja, sin repetidos.
-  List<Proveedor> _coinciden(List<Proveedor> deItems, CatalogPage page) {
-    final q = _search;
-    if (q == null) return const [];
-    final vistos = <String>{};
-    return [
-      for (final p in [
-        ...page.nombres,
-        ...deItems.where((p) => coincideBusqueda(p.name, q)),
-      ])
-        if (vistos.add(p.id)) p,
-    ];
-  }
 
   /// Misma anatomía que las demás pestañas: avatar (o atrás si viene apilada
   /// como «Otros proveedores»), título a la izquierda y campana; debajo, UNA

@@ -215,6 +215,25 @@ String queHace(String? description, String? categoriaDominante) {
   return categoriaDominante ?? '';
 }
 
+/// «Que coinciden» con la búsqueda [q]: los de la consulta por nombre
+/// ([nombres]) primero, luego los dueños de ítems ([deItems]) cuyo nombre
+/// encaja, sin repetidos. `q` nulo (sin búsqueda) = nadie coincide.
+List<Proveedor> proveedoresQueCoinciden(
+  List<Proveedor> deItems,
+  List<Proveedor> nombres,
+  String? q,
+) {
+  if (q == null) return const [];
+  final vistos = <String>{};
+  return [
+    for (final p in [
+      ...nombres,
+      ...deItems.where((p) => coincideBusqueda(p.name, q)),
+    ])
+      if (vistos.add(p.id)) p,
+  ];
+}
+
 /// Proveedores «con algún artículo» en el conjunto actual, en orden de
 /// aparición (= reciente primero). La categoría dominante se cuenta sobre
 /// TODOS los ítems del negocio aunque luego solo salgan [tope].
