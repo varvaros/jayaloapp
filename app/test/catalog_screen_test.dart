@@ -768,4 +768,82 @@ void main() {
     await tester.pumpAndSettle();
     expect(llamadas, 2);
   });
+
+  // I-4 (revisión final 09-07): nada cableaba la hoja de filtros a la
+  // pantalla — solo la hoja aislada y `filtrarLateral` aislado, cada uno con
+  // sus propios tests. Este test cierra la costura: si `_openFilter`
+  // invirtiera `precioMin`/`precioMax` al construir `FiltrosLateral`, el
+  // catálogo se quedaría VACÍO (los tres precios usados abajo caen todos
+  // fuera de un rango invertido) en vez de mostrar solo el ítem del medio, y
+  // los 1936 tests de antes de este fix seguían verdes con ese bug.
+  testWidgets(
+    'la hoja de filtros cablea min/max/ciudad a FiltrosLateral sin invertir '
+    'los campos',
+    (tester) async {
+      // La rejilla es un SliverGrid perezoso: sin un viewport alto, el
+      // tercer ítem no llega a construirse (mismo gotcha que
+      // `viewportSecciones`).
+      addTearDown(tester.view.reset);
+      tester.view.physicalSize = const Size(400, 1600);
+      tester.view.devicePixelRatio = 1;
+
+      final barato = {
+        ...fixedItem,
+        'id': 'p-barato',
+        'name': 'Item barato',
+        'price': 1000,
+      };
+      final medio = {
+        ...fixedItem,
+        'id': 'p-medio',
+        'name': 'Item medio',
+        'price': 1500,
+      };
+      final caro = {
+        ...fixedItem,
+        'id': 'p-caro',
+        'name': 'Item caro',
+        'price': 2500,
+      };
+      await tester.pumpWidget(
+        catalogo(
+          fetch: fija([barato, medio, caro]),
+          businesses: conNegocio,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tocarTipo(tester, 'Productos');
+      expect(find.text('Item barato'), findsOneWidget);
+      expect(find.text('Item medio'), findsOneWidget);
+      expect(find.text('Item caro'), findsOneWidget);
+
+      await tester.tap(find.text('Filtrar'));
+      await tester.pumpAndSettle();
+
+      // Ciudad: la única que ofrece la hoja (viene de `conNegocio`).
+      await tester.tap(find.text('Todas las ciudades'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Santiago').last);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Desde RD\$'),
+        '1200',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Hasta RD\$'),
+        '2000',
+      );
+      await tester.tap(find.text('Aplicar'));
+      await tester.pumpAndSettle();
+
+      // min→precioMin, max→precioMax: solo el del medio (1500) cae en
+      // [1200, 2000]. Con los campos invertidos ninguno pasaría.
+      expect(find.text('Item barato'), findsNothing);
+      expect(find.text('Item medio'), findsOneWidget);
+      expect(find.text('Item caro'), findsNothing);
+      // Ciudad + min + max: tres filtros del lateral puestos.
+      expect(find.text('Filtrar · 3'), findsOneWidget);
+    },
+  );
 }
