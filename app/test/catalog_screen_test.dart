@@ -333,6 +333,59 @@ void main() {
   );
 
   testWidgets(
+    'una búsqueda que solo coincide por nombre pinta los proveedores que '
+    'coinciden, no el vacío',
+    (tester) async {
+      await tester.pumpWidget(
+        catalogo(
+          fetch: vacio,
+          names: (term) async => const [
+            (
+              id: 'b9',
+              name: 'Ferretería Central',
+              logoUrl: null,
+              hasPhysicalLocation: false,
+              city: null,
+              verificado: false,
+              queHace: '',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'ferreter');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ferretería Central'), findsOneWidget);
+      expect(
+        find.text('No hay artículos que coincidan con tu filtro.'),
+        findsNothing,
+      );
+
+      await tocarTipo(tester, 'Proveedores');
+      expect(find.text('Ferretería Central'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'con mayoreo encendido, cambiar a Servicios mantiene visible el chip '
+    'Al por mayor',
+    (tester) async {
+      await tester.pumpWidget(catalogo(fetch: fija([fixedItem, rangeItem])));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Al por mayor'));
+      await tester.pumpAndSettle();
+
+      await tocarTipo(tester, 'Servicios');
+
+      expect(find.text('Al por mayor'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'la lista no desborda con un nombre largo en un ancho de teléfono típico',
     (tester) async {
       addTearDown(tester.view.reset);

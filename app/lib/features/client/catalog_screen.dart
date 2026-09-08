@@ -108,10 +108,10 @@ class _CatalogViewState extends State<CatalogView> {
   /// Rubros de la categoría activa (segunda fila de chips).
   List<String> _rubros = const [];
 
-  /// Ciudades de la última carga, para la hoja de filtros. Se cachea desde
-  /// `build` (sin `setState`): la hoja se abre desde la cabecera, fuera del
-  /// `FutureBuilder` que conoce los negocios.
-  List<String> _ciudades = const [];
+  /// Última página cargada, para poder derivar las ciudades de la hoja de
+  /// filtros SIN mutar estado en `build`: la hoja se abre desde la cabecera,
+  /// fuera del `FutureBuilder` que conoce los negocios.
+  CatalogPage? _pagina;
 
   final _searchCtrl = TextEditingController();
   final _scrollController = ScrollController();
@@ -209,7 +209,9 @@ class _CatalogViewState extends State<CatalogView> {
     final nombres = search == null
         ? const <Proveedor>[]
         : await _adorno(() => widget.names(search), const <Proveedor>[]);
-    return (items: items, negocios: negocios, nombres: nombres);
+    final page = (items: items, negocios: negocios, nombres: nombres);
+    _pagina = page;
+    return page;
   }
 
   void _loadCounts() {
@@ -259,17 +261,22 @@ class _CatalogViewState extends State<CatalogView> {
   }
 
   /// Tipo activo: NO re-pide nada — misma carga, otro cuerpo.
-  void _setTipo(String tipo) => setState(() => _tipo = tipo);
+  void _setTipo(String tipo) {
+    if (tipo == _tipo) return;
+    setState(() => _tipo = tipo);
+  }
 
   /// Categoría y rubro se reemplazan a la vez (un rubro vive dentro de una
-  /// categoría) y SÍ re-piden: los filtra el servidor.
+  /// categoría) y SÍ re-piden: los filtra el servidor. Los rubros solo se
+  /// vuelven a pedir si la categoría en sí cambió (evita una consulta de más
+  /// al solo cambiar de rubro dentro de la misma categoría).
   void _applyFilter({String? categoryId, String? rubro}) {
+    if (categoryId != _categoryId) _loadRubros(categoryId);
     setState(() {
       _categoryId = categoryId;
       _rubro = rubro;
     });
     _refetch();
-    _loadRubros(categoryId);
   }
 
   /// ✕ de la píldora: quita lo que la píldora dice — categoría/rubro y los
@@ -295,11 +302,16 @@ class _CatalogViewState extends State<CatalogView> {
   /// La hoja devuelve TODO el filtro. Solo se re-pide si cambió lo que filtra
   /// el SERVIDOR: el lateral es de cliente.
   Future<void> _openFilter() async {
+    final negocios = _pagina?.negocios ?? const <String, BusinessCardInfo>{};
+    final negociosCat = {
+      for (final e in negocios.entries) e.key: negocioCatalogoDe(e.value),
+    };
+    final ciudades = ciudadesDe(negociosCat, seleccionada: _filtros.ciudad);
     final res = await showCatalogFilterSheet(
       context,
       categoryId: _categoryId,
       rubro: _rubro,
-      ciudades: _ciudades,
+      ciudades: ciudades,
       filtros: _filtros,
     );
     if (res == null || !mounted) return;
@@ -346,8 +358,11 @@ class _CatalogViewState extends State<CatalogView> {
           seleccionada: _categoryId,
         ),
         categoryId: _categoryId,
-        // El mayoreo es SOLO de productos (paridad web).
-        wholesale: _tipo == 'todos' || _tipo == 'producto' ? _wholesale : null,
+        // El mayoreo es SOLO de productos (paridad web), pero si el mayoreo
+        // está encendido el chip se ve siempre: apagarlo es la única salida.
+        wholesale: (_tipo == 'todos' || _tipo == 'producto' || _wholesale)
+            ? _wholesale
+            : null,
         onWholesale: _toggleWholesale,
         onCategory: (id) {
           if (id != _categoryId) _applyFilter(categoryId: id);
@@ -365,7 +380,7 @@ class _CatalogViewState extends State<CatalogView> {
 
   Widget _rejilla(
     List<Map<String, dynamic>> items,
-    CatalogPage page,
+    Map<String, BusinessCardInfo> negocios,
     Map<String, int> conteos,
     List<Proveedor> coinciden,
   ) => LayoutBuilder(
@@ -404,7 +419,7 @@ class _CatalogViewState extends State<CatalogView> {
               itemCount: items.length,
               itemBuilder: (_, i) => ProductGridCard(
                 item: items[i],
-                negocio: page.negocios[items[i]['business_id']],
+                negocio: negocios[items[i]['business_id']],
                 showTypeTag: true,
               ).cascadeIn(i),
             ),
@@ -414,20 +429,54 @@ class _CatalogViewState extends State<CatalogView> {
     },
   );
 
-  Widget _listaProveedores(List<Proveedor> ps, Map<String, int> conteos) =>
+  /// Sin artículos del tipo activo pero con proveedores que coinciden por
+  /// nombre (búsqueda tipo «ferreter» sobre «Ferretería Central» sin
+  /// artículos propios en el filtro actual): la píldoras + un aviso, en vez
+  /// del vacío.
+  Widget _soloCoinciden(List<Proveedor> coinciden, Map<String, int> conteos) =>
       ListView(
         controller: _scrollController,
         padding: EdgeInsets.only(bottom: 12 + navBarReservedSpace(context)),
         children: [
           _chips(conteos),
-          const SizedBox(height: 6),
-          for (var i = 0; i < ps.length; i++)
-            ProveedorCard(
-              p: ps[i],
-              onTap: () => _abrirTienda(ps[i].id),
-            ).cascadeIn(i),
+          ProveedoresCoinciden(proveedores: coinciden, onStore: _abrirTienda),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              'Sin artículos para «$_search»; estos proveedores coinciden '
+              'por nombre.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
         ],
       );
+
+  /// Lista del tipo Proveedores: los que coinciden por nombre con la
+  /// búsqueda primero, luego los demás dueños de ítems, sin repetidos.
+  Widget _listaProveedores(
+    List<Proveedor> ps,
+    Map<String, int> conteos,
+    List<Proveedor> coinciden,
+  ) {
+    final vistos = <String>{};
+    final lista = [
+      for (final p in [...coinciden, ...ps])
+        if (vistos.add(p.id)) p,
+    ];
+    return ListView(
+      controller: _scrollController,
+      padding: EdgeInsets.only(bottom: 12 + navBarReservedSpace(context)),
+      children: [
+        _chips(conteos),
+        const SizedBox(height: 6),
+        for (var i = 0; i < lista.length; i++)
+          ProveedorCard(
+            p: lista[i],
+            onTap: () => _abrirTienda(lista[i].id),
+          ).cascadeIn(i),
+      ],
+    );
+  }
 
   Widget _vacio(Map<String, int> conteos) => Column(
     children: [
@@ -460,6 +509,9 @@ class _CatalogViewState extends State<CatalogView> {
       filtrarLateral(page.items, negociosCat, _filtros),
     );
     final proveedores = proveedoresDeItems(hits, negociosCat, tope: 90);
+    // Antes de decidir si hay algo que pintar: los proveedores que coinciden
+    // por NOMBRE con la búsqueda son alcanzables aunque 0 artículos matcheen.
+    final coinciden = _coinciden(proveedores, page);
     int n(String k) => hits.where((it) => tipoDeItem(it) == k).length;
     final conteos = {
       'todos': hits.length,
@@ -471,10 +523,9 @@ class _CatalogViewState extends State<CatalogView> {
     final hitsDeTipo = _tipo == 'todos'
         ? hits
         : hits.where((it) => tipoDeItem(it) == _tipo).toList();
-    _ciudades = ciudadesDe(negociosCat, seleccionada: _filtros.ciudad);
     final hayQuePintar = _tipo == 'proveedor'
-        ? proveedores.isNotEmpty
-        : hitsDeTipo.isNotEmpty;
+        ? (proveedores.isNotEmpty || coinciden.isNotEmpty)
+        : (hitsDeTipo.isNotEmpty || coinciden.isNotEmpty);
 
     if (!hayQuePintar) return _vacio(conteos);
     if (_verSecciones) {
@@ -494,8 +545,13 @@ class _CatalogViewState extends State<CatalogView> {
         onStore: _abrirTienda,
       );
     }
-    if (_tipo == 'proveedor') return _listaProveedores(proveedores, conteos);
-    return _rejilla(hitsDeTipo, page, conteos, _coinciden(proveedores, page));
+    if (_tipo == 'proveedor') {
+      return _listaProveedores(proveedores, conteos, coinciden);
+    }
+    if (hitsDeTipo.isEmpty && coinciden.isNotEmpty) {
+      return _soloCoinciden(coinciden, conteos);
+    }
+    return _rejilla(hitsDeTipo, page.negocios, conteos, coinciden);
   }
 
   /// «Que coinciden» con la búsqueda: los de la consulta por nombre primero,
@@ -573,7 +629,14 @@ class _CatalogViewState extends State<CatalogView> {
                     if (snap.hasError) {
                       return ErrorRetry(onRetry: () async => _refetch());
                     }
-                    return _cuerpo(snap.data!);
+                    return _cuerpo(
+                      snap.data ??
+                          (
+                            items: const [],
+                            negocios: const {},
+                            nombres: const [],
+                          ),
+                    );
                   },
                 ),
               ),
