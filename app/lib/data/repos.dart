@@ -3208,12 +3208,12 @@ const catalogProductCols =
     'price_min,price_max,image_urls,category_id,rubro,kind,'
     'condition,offers_shipping,color,offer_defaults';
 
-/// Quita `%`/`,` de un término de búsqueda antes de meterlo en un patrón
-/// `ilike`/`or` de PostgREST — mismo saneo que `requests/index.tsx` de la web
-/// (`term.replace(/[%,]/g, " ")`): sin esto, un usuario que escribe una coma
-/// rompe el separador de `.or(...)` y un `%` cambia el propio patrón ilike.
-String sanitizeCatalogSearchTerm(String term) =>
-    term.replaceAll(RegExp(r'[%,]'), ' ');
+/// Saneo de un término de búsqueda antes de meterlo en un patrón `ilike`/`or`
+/// de PostgREST. Reusa [sanitizarIlike] (mismo saneo que el buscador de
+/// negocios): además de `%`/`,`, quita `(`/`)`/`*`, que son delimitadores
+/// estructurales del propio parámetro `or=(...)` — un término como
+/// `taladro (grande)` rompía el grupo y PostgREST devolvía 400.
+String sanitizeCatalogSearchTerm(String term) => sanitizarIlike(term);
 
 /// Paridad con `productHitsQ` de la web (`requests/index.tsx`): catálogo
 /// público de productos/servicios de CUALQUIER proveedor, sin paginación por

@@ -104,13 +104,22 @@ void main() {
   });
 
   group('sanitizeCatalogSearchTerm', () {
-    test('reemplaza % y , por espacio (paridad con la web)', () {
-      expect(sanitizeCatalogSearchTerm('50%, taladro'), '50   taladro');
+    test('quita % y , (paridad con la web)', () {
+      expect(sanitizeCatalogSearchTerm('50%, taladro'), '50 taladro');
     });
 
     test('un término sin caracteres especiales queda igual', () {
       expect(sanitizeCatalogSearchTerm('taladro inalámbrico'),
           'taladro inalámbrico');
+    });
+
+    test('quita paréntesis, que son delimitadores de .or(...) en PostgREST',
+        () {
+      expect(sanitizeCatalogSearchTerm('taladro (grande)'), 'taladro grande');
+    });
+
+    test('quita guion bajo y asterisco (comodines de ilike)', () {
+      expect(sanitizeCatalogSearchTerm('a_b*c'), 'abc');
     });
   });
 
