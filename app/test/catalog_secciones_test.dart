@@ -6,10 +6,10 @@ import 'package:jayalo_app/data/repos.dart'
 import 'package:jayalo_app/features/client/catalog_articulos.dart';
 import 'package:jayalo_app/features/client/catalog_secciones.dart';
 
-// Helpers copiados de `catalog_portada_test.dart` (no se importa un test
-// desde otro test). `biz()` ya trae `description`/`city` (Task 2). `item()`
-// gana `kind` (Task 6 lo necesita para armar Productos/Servicios/Paquetes;
-// no vivía en el helper original de la portada).
+// Helpers heredados del test de la portada que la Task 7 borró (no se importa
+// un test desde otro test). `biz()` ya trae `description`/`city` (Task 2).
+// `item()` gana `kind` (Task 6 lo necesita para armar Productos/Servicios/
+// Paquetes; no vivía en el helper original de la portada).
 BusinessCardInfo biz(String name, {bool local = false}) => (
   name: name,
   logoUrl: null,
@@ -41,7 +41,7 @@ void main() {
     home: Scaffold(body: child),
   );
 
-  /// Viewport ALTO: ver gotcha 2026-09-04 en `catalog_portada_test.dart` —
+  /// Viewport ALTO (gotcha 2026-09-04, heredado del test de la portada):
   /// con 800×600 un `ListView` perezoso no llega a construir las últimas
   /// secciones y un `findsNothing` pasaría en falso.
   void alto(WidgetTester tester) {

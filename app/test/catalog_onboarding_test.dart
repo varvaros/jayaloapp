@@ -14,7 +14,10 @@ void main() {
     await t.pumpWidget(MaterialApp(
       home: CatalogView(
         actions: const [],
-        fetch: ({required kind, search, categoryId, rubro, wholesale = false}) async => [],
+        fetch: ({kind, search, categoryId, rubro, wholesale = false, conPaquetes = true}) async => [],
+        businesses: (ids) async => const {},
+        counts: () async => null,
+        names: (term) async => const [],
       ),
     ));
     await t.pumpAndSettle();

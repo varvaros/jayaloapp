@@ -3,31 +3,47 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/data/repos.dart' show BusinessCardInfo;
-import 'package:jayalo_app/features/client/catalog_portada.dart';
+import 'package:jayalo_app/features/client/catalog_articulos.dart'
+    show Proveedor;
 import 'package:jayalo_app/features/client/catalog_screen.dart';
+import 'package:jayalo_app/features/client/catalog_secciones.dart';
 import 'package:jayalo_app/features/shared/onboarding_store.dart';
 import 'package:jayalo_app/features/shared/star_score.dart';
 import 'package:jayalo_app/features/shared/violet_header.dart';
 
-/// Dobles de las consultas de negocios y conteos, usados como valor por
-/// defecto de `catalogo()` — deben ser funciones de nivel superior: un
+/// Dobles de las consultas de negocios, conteos y nombres, usados como valor
+/// por defecto de `catalogo()` — deben ser funciones de nivel superior: un
 /// closure local no es una "constant expression" válida para un default de
 /// parámetro nombrado.
 Future<Map<String, BusinessCardInfo>> sinNegocios(List<String> ids) async =>
     const {};
-Future<Map<String, int>?> sinConteos(String kind) async => null;
+Future<Map<String, int>?> sinConteos() async => null;
+Future<List<Proveedor>> sinNombres(String term) async => const [];
 
-/// `/catalog` (Task 6, listado): el toggle Producto/Servicio decide el
-/// `kind` que se le pide a `fetch` (paridad con `productHitsQ` de la web,
-/// que SIEMPRE filtra por `kind`), las tarjetas muestran nombre/precio
-/// (fijo y rango, `catalogPriceLabel`), y hay estado vacío con guía y
-/// estado de error con reintento. `fetch` se inyecta (mismo patrón que
-/// `ProviderInboxView`) para probar el widget sin tocar la red.
+const _negocioB1 = (
+  name: 'Ferretería Don Pepe',
+  logoUrl: null,
+  whatsappVerified: false,
+  identityVerified: false,
+  businessVerified: false,
+  hasPhysicalLocation: true,
+  description: null,
+  city: 'Santiago',
+);
+
+Future<Map<String, BusinessCardInfo>> conNegocio(List<String> ids) async =>
+    const {'b1': _negocioB1};
+
+/// `/catalog` (Task 7, catálogo POR ARTÍCULOS): sin toggle Producto/Servicio
+/// en la cabecera — la tira de tipo (Todos · Productos · Servicios · Paquetes
+/// · Proveedores) manda sobre los MISMOS ítems ya cargados, y sin filtro el
+/// cuerpo son las secciones. `fetch`/`businesses`/`counts`/`names` se inyectan
+/// (mismo patrón que `ProviderInboxView`) para probar el widget sin red.
 void main() {
   // Estos tests son sobre el catálogo, no sobre onboarding. La guía welcome
-  // `client.catalog.v1` (Task 6) monta un velo a pantalla completa que
-  // intercepta los taps; marcarla como vista evita que el velo se coma los
-  // taps de estos tests (mismo fix que `my_requests_others_test.dart`).
+  // `client.catalog.v1` monta un velo a pantalla completa que intercepta los
+  // taps; marcarla como vista evita que el velo se coma los taps de estos
+  // tests (mismo fix que `my_requests_others_test.dart`).
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     onboardingStore.reset();
@@ -37,35 +53,50 @@ void main() {
   Widget host(Widget child) =>
       MaterialApp(theme: jayaloTheme(Brightness.light), home: child);
 
-  // Desde Task 5 hay DOS `HeaderSegmented` en pantalla (Producto/Servicio y
-  // Al detalle/Al por mayor) — este finder aísla el primero para los tests
-  // que ya existían y solo les interesa el toggle de tipo.
-  Finder kindSegmented() => find.byWidgetPredicate(
-    (w) => w is HeaderSegmented && w.options.first == 'Producto',
-  );
+  /// `fetch` que siempre devuelve [items], sin mirar los filtros.
+  CatalogFetch fija(List<Map<String, dynamic>> items) =>
+      ({
+        kind,
+        search,
+        categoryId,
+        rubro,
+        wholesale = false,
+        conPaquetes = true,
+      }) async => items;
 
   Future<List<Map<String, dynamic>>> vacio({
-    required String kind,
+    String? kind,
     String? search,
     String? categoryId,
     String? rubro,
     bool wholesale = false,
+    bool conPaquetes = true,
   }) async => [];
 
-  /// `CatalogView` con las consultas de negocios y conteos dobladas: los
-  /// tests que solo miran productos no deben tocar la red.
+  /// `CatalogView` con las consultas de red dobladas: los tests que solo miran
+  /// artículos no deben tocar la red.
   Widget catalogo({
     required CatalogFetch fetch,
     CatalogBusinessesFetch businesses = sinNegocios,
     CatalogCountsFetch counts = sinConteos,
+    CatalogNamesFetch names = sinNombres,
   }) => host(
     CatalogView(
       fetch: fetch,
       businesses: businesses,
       counts: counts,
+      names: names,
       actions: const [],
     ),
   );
+
+  /// Viewport ALTO (400×1600): las secciones apiladas no caben en los 600 de
+  /// alto del viewport por defecto y `ListView` no construye lo que no ve.
+  void viewportSecciones(WidgetTester tester) {
+    addTearDown(tester.view.reset);
+    tester.view.physicalSize = const Size(400, 1600);
+    tester.view.devicePixelRatio = 1;
+  }
 
   final fixedItem = {
     'id': 'p1',
@@ -97,69 +128,64 @@ void main() {
     'kind': 'servicio',
   };
 
-  testWidgets('arranca en Producto y le pide a fetch kind=producto', (
+  final paqueteItem = {
+    'id': 'k1',
+    'user_id': 'u1',
+    'business_id': 'b1',
+    'name': 'Paquete de boda',
+    'description': '',
+    'price': 50000,
+    'price_min': null,
+    'price_max': null,
+    'image_urls': <String>[],
+    'category_id': '',
+    'kind': 'paquete',
+    'items': const ['Salón', 'Comida'],
+  };
+
+  /// Toca un chip de la tira de tipo (`Todos`/`Productos`/…): con viewports
+  /// estrechos la tira se desplaza en horizontal, así que primero se revela.
+  Future<void> tocarTipo(WidgetTester tester, String label) async {
+    final chip = find.text(label).first;
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('la primera carga pide TODOS los kinds y con paquetes', (
     tester,
   ) async {
-    final calls = <String>[];
+    final calls = <Map<String, dynamic>>[];
     Future<List<Map<String, dynamic>>> recorder({
-      required String kind,
+      String? kind,
       String? search,
       String? categoryId,
       String? rubro,
       bool wholesale = false,
+      bool conPaquetes = true,
     }) async {
-      calls.add(kind);
+      calls.add({
+        'kind': kind,
+        'wholesale': wholesale,
+        'conPaquetes': conPaquetes,
+      });
       return [];
     }
 
     await tester.pumpWidget(catalogo(fetch: recorder));
     await tester.pumpAndSettle();
 
-    expect(calls, ['producto']);
-    final toggle = tester.widget<HeaderSegmented>(kindSegmented());
-    expect(toggle.index, 0);
-  });
-
-  testWidgets('tocar "Servicio" vuelve a pedir el catálogo con kind=servicio', (
-    tester,
-  ) async {
-    final calls = <String>[];
-    Future<List<Map<String, dynamic>>> recorder({
-      required String kind,
-      String? search,
-      String? categoryId,
-      String? rubro,
-      bool wholesale = false,
-    }) async {
-      calls.add(kind);
-      return [];
-    }
-
-    await tester.pumpWidget(catalogo(fetch: recorder));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Servicio'));
-    await tester.pumpAndSettle();
-
-    expect(calls, ['producto', 'servicio']);
+    expect(calls, [
+      {'kind': null, 'wholesale': false, 'conPaquetes': true},
+    ]);
+    expect(find.byType(HeaderSegmented), findsNothing);
   });
 
   testWidgets('la tarjeta muestra nombre y precio fijo', (tester) async {
-    await tester.pumpWidget(
-      catalogo(
-        fetch:
-            ({
-              required kind,
-              search,
-              categoryId,
-              rubro,
-              wholesale = false,
-            }) async => [fixedItem],
-      ),
-    );
+    await tester.pumpWidget(catalogo(fetch: fija([fixedItem])));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Ver todo').first);
-    await tester.pumpAndSettle();
+    await tocarTipo(tester, 'Productos');
 
     expect(find.text('Taladro inalámbrico'), findsOneWidget);
     expect(find.text('RD\$1,500'), findsOneWidget);
@@ -168,21 +194,9 @@ void main() {
   testWidgets(
     'la tarjeta muestra el rango de precio cuando no hay precio fijo',
     (tester) async {
-      await tester.pumpWidget(
-        catalogo(
-          fetch:
-              ({
-                required kind,
-                search,
-                categoryId,
-                rubro,
-                wholesale = false,
-              }) async => [rangeItem],
-        ),
-      );
+      await tester.pumpWidget(catalogo(fetch: fija([rangeItem])));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Ver todo').first);
-      await tester.pumpAndSettle();
+      await tocarTipo(tester, 'Servicios');
 
       expect(find.text('Instalación eléctrica'), findsOneWidget);
       expect(find.text('RD\$1,000 - RD\$2,500'), findsOneWidget);
@@ -200,21 +214,9 @@ void main() {
           'colors': ['Rojo', 'Azul'],
         },
       };
-      await tester.pumpWidget(
-        catalogo(
-          fetch:
-              ({
-                required kind,
-                search,
-                categoryId,
-                rubro,
-                wholesale = false,
-              }) async => [conAtributos],
-        ),
-      );
+      await tester.pumpWidget(catalogo(fetch: fija([conAtributos])));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Ver todo').first);
-      await tester.pumpAndSettle();
+      await tocarTipo(tester, 'Productos');
 
       expect(find.text('Taladro inalámbrico'), findsOneWidget);
       expect(find.text('Traslado'), findsNothing);
@@ -237,11 +239,12 @@ void main() {
     (tester) async {
       var attempts = 0;
       Future<List<Map<String, dynamic>>> fallando({
-        required String kind,
+        String? kind,
         String? search,
         String? categoryId,
         String? rubro,
         bool wholesale = false,
+        bool conPaquetes = true,
       }) async {
         attempts++;
         // El `await` real importa: sin él la excepción "completa" el Future
@@ -249,8 +252,6 @@ void main() {
         // FutureBuilder (el `setState` de `_refetch` no reconstruye
         // sincrónicamente), y el test framework lo reporta como no
         // manejado aunque la UI sí lo capture bien vía `snapshot.hasError`.
-        // Cualquier llamada de red real (como `catalogProducts`) ya tiene
-        // ese respiro asíncrono de por sí.
         await Future<void>.delayed(Duration.zero);
         throw Exception('caído');
       }
@@ -273,11 +274,12 @@ void main() {
   ) async {
     final searches = <String?>[];
     Future<List<Map<String, dynamic>>> recorder({
-      required String kind,
+      String? kind,
       String? search,
       String? categoryId,
       String? rubro,
       bool wholesale = false,
+      bool conPaquetes = true,
     }) async {
       searches.add(search);
       return [];
@@ -294,6 +296,43 @@ void main() {
   });
 
   testWidgets(
+    'la búsqueda pide proveedores por nombre y los pinta sobre la rejilla',
+    (tester) async {
+      final pedidos = <String>[];
+      await tester.pumpWidget(
+        catalogo(
+          fetch: fija([fixedItem]),
+          names: (term) async {
+            pedidos.add(term);
+            return const [
+              (
+                id: 'b9',
+                name: 'Ferretería Central',
+                logoUrl: null,
+                hasPhysicalLocation: false,
+                city: null,
+                verificado: false,
+                queHace: '',
+              ),
+            ];
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      // Sin búsqueda NO se piden nombres (una consulta de más por carga).
+      expect(pedidos, isEmpty);
+
+      await tester.enterText(find.byType(TextField), 'ferre');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+
+      expect(pedidos, ['ferre']);
+      expect(find.text('Proveedores que coinciden:'), findsOneWidget);
+      expect(find.text('Ferretería Central'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'la lista no desborda con un nombre largo en un ancho de teléfono típico',
     (tester) async {
       addTearDown(tester.view.reset);
@@ -305,21 +344,9 @@ void main() {
         'id': 'p3',
         'name': 'Set de destornilladores de precisión de 32 piezas',
       };
-      await tester.pumpWidget(
-        catalogo(
-          fetch:
-              ({
-                required kind,
-                search,
-                categoryId,
-                rubro,
-                wholesale = false,
-              }) async => [longName, rangeItem],
-        ),
-      );
+      await tester.pumpWidget(catalogo(fetch: fija([longName, rangeItem])));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Ver todo').first);
-      await tester.pumpAndSettle();
+      await tocarTipo(tester, 'Productos');
 
       expect(tester.takeException(), isNull);
     },
@@ -327,21 +354,15 @@ void main() {
 
   // El catálogo es también la pantalla "Otros proveedores" a la que el
   // proveedor llega APILADA desde el menú del avatar. Empujada debe ofrecer
-  // una flecha de atrás (sin perder el toggle Producto/Servicio); como
-  // pestaña del cliente (sin apilar) no muestra flecha.
-  testWidgets('sin apilar: no hay flecha de atrás, sí el segmentado', (
-    tester,
-  ) async {
+  // una flecha de atrás; como pestaña del cliente (sin apilar) no la muestra.
+  testWidgets('sin apilar: no hay flecha de atrás', (tester) async {
     await tester.pumpWidget(catalogo(fetch: vacio));
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.arrow_back), findsNothing);
-    expect(kindSegmented(), findsOneWidget);
   });
 
-  testWidgets('apilada (canPop): muestra atrás y conserva el segmentado', (
-    tester,
-  ) async {
+  testWidgets('apilada (canPop): muestra la flecha de atrás', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: jayaloTheme(Brightness.light),
@@ -354,6 +375,7 @@ void main() {
                     fetch: vacio,
                     businesses: sinNegocios,
                     counts: sinConteos,
+                    names: sinNombres,
                     actions: const [],
                   ),
                 ),
@@ -370,28 +392,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-    expect(kindSegmented(), findsOneWidget);
   });
 
   testWidgets('la tarjeta muestra la reputación (★ + promedio + conteo)', (
     tester,
   ) async {
     final rated = {...fixedItem, 'avg_rating': 8.7, 'reviews_count': 34};
-    await tester.pumpWidget(
-      catalogo(
-        fetch:
-            ({
-              required kind,
-              search,
-              categoryId,
-              rubro,
-              wholesale = false,
-            }) async => [rated],
-      ),
-    );
+    await tester.pumpWidget(catalogo(fetch: fija([rated])));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Ver todo').first);
-    await tester.pumpAndSettle();
+    await tocarTipo(tester, 'Productos');
 
     // La rejilla (mockup aprobado 2026-08-10) une promedio y conteo en un solo
     // texto compacto, que desde el 2026-08-17 lleva la escala: "8.7/10 (34)".
@@ -400,195 +409,199 @@ void main() {
     expect(find.byType(StarScore), findsOneWidget);
   });
 
-  testWidgets('cambiar de kind limpia categoría, rubro, mayoreo y Ver todo', (
+  testWidgets(
+    'el chip Al por mayor pide kind=producto sin paquetes y pasa a la rejilla',
+    (tester) async {
+      final visto = <Map<String, dynamic>>[];
+      await tester.pumpWidget(
+        catalogo(
+          fetch:
+              ({
+                kind,
+                search,
+                categoryId,
+                rubro,
+                wholesale = false,
+                conPaquetes = true,
+              }) async {
+                visto.add({
+                  'kind': kind,
+                  'wholesale': wholesale,
+                  'conPaquetes': conPaquetes,
+                });
+                return [fixedItem];
+              },
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(CatalogSecciones), findsOneWidget);
+
+      await tester.tap(find.text('Al por mayor'));
+      await tester.pumpAndSettle();
+
+      expect(visto.last, {
+        'kind': 'producto',
+        'wholesale': true,
+        'conPaquetes': false,
+      });
+      expect(find.byType(CatalogSecciones), findsNothing);
+      expect(find.byType(SliverGrid), findsOneWidget);
+    },
+  );
+
+  testWidgets('sin filtro se ven las secciones y no la rejilla', (
     tester,
   ) async {
-    final seen = <Map<String, dynamic>>[];
-    await tester.pumpWidget(
-      catalogo(
-        fetch:
-            ({
-              required kind,
-              search,
-              categoryId,
-              rubro,
-              wholesale = false,
-            }) async {
-              seen.add({
-                'kind': kind,
-                'categoryId': categoryId,
-                'wholesale': wholesale,
-              });
-              return [fixedItem];
-            },
-        counts: (_) async => {'ferreteria': 1},
-      ),
-    );
+    await tester.pumpWidget(catalogo(fetch: fija([fixedItem, rangeItem])));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Ferretería').first); // el chip, no el tile
-    await tester.pumpAndSettle();
-    expect(seen.last['categoryId'], 'ferreteria');
-
-    await tester.tap(find.text('Servicio'));
-    await tester.pumpAndSettle();
-
-    expect(seen.last['kind'], 'servicio');
-    expect(seen.last['categoryId'], isNull);
-    expect(seen.last['wholesale'], isFalse);
-    expect(find.byType(CatalogPortada), findsOneWidget);
-  });
-
-  testWidgets('el chip Al por mayor filtra el catálogo y pasa a la rejilla', (
-    tester,
-  ) async {
-    final wholesaleSeen = <bool>[];
-    await tester.pumpWidget(
-      catalogo(
-        fetch:
-            ({
-              required kind,
-              search,
-              categoryId,
-              rubro,
-              wholesale = false,
-            }) async {
-              wholesaleSeen.add(wholesale);
-              return [fixedItem];
-            },
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byType(CatalogPortada), findsOneWidget);
-
-    await tester.tap(find.text('Al por mayor'));
-    await tester.pumpAndSettle();
-
-    expect(wholesaleSeen.last, isTrue);
-    expect(find.byType(CatalogPortada), findsNothing);
-    expect(find.byType(SliverGrid), findsOneWidget);
-  });
-
-  testWidgets('en Servicio se oculta el toggle de mayoreo y se re-pide con '
-      'wholesale=false (mayoreo es solo productos)', (tester) async {
-    final wholesaleSeen = <bool>[];
-    await tester.pumpWidget(
-      catalogo(
-        fetch:
-            ({
-              required kind,
-              search,
-              categoryId,
-              rubro,
-              wholesale = false,
-            }) async {
-              wholesaleSeen.add(wholesale);
-              return [];
-            },
-      ),
-    );
-    await tester.pumpAndSettle();
-    // En Producto el toggle está visible.
-    expect(find.text('Al por mayor'), findsOneWidget);
-    // Enciende mayoreo y luego cambia a Servicio.
-    await tester.tap(find.text('Al por mayor'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Servicio'));
-    await tester.pumpAndSettle();
-    // El toggle desaparece y el catálogo se re-pide sin mayoreo.
-    expect(find.text('Al por mayor'), findsNothing);
-    expect(wholesaleSeen.last, isFalse);
-  });
-
-  testWidgets('sin filtro se ve la portada y no la rejilla', (tester) async {
-    await tester.pumpWidget(
-      catalogo(
-        fetch:
-            ({
-              required kind,
-              search,
-              categoryId,
-              rubro,
-              wholesale = false,
-            }) async => [fixedItem, rangeItem],
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byType(CatalogPortada), findsOneWidget);
-    expect(find.text('Recién publicados'), findsOneWidget);
+    expect(find.byType(CatalogSecciones), findsOneWidget);
     expect(find.byType(SliverGrid), findsNothing);
   });
 
   testWidgets(
-    'tocar un chip de categoría filtra y pasa a la rejilla; «Todo» vuelve',
+    'con ítems de los tres tipos pinta las cuatro secciones en orden',
+    (tester) async {
+      viewportSecciones(tester);
+      await tester.pumpWidget(
+        catalogo(
+          fetch: fija([
+            fixedItem,
+            {...rangeItem, 'business_id': 'b1'},
+            paqueteItem,
+          ]),
+          businesses: conNegocio,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final titulos = tester
+          .widgetList<SeccionTitulo>(find.byType(SeccionTitulo))
+          .map((w) => w.titulo)
+          .toList();
+      expect(titulos, ['Proveedores', 'Productos', 'Servicios', 'Paquetes']);
+    },
+  );
+
+  testWidgets('«Ver todos» de Paquetes deja la rejilla de paquetes', (
+    tester,
+  ) async {
+    viewportSecciones(tester);
+    var llamadas = 0;
+    await tester.pumpWidget(
+      catalogo(
+        fetch:
+            ({
+              kind,
+              search,
+              categoryId,
+              rubro,
+              wholesale = false,
+              conPaquetes = true,
+            }) async {
+              llamadas++;
+              return [fixedItem, rangeItem, paqueteItem];
+            },
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(llamadas, 1);
+
+    final verTodosPaquetes = find.descendant(
+      of: find.ancestor(
+        of: find.text('Paquetes'),
+        matching: find.byType(SeccionTitulo),
+      ),
+      matching: find.text('Ver todos'),
+    );
+    await tester.ensureVisible(verTodosPaquetes);
+    await tester.pumpAndSettle();
+    await tester.tap(verTodosPaquetes);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SliverGrid), findsOneWidget);
+    expect(find.text('Paquete de boda'), findsOneWidget);
+    expect(find.text('Taladro inalámbrico'), findsNothing);
+    // Misma carga, otro cuerpo: cambiar de tipo NO vuelve a pedir.
+    expect(llamadas, 1);
+  });
+
+  testWidgets('el tipo Proveedores muestra la lista de proveedores', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      catalogo(fetch: fija([fixedItem]), businesses: conNegocio),
+    );
+    await tester.pumpAndSettle();
+    await tocarTipo(tester, 'Proveedores');
+
+    expect(find.byType(ProveedorCard), findsOneWidget);
+    expect(find.text('Ferretería Don Pepe'), findsOneWidget);
+    expect(find.byType(SliverGrid), findsNothing);
+  });
+
+  testWidgets(
+    '«Quitar filtro» del tipo vacío vuelve a Todos y a las secciones',
+    (tester) async {
+      await tester.pumpWidget(
+        catalogo(fetch: fija([fixedItem]), businesses: conNegocio),
+      );
+      await tester.pumpAndSettle();
+      // Sin paquetes cargados, el tipo Paquetes deja la pantalla vacía.
+      await tocarTipo(tester, 'Paquetes');
+      expect(
+        find.textContaining('No hay artículos que coincidan'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Quitar filtro'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CatalogSecciones), findsOneWidget);
+    },
+  );
+
+  testWidgets('el tipo Proveedores vacío lleva su propio copy', (tester) async {
+    await tester.pumpWidget(catalogo(fetch: fija([fixedItem])));
+    await tester.pumpAndSettle();
+    await tocarTipo(tester, 'Proveedores');
+
+    expect(
+      find.text('No hay proveedores que coincidan con tu filtro.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'tocar un chip de categoría vuelve a pedir con ella; «Todo» la quita',
     (tester) async {
       final cats = <String?>[];
       await tester.pumpWidget(
         catalogo(
           fetch:
               ({
-                required kind,
+                kind,
                 search,
                 categoryId,
                 rubro,
                 wholesale = false,
+                conPaquetes = true,
               }) async {
                 cats.add(categoryId);
                 return [fixedItem];
               },
-          counts: (_) async => {'ferreteria': 1, 'hogar': 2},
+          counts: () async => {'ferreteria': 1, 'hogar': 2},
         ),
       );
       await tester.pumpAndSettle();
-      // El chip Y el tile de «Por categoría» dicen «Ferretería»; el chip va
-      // primero en el árbol (cabecera de la lista).
-      expect(find.text('Ferretería'), findsWidgets);
 
       await tester.tap(find.text('Ferretería').first);
       await tester.pumpAndSettle();
       expect(cats.last, 'ferreteria');
-      expect(find.byType(SliverGrid), findsOneWidget);
-      expect(find.byType(CatalogPortada), findsNothing);
 
       await tester.tap(find.text('Todo'));
       await tester.pumpAndSettle();
       expect(cats.last, isNull);
-      expect(find.byType(CatalogPortada), findsOneWidget);
-    },
-  );
-
-  testWidgets(
-    '«Ver todo» enseña la rejilla sin re-pedir ni filtrar; «Todo» vuelve',
-    (tester) async {
-      var llamadas = 0;
-      await tester.pumpWidget(
-        catalogo(
-          fetch:
-              ({
-                required kind,
-                search,
-                categoryId,
-                rubro,
-                wholesale = false,
-              }) async {
-                llamadas++;
-                expect(categoryId, isNull);
-                expect(wholesale, isFalse);
-                return [fixedItem];
-              },
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(llamadas, 1);
-
-      await tester.tap(find.text('Ver todo').first);
-      await tester.pumpAndSettle();
-      expect(find.byType(SliverGrid), findsOneWidget);
-      expect(llamadas, 1); // misma carga, otro cuerpo
-
-      await tester.tap(find.text('Todo'));
-      await tester.pumpAndSettle();
-      expect(find.byType(CatalogPortada), findsOneWidget);
-      expect(llamadas, 1);
+      expect(find.byType(CatalogSecciones), findsOneWidget);
     },
   );
 
@@ -596,32 +609,11 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      catalogo(
-        fetch:
-            ({
-              required kind,
-              search,
-              categoryId,
-              rubro,
-              wholesale = false,
-            }) async => [fixedItem],
-        businesses: (ids) async => {
-          'b1': (
-            name: 'Ferretería Don Pepe',
-            logoUrl: null,
-            whatsappVerified: false,
-            identityVerified: false,
-            businessVerified: false,
-            hasPhysicalLocation: true,
-            description: null,
-            city: null,
-          ),
-        },
-      ),
+      catalogo(fetch: fija([fixedItem]), businesses: conNegocio),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Ver todo').first);
-    await tester.pumpAndSettle();
+    await tocarTipo(tester, 'Productos');
+
     expect(find.textContaining('Ferretería Don Pepe'), findsOneWidget);
     expect(find.textContaining('Tienda física'), findsOneWidget);
   });
@@ -631,14 +623,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       catalogo(
-        fetch:
-            ({
-              required kind,
-              search,
-              categoryId,
-              rubro,
-              wholesale = false,
-            }) async => [fixedItem],
+        fetch: fija([fixedItem]),
         businesses: (ids) async {
           await Future<void>.delayed(Duration.zero);
           throw Exception('caído');
@@ -647,27 +632,27 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Reintentar'), findsNothing);
-    expect(find.text('Recién publicados'), findsOneWidget);
-    expect(find.text('Tiendas'), findsNothing);
+    expect(find.byType(CatalogSecciones), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    '«Quitar filtro» del estado vacío limpia todo y vuelve a la portada',
+    '«Quitar filtro» del estado vacío limpia todo y vuelve a las secciones',
     (tester) async {
       var vez = 0;
       await tester.pumpWidget(
         catalogo(
           fetch:
               ({
-                required kind,
+                kind,
                 search,
                 categoryId,
                 rubro,
                 wholesale = false,
+                conPaquetes = true,
               }) async {
                 vez++;
-                // Primera carga: hay artículos. Con filtro: nada.
+                // Primera carga: hay artículos. Con mayoreo: nada.
                 return wholesale ? [] : [fixedItem];
               },
         ),
@@ -682,22 +667,22 @@ void main() {
 
       await tester.tap(find.text('Quitar filtro'));
       await tester.pumpAndSettle();
-      expect(find.byType(CatalogPortada), findsOneWidget);
+      expect(find.byType(CatalogSecciones), findsOneWidget);
       expect(vez, 3);
     },
   );
 
   testWidgets(
-    'la cabecera lleva el título a la izquierda y el segmentado compacto',
+    'la cabecera lleva el título a la izquierda y ya no el segmentado',
     (tester) async {
       await tester.pumpWidget(catalogo(fetch: vacio));
       await tester.pumpAndSettle();
       final header = tester.widget<VioletHeader>(find.byType(VioletHeader));
       expect(header.title, 'Catálogo');
       expect(header.titleAlign, HeaderTitleAlign.start);
-      final seg = tester.widget<HeaderSegmented>(kindSegmented());
-      expect(seg.compact, isTrue);
-      expect(find.text('Al detalle'), findsNothing);
+      expect(find.byType(HeaderSegmented), findsNothing);
+      expect(find.text('Producto'), findsNothing);
+      expect(find.text('Servicio'), findsNothing);
     },
   );
 
@@ -709,16 +694,17 @@ void main() {
       catalogo(
         fetch:
             ({
-              required kind,
+              kind,
               search,
               categoryId,
               rubro,
               wholesale = false,
+              conPaquetes = true,
             }) async {
               llamadas++;
               return [fixedItem];
             },
-        counts: (_) async => {'ferreteria': 1},
+        counts: () async => {'ferreteria': 1},
       ),
     );
     await tester.pumpAndSettle();
@@ -728,30 +714,5 @@ void main() {
     await tester.tap(find.text('Ferretería').first);
     await tester.pumpAndSettle();
     expect(llamadas, 2);
-  });
-
-  testWidgets('tocar el segmento de kind ya activo no vuelve a pedir', (
-    tester,
-  ) async {
-    var llamadas = 0;
-    await tester.pumpWidget(
-      catalogo(
-        fetch:
-            ({
-              required kind,
-              search,
-              categoryId,
-              rubro,
-              wholesale = false,
-            }) async {
-              llamadas++;
-              return [fixedItem];
-            },
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Producto'));
-    await tester.pumpAndSettle();
-    expect(llamadas, 1);
   });
 }

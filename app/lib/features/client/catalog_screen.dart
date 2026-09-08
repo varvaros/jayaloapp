@@ -12,37 +12,42 @@ import '../shared/onboarding_guide.dart';
 import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
-import 'catalog_articulos.dart' show kSinFiltros;
+import 'catalog_articulos.dart';
 import 'catalog_chip_strip.dart';
 import 'catalog_filter_sheet.dart';
 import 'catalog_header_widgets.dart';
-import 'catalog_portada.dart';
+import 'catalog_secciones.dart';
+import 'catalog_tipo_strip.dart';
 
-/// Signature de la fuente de datos del catálogo (paridad `productHitsQ` de la
-/// web). Inyectada en [CatalogView] para poder probar la pantalla sin red —
-/// mismo patrón que `InboxFetch` en `provider/inbox_screen.dart`.
+/// Fuente de datos del catálogo POR ARTÍCULOS (productos, servicios y paquetes
+/// en la MISMA carga). Inyectada en [CatalogView] para probar la pantalla sin
+/// red — mismo patrón que `InboxFetch` en `provider/inbox_screen.dart`.
 typedef CatalogFetch =
     Future<List<Map<String, dynamic>>> Function({
-      required String kind,
+      String? kind,
       String? search,
       String? categoryId,
       String? rubro,
       bool wholesale,
+      bool conPaquetes,
     });
 
-/// Cabecera de los negocios dueños de los ítems, por lote (nombre, logo, local).
-/// Best-effort: si falla, la pantalla se pinta sin tienda.
+/// Cabecera de los negocios dueños de los ítems, por lote.
 typedef CatalogBusinessesFetch =
     Future<Map<String, BusinessCardInfo>> Function(List<String> businessIds);
 
-/// Conteo de artículos por categoría del kind (RPC `get_product_counts`).
-/// `null` = no llegó: chips completos y sin sección «Por categoría».
-typedef CatalogCountsFetch = Future<Map<String, int>?> Function(String kind);
+/// Conteo por categoría de productos Y servicios juntos; `null` = no llegó.
+typedef CatalogCountsFetch = Future<Map<String, int>?> Function();
 
-/// Una carga del catálogo: los ítems y la cabecera de sus negocios.
+/// Proveedores cuyo NOMBRE coincide con la búsqueda (no solo los dueños).
+typedef CatalogNamesFetch = Future<List<Proveedor>> Function(String term);
+
+/// Una carga: ítems, cabecera de sus negocios y proveedores que coinciden por
+/// nombre con la búsqueda (vacío sin búsqueda).
 typedef CatalogPage = ({
   List<Map<String, dynamic>> items,
   Map<String, BusinessCardInfo> negocios,
+  List<Proveedor> nombres,
 });
 
 /// Pestaña Catálogo. `?focus=1` (desde el buscador de Mis solicitudes) abre
@@ -52,24 +57,24 @@ class CatalogScreen extends StatelessWidget {
   final bool autofocusSearch;
 
   @override
-  Widget build(BuildContext context) => CatalogView(
-    fetch: catalogProductsWithRatings,
-    autofocusSearch: autofocusSearch,
-  );
+  Widget build(BuildContext context) =>
+      CatalogView(autofocusSearch: autofocusSearch);
 }
 
-/// Cabecera + tira de chips + UN cuerpo de dos posibles (PO 2026-09-05,
-/// camino 3): la PORTADA por secciones cuando no hay filtro, la REJILLA de dos
-/// columnas cuando lo hay (categoría, mayoreo, búsqueda o «Ver todo»).
-/// StatefulWidget con su propio [ScrollController] (nunca
-/// `homeScrollController`: el `AnimatedSwitcher` del shell y `BackGuard`
-/// revientan si dos pantallas comparten un único controller).
+/// Cabecera + tira de tipo + tira de chips + UN cuerpo de tres posibles (PO
+/// 2026-09-07, catálogo por artículos): las SECCIONES con «Todos» y sin
+/// búsqueda ni mayoreo, la LISTA de proveedores en el tipo Proveedores, y la
+/// REJILLA en cualquier otro caso. Crear una solicitud NO vive aquí: está en
+/// el «+» de la navbar flotante (doctrina PO). StatefulWidget con su propio
+/// [ScrollController] (nunca `homeScrollController`: el `AnimatedSwitcher` del
+/// shell y `BackGuard` revientan si dos pantallas comparten uno).
 class CatalogView extends StatefulWidget {
   const CatalogView({
     super.key,
-    required this.fetch,
+    this.fetch = catalogItemsWithRatings,
     this.businesses = businessesCardInfo,
-    this.counts = categoryCountsForKind,
+    this.counts = categoryCountsUnion,
+    this.names = catalogBusinessesByName,
     this.actions = const [HeaderBell()],
     this.autofocusSearch = false,
   });
@@ -77,6 +82,7 @@ class CatalogView extends StatefulWidget {
   final CatalogFetch fetch;
   final CatalogBusinessesFetch businesses;
   final CatalogCountsFetch counts;
+  final CatalogNamesFetch names;
   final List<Widget> actions;
   final bool autofocusSearch;
 
@@ -85,19 +91,27 @@ class CatalogView extends StatefulWidget {
 }
 
 class _CatalogViewState extends State<CatalogView> {
-  String _kind = 'producto';
+  /// `todos | producto | servicio | paquete | proveedor` (claves de
+  /// [CatalogTipoStrip]). Filtra EN CLIENTE la misma carga: no re-pide.
+  String _tipo = 'todos';
   String? _search;
   String? _categoryId;
   String? _rubro;
   bool _wholesale = false;
 
-  /// «Ver todo» de Recién publicados: la rejilla SIN filtro. Se apaga al tocar
-  /// «Todo» o al cambiar de kind. No re-pide nada: misma carga, otro cuerpo.
-  bool _verTodo = false;
+  /// Ciudad/precio/verificado/local: de cliente, como en la web.
+  FiltrosLateral _filtros = kSinFiltros;
 
-  /// Conteos por categoría del kind activo; `null` mientras llegan o si la
-  /// RPC falló. Se piden una vez por kind.
+  /// Conteos por categoría; `null` mientras llegan o si la RPC falló.
   Map<String, int>? _counts;
+
+  /// Rubros de la categoría activa (segunda fila de chips).
+  List<String> _rubros = const [];
+
+  /// Ciudades de la última carga, para la hoja de filtros. Se cachea desde
+  /// `build` (sin `setState`): la hoja se abre desde la cabecera, fuera del
+  /// `FutureBuilder` que conoce los negocios.
+  List<String> _ciudades = const [];
 
   final _searchCtrl = TextEditingController();
   final _scrollController = ScrollController();
@@ -106,9 +120,34 @@ class _CatalogViewState extends State<CatalogView> {
   /// la flecha — mismo gesto que Tus solicitudes).
   bool _headerHidden = false;
 
-  /// Regla de la spec §2.3: con cualquier filtro se pinta la rejilla.
+  /// Las secciones son la portada: solo con «Todos», sin búsqueda y sin
+  /// mayoreo (una categoría activa las conserva, ya filtradas).
+  bool get _verSecciones => _tipo == 'todos' && _search == null && !_wholesale;
+
+  /// Filtros del lateral puestos (para la píldora «Filtrar · n»).
+  int get _nLateral =>
+      (_filtros.ciudad != null ? 1 : 0) +
+      (_filtros.precioMin > 0 ? 1 : 0) +
+      (_filtros.precioMax > 0 ? 1 : 0) +
+      (_filtros.soloVerificados ? 1 : 0) +
+      (_filtros.conLocal ? 1 : 0);
+
+  bool get _pildoraActiva => _categoryId != null || _nLateral > 0;
+
+  /// Etiqueta de la píldora: la categoría, o cuántos filtros del lateral hay
+  /// puestos, o «Filtrar» a secas.
+  String get _pildoraLabel =>
+      (_categoryId == null ? null : categoryNameById(_categoryId)) ??
+      (_nLateral > 0 ? 'Filtrar · $_nLateral' : 'Filtrar');
+
+  /// Hay algo que quitar: lo dice el CTA «Quitar filtro» del estado vacío.
   bool get _filtrado =>
-      _categoryId != null || _wholesale || _search != null || _verTodo;
+      _tipo != 'todos' ||
+      _categoryId != null ||
+      _rubro != null ||
+      _search != null ||
+      _wholesale ||
+      _filtros != kSinFiltros;
 
   /// Esconde/muestra el header COMPLETO según la DIRECCIÓN del gesto (calco de
   /// `my_requests_screen`). Solo `UserScrollNotification` — ignora el relayout
@@ -126,46 +165,66 @@ class _CatalogViewState extends State<CatalogView> {
 
   late Future<CatalogPage> _load = _fetchPage();
 
-  /// Productos (+ valoraciones, ya horneadas por `fetch`) y, en una segunda
-  /// llamada por lote, la cabecera de sus negocios. La segunda es un adorno:
-  /// si falla, se sigue sin tienda — NUNCA se tira la pantalla a error. Va
-  /// EN SERIE tras los productos (sus ids salen de ellos), con tope de 4 s.
+  /// Adorno de la carga: tope de 4 s y, ante cualquier fallo, [vacio] — nunca
+  /// una pantalla de error. El `async` de [reificado] es OBLIGATORIO: un doble
+  /// inyectado (test) cuyo cuerpo SOLO lanza se infiere como `Future<Never>`, y
+  /// `.timeout()` DIRECTO sobre ese objeto revienta en tiempo de ejecución al
+  /// comparar `onTimeout` contra `Never` (gotcha de Dart: covarianza de
+  /// `Future`; `Future<T>.sync` NO basta, devuelve el mismo objeto).
+  Future<T> _adorno<T>(Future<T> Function() pedir, T vacio) async {
+    Future<T> reificado() async => pedir();
+    try {
+      return await reificado().timeout(
+        const Duration(seconds: 4),
+        onTimeout: () => vacio,
+      );
+    } catch (_) {
+      return vacio;
+    }
+  }
+
+  /// Artículos y, EN SERIE tras ellos (sus ids salen de ahí), los adornos: la
+  /// cabecera de sus negocios y —solo con búsqueda— los proveedores por nombre.
+  /// `kind`: con mayoreo solo hay productos (es de `provider_products`); sin
+  /// él, los tres tipos. `conPaquetes`: un paquete no tiene categoría, rubro ni
+  /// mayoreo en la base, así que con esos filtros no podría respetarlos.
   Future<CatalogPage> _fetchPage() async {
+    final search = _search;
     final items = await widget.fetch(
-      kind: _kind,
-      search: _search,
+      kind: _wholesale ? 'producto' : null,
+      search: search,
       categoryId: _categoryId,
       rubro: _rubro,
       wholesale: _wholesale,
+      conPaquetes: !_wholesale && _categoryId == null && _rubro == null,
     );
     final ids = <String>{
       for (final it in items)
         if (it['business_id'] is String) it['business_id'] as String,
     }.toList();
-    Map<String, BusinessCardInfo> negocios;
-    try {
-      // Tope de 4 s: si la consulta de negocios se cuelga, sale sin tienda.
-      // `_negocios(ids)` (async, con tipo de retorno explícito) re-reifica el
-      // future: un `businesses` inyectado (test) cuyo cuerpo SOLO lanza se
-      // infiere como `Future<Never>`, y `.timeout()` DIRECTO sobre ese objeto
-      // revienta en tiempo de ejecución al comparar `onTimeout` contra
-      // `Never` (gotcha de Dart: covarianza de `Future`).
-      negocios = await _negocios(
-        ids,
-      ).timeout(const Duration(seconds: 4), onTimeout: () => const {});
-    } catch (_) {
-      negocios = const {};
-    }
-    return (items: items, negocios: negocios);
+    final negocios = await _adorno(
+      () => widget.businesses(ids),
+      const <String, BusinessCardInfo>{},
+    );
+    final nombres = search == null
+        ? const <Proveedor>[]
+        : await _adorno(() => widget.names(search), const <Proveedor>[]);
+    return (items: items, negocios: negocios, nombres: nombres);
   }
 
-  Future<Map<String, BusinessCardInfo>> _negocios(List<String> ids) async =>
-      widget.businesses(ids);
-
   void _loadCounts() {
-    final kind = _kind;
-    widget.counts(kind).then((c) {
-      if (mounted && _kind == kind) setState(() => _counts = c);
+    widget.counts().then((c) {
+      if (mounted) setState(() => _counts = c);
+    }, onError: (_) {});
+  }
+
+  /// Rubros de la categoría elegida. Best-effort: ante un fallo, fila vacía.
+  void _loadRubros(String? categoryId) {
+    setState(() => _rubros = const []);
+    if (categoryId == null) return;
+    rubrosForCategories([categoryId]).then((rows) {
+      if (!mounted || _categoryId != categoryId) return;
+      setState(() => _rubros = [for (final r in rows) r['name'] as String]);
     }, onError: (_) {});
   }
 
@@ -199,71 +258,72 @@ class _CatalogViewState extends State<CatalogView> {
     _refetch();
   }
 
-  /// Mutador de categoría/rubro: reemplaza ambos a la vez porque un rubro
-  /// siempre vive dentro de una categoría.
+  /// Tipo activo: NO re-pide nada — misma carga, otro cuerpo.
+  void _setTipo(String tipo) => setState(() => _tipo = tipo);
+
+  /// Categoría y rubro se reemplazan a la vez (un rubro vive dentro de una
+  /// categoría) y SÍ re-piden: los filtra el servidor.
   void _applyFilter({String? categoryId, String? rubro}) {
     setState(() {
       _categoryId = categoryId;
       _rubro = rubro;
-      _verTodo = false;
     });
     _refetch();
+    _loadRubros(categoryId);
   }
 
-  /// Chip «Todo»: quita categoría/rubro y apaga «Ver todo». Solo re-pide si
-  /// había categoría (apagar «Ver todo» no cambia la carga).
-  void _volverAPortada() {
-    final habiaCategoria = _categoryId != null || _rubro != null;
-    setState(() {
-      _categoryId = null;
-      _rubro = null;
-      _verTodo = false;
-    });
-    if (habiaCategoria) _refetch();
+  /// ✕ de la píldora: quita lo que la píldora dice — categoría/rubro y los
+  /// filtros del lateral, que también cuentan en su etiqueta.
+  void _limpiarPildora() {
+    setState(() => _filtros = kSinFiltros);
+    if (_categoryId != null || _rubro != null) _applyFilter();
   }
 
-  /// «Quitar filtro» del estado vacío: limpia TODO y vuelve a la portada.
+  /// «Quitar filtro» del estado vacío: limpia TODO y vuelve a las secciones.
   void _quitarTodo() {
     _searchCtrl.clear();
     setState(() {
-      _search = null;
-      _categoryId = null;
-      _rubro = null;
+      _tipo = 'todos';
+      _search = _categoryId = _rubro = null;
       _wholesale = false;
-      _verTodo = false;
+      _filtros = kSinFiltros;
+      _rubros = const [];
     });
     _refetch();
   }
 
+  /// La hoja devuelve TODO el filtro. Solo se re-pide si cambió lo que filtra
+  /// el SERVIDOR: el lateral es de cliente.
   Future<void> _openFilter() async {
     final res = await showCatalogFilterSheet(
       context,
       categoryId: _categoryId,
       rubro: _rubro,
-      ciudades: const [],
-      filtros: kSinFiltros,
+      ciudades: _ciudades,
+      filtros: _filtros,
     );
-    if (res != null) _applyFilter(categoryId: res.categoryId, rubro: res.rubro);
+    if (res == null || !mounted) return;
+    final cambia = res.categoryId != _categoryId || res.rubro != _rubro;
+    setState(() {
+      _filtros = (
+        ciudad: res.ciudad,
+        precioMin: res.precioMin,
+        precioMax: res.precioMax,
+        soloVerificados: res.soloVerificados,
+        conLocal: res.conLocal,
+      );
+      _categoryId = res.categoryId;
+      _rubro = res.rubro;
+    });
+    if (cambia) {
+      _refetch();
+      _loadRubros(res.categoryId);
+    }
   }
 
   void _toggleWholesale(bool on) {
     setState(() => _wholesale = on);
     _refetch();
-  }
-
-  void _changeKind(int i) {
-    if (i == (_kind == 'producto' ? 0 : 1)) return;
-    setState(() {
-      _kind = i == 0 ? 'producto' : 'servicio';
-      _categoryId = null; // cambiar de kind limpia el filtro
-      _rubro = null;
-      _verTodo = false;
-      _counts = null;
-      // El mayoreo es SOLO de productos (paridad web).
-      if (_kind == 'servicio') _wholesale = false;
-    });
-    _refetch();
-    _loadCounts();
   }
 
   @override
@@ -273,54 +333,80 @@ class _CatalogViewState extends State<CatalogView> {
     super.dispose();
   }
 
-  Widget _chips() => CatalogChipStrip(
-    categorias: categoriasNavegables(
-      kCategories,
-      _counts?.keys.toSet(),
-      seleccionada: _categoryId,
-    ),
-    categoryId: _categoryId,
-    wholesale: _kind == 'producto' ? _wholesale : null,
-    onWholesale: _toggleWholesale,
-    onCategory: (id) {
-      if (id != _categoryId) _applyFilter(categoryId: id);
-    },
-    onTodo: _volverAPortada,
-    // Task 7 los conecta a la hoja de filtros; hasta entonces, sin fila de
-    // rubros.
-    rubros: const [],
-    rubro: null,
-    onRubro: (_) {},
+  void _abrirTienda(String id) => context.push('/store/$id');
+
+  Widget _chips(Map<String, int> conteos) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      CatalogTipoStrip(tipo: _tipo, conteos: conteos, onTipo: _setTipo),
+      CatalogChipStrip(
+        categorias: categoriasNavegables(
+          kCategories,
+          _counts?.keys.toSet(),
+          seleccionada: _categoryId,
+        ),
+        categoryId: _categoryId,
+        // El mayoreo es SOLO de productos (paridad web).
+        wholesale: _tipo == 'todos' || _tipo == 'producto' ? _wholesale : null,
+        onWholesale: _toggleWholesale,
+        onCategory: (id) {
+          if (id != _categoryId) _applyFilter(categoryId: id);
+        },
+        // «Todo»: sin categoría ni rubro no hay nada que re-pedir.
+        onTodo: () {
+          if (_categoryId != null || _rubro != null) _applyFilter();
+        },
+        rubros: _categoryId == null ? const [] : _rubros,
+        rubro: _rubro,
+        onRubro: (r) => _applyFilter(categoryId: _categoryId, rubro: r),
+      ),
+    ],
   );
 
-  Widget _rejilla(CatalogPage page) => LayoutBuilder(
+  Widget _rejilla(
+    List<Map<String, dynamic>> items,
+    CatalogPage page,
+    Map<String, int> conteos,
+    List<Proveedor> coinciden,
+  ) => LayoutBuilder(
     builder: (context, box) {
       final cellWidth = (box.maxWidth - 32 - 11) / 2;
+      final alto = catalogGridCardExtent(
+        context,
+        cellWidth,
+        conIncluido: _tipo == 'paquete',
+      );
       return CustomScrollView(
         controller: _scrollController,
         slivers: [
-          SliverToBoxAdapter(child: _chips()),
-          SliverPadding(
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 10,
-              bottom: 12 + navBarReservedSpace(context),
+          SliverToBoxAdapter(child: _chips(conteos)),
+          if (_search != null)
+            SliverToBoxAdapter(
+              child: ProveedoresCoinciden(
+                proveedores: coinciden,
+                onStore: _abrirTienda,
+              ),
             ),
-            sliver: SliverGrid(
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              10,
+              16,
+              12 + navBarReservedSpace(context),
+            ),
+            sliver: SliverGrid.builder(
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 crossAxisSpacing: 11,
                 mainAxisSpacing: 11,
-                mainAxisExtent: catalogGridCardExtent(context, cellWidth),
+                mainAxisExtent: alto,
               ),
-              delegate: SliverChildBuilderDelegate(
-                (_, i) => ProductGridCard(
-                  item: page.items[i],
-                  negocio: page.negocios[page.items[i]['business_id']],
-                ).cascadeIn(i),
-                childCount: page.items.length,
-              ),
+              itemCount: items.length,
+              itemBuilder: (_, i) => ProductGridCard(
+                item: items[i],
+                negocio: page.negocios[items[i]['business_id']],
+                showTypeTag: true,
+              ).cascadeIn(i),
             ),
           ),
         ],
@@ -328,24 +414,30 @@ class _CatalogViewState extends State<CatalogView> {
     },
   );
 
-  Widget _portada(CatalogPage page) => CatalogPortada(
-    controller: _scrollController,
-    header: _chips(),
-    items: page.items,
-    negocios: page.negocios,
-    counts: _counts,
-    onVerTodo: () => setState(() => _verTodo = true),
-    onCategory: (id) => _applyFilter(categoryId: id),
-    onStore: (id) => context.push('/store/$id'),
-  );
+  Widget _listaProveedores(List<Proveedor> ps, Map<String, int> conteos) =>
+      ListView(
+        controller: _scrollController,
+        padding: EdgeInsets.only(bottom: 12 + navBarReservedSpace(context)),
+        children: [
+          _chips(conteos),
+          const SizedBox(height: 6),
+          for (var i = 0; i < ps.length; i++)
+            ProveedorCard(
+              p: ps[i],
+              onTap: () => _abrirTienda(ps[i].id),
+            ).cascadeIn(i),
+        ],
+      );
 
-  Widget _vacio() => Column(
+  Widget _vacio(Map<String, int> conteos) => Column(
     children: [
-      _chips(),
+      _chips(conteos),
       Expanded(
         child: EmptyState(
           controller: _scrollController,
-          message: _filtrado
+          message: _tipo == 'proveedor'
+              ? 'No hay proveedores que coincidan con tu filtro.'
+              : _filtrado
               ? 'No hay artículos que coincidan con tu filtro.'
               : 'Aún no hay artículos publicados en esta '
                     'categoría.\n\nVuelve más tarde: los '
@@ -357,6 +449,104 @@ class _CatalogViewState extends State<CatalogView> {
     ],
   );
 
+  /// Cuerpo con los derivados PUROS de la carga (`catalog_articulos.dart`):
+  /// nada pide red, todo sale de `page` y de los filtros vigentes. El tope 90
+  /// es para la LISTA del tipo Proveedores (el riel recorta por su cuenta).
+  Widget _cuerpo(CatalogPage page) {
+    final negociosCat = {
+      for (final e in page.negocios.entries) e.key: negocioCatalogoDe(e.value),
+    };
+    final hits = ordenarCatalogo(
+      filtrarLateral(page.items, negociosCat, _filtros),
+    );
+    final proveedores = proveedoresDeItems(hits, negociosCat, tope: 90);
+    int n(String k) => hits.where((it) => tipoDeItem(it) == k).length;
+    final conteos = {
+      'todos': hits.length,
+      'producto': n('producto'),
+      'servicio': n('servicio'),
+      'paquete': n('paquete'),
+      'proveedor': proveedores.length,
+    };
+    final hitsDeTipo = _tipo == 'todos'
+        ? hits
+        : hits.where((it) => tipoDeItem(it) == _tipo).toList();
+    _ciudades = ciudadesDe(negociosCat, seleccionada: _filtros.ciudad);
+    final hayQuePintar = _tipo == 'proveedor'
+        ? proveedores.isNotEmpty
+        : hitsDeTipo.isNotEmpty;
+
+    if (!hayQuePintar) return _vacio(conteos);
+    if (_verSecciones) {
+      return CatalogSecciones(
+        controller: _scrollController,
+        header: _chips(conteos),
+        items: hits,
+        negocios: page.negocios,
+        proveedores: proveedores,
+        conteos: (
+          productos: conteos['producto']!,
+          servicios: conteos['servicio']!,
+          paquetes: conteos['paquete']!,
+          proveedores: proveedores.length,
+        ),
+        onVerTodos: _setTipo,
+        onStore: _abrirTienda,
+      );
+    }
+    if (_tipo == 'proveedor') return _listaProveedores(proveedores, conteos);
+    return _rejilla(hitsDeTipo, page, conteos, _coinciden(proveedores, page));
+  }
+
+  /// «Que coinciden» con la búsqueda: los de la consulta por nombre primero,
+  /// luego los dueños de ítems cuyo nombre encaja, sin repetidos.
+  List<Proveedor> _coinciden(List<Proveedor> deItems, CatalogPage page) {
+    final q = _search;
+    if (q == null) return const [];
+    final vistos = <String>{};
+    return [
+      for (final p in [
+        ...page.nombres,
+        ...deItems.where((p) => coincideBusqueda(p.name, q)),
+      ])
+        if (vistos.add(p.id)) p,
+    ];
+  }
+
+  /// Misma anatomía que las demás pestañas: avatar (o atrás si viene apilada
+  /// como «Otros proveedores»), título a la izquierda y campana; debajo, UNA
+  /// fila con buscador y Filtrar. El tipo de artículo ya NO vive aquí (lo manda
+  /// la tira de chips). Se pliega completo al navegar (PO 2026-07-21).
+  Widget _cabecera() => CollapsibleHeader(
+    hidden: _headerHidden,
+    onReveal: () => setState(() => _headerHidden = false),
+    child: VioletHeader(
+      leading: const HeaderLeading(),
+      title: 'Catálogo',
+      actions: widget.actions,
+      below: Row(
+        children: [
+          Expanded(
+            child: CatalogSearchField(
+              controller: _searchCtrl,
+              hint: 'Buscar en el catálogo',
+              autofocus: widget.autofocusSearch,
+              onSubmitted: _applySearch,
+              onClear: _clearSearch,
+            ),
+          ),
+          const SizedBox(width: 8),
+          CatalogFilterPill(
+            label: _pildoraLabel,
+            active: _pildoraActiva,
+            onTap: _openFilter,
+            onClear: _pildoraActiva ? _limpiarPildora : null,
+          ),
+        ],
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) => OnboardingGuide(
     guideKey: 'client.catalog.v1',
@@ -365,50 +555,7 @@ class _CatalogViewState extends State<CatalogView> {
     child: Scaffold(
       body: Column(
         children: [
-          // Misma anatomía que las demás pestañas: avatar (o atrás si viene
-          // apilada como «Otros proveedores»), título a la izquierda,
-          // segmentado compacto y campana; debajo, UNA fila con buscador y
-          // Filtrar. Se pliega completo al navegar (PO 2026-07-21).
-          CollapsibleHeader(
-            hidden: _headerHidden,
-            onReveal: () => setState(() => _headerHidden = false),
-            child: VioletHeader(
-              leading: const HeaderLeading(),
-              title: 'Catálogo',
-              actions: [
-                HeaderSegmented(
-                  compact: true,
-                  options: const ['Producto', 'Servicio'],
-                  index: _kind == 'producto' ? 0 : 1,
-                  onChanged: _changeKind,
-                ),
-                const SizedBox(width: 8),
-                ...widget.actions,
-              ],
-              below: Row(
-                children: [
-                  Expanded(
-                    child: CatalogSearchField(
-                      controller: _searchCtrl,
-                      hint: 'Buscar en el catálogo',
-                      autofocus: widget.autofocusSearch,
-                      onSubmitted: _applySearch,
-                      onClear: _clearSearch,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  CatalogFilterPill(
-                    label: _categoryId == null
-                        ? 'Filtrar'
-                        : (categoryNameById(_categoryId) ?? 'Filtrar'),
-                    active: _categoryId != null,
-                    onTap: _openFilter,
-                    onClear: _categoryId != null ? _volverAPortada : null,
-                  ),
-                ],
-              ),
-            ),
-          ),
+          _cabecera(),
           Expanded(
             child: NotificationListener<ScrollNotification>(
               onNotification: _onListScroll,
@@ -426,14 +573,7 @@ class _CatalogViewState extends State<CatalogView> {
                     if (snap.hasError) {
                       return ErrorRetry(onRetry: () async => _refetch());
                     }
-                    final page =
-                        snap.data ??
-                        (
-                          items: const <Map<String, dynamic>>[],
-                          negocios: const <String, BusinessCardInfo>{},
-                        );
-                    if (page.items.isEmpty) return _vacio();
-                    return _filtrado ? _rejilla(page) : _portada(page);
+                    return _cuerpo(snap.data!);
                   },
                 ),
               ),

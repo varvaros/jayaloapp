@@ -9,11 +9,11 @@ import '../shell/floating_nav_bar.dart';
 import 'catalog_articulos.dart';
 
 /// Catálogo POR ARTÍCULOS (Task 6, 2026-09-07), camino nuevo que reemplaza a
-/// `CatalogPortada` (Task 7 la borra): en vez de "recién publicados / tiendas
+/// la portada que la Task 7 borró: en vez de "recién publicados / tiendas
 /// / por categoría" pinta cuatro secciones fijas — Proveedores, Productos,
 /// Servicios, Paquetes — sobre los mismos 60 ítems ya cargados. `SeccionTitulo`,
-/// `_Carrusel` y `_StoreCircle` se MUEVEN aquí desde `catalog_portada.dart`
-/// (adaptados); pura: recibe datos y callbacks, no pide nada a la red.
+/// `_Carrusel` y `_StoreCircle` vienen de allí (adaptados); pura: recibe datos
+/// y callbacks, no pide nada a la red.
 /// [header] es la tira de chips: va dentro de la lista para desplazarse con
 /// ella.
 class CatalogSecciones extends StatelessWidget {
