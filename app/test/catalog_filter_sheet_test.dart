@@ -91,4 +91,69 @@ void main() {
     expect(res!.precioMin, 5000);
     expect(res!.ciudad, isNull);
   });
+
+  testWidgets(
+    'la ciudad seleccionada que ya no está en la lista no revienta el dropdown',
+    (tester) async {
+      await tester.pumpWidget(
+        host(
+          Builder(
+            builder: (ctx) => TextButton(
+              onPressed: () async {
+                await showCatalogFilterSheet(
+                  ctx,
+                  ciudades: const ['Santiago'],
+                  filtros: (
+                    ciudad: 'La Romana',
+                    precioMin: 0,
+                    precioMax: 0,
+                    soloVerificados: false,
+                    conLocal: false,
+                  ),
+                  categoriasVivas: () async => null,
+                );
+              },
+              child: const Text('abrir'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('abrir'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('La Romana'), findsWidgets);
+    },
+  );
+
+  testWidgets('Limpiar reacciona a los filtros editados en vivo', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        Builder(
+          builder: (ctx) => TextButton(
+            onPressed: () async {
+              await showCatalogFilterSheet(
+                ctx,
+                ciudades: const [],
+                filtros: kSinFiltros,
+                categoriasVivas: () async => null,
+              );
+            },
+            child: const Text('abrir'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('abrir'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Limpiar'), findsNothing);
+
+    await tester.tap(find.text('Solo verificados'));
+    await tester.pump();
+
+    expect(find.text('Limpiar'), findsOneWidget);
+  });
 }

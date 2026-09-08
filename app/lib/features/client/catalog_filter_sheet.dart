@@ -153,6 +153,18 @@ class _CatalogFilterSheetState extends State<_CatalogFilterSheet> {
   int get _precioMin => int.tryParse(_precioMinCtrl.text) ?? 0;
   int get _precioMax => int.tryParse(_precioMaxCtrl.text) ?? 0;
 
+  /// La ciudad SELECCIONADA nunca se oculta: si desapareciera de
+  /// `widget.ciudades`, el filtro seguiría aplicado sin control visible para
+  /// quitarlo (misma regla que la web).
+  List<String> get _opcionesCiudad {
+    final opciones = [...widget.ciudades];
+    if (_ciudad != null && !opciones.contains(_ciudad)) {
+      opciones.add(_ciudad!);
+    }
+    opciones.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return opciones;
+  }
+
   /// Resultado con los filtros vigentes de esta hoja (Ubicación/Precio/
   /// Proveedor) para la categoría/rubro dados — usado tanto por «Aplicar»
   /// (categoría/rubro sin tocar) como por un tap en el acordeón (categoría/
@@ -170,14 +182,17 @@ class _CatalogFilterSheetState extends State<_CatalogFilterSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // Estado EN VIVO, no el filtros con el que se abrió la hoja: si el
+    // usuario escribe un precio o toca "Solo verificados" sin haber entrado
+    // con filtros, "Limpiar" debe aparecer igual.
     final hasFilter =
         widget.categoryId != null ||
         widget.rubro != null ||
-        widget.filtros.ciudad != null ||
-        widget.filtros.precioMin != 0 ||
-        widget.filtros.precioMax != 0 ||
-        widget.filtros.soloVerificados ||
-        widget.filtros.conLocal;
+        _ciudad != null ||
+        _precioMin > 0 ||
+        _precioMax > 0 ||
+        _soloVerificados ||
+        _conLocal;
     return SafeArea(
       top: false,
       child: Column(
@@ -220,7 +235,7 @@ class _CatalogFilterSheetState extends State<_CatalogFilterSheet> {
                         value: null,
                         child: Text('Todas las ciudades'),
                       ),
-                      for (final c in widget.ciudades)
+                      for (final c in _opcionesCiudad)
                         DropdownMenuItem<String?>(value: c, child: Text(c)),
                     ],
                     onChanged: (v) => setState(() => _ciudad = v),
@@ -239,6 +254,7 @@ class _CatalogFilterSheetState extends State<_CatalogFilterSheet> {
                             FilteringTextInputFormatter.digitsOnly,
                           ],
                           decoration: filledField(context, 'Desde RD\$'),
+                          onChanged: (_) => setState(() {}),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -250,6 +266,7 @@ class _CatalogFilterSheetState extends State<_CatalogFilterSheet> {
                             FilteringTextInputFormatter.digitsOnly,
                           ],
                           decoration: filledField(context, 'Hasta RD\$'),
+                          onChanged: (_) => setState(() {}),
                         ),
                       ),
                     ],
