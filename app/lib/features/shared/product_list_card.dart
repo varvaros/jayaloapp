@@ -370,6 +370,41 @@ Widget catalogTypeBadge(BuildContext context, String tipo) {
   );
 }
 
+/// Foto CUADRADA + insignia de tipo, compartida por [ProductGridCard] y
+/// [ProductCarouselCard] (antes duplicada en ambas). `radius` es el
+/// redondeo de la esquina superior de la tarjeta (recorte del `ClipRRect`).
+Widget catalogPhotoWithBadge(
+  BuildContext context,
+  Map<String, dynamic> item, {
+  BusinessCardInfo? negocio,
+  required bool showTypeTag,
+  required BorderRadius radius,
+}) {
+  final cs = Theme.of(context).colorScheme;
+  final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
+  final img = images.isEmpty ? null : images.first;
+  return ClipRRect(
+    borderRadius: radius,
+    child: AspectRatio(
+      aspectRatio: 1,
+      child: Stack(
+        // StackFit.expand: sin él el Stack afloja las restricciones y la
+        // foto no cubre el cuadrado.
+        fit: StackFit.expand,
+        children: [
+          catalogImage(img, cs, logoUrl: negocio?.logoUrl),
+          if (showTypeTag)
+            Positioned(
+              left: 8,
+              top: 8,
+              child: catalogTypeBadge(context, tipoDeItem(item)),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
 /// «Lo incluido» de un paquete: la lista de `items` separada por «·», bajo el
 /// nombre, en ambas tarjetas (rejilla y carrusel). `null` para producto o
 /// servicio, o para un paquete sin `items` cargados.
@@ -544,8 +579,6 @@ class ProductGridCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final name = item['name'] as String? ?? '';
-    final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
-    final img = images.isEmpty ? null : images.first;
     final avg = (item['avg_rating'] as num?)?.toDouble() ?? 0;
     final count = (item['reviews_count'] as num?)?.toInt() ?? 0;
     final incluido = catalogIncluidoLine(item, cs);
@@ -557,23 +590,13 @@ class ProductGridCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(
+          catalogPhotoWithBadge(
+            context,
+            item,
+            negocio: negocio,
+            showTypeTag: showTypeTag,
+            radius: const BorderRadius.vertical(
               top: Radius.circular(kCardRadius),
-            ),
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: Stack(
-                children: [
-                  catalogImage(img, cs, logoUrl: negocio?.logoUrl),
-                  if (showTypeTag)
-                    Positioned(
-                      left: 8,
-                      top: 8,
-                      child: catalogTypeBadge(context, tipoDeItem(item)),
-                    ),
-                ],
-              ),
             ),
           ),
           Expanded(
@@ -660,8 +683,6 @@ class ProductCarouselCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final name = item['name'] as String? ?? '';
-    final images = (item['image_urls'] as List?)?.cast<String>() ?? const [];
-    final img = images.isEmpty ? null : images.first;
     final incluido = catalogIncluidoLine(item, cs);
     return SizedBox(
       width: width,
@@ -672,23 +693,13 @@ class ProductCarouselCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(
+            catalogPhotoWithBadge(
+              context,
+              item,
+              negocio: negocio,
+              showTypeTag: showTypeTag,
+              radius: const BorderRadius.vertical(
                 top: Radius.circular(kCardRadius),
-              ),
-              child: AspectRatio(
-                aspectRatio: 1,
-                child: Stack(
-                  children: [
-                    catalogImage(img, cs, logoUrl: negocio?.logoUrl),
-                    if (showTypeTag)
-                      Positioned(
-                        left: 8,
-                        top: 8,
-                        child: catalogTypeBadge(context, tipoDeItem(item)),
-                      ),
-                  ],
-                ),
               ),
             ),
             Padding(

@@ -300,4 +300,69 @@ void main() {
       expect(find.text('SERVICIO'), findsOneWidget);
     },
   );
+
+  // Regresión: el Stack foto+insignia debe llevar `fit: StackFit.expand`
+  // (si no, el Stack afloja las restricciones y una foto real no cuadrada
+  // deja de cubrir la celda cuadrada). Las imágenes de red no decodifican
+  // en test, así que se verifica el contrato de layout, no el píxel.
+  testWidgets('ProductGridCard: el Stack foto+insignia usa StackFit.expand', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        const SizedBox(
+          width: 160,
+          height: 300,
+          child: ProductGridCard(
+            item: {
+              'id': 'p1',
+              'name': 'Taladro',
+              'price': 2500,
+              'image_urls': ['https://x/1.jpg'],
+            },
+            showTypeTag: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final stack = tester.widget<Stack>(
+      find.descendant(
+        of: find.byType(AspectRatio),
+        matching: find.byType(Stack),
+      ),
+    );
+    expect(stack.fit, StackFit.expand);
+  });
+
+  testWidgets(
+    'ProductCarouselCard: el Stack foto+insignia usa StackFit.expand',
+    (tester) async {
+      await tester.pumpWidget(
+        host(
+          const SizedBox(
+            width: 160,
+            height: 300,
+            child: ProductCarouselCard(
+              item: {
+                'id': 'p1',
+                'name': 'Taladro',
+                'price': 2500,
+                'image_urls': ['https://x/1.jpg'],
+              },
+              showTypeTag: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final stack = tester.widget<Stack>(
+        find.descendant(
+          of: find.byType(AspectRatio),
+          matching: find.byType(Stack),
+        ),
+      );
+      expect(stack.fit, StackFit.expand);
+    },
+  );
 }
