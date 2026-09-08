@@ -73,6 +73,30 @@ void main() {
     expect(tipoDeItem({'kind': 'paquete'}), 'paquete');
   });
 
+  test('tieneFoto: false sin revientar si el primer elemento no es String '
+      '(M-9, revisión final)', () {
+    expect(
+      tieneFoto({
+        'image_urls': <dynamic>[123],
+      }),
+      isFalse,
+    );
+    expect(
+      tieneFoto({
+        'image_urls': <dynamic>[null],
+      }),
+      isFalse,
+    );
+    expect(
+      tieneFoto({
+        'image_urls': const ['https://x/1.jpg'],
+      }),
+      isTrue,
+    );
+    expect(tieneFoto({'image_urls': const []}), isFalse);
+    expect(tieneFoto({'image_urls': null}), isFalse);
+  });
+
   group('filtrarLateral', () {
     final negocios = {
       'b1': neg('getto', local: true, city: 'Santo Domingo Este'),
@@ -207,7 +231,11 @@ void main() {
       item('k1', kind: 'paquete'),
     ];
     final s = seccionesCatalogo(items);
-    expect(s.productos, hasLength(kTopeCarrusel));
+    // Los PRIMEROS kTopeCarrusel, no cualquier 8 (M-6, revisión final): si
+    // `take(8)` se convirtiera en «los 8 últimos» este test lo detectaría.
+    expect(s.productos.map((e) => e['id']), [
+      for (var i = 0; i < kTopeCarrusel; i++) 'p$i',
+    ]);
     expect(s.servicios.map((e) => e['id']), ['s1']);
     expect(s.paquetes.map((e) => e['id']), ['k1']);
   });

@@ -80,6 +80,7 @@ bool tieneFoto(Map<String, dynamic> it) {
   final fotos = it['image_urls'];
   return fotos is List &&
       fotos.isNotEmpty &&
+      fotos.first is String &&
       (fotos.first as String).trim().isNotEmpty;
 }
 
