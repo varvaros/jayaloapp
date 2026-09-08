@@ -284,6 +284,11 @@ class _CatalogViewState extends State<CatalogView> {
       if (id != _categoryId) _applyFilter(categoryId: id);
     },
     onTodo: _volverAPortada,
+    // Task 7 los conecta a la hoja de filtros; hasta entonces, sin fila de
+    // rubros.
+    rubros: const [],
+    rubro: null,
+    onRubro: (_) {},
   );
 
   Widget _rejilla(CatalogPage page) => LayoutBuilder(
