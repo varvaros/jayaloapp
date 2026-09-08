@@ -9,14 +9,18 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
   // texto nuevo sería invisible para todos los usuarios actuales.
   'client.create_request.v2': [
     OnboardingStep(
-        'Aquí creas una solicitud que le llegará a los proveedores ideales.'),
+      'Aquí creas una solicitud que le llegará a los proveedores ideales.',
+    ),
   ],
   'client.view_offers.v1': [
     OnboardingStep(
-        'Aquí podrás comparar las ofertas de los proveedores y elegir la que más te convenga.'),
+      'Aquí podrás comparar las ofertas de los proveedores y elegir la que más te convenga.',
+    ),
   ],
   'client.chat_reveal.v1': [
-    OnboardingStep('Aquí coordinas los detalles con el proveedor antes de cerrar el trato.'),
+    OnboardingStep(
+      'Aquí coordinas los detalles con el proveedor antes de cerrar el trato.',
+    ),
   ],
   // v2 (2026-08-22): la v1 se marcaba como "vista" sin que nadie la viera —
   // anclaba el botón de enviar, que nace FUERA de la pantalla al final del
@@ -25,15 +29,18 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
   // aparecerle a quien la "gastó" en negro.
   'provider.make_offer.v2': [
     OnboardingStep(
-        'Puedes enviar tu oferta gratis. Solo desbloqueas el contacto si el cliente acepta tu propuesta.'),
+      'Puedes enviar tu oferta gratis. Solo desbloqueas el contacto si el cliente acepta tu propuesta.',
+    ),
   ],
   'provider.chat_reveal.v1': [
     OnboardingStep(
-        'Aquí coordinas con el cliente. El contacto de WhatsApp se comparte cuando ambos avanzan.'),
+      'Aquí coordinas con el cliente. El contacto de WhatsApp se comparte cuando ambos avanzan.',
+    ),
   ],
   'wallet.credits.v1': [
     OnboardingStep(
-        'Ofertar siempre es gratis. Los créditos solo se usan para desbloquear el contacto de un cliente que aceptó tu oferta.'),
+      'Ofertar siempre es gratis. Los créditos solo se usan para desbloquear el contacto de un cliente que aceptó tu oferta.',
+    ),
   ],
   // Recorridos de la PRIMERA pantalla (PO 2026-09-05: «no solo el header:
   // las solicitudes, el +, los créditos, Para ti/Todas, Productos/Servicios,
@@ -50,28 +57,30 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
   'client.home_tour.v1': [
     OnboardingStep('Busca productos y tiendas de los proveedores.'),
     OnboardingStep('Aquí quedan tus solicitudes y en qué van.'),
+    OnboardingStep('Y en esta pestaña ves qué están pidiendo otros usuarios.'),
     OnboardingStep(
-        'Y en esta pestaña ves qué están pidiendo otros usuarios.'),
+      'Con este botón creas una nueva solicitud. Los proveedores te responden con ofertas.',
+    ),
     OnboardingStep(
-        'Con este botón creas una nueva solicitud. Los proveedores te responden con ofertas.'),
-    OnboardingStep(
-        'Productos y tiendas de los proveedores, para comprar sin pedir.'),
-    OnboardingStep(
-        'Aquí coordinas con el proveedor cuando aceptas su oferta.'),
+      'Productos y tiendas de los proveedores, para comprar sin pedir.',
+    ),
+    OnboardingStep('Aquí coordinas con el proveedor cuando aceptas su oferta.'),
     OnboardingStep('Tus estadísticas como comprador.'),
   ],
   'provider.inbox_tour.v1': [
     OnboardingStep(
-        'Aquí llegan las solicitudes de personas que buscan lo que ofreces.'),
+      'Aquí llegan las solicitudes de personas que buscan lo que ofreces.',
+    ),
     OnboardingStep(
-        'Para ti: solicitudes de tu rubro. Todas: de cualquier rubro.'),
+      'Para ti: solicitudes de tu rubro. Todas: de cualquier rubro.',
+    ),
     OnboardingStep('Filtra por lo que piden: productos o servicios.'),
     OnboardingStep('Con este botón también pides tú, como comprador.'),
     OnboardingStep(
-        'Estos son tus créditos; tócalos para recargar. Ofertar es gratis: solo desbloquean el contacto de un cliente que aceptó.'),
+      'Estos son tus créditos; tócalos para recargar. Ofertar es gratis: solo desbloquean el contacto de un cliente que aceptó.',
+    ),
     OnboardingStep('Tus ofertas y en qué van.'),
-    OnboardingStep(
-        'Aquí coordinas con el cliente cuando acepta tu oferta.'),
+    OnboardingStep('Aquí coordinas con el cliente cuando acepta tu oferta.'),
     OnboardingStep('Tu tienda, tus trabajos y tus estadísticas.'),
   ],
   'client.request_kind.v1': [
@@ -79,22 +88,26 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
   ],
   'client.request_photo.v1': [
     OnboardingStep(
-        'Con este botón tomas una foto o subes una imagen de lo que buscas.'),
+      'Con este botón tomas una foto o subes una imagen de lo que buscas.',
+    ),
   ],
   'client.request_wholesale.v1': [
     OnboardingStep('¿Necesitas grandes cantidades? Actívalo aquí.'),
   ],
   'client.catalog.v1': [
     OnboardingStep(
-        'Aquí ves productos, servicios y paquetes que los proveedores ofrecen en sus tiendas.'),
+      'Aquí ves productos, servicios y paquetes que los proveedores ofrecen en sus tiendas.',
+    ),
   ],
   'provider.offer_menu.v1': [
     OnboardingStep(
-        'Mientras redactas tu oferta, este botón abre un menú para añadir fotos: cámara, galería, tu tienda o tus trabajos.'),
+      'Mientras redactas tu oferta, este botón abre un menú para añadir fotos: cámara, galería, tu tienda o tus trabajos.',
+    ),
   ],
   'chat.quick_replies.v1': [
     OnboardingStep(
-        'Con este botón eliges mensajes predefinidos para responder rápido.'),
+      'Con este botón eliges mensajes predefinidos para responder rápido.',
+    ),
   ],
   // Sustituye a `chat.report.v1` (PO 2026-08-22: "botones que no se explican
   // bien"). Aquel copy nombraba SOLO denunciar, y ese ⋮ guarda hasta cinco
@@ -106,35 +119,42 @@ const Map<String, List<OnboardingStep>> onboardingCopy = {
   // subirla el texto nuevo sería invisible para todos los usuarios actuales.
   'chat.menu.provider.v2': [
     OnboardingStep(
-        'Aquí cierras el trato —completado o no concretado—, ves el perfil del cliente, pides su WhatsApp y denuncias si algo no cuadra.'),
+      'Aquí cierras el trato —completado o no concretado—, ves el perfil del cliente, pides su WhatsApp y denuncias si algo no cuadra.',
+    ),
   ],
   'chat.menu.client.v1': [
     OnboardingStep(
-        'Aquí marcas si el trato no se concretó, y denuncias si algo no cuadra.'),
+      'Aquí marcas si el trato no se concretó, y denuncias si algo no cuadra.',
+    ),
   ],
   // El `+` del chat: hasta ahora no se explicaba, y ahí vive lo que menos se
   // adivina (mandar tu ubicación, tus datos, o bajar el precio de tu oferta).
   'chat.attach.client.v1': [
     OnboardingStep(
-        'Con este botón adjuntas: una foto, tu ubicación actual o tus datos de contacto.'),
+      'Con este botón adjuntas: una foto, tu ubicación actual o tus datos de contacto.',
+    ),
   ],
   'chat.attach.provider.v1': [
     OnboardingStep(
-        'Con este botón adjuntas: fotos, artículos de tu tienda, la dirección de tu local o una mejora de precio.'),
+      'Con este botón adjuntas: fotos, artículos de tu tienda, la dirección de tu local o una mejora de precio.',
+    ),
   ],
   // Formulario de la oferta: los dos controles que el PO señaló como mudos.
   'provider.offer_price_mode.v1': [
     OnboardingStep(
-        'Elige cómo cobras: precio fijo, un rango, por hora, o "a evaluar" si necesitas ver el trabajo antes de poner precio.'),
+      'Elige cómo cobras: precio fijo, un rango, por hora, o "a evaluar" si necesitas ver el trabajo antes de poner precio.',
+    ),
   ],
   'provider.offer_reuse_photos.v1': [
     OnboardingStep(
-        'Reusa fotos que ya subiste: las de tu tienda o las de trabajos anteriores. No tienes que volver a fotografiar nada.'),
+      'Reusa fotos que ya subiste: las de tu tienda o las de trabajos anteriores. No tienes que volver a fotografiar nada.',
+    ),
   ],
   // El avatar del encabezado: no se parece a un menú, y detrás están los
   // ajustes (y, para el proveedor, sus créditos).
   'profile.menu.v1': [
     OnboardingStep(
-        'Toca tu foto para abrir tu menú: ahí están tus ajustes y el resto de tu cuenta.'),
+      'Toca tu foto para abrir tu menú: ahí están tus ajustes y el resto de tu cuenta.',
+    ),
   ],
 };

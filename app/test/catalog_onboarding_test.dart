@@ -11,15 +11,25 @@ void main() {
   });
 
   testWidgets('catalogo: guia welcome la primera vez', (t) async {
-    await t.pumpWidget(MaterialApp(
-      home: CatalogView(
-        actions: const [],
-        fetch: ({kind, search, categoryId, rubro, wholesale = false, conPaquetes = true}) async => [],
-        businesses: (ids) async => const {},
-        counts: () async => null,
-        names: (term) async => const [],
+    await t.pumpWidget(
+      MaterialApp(
+        home: CatalogView(
+          actions: const [],
+          fetch:
+              ({
+                kind,
+                search,
+                categoryId,
+                rubro,
+                wholesale = false,
+                conPaquetes = true,
+              }) async => [],
+          businesses: (ids) async => const {},
+          counts: () async => null,
+          names: (term) async => const [],
+        ),
       ),
-    ));
+    );
     await t.pumpAndSettle();
     expect(find.textContaining('ofrecen en sus tiendas'), findsOneWidget);
   });
