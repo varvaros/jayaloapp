@@ -12,6 +12,7 @@ import '../shared/onboarding_guide.dart';
 import '../shared/product_list_card.dart';
 import '../shared/violet_header.dart';
 import '../shell/floating_nav_bar.dart';
+import 'catalog_articulos.dart' show kSinFiltros;
 import 'catalog_chip_strip.dart';
 import 'catalog_filter_sheet.dart';
 import 'catalog_header_widgets.dart';
@@ -237,9 +238,10 @@ class _CatalogViewState extends State<CatalogView> {
   Future<void> _openFilter() async {
     final res = await showCatalogFilterSheet(
       context,
-      kind: _kind,
       categoryId: _categoryId,
       rubro: _rubro,
+      ciudades: const [],
+      filtros: kSinFiltros,
     );
     if (res != null) _applyFilter(categoryId: res.categoryId, rubro: res.rubro);
   }
