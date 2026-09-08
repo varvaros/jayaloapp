@@ -43,7 +43,9 @@ void main() {
         // sin (o antes de) el OTP de WhatsApp del negocio SÍ debe verse
         // "Negocio verificado" — la web lo marca igual.
         expect(
-          businessVerifiedFrom({'business_verified_at': '2026-02-02T00:00:00Z'}),
+          businessVerifiedFrom({
+            'business_verified_at': '2026-02-02T00:00:00Z',
+          }),
           isTrue,
         );
       },
@@ -57,20 +59,24 @@ void main() {
   /// "simplificar" el `row is! Map` o el `as num?` reintroduce el bug, este
   /// test revienta.
   group('latLngFromRpcRow', () {
-    test('lista vacía (get_request_location sin permiso o sin coordenadas) → null',
-        () {
-      expect(latLngFromRpcRow(<dynamic>[]), isNull);
-    });
+    test(
+      'lista vacía (get_request_location sin permiso o sin coordenadas) → null',
+      () {
+        expect(latLngFromRpcRow(<dynamic>[]), isNull);
+      },
+    );
 
-    test('fila con lat/lng en null (get_business_location sin coordenadas) → null',
-        () {
-      expect(
-        latLngFromRpcRow([
-          {'lat': null, 'lng': null},
-        ]),
-        isNull,
-      );
-    });
+    test(
+      'fila con lat/lng en null (get_business_location sin coordenadas) → null',
+      () {
+        expect(
+          latLngFromRpcRow([
+            {'lat': null, 'lng': null},
+          ]),
+          isNull,
+        );
+      },
+    );
 
     test('fila con coordenadas → los valores', () {
       expect(
@@ -81,18 +87,15 @@ void main() {
       );
     });
 
-    test(
-      'fila con coordenadas ENTERAS (PostgREST puede devolver numeric sin '
-      'decimales como int) → los valores, no revienta',
-      () {
-        expect(
-          latLngFromRpcRow([
-            {'lat': 18, 'lng': -69},
-          ]),
-          (lat: 18.0, lng: -69.0),
-        );
-      },
-    );
+    test('fila con coordenadas ENTERAS (PostgREST puede devolver numeric sin '
+        'decimales como int) → los valores, no revienta', () {
+      expect(
+        latLngFromRpcRow([
+          {'lat': 18, 'lng': -69},
+        ]),
+        (lat: 18.0, lng: -69.0),
+      );
+    });
 
     test('fila que no es Map (p. ej. una lista de strings) → null', () {
       expect(latLngFromRpcRow(['x']), isNull);
@@ -109,14 +112,18 @@ void main() {
     });
 
     test('un término sin caracteres especiales queda igual', () {
-      expect(sanitizeCatalogSearchTerm('taladro inalámbrico'),
-          'taladro inalámbrico');
+      expect(
+        sanitizeCatalogSearchTerm('taladro inalámbrico'),
+        'taladro inalámbrico',
+      );
     });
 
-    test('quita paréntesis, que son delimitadores de .or(...) en PostgREST',
-        () {
-      expect(sanitizeCatalogSearchTerm('taladro (grande)'), 'taladro grande');
-    });
+    test(
+      'quita paréntesis, que son delimitadores de .or(...) en PostgREST',
+      () {
+        expect(sanitizeCatalogSearchTerm('taladro (grande)'), 'taladro grande');
+      },
+    );
 
     test('quita guion bajo y asterisco (comodines de ilike)', () {
       expect(sanitizeCatalogSearchTerm('a_b*c'), 'abc');
@@ -138,8 +145,10 @@ void main() {
       ];
       final result = await providerInbox(fetcher: (_) async => fakeRows);
       expect(result, hasLength(2));
-      expect(result.map((r) => r['source']),
-          containsAll(['marketplace', 'store']));
+      expect(
+        result.map((r) => r['source']),
+        containsAll(['marketplace', 'store']),
+      );
     });
 
     test('lista vacía se queda vacía', () async {
@@ -179,8 +188,14 @@ void main() {
     });
 
     test('comentario vacío o solo espacios queda null', () {
-      expect(parseBusinessReview({'rating': 5, 'comment': '   '}).comment, isNull);
-      expect(parseBusinessReview({'rating': 5, 'comment': null}).comment, isNull);
+      expect(
+        parseBusinessReview({'rating': 5, 'comment': '   '}).comment,
+        isNull,
+      );
+      expect(
+        parseBusinessReview({'rating': 5, 'comment': null}).comment,
+        isNull,
+      );
     });
 
     test('rating ausente cae a 0 y fecha inválida a epoch', () {
@@ -221,9 +236,12 @@ void main() {
       }
     });
 
-    test('no lleva espacios: va concatenada dentro de un select de PostgREST', () {
-      expect(requestRequirementCols, isNot(contains(' ')));
-    });
+    test(
+      'no lleva espacios: va concatenada dentro de un select de PostgREST',
+      () {
+        expect(requestRequirementCols, isNot(contains(' ')));
+      },
+    );
 
     test('las cinco, separadas por coma, en este orden exacto', () {
       // Los dos tests de arriba pasarían igual si la constante se rompiera a

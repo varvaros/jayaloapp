@@ -806,10 +806,7 @@ void main() {
         'price': 2500,
       };
       await tester.pumpWidget(
-        catalogo(
-          fetch: fija([barato, medio, caro]),
-          businesses: conNegocio,
-        ),
+        catalogo(fetch: fija([barato, medio, caro]), businesses: conNegocio),
       );
       await tester.pumpAndSettle();
       await tocarTipo(tester, 'Productos');
