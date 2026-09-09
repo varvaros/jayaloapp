@@ -5,20 +5,18 @@
   caía al ícono del launcher, que es a todo color y 100% opaco → se veía un
   CUADRADO NEGRO sólido (reporte PO 2026-07-28).
 
-  Es Jayi reducido a 24dp, con las proporciones MEDIDAS sobre el ícono de la
-  tienda (@mipmap/ic_launcher), no inventadas (2026-09-09):
-    · cuerpo casi cuadrado, 18x15 (en el launcher mide 805x655 → razón 1,23)
-    · ojo GRANDE (radio = 0,28 del ancho del cuerpo), empujado abajo-izquierda
-    · pupila a la derecha y algo arriba dentro del ojo
-    · antenas ASIMÉTRICAS: la izquierda alta y curvada hacia la izquierda, la
-      derecha corta, arqueada y cayendo hacia la derecha
-  Antes el cuerpo era ancho (21x14,4), el ojo pequeño y centrado y las antenas
-  simétricas en V: no se parecía a la mascota.
+  Es Jayi CALCADO del isotipo oficial (aplicar/public/isojayalo.svg), no
+  redibujado a ojo (2026-09-09, segunda vuelta a petición del PO): cada
+  coordenada es la del SVG × 0,31, desplazada (+0,45, +1,745). Y con el MISMO
+  encuadre del ícono de la tienda: el cuerpo llena el ancho a ras y se corta
+  por abajo (sale del lienzo de 24dp, Android lo recorta), el ojo grande
+  abajo-izquierda, y las antenas encima — la izquierda alta y curvada a la
+  izquierda, la derecha corta hacia la derecha. Grosor de antena 1,2dp: el
+  fiel sería 0,93dp y en la barra de estado desaparece.
 
   El ojo va como HUECO (fillType="evenOdd" resta el círculo del cuerpo) con la
   pupila maciza dentro; es la única forma de dar claro/oscuro con una silueta de
-  un solo canal. Los dos brillos de la pupila del ícono grande se omiten a
-  propósito: a 24dp se empastan y la guía de Android pide formas simples.
+  un solo canal. Los dos brillos de la pupila se omiten: a 24dp se empastan.
 
   minSdk del proyecto es 24, así que un vector drawable es seguro aquí (los
   problemas históricos de VectorDrawable en notificaciones son de API < 21).
@@ -29,30 +27,30 @@
     android:viewportWidth="24"
     android:viewportHeight="24">
 
-    <!-- Cuerpo + ojo restado (evenOdd) -->
+    <!-- Cuerpo (esquinas r=6,2, cortado por el borde inferior) + ojo restado -->
     <path
         android:fillColor="#FFFFFFFF"
         android:fillType="evenOdd"
-        android:pathData="M7,7.5 H16 A4.5,4.5 0 0 1 20.5,12 V18 A4.5,4.5 0 0 1 16,22.5 H7 A4.5,4.5 0 0 1 2.5,18 V12 A4.5,4.5 0 0 1 7,7.5 Z M10,10.2 A5,5 0 1 0 10,20.2 A5,5 0 1 0 10,10.2 Z" />
+        android:pathData="M6.65,7 H17.35 A6.2,6.2 0 0 1 23.55,13.2 V24 H0.45 V13.2 A6.2,6.2 0 0 1 6.65,7 Z M7.14,9.63 A4.91,4.91 0 1 0 7.14,19.45 A4.91,4.91 0 1 0 7.14,9.63 Z" />
 
-    <!-- Pupila (maciza, dentro del hueco del ojo) -->
+    <!-- Pupila (maciza, a la derecha dentro del ojo, como en el isotipo) -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M11.7,12.45 A2.15,2.15 0 1 0 11.7,16.75 A2.15,2.15 0 1 0 11.7,12.45 Z" />
+        android:pathData="M9.53,12.87 A1.63,1.63 0 1 0 9.53,16.13 A1.63,1.63 0 1 0 9.53,12.87 Z" />
 
-    <!-- Antena izquierda: alta, se curva hacia la izquierda -->
+    <!-- Antena izquierda: sube casi vertical y se curva a la izquierda -->
     <path
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.8"
+        android:strokeWidth="1.2"
         android:strokeLineCap="round"
         android:fillColor="#00000000"
-        android:pathData="M10.65,7.5 C10.9,5.0 9.8,2.8 7.3,2.4" />
+        android:pathData="M9.42,7 C9.4,4.5 7.3,2.5 3.95,2.27" />
 
-    <!-- Antena derecha: corta, arquea y cae hacia la derecha -->
+    <!-- Antena derecha: corta, sube y se tumba hacia la derecha -->
     <path
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.8"
+        android:strokeWidth="1.2"
         android:strokeLineCap="round"
         android:fillColor="#00000000"
-        android:pathData="M15.8,7.5 C16.6,5.6 18.4,4.9 20.2,6.0" />
+        android:pathData="M14.37,7 C15.1,5.2 16.6,4.0 18.9,4.26" />
 </vector>
