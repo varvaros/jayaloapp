@@ -5,9 +5,19 @@
   caía al ícono del launcher, que es a todo color y 100% opaco → se veía un
   CUADRADO NEGRO sólido (reporte PO 2026-07-28).
 
-  Es la mascota-TV de Jayalo simplificada a 24dp: cuerpo + dos antenas, y el ojo
-  como HUECO (fillType="evenOdd" resta el círculo del cuerpo) con la pupila
-  maciza dentro. Los dos brillos de la pupila del ícono grande se omiten a
+  Es Jayi reducido a 24dp, con las proporciones MEDIDAS sobre el ícono de la
+  tienda (@mipmap/ic_launcher), no inventadas (2026-09-09):
+    · cuerpo casi cuadrado, 18x15 (en el launcher mide 805x655 → razón 1,23)
+    · ojo GRANDE (radio = 0,28 del ancho del cuerpo), empujado abajo-izquierda
+    · pupila a la derecha y algo arriba dentro del ojo
+    · antenas ASIMÉTRICAS: la izquierda alta y curvada hacia la izquierda, la
+      derecha corta, arqueada y cayendo hacia la derecha
+  Antes el cuerpo era ancho (21x14,4), el ojo pequeño y centrado y las antenas
+  simétricas en V: no se parecía a la mascota.
+
+  El ojo va como HUECO (fillType="evenOdd" resta el círculo del cuerpo) con la
+  pupila maciza dentro; es la única forma de dar claro/oscuro con una silueta de
+  un solo canal. Los dos brillos de la pupila del ícono grande se omiten a
   propósito: a 24dp se empastan y la guía de Android pide formas simples.
 
   minSdk del proyecto es 24, así que un vector drawable es seguro aquí (los
@@ -19,28 +29,30 @@
     android:viewportWidth="24"
     android:viewportHeight="24">
 
-    <!-- Cuerpo de la tele + ojo restado (evenOdd) -->
+    <!-- Cuerpo + ojo restado (evenOdd) -->
     <path
         android:fillColor="#FFFFFFFF"
         android:fillType="evenOdd"
-        android:pathData="M5.5,6.6 H18.5 A4,4 0 0 1 22.5,10.6 V17 A4,4 0 0 1 18.5,21 H5.5 A4,4 0 0 1 1.5,17 V10.6 A4,4 0 0 1 5.5,6.6 Z M9,9.9 A4.2,4.2 0 1 0 9,18.3 A4.2,4.2 0 1 0 9,9.9 Z" />
+        android:pathData="M7,7.5 H16 A4.5,4.5 0 0 1 20.5,12 V18 A4.5,4.5 0 0 1 16,22.5 H7 A4.5,4.5 0 0 1 2.5,18 V12 A4.5,4.5 0 0 1 7,7.5 Z M10,10.2 A5,5 0 1 0 10,20.2 A5,5 0 1 0 10,10.2 Z" />
 
     <!-- Pupila (maciza, dentro del hueco del ojo) -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M10.6,12.4 A1.75,1.75 0 1 0 10.6,15.9 A1.75,1.75 0 1 0 10.6,12.4 Z" />
+        android:pathData="M11.7,12.45 A2.15,2.15 0 1 0 11.7,16.75 A2.15,2.15 0 1 0 11.7,12.45 Z" />
 
-    <!-- Antenas -->
+    <!-- Antena izquierda: alta, se curva hacia la izquierda -->
     <path
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.6"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:fillColor="#00000000"
-        android:pathData="M9.2,6.5 C8.1,4.5 6.2,2.9 3.9,2.2" />
+        android:pathData="M10.65,7.5 C10.9,5.0 9.8,2.8 7.3,2.4" />
+
+    <!-- Antena derecha: corta, arquea y cae hacia la derecha -->
     <path
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.6"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:fillColor="#00000000"
-        android:pathData="M14.9,6.5 C16.0,4.9 17.7,3.9 19.8,3.5" />
+        android:pathData="M15.8,7.5 C16.6,5.6 18.4,4.9 20.2,6.0" />
 </vector>
