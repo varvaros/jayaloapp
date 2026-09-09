@@ -14,16 +14,22 @@ void main() {
   Map<String, dynamic> bodyOf(http.Request req) =>
       jsonDecode(req.body) as Map<String, dynamic>;
 
-  http.Response turnWithTicket({String? ticket}) => http.Response(
-      jsonEncode({
-        'type': 'question',
-        // ASCII a propósito: http.Response(String) codifica latin-1 y el
-        // cliente decodifica utf8 — un acento aquí rompería el fixture.
-        'question': 'Marca?',
-        'options': ['A', 'B'],
-        'aiTicket': ?ticket,
-      }),
-      200);
+  /// Ids de conversación de ejemplo: 32 hex, la forma que emite el servidor.
+  const conv1 = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6';
+  const conv2 = '00112233445566778899aabbccddeeff';
+
+  http.Response turnWithTicket({String? ticket, String? conversationId}) =>
+      http.Response(
+          jsonEncode({
+            'type': 'question',
+            // ASCII a propósito: http.Response(String) codifica latin-1 y el
+            // cliente decodifica utf8 — un acento aquí rompería el fixture.
+            'question': 'Marca?',
+            'options': ['A', 'B'],
+            'aiTicket': ?ticket,
+            'aiConversationId': ?conversationId,
+          }),
+          200);
 
   test('reenvía el aiTicket de la respuesta anterior en el turno siguiente',
       () async {
@@ -74,6 +80,93 @@ void main() {
     final r = turn as AiRouting;
     expect(r.readyNext, isNotNull);
     expect(r.readyNext!.title, 'Silla de oficina');
+  });
+
+  // Desde `aiTicket` v2 (2026-09-09) el ticket va ATADO a su conversación: el
+  // servidor exige el par y un ticket suelto ya no vale. Sin reenviar el id, la
+  // app cae en la exención por JWT y paga un `auth.getUser()` por turno.
+  test('reenvía el PAR (ticket + aiConversationId) en el turno siguiente',
+      () async {
+    final sent = <Map<String, dynamic>>[];
+    final c = AiClient(inner: MockClient((req) async {
+      sent.add(bodyOf(req));
+      return turnWithTicket(ticket: 'tkt-1', conversationId: conv1);
+    }));
+
+    await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+    await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+
+    // Primer turno: ninguno de los dos existe todavía.
+    expect(sent[0].containsKey('aiTicket'), isFalse);
+    expect(sent[0].containsKey('aiConversationId'), isFalse);
+    expect(sent[1]['aiTicket'], 'tkt-1');
+    expect(sent[1]['aiConversationId'], conv1);
+  });
+
+  test('sigue al servidor si cambia el id de conversación', () async {
+    final sent = <Map<String, dynamic>>[];
+    var calls = 0;
+    final c = AiClient(inner: MockClient((req) async {
+      sent.add(bodyOf(req));
+      calls++;
+      return turnWithTicket(
+          ticket: 'tkt-$calls', conversationId: calls == 1 ? conv1 : conv2);
+    }));
+
+    await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+    await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+    await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+
+    expect(sent[1]['aiConversationId'], conv1);
+    expect(sent[2]['aiConversationId'], conv2);
+  });
+
+  test('un id con forma inválida se descarta: no se reenvía basura', () async {
+    final sent = <Map<String, dynamic>>[];
+    final c = AiClient(inner: MockClient((req) async {
+      sent.add(bodyOf(req));
+      return turnWithTicket(ticket: 'tkt-1', conversationId: 'NO-ES-HEX');
+    }));
+
+    await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+    await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+
+    expect(sent[1]['aiTicket'], 'tkt-1');
+    expect(sent[1].containsKey('aiConversationId'), isFalse);
+  });
+
+  test('un servidor viejo (ticket sin id) no deja el par a medias', () async {
+    final sent = <Map<String, dynamic>>[];
+    final c = AiClient(inner: MockClient((req) async {
+      sent.add(bodyOf(req));
+      return turnWithTicket(ticket: 'tkt-1');
+    }));
+
+    await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+    await c.sendTurn(messages: [const AiMessage('user', 'hola')]);
+
+    expect(sent[1]['aiTicket'], 'tkt-1');
+    expect(sent[1].containsKey('aiConversationId'), isFalse);
+  });
+
+  test('cada AiClient es una conversación: no comparten el par', () async {
+    final sentA = <Map<String, dynamic>>[];
+    final sentB = <Map<String, dynamic>>[];
+    final a = AiClient(inner: MockClient((req) async {
+      sentA.add(bodyOf(req));
+      return turnWithTicket(ticket: 'tkt-a', conversationId: conv1);
+    }));
+    final b = AiClient(inner: MockClient((req) async {
+      sentB.add(bodyOf(req));
+      return turnWithTicket(ticket: 'tkt-b', conversationId: conv2);
+    }));
+
+    await a.sendTurn(messages: [const AiMessage('user', 'hola')]);
+    await b.sendTurn(messages: [const AiMessage('user', 'hola')]);
+    await a.sendTurn(messages: [const AiMessage('user', 'hola')]);
+
+    expect(sentB[0].containsKey('aiConversationId'), isFalse);
+    expect(sentA[1]['aiConversationId'], conv1);
   });
 
   test('una respuesta sin ticket NO borra el que ya se tenía', () async {

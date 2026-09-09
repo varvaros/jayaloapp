@@ -39,6 +39,14 @@ class AiClient {
   /// cliente porque hay un AiClient por conversación (pantalla de crear).
   String? _ticket;
 
+  /// Conversación a la que pertenece `_ticket` (`aiTicket` v2, 2026-09-09). La
+  /// GENERA el servidor y va firmada DENTRO del ticket; desde v2 los dos viajan
+  /// juntos y un ticket suelto ya no vale — así un ticket robado no sirve para
+  /// abrir otra conversación. Si el servidor no lo manda (o llega con forma
+  /// rara) se queda nulo y el turno cae en la exención por JWT: funciona igual,
+  /// pero pagando el `auth.getUser()`.
+  String? _conversationId;
+
   /// Ids de foto cacheada (spec 2026-09-05-foto-cacheada-kv) que devolvió la
   /// ÚLTIMA respuesta 200; la pantalla los copia a sus fotos.
   ({String? first, String? second}) lastImageIds = (first: null, second: null);
@@ -93,6 +101,7 @@ class AiClient {
             'imageId': ?imageId,
             'imageId2': ?imageId2,
             'aiTicket': ?_ticket,
+            'aiConversationId': ?_conversationId,
             // F3: pide el `ready` adjunto al routing (ahorra el POST del
             // auto-«ok»). Va en TODOS los turnos porque el cliente no puede
             // predecir cuál será routing; el servidor solo actúa ahí, y un
@@ -114,6 +123,11 @@ class AiClient {
     // que ya se tenía.
     final t = body['aiTicket'];
     if (t is String && t.isNotEmpty) _ticket = t;
+    // Mismo trato para el id de conversación, y con el MISMO filtro de forma que
+    // los ids de foto: 32 hex o nada. Un id con otra forma no lo firmaría el
+    // servidor, así que reenviarlo solo sería basura en el body.
+    final c = _hex32(body['aiConversationId']);
+    if (c != null) _conversationId = c;
     if (res.statusCode != 200) {
       throw AiHttpException(res.statusCode, body['error']?.toString() ?? 'Error',
           code: body['code'] is String ? body['code'] as String : null);
@@ -123,8 +137,9 @@ class AiClient {
     return parseAiTurn(body);
   }
 
-  /// Un id de foto de KV es exactamente 32 hex (un uuid v4 sin guiones).
-  /// Cualquier otra cosa se descarta: no se reenvía basura al servidor.
+  /// Un id de foto de KV —y el de conversación del ticket v2— es exactamente
+  /// 32 hex (128 bits). Cualquier otra cosa se descarta: no se reenvía basura
+  /// al servidor.
   String? _hex32(Object? v) =>
       v is String && RegExp(r'^[0-9a-f]{32}$').hasMatch(v) ? v : null;
 }
