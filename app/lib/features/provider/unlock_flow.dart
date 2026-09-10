@@ -106,8 +106,14 @@ class UnlockOfferButton extends StatelessWidget {
   }
 }
 
-void _snack(BuildContext context, String msg) => ScaffoldMessenger.of(context)
-    .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
+// No es metodo de un State: el `mounted` que vale es el del BuildContext que
+// nos pasan. Sin esta guarda, avisar tras un `await` con la pantalla ya cerrada
+// truena igual.
+void _snack(BuildContext context, String msg) {
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
+}
 
 /// Arranca el flujo completo: chequeo de revelable → hoja de desbloqueo (hold
 /// + costo + saldo) → celebración → hoja de contacto. [onChanged] se llama

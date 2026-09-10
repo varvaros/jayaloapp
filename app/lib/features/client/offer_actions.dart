@@ -630,8 +630,10 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
           ? JayaloColors.dPrimary
           : JayaloColors.primary;
 
-  void _snack(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   /// Guarda compartida por [_reject] y [_discard]: las dos escriben el texto
   /// libre del "por que" en `provider_offers.rejection_reason`, una columna que

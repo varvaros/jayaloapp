@@ -150,8 +150,10 @@ class _ProductInterestDetailScreenState
     );
   }
 
-  void _snack(String m) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(m)));
+  void _snack(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
 
   /// Mismo guion que el desbloqueo de ofertas y que la hoja que esto sustituye:
   /// el cobro arranca YA, en paralelo al "¡PUM!" de la mascota, y al terminar

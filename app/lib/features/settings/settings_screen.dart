@@ -165,8 +165,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _snack(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  void _snack(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
 
   Future<void> _verifyPersonal() async {
     final p = await myProfile();

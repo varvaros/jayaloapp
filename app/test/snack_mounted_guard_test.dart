@@ -14,12 +14,23 @@ import 'package:flutter_test/flutter_test.dart';
 /// — el mismo motivo documentado en `offer_prefill_from_store_test.dart`), así
 /// que la guarda se vigila sobre el fuente, como en `no_link_out_test.dart`.
 ///
-/// ⚠️ El MISMO patrón sin guarda sigue vivo en `provider_onboarding_screen.dart`
-/// y `address_screen.dart` (reportado al PO, fuera del encargo de esta tanda).
-/// El modelo bueno a copiar es el `_snack` de `chat_screen.dart`.
+/// El barrido cubre los DIEZ helpers `_snack` del repo, no solo el que se
+/// llevó el crash: el patrón se copia de pantalla en pantalla, y de los diez
+/// solo `chat_screen.dart` traía la guarda. Un fichero nuevo con `_snack` no
+/// entra solo en esta lista — añadirlo aquí es parte de escribirlo.
 void main() {
   const vigilados = <String>[
+    'lib/features/chat/chat_screen.dart',
+    'lib/features/client/offer_actions.dart',
     'lib/features/onboarding/consumer_onboarding_screen.dart',
+    'lib/features/onboarding/provider_onboarding_screen.dart',
+    'lib/features/provider/credit_shop_screen.dart',
+    'lib/features/provider/product_interest_detail_screen.dart',
+    // Función suelta, no método de un State: comprueba `context.mounted`.
+    'lib/features/provider/unlock_flow.dart',
+    'lib/features/settings/address_screen.dart',
+    'lib/features/settings/settings_screen.dart',
+    'lib/features/verification/id_doc_sheet.dart',
   ];
 
   for (final ruta in vigilados) {

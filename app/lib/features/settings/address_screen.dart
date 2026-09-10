@@ -265,8 +265,13 @@ class _AddressScreenState extends State<AddressScreen> {
     }
   }
 
-  void _snack(String msg) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(msg)));
+  // El mismo `_useLocation` del alta vive aqui: el aviso del permiso denegado y
+  // el del `catch` (los 15 s de `timeLimit` del GPS) salen tras un `await`, y
+  // contra un State ya muerto `context` es `_element!` y truena.
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   @override
   Widget build(BuildContext context) {

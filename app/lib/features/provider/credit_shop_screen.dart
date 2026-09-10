@@ -839,8 +839,11 @@ class _CreditShopScreenState extends State<CreditShopScreen> {
     }
   }
 
-  void _snack(String msg) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 5)));
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 5)));
+  }
 
   Future<void> _buy(String playProductId) async {
     final product = _products[playProductId];

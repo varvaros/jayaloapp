@@ -165,8 +165,15 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     super.dispose();
   }
 
-  void _snack(String msg) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
+  // Misma trampa que en el alta de cliente: `_useLocation` avisa DESPUES de
+  // esperas largas (el permiso del sistema, los 15 s de `timeLimit` del GPS) y
+  // `_addRubro` avisa desde su `catch`. Si el usuario se fue, `context` —que es
+  // `_element!`— revienta con «Null check operator used on a null value».
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
+  }
 
   bool _stepValid(int s) => switch (s) {
         // La profesión es obligatoria. Salvo que el catálogo no haya podido
