@@ -606,8 +606,8 @@ class _ConversationRow extends StatelessWidget {
                     // El aviso del cron de inactividad NO es un preview: va
                     // como chip ámbar compacto y deja de comerse el último
                     // mensaje real (mockup aprobado PO 2026-08-10).
-                    if (c['last_kind'] != null &&
-                        isInactivityWarning(c['last_body'] as String? ?? ''))
+                    if (isInactivityWarning(
+                        c['last_kind'] as String?, c['last_body'] as String? ?? ''))
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Container(

@@ -77,16 +77,27 @@ String formatListTime(DateTime d, {DateTime? now}) {
   return '${d.day} ${_months[d.month - 1]}';
 }
 
-/// ¿El último mensaje es el aviso del cron de inactividad (48 h)?
+/// ¿El último mensaje es uno de los avisos del cron de inactividad (24/96/144 h)?
 ///
-/// El cron escribe ese aviso como un MENSAJE más ("⏳ Este chat está por
-/// cerrarse por inactividad…"), así que en la lista se comía el preview del
-/// último mensaje real. La lista lo detecta con esto y lo pinta como chip
-/// ámbar compacto (mockup aprobado PO 2026-08-10). Conservador: exige la
-/// frase completa del cron, un usuario que la mencione de pasada no la
-/// escribiría igual con el prefijo del reloj.
-bool isInactivityWarning(String body) =>
-    body.contains('por cerrarse por inactividad');
+/// El cron escribe esos avisos como MENSAJES más, así que en la lista se comían
+/// el preview del último mensaje real. La lista los detecta con esto y los
+/// pinta como chip ámbar compacto (mockup aprobado PO 2026-08-10).
+///
+/// Hasta el 2026-09-08 esto buscaba la subcadena «por cerrarse por inactividad»
+/// dentro del cuerpo, y por eso el cartel de las 24 h la llevaba metida a la
+/// fuerza: se leía como que el chat se cierra AL DÍA, cuando el cierre es a los
+/// 7. El PO reescribió los cuatro textos (migración 20260909022339), así que la
+/// detección pasa a lo que sí es estructural y no se falsifica:
+///   · `kind == 'audit'` — la RLS solo admite text|address|image|quick con
+///     sender_id = auth.uid(), así que un usuario no puede escribir un 'audit';
+///   · prefijo ⏳ — lo llevan los tres avisos y NO el cartel del cierre ya
+///     consumado ("Ok, acabo de cerrar este chat por inactividad."), que debe
+///     salir como preview normal porque ese chat ya no "se cierra pronto".
+///
+/// Sigue valiendo para los carteles viejos que quedan en la base: también
+/// empiezan por ⏳.
+bool isInactivityWarning(String? kind, String body) =>
+    kind == 'audit' && body.startsWith('⏳');
 
 /// Preview del último mensaje según su tipo.
 String messagePreview(String kind, String body) {

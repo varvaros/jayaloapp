@@ -92,4 +92,42 @@ void main() {
               '📅 Fecha pautada: la entrega',
             ));
   });
+
+  // El chip ámbar de la lista. Hasta el 2026-09-08 se detectaba buscando la
+  // subcadena «por cerrarse por inactividad» en el cuerpo, y por eso el cartel
+  // de las 24 h la llevaba metida a la fuerza — se leía como que el chat se
+  // cierra al día, cuando el cierre es a los 7. El PO reescribió los cuatro
+  // textos, así que la detección pasa a lo que SÍ es estructural: los avisos
+  // del cron son `audit` y empiezan por ⏳; el cartel del cierre ya consumado
+  // no lleva reloj, porque ese chat ya no "se cierra pronto".
+  group('isInactivityWarning', () {
+    test('24 h', () {
+      expect(isInactivityWarning('audit', '⏳ La otra parte continúa esperando en el chat. Escríbele.'), isTrue);
+    });
+    test('96 h', () {
+      expect(isInactivityWarning('audit', '⏳ El chat de «Reparación de nevera Mabe» sigue abierto.'), isTrue);
+    });
+    test('144 h', () {
+      expect(isInactivityWarning('audit', '⏳ Yujuuu… ¿Aún estás ahí? ¿Quieres que cierre este chat por ti?'), isTrue);
+    });
+    // Los chats avisados antes del 2026-09-08 llevan el texto viejo en la BD.
+    test('texto viejo, aun en la base', () {
+      expect(isInactivityWarning('audit', '⏳ Este chat está por cerrarse por inactividad. Responde para mantenerlo abierto.'), isTrue);
+    });
+    // El cierre YA ocurrido no es un aviso: debe salir como preview normal.
+    test('cierre consumado no es aviso', () {
+      expect(isInactivityWarning('audit', 'Ok, acabo de cerrar este chat por inactividad.'), isFalse);
+    });
+    test('otro audit no es aviso', () {
+      expect(isInactivityWarning('audit', '✓ Pedido marcado como completado. El chat queda cerrado.'), isFalse);
+    });
+    // Un usuario puede escribir lo que quiera: el kind es lo que no se falsifica
+    // (la RLS solo admite text|address|image|quick con sender_id = auth.uid()).
+    test('un mensaje del usuario nunca cuenta', () {
+      expect(isInactivityWarning('text', '⏳ La otra parte continúa esperando en el chat. Escríbele.'), isFalse);
+    });
+    test('sin ultimo mensaje', () {
+      expect(isInactivityWarning(null, ''), isFalse);
+    });
+  });
 }
