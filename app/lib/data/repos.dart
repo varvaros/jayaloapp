@@ -654,8 +654,13 @@ Future<String?> submitRequest({
       'target_categories': categories,
       'target_rubros': rubros,
       'service_modality': isService ? serviceModality : '',
+      // Dos vías piden la misma fecha: la modalidad "evento puntual" y la
+      // urgencia "fecha específica". Guardarla solo por la primera dejaba la
+      // segunda sin fecha en la base.
       'service_event_date':
-          isService && serviceModality == 'event' && serviceEventDate != null
+          isService &&
+              (serviceModality == 'event' || urgencyLevel == 'specific_date') &&
+              serviceEventDate != null
           ? serviceEventDate.toUtc().toIso8601String()
           : null,
       'urgency_level': isService ? urgencyLevel : '',

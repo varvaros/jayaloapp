@@ -1312,11 +1312,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         return;
       }
       if (_urgencyLevel.isEmpty) {
-        _toast('Indica cuándo lo necesitas.');
+        _toast('Indica cuándo necesitas el servicio.');
         return;
       }
       if (_serviceModality == 'event' && _serviceEventDate == null) {
         _toast('Indica la fecha del evento.');
+        return;
+      }
+      // "Fecha específica" prometía una fecha que el formulario nunca pedía:
+      // ahora la pide, y por tanto también la exige.
+      if (_urgencyLevel == 'specific_date' && _serviceEventDate == null) {
+        _toast('Indica qué fecha necesitas.');
         return;
       }
       // "Otra" en blanco guardaría un servicio recurrente SIN frecuencia, que
@@ -2620,8 +2626,36 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     );
   }
 
+  /// Selector de `_serviceEventDate`. Lo comparten las DOS vías que piden la
+  /// misma fecha —modalidad "evento puntual" y urgencia "fecha específica"—,
+  /// que solo se diferencian en el rótulo de cuando aún no hay fecha elegida.
+  Widget _serviceDateTile(String emptyLabel) {
+    final d = _serviceEventDate;
+    return _selectTile(
+      d == null
+          ? emptyLabel
+          : 'Fecha: ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}',
+      'Toca para cambiarla.',
+      d != null,
+      () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: d ?? DateTime.now().add(const Duration(days: 7)),
+          firstDate: DateTime.now(),
+          lastDate: DateTime.now().add(const Duration(days: 365)),
+        );
+        // `showDatePicker` tarda lo que el usuario quiera: sin el guard el
+        // `setState` corre sobre un widget que pudo desmontarse.
+        if (picked != null && mounted) {
+          setState(() => _serviceEventDate = picked);
+        }
+      },
+      icon: Icons.event_outlined,
+    );
+  }
+
   /// El formulario final COMPLETO de la web tras el `ready`: resumen de la IA
-  /// + rubro específico + (producto: checkboxes y "¿Cuándo quieres comprar?" /
+  /// + rubro específico + (producto: checkboxes y "¿Cuándo necesitas el producto?" /
   /// servicio: dónde y cuándo) + Enviar.
   Widget _finalForm(ColorScheme cs) {
     final r = _ready!;
@@ -2832,7 +2866,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             ),
           ],
           const SizedBox(height: 16),
-          _sectionTitle('¿Cuándo quieres comprar?'),
+          _sectionTitle('¿Cuándo necesitas el producto?'),
           const SizedBox(height: 6),
           for (final (value, title, desc) in _urgencyOptions)
             _selectTile(
@@ -2854,32 +2888,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             ),
           if (_serviceModality == 'event') ...[
             const SizedBox(height: 6),
-            _selectTile(
-              _serviceEventDate == null
-                  ? 'Elegir la fecha del evento'
-                  : 'Fecha: ${_serviceEventDate!.day.toString().padLeft(2, '0')}/${_serviceEventDate!.month.toString().padLeft(2, '0')}/${_serviceEventDate!.year}',
-              'Toca para cambiarla.',
-              _serviceEventDate != null,
-              () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate:
-                      _serviceEventDate ??
-                      DateTime.now().add(const Duration(days: 7)),
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
-                );
-                // `showDatePicker` tarda lo que el usuario quiera: sin el guard
-                // el `setState` corre sobre un widget que pudo desmontarse.
-                if (picked != null && mounted) {
-                  setState(() => _serviceEventDate = picked);
-                }
-              },
-              icon: Icons.event_outlined,
-            ),
+            _serviceDateTile('Elegir la fecha del evento'),
           ],
           const SizedBox(height: 16),
-          _sectionTitle('¿Cuándo lo necesitas?', required: true),
+          _sectionTitle('¿Cuándo necesitas el servicio?', required: true),
           const SizedBox(height: 6),
           for (final (value, title, desc, icon) in _serviceUrgencyOptions)
             _selectTile(
@@ -2889,6 +2901,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               () => setState(() => _urgencyLevel = value),
               icon: icon,
             ),
+          // "Fecha específica" decía «Tengo una fecha concreta en mente» y NUNCA
+          // preguntaba cuál: la fecha solo se pedía por la otra vía, la modalidad
+          // "evento puntual". Se pide aquí también, salvo que esa otra vía ya la
+          // haya pedido — si no, saldrían dos selectores para el mismo dato.
+          if (_urgencyLevel == 'specific_date' && _serviceModality != 'event') ...[
+            const SizedBox(height: 6),
+            _serviceDateTile('Elegir la fecha que necesitas'),
+          ],
           const SizedBox(height: 16),
           _sectionTitle('¿Cada cuánto se repite?'),
           Text(

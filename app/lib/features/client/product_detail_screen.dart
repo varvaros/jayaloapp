@@ -1061,7 +1061,7 @@ class _InterestSheetBodyState extends State<_InterestSheetBody> {
   Widget _urgencyTile() => _tile(
         icon: Icons.schedule_outlined,
         label:
-            _isServicio ? '¿Cuándo lo necesitas?' : '¿Cuándo quieres comprar?',
+            _isServicio ? '¿Cuándo necesitas el servicio?' : '¿Cuándo necesitas el producto?',
         child: Wrap(spacing: 7, runSpacing: 7, children: [
           for (final u in InterestUrgency.values)
             _pillChip(
