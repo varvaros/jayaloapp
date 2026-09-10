@@ -185,8 +185,17 @@ class _ConsumerOnboardingScreenState extends State<ConsumerOnboardingScreen> {
     }
   }
 
-  void _snack(String msg) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
+  // La guarda `mounted` NO es decorativa: `State.context` hace `_element!` y
+  // revienta con «Null check operator used on a null value» si la pantalla ya
+  // murió. Pasa de verdad — 5 veces en produccion — porque `_useLocation` avisa
+  // DESPUES de esperas largas (el permiso del sistema, y sobre todo los 15 s de
+  // `timeLimit` del GPS): si el usuario se va mientras tanto, el aviso llega a
+  // una pantalla que ya no existe. Mismo patron que `_snack` de chat_screen.
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 6)));
+  }
 
   @override
   Widget build(BuildContext context) {
