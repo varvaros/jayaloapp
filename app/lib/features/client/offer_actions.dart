@@ -518,10 +518,22 @@ class _OfferSheetBodyState extends State<_OfferSheetBody> {
             label: const Text('Descartar oferta'),
           ),
         ] else if (unlocked) ...[
-          // Contacto desbloqueado: el siguiente paso es CONVERSAR, no calificar
-          // (la calificación llega al cerrarse el chat, pedido PO 2026-07-21).
-          const Text('Contacto desbloqueado. Ya pueden coordinar por el chat.',
-              textAlign: TextAlign.center),
+          // El siguiente paso es CONVERSAR, no calificar (la calificación llega
+          // al cerrarse el chat, pedido PO 2026-07-21).
+          //
+          // Literal del cuerpo del push `offer_unlocked` que manda la BD desde
+          // el 2026-09-05: quien llega tocando ese aviso aterriza aquí y lee
+          // las mismas palabras. Si divergen, parece otro suceso.
+          //
+          // Y NO dice «Contacto desbloqueado»: al CLIENTE se le habla de estar
+          // «en contacto», no de desbloquear (pedido PO 2026-07-23, ver
+          // `my_requests_screen.dart`). «Desbloqueado» es la palabra del
+          // proveedor, que es quien paga los créditos — de ahí que sí la usen
+          // `unlock_flow`, `request_detail_screen` y `customer_profile_screen`.
+          //
+          // Tampoco lleva imperativo: el botón de abajo ya es la llamada a la
+          // acción. Dos órdenes apiladas compiten en vez de informar.
+          const Text('¡Ya puedes conversar!', textAlign: TextAlign.center),
           const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: _busy ? null : _openChat,
