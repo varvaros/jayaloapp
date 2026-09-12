@@ -1053,6 +1053,38 @@ class _HoldToConfirmButtonState extends State<HoldToConfirmButton>
           if (s == AnimationStatus.completed) widget.onConfirmed();
         });
 
+  /// Cuanto puede deslizarse el dedo, desde donde bajo, sin que el hold se
+  /// corte. `kTouchSlop` son 18 px y el botón mide 66 de alto: con 18 el hold
+  /// moría con el dedo todavía encima del botón. 36 tolera el pulso de una
+  /// mano sosteniendo 2,5 s y sigue MUY por debajo de lo que recorre un
+  /// desplazamiento real de la lista (que cancela, y debe cancelar: confirmar
+  /// aquí cuesta créditos).
+  static const double _kHoldSlop = 36;
+
+  /// Puntero que manda el hold. Un segundo dedo no lo secuestra ni lo cancela.
+  int? _pointer;
+  Offset? _desde;
+
+  void _empezar(PointerDownEvent e) {
+    if (_pointer != null) return;
+    _pointer = e.pointer;
+    _desde = e.position;
+    _c.forward();
+  }
+
+  void _mover(PointerMoveEvent e) {
+    final desde = _desde;
+    if (e.pointer != _pointer || desde == null) return;
+    if ((e.position - desde).distance > _kHoldSlop) _soltar(e.pointer);
+  }
+
+  void _soltar(int pointer) {
+    if (pointer != _pointer) return;
+    _pointer = null;
+    _desde = null;
+    _c.reverse();
+  }
+
   @override
   void dispose() {
     _c.dispose();
@@ -1079,10 +1111,22 @@ class _HoldToConfirmButtonState extends State<HoldToConfirmButton>
         (free
             ? 'Mantén presionado para aceptar'
             : 'Mantén presionado para desbloquear');
-    return GestureDetector(
-      onTapDown: (_) => _c.forward(),
-      onTapUp: (_) => _c.reverse(),
-      onTapCancel: () => _c.reverse(),
+    // 🔴 `Listener`, NO `GestureDetector`. Esto era un hold montado sobre
+    // callbacks de TAP, y un `TapGestureRecognizer` compite en la arena de
+    // gestos: en cuanto el dedo se desplazaba `kTouchSlop` (18 px) el
+    // reconocedor se rechazaba solo, o lo ganaba el `ListView` /
+    // `SingleChildScrollView` / el arrastre del `showModalBottomSheet` que
+    // envuelven a TODOS los usos reales. Resultado: `onTapCancel` y el relleno
+    // de vuelta a cero con el dedo todavía encima del botón — el síntoma
+    // «intermitente» que reportó el PO. `Listener` recibe los punteros crudos
+    // por hit-test y NO entra en la arena, así que el scroll sigue funcionando
+    // igual y el hold deja de perderlo. De paso el relleno arranca en el
+    // `pointerDown` y no tras los 100 ms de `kPressTimeout` del tap.
+    return Listener(
+      onPointerDown: _empezar,
+      onPointerMove: _mover,
+      onPointerUp: (e) => _soltar(e.pointer),
+      onPointerCancel: (e) => _soltar(e.pointer),
       child: AnimatedBuilder(
         animation: _c,
         builder: (_, _) {

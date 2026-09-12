@@ -425,6 +425,86 @@ void main() {
       await gesture.up();
     });
 
+    // 🔴 EL DEDO SE MUEVE. Los tres tests de arriba sostienen el dedo CLAVADO
+    // en un píxel y montan el botón en un `Center` — sin nada más en la arena
+    // de gestos. La app real lo pone dentro de un `ListView`/
+    // `SingleChildScrollView` DENTRO de un `showModalBottomSheet` arrastrable,
+    // y un dedo humano nunca se queda quieto 2,5 s. Estos casos reproducen eso.
+    Widget scrollHost(Widget child) => MaterialApp(
+          theme: jayaloTheme(Brightness.light),
+          home: Scaffold(
+            body: ListView(children: [
+              const SizedBox(height: 200),
+              child,
+              const SizedBox(height: 800),
+            ]),
+          ),
+        );
+
+    testWidgets('el dedo se desliza 20 px SIN salir del botón: sigue confirmando',
+        (tester) async {
+      var confirmed = 0;
+      await tester.pumpWidget(scrollHost(HoldToConfirmButton(onConfirmed: () async {
+        confirmed++;
+      })));
+
+      final gesture = await tester
+          .startGesture(tester.getCenter(find.byType(HoldToConfirmButton)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      // 20 px > kTouchSlop (18) pero el botón mide 66 de alto: el dedo sigue
+      // encima. Es el síntoma exacto del PO — «aunque estés encima del botón».
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(JayaloMotion.holdConfirm);
+      expect(confirmed, 1,
+          reason: 'un micro-deslizamiento dentro del botón no puede cortar el hold');
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('temblor de 8 px en varios pasos: sigue confirmando',
+        (tester) async {
+      var confirmed = 0;
+      await tester.pumpWidget(scrollHost(HoldToConfirmButton(onConfirmed: () async {
+        confirmed++;
+      })));
+
+      final gesture = await tester
+          .startGesture(tester.getCenter(find.byType(HoldToConfirmButton)));
+      await tester.pump();
+      for (var i = 0; i < 6; i++) {
+        await gesture.moveBy(Offset(i.isEven ? 4 : -4, i.isEven ? 3 : -3));
+        await tester.pump(const Duration(milliseconds: 120));
+      }
+      await tester.pump(JayaloMotion.holdConfirm);
+      expect(confirmed, 1, reason: 'el pulso de la mano no es una cancelación');
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('un scroll de verdad (120 px) SI cancela el hold',
+        (tester) async {
+      var confirmed = 0;
+      await tester.pumpWidget(scrollHost(HoldToConfirmButton(onConfirmed: () async {
+        confirmed++;
+      })));
+
+      final gesture = await tester
+          .startGesture(tester.getCenter(find.byType(HoldToConfirmButton)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      for (var i = 0; i < 6; i++) {
+        await gesture.moveBy(const Offset(0, -20));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await tester.pump(JayaloMotion.holdConfirm);
+      expect(confirmed, 0,
+          reason: 'desplazar la lista no puede confirmar un cobro sin querer');
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('soltar antes de tiempo no confirma', (tester) async {
       var confirmed = 0;
       await tester.pumpWidget(host(HoldToConfirmButton(onConfirmed: () async {
