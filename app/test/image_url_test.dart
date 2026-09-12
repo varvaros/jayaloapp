@@ -40,6 +40,19 @@ void main() {
       expect(url.queryParameters['resize'], 'contain');
     });
 
+    // La app y la web piden las fotos al MISMO servidor. Si una reescribe la
+    // URL distinto que la otra, tenemos dos comportamientos bajo un solo
+    // nombre. El gemelo de este caso esta en `src/lib/imageUrl.test.ts` de la
+    // web, con esta misma cadena escrita a mano: si alguien cambia una, la otra
+    // falla. Verificado contra prod el 2026-09-12: la URL devuelve 200x200.
+    test('PARIDAD con la web: la cadena entera, caracter a caracter', () {
+      expect(
+        transformedImageUrl(publica, width: 200),
+        '$host/storage/v1/render/image/public/$objeto'
+        '?width=200&quality=80&resize=contain',
+      );
+    });
+
     test('usa calidad 80 por defecto', () {
       final url = Uri.parse(transformedImageUrl(publica, width: 200));
 
