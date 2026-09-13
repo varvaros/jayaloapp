@@ -6,7 +6,7 @@ void main() {
     {'kind': 'producto', 'category_id': 'belleza', 'n': 2},
     {'kind': 'producto', 'category_id': 'electronica', 'n': 1},
     {'kind': 'servicio', 'category_id': 'plomeria', 'n': 4},
-    // kind nulo cuenta como producto (mismo criterio que categoriasConCatalogo).
+    // kind nulo cuenta como producto (mismo criterio que categoryCountsUnion).
     {'kind': null, 'category_id': 'hogar', 'n': 3},
     // sin categoría: se ignora.
     {'kind': 'producto', 'category_id': null, 'n': 9},
