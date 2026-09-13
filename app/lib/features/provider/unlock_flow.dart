@@ -267,11 +267,11 @@ Future<void> startUnlockFlow(
                           conversationKind: 'offer',
                           sourceId: offer['id'] as String,
                           dismiss: dismiss,
-                          onOpen: (convId) {
-                            if (context.mounted) {
-                              context.push('/messages/$convId');
-                            }
-                          },
+                          // Sin `context.mounted`: navegar NO puede depender
+                          // de que siga viva la tarjeta desde la que se abrió
+                          // el flujo (ver `StartChatButton.onOpen`).
+                          onOpen: (router, convId) =>
+                              router.push('/messages/$convId'),
                         ),
                       );
                     } else {
@@ -411,6 +411,7 @@ class StartChatButton extends StatefulWidget {
     required this.sourceId,
     required this.dismiss,
     required this.onOpen,
+    this.createConversation,
   });
 
   /// Tipo de conversación para `getOrCreateConversation`.
@@ -420,9 +421,29 @@ class StartChatButton extends StatefulWidget {
   /// Cierra la celebración (el `dismiss` del footer del overlay).
   final VoidCallback dismiss;
 
-  /// Navega al chat — corre con el context de la PANTALLA (no el del overlay,
-  /// que ya estará muerto tras [dismiss]).
-  final void Function(String convId) onOpen;
+  /// Navega al chat. Recibe un [GoRouter] YA RESUELTO, y eso es la línea
+  /// portante, no un detalle de estilo.
+  ///
+  /// 🔴 Antes recibía solo el `convId` y cada llamador navegaba con el
+  /// `context` de SU pantalla, guardado en el cierre. En «Mis ofertas» ese
+  /// context es el de la TARJETA de la oferta: entre desbloquear y pulsar
+  /// «¡Iniciar conversación!» pasan segundos, la lista se refresca, la tarjeta
+  /// se reemplaza y su elemento queda difunto ⇒ el `if (context.mounted)` de
+  /// los llamadores daba false y **el push se descartaba sin decir nada**. El
+  /// PO lo vio así: «la ventana solo salió y se quedó en el mismo lugar»
+  /// (2026-09-12, medido en el 1.0.4+125: la celebración se cerró — luego la
+  /// conversación SÍ se creó — y `error_events` quedó vacío).
+  ///
+  /// El router se toma del context del PROPIO BOTÓN, que está vivo por
+  /// definición —acabas de pulsarlo—, y es un objeto estable que no depende de
+  /// ningún elemento. Así el llamador ya no puede equivocarse.
+  final void Function(GoRouter router, String convId) onOpen;
+
+  /// Costura de test (mismo patrón que `WhatsappReveal.loadPhone`): por
+  /// defecto es la RPC real. Se inyecta para poder ejercitar el orden
+  /// cierre↔navegación sin Supabase.
+  final Future<String?> Function(String kind, String sourceId)?
+      createConversation;
 
   @override
   State<StartChatButton> createState() => _StartChatButtonState();
@@ -431,29 +452,51 @@ class StartChatButton extends StatefulWidget {
 class _StartChatButtonState extends State<StartChatButton> {
   bool _busy = false;
 
+  /// El fallo se pinta AQUÍ, dentro de la celebración. Antes iba por
+  /// `ScaffoldMessenger`, y eso era invisible por construcción: la celebración
+  /// es un overlay violeta a PANTALLA COMPLETA y el snack se dibuja en el
+  /// Scaffold de debajo. Un desbloqueo que ya cobró créditos y no consigue
+  /// abrir el chat no puede fallar en silencio.
+  String? _error;
+
   Future<void> _start() async {
     if (_busy) return;
-    setState(() => _busy = true);
+    // ANTES de cualquier await y antes de `dismiss()`: después, este elemento
+    // puede estar difunto y `GoRouter.of` lanzaría.
+    final router = GoRouter.of(context);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     String? convId;
     try {
-      convId = await getOrCreateConversation(
-          kind: widget.conversationKind, sourceId: widget.sourceId);
-    } catch (_) {}
+      convId = widget.createConversation != null
+          ? await widget.createConversation!(
+              widget.conversationKind, widget.sourceId)
+          : await getOrCreateConversation(
+              kind: widget.conversationKind, sourceId: widget.sourceId);
+    } catch (e, st) {
+      // `catch (_) {}` dejaba este camino MUDO: ni el usuario ni
+      // `error_events` se enteraban, así que un fallo aquí era indistinguible
+      // de un botón que no hace nada.
+      unawaited(reportError(e, st));
+    }
     if (!mounted) return;
     if (convId == null) {
-      setState(() => _busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('No se pudo abrir el chat. Intenta de nuevo.')));
+      setState(() {
+        _busy = false;
+        _error = 'No se pudo abrir el chat. Intenta de nuevo.';
+      });
       return;
     }
     widget.dismiss();
-    widget.onOpen(convId);
+    widget.onOpen(router, convId);
   }
 
   @override
   Widget build(BuildContext context) {
     final violet = Theme.of(context).colorScheme.primary;
-    return ConstrainedBox(
+    final boton = ConstrainedBox(
       constraints: const BoxConstraints(minWidth: 280),
       child: FilledButton.icon(
         onPressed: _busy ? null : _start,
@@ -476,6 +519,16 @@ class _StartChatButtonState extends State<StartChatButton> {
         label: const Text('¡Iniciar conversación!'),
       ),
     );
+    final error = _error;
+    if (error == null) return boton;
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      boton,
+      const SizedBox(height: 10),
+      Text(error,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+              color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+    ]);
   }
 }
 

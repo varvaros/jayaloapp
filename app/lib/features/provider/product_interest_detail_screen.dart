@@ -194,11 +194,10 @@ class _ProductInterestDetailScreenState
         conversationKind: 'product_interest',
         sourceId: widget.interestId,
         dismiss: dismiss,
-        onOpen: (convId) async {
-          if (!mounted) return;
-          await context.push('/messages/$convId',
-              extra: {'peer_name': _contactName});
-        },
+        // Sin la guarda de `mounted`: el router viene resuelto y estable, y
+        // `_contactName` es un campo — leerlo no necesita el elemento vivo.
+        onOpen: (router, convId) => router.push('/messages/$convId',
+            extra: {'peer_name': _contactName}),
       ),
     );
   }
