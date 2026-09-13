@@ -621,16 +621,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                           final todos = snap.data!;
                           // El MISMO reparto que prueba la batería de phase.dart,
                           // y por debajo el MISMO predicado que tiñe la tarjeta.
-                          final List<
-                              (Map<String, dynamic>, RequestPhase, int,
-                                  ClosedReason?)> items;
-                          if (_others) {
-                            items = todos;
-                          } else {
-                            final (:activas, :terminadas) =
-                                partitionBySegment(todos, (r) => r.$2);
-                            items = _terminadas ? terminadas : activas;
-                          }
+                          //
+                          // Sin rama para `_others`: este `FutureBuilder` solo
+                          // se monta cuando `!_others` (ver el ternario de más
+                          // arriba, `_others ? FutureBuilder(...) : JayaloRefresh(...)`),
+                          // así que aquí `_others` ya es siempre `false`.
+                          final (:activas, :terminadas) =
+                              partitionBySegment(todos, (r) => r.$2);
+                          final items = _terminadas ? terminadas : activas;
                           // La pista de swipe se enseña en la PRIMERA tarjeta
                           // que de verdad se puede deslizar: hacerlo en una
                           // bloqueada enseñaría el gesto donde no funciona.
@@ -739,7 +737,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _SecRow(count: items.length),
+                              _SecRow(
+                                count: items.length,
+                                terminadas: _terminadas,
+                              ),
                               Expanded(
                                 child: ListView.builder(
                                   controller: homeScrollController,
@@ -856,15 +857,28 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   }
 }
 
-/// Fila "Tus solicitudes · N activas" (el `.secrow` del mockup): título fuerte
-/// a la izquierda, conteo tenue a la derecha.
+/// Fila "Tus solicitudes · N activas/terminadas" (el `.secrow` del mockup):
+/// título fuerte a la izquierda, conteo tenue a la derecha.
+///
+/// Solo se monta sobre "Mis solicitudes" (ver el único call site, dentro de
+/// `!_others`): la pestaña "De otros" pinta con `_OtherRequestCard` en un
+/// `FutureBuilder` aparte que nunca pasa por aquí, así que este rótulo no
+/// necesita (ni podría honestamente decir) nada de esa lista — solo existen
+/// los dos segmentos de las solicitudes propias.
 class _SecRow extends StatelessWidget {
-  const _SecRow({required this.count});
+  const _SecRow({required this.count, required this.terminadas});
   final int count;
+
+  /// Qué segmento se está mirando (PO 2026-09-13, Task 4): antes la palabra
+  /// quedaba fija en "activas" aunque el conteo ya viniera de "Terminadas" —
+  /// mentía sobre solicitudes que ya NO están activas, el mismo defecto que
+  /// esta tanda partió en dos para dejar de contar.
+  final bool terminadas;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final palabra = terminadas ? 'terminada' : 'activa';
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 26, 8),
       child: Row(
@@ -881,7 +895,7 @@ class _SecRow extends StatelessWidget {
           ),
           const Spacer(),
           Text(
-            '$count activa${count == 1 ? '' : 's'}',
+            '$count $palabra${count == 1 ? '' : 's'}',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
