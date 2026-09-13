@@ -65,6 +65,9 @@ void main() {
       actions: const [],
     )));
     await tester.pumpAndSettle();
+    // Completada es TERMINAL (Task 4, PO 2026-09-13): vive en "Terminadas".
+    await tester.tap(find.text('Terminadas'));
+    await tester.pumpAndSettle();
 
     expect(cardOf(tester).tint, JayaloStatus.completedLight.bg);
   });
@@ -76,6 +79,9 @@ void main() {
       othersFetch: () async => [],
       actions: const [],
     )));
+    await tester.pumpAndSettle();
+    // Completada es TERMINAL (Task 4, PO 2026-09-13): vive en "Terminadas".
+    await tester.tap(find.text('Terminadas'));
     await tester.pumpAndSettle();
 
     expect(find.text('Completado'), findsOneWidget);
@@ -92,6 +98,9 @@ void main() {
       othersFetch: () async => [],
       actions: const [],
     )));
+    await tester.pumpAndSettle();
+    // Completada es TERMINAL (Task 4, PO 2026-09-13): vive en "Terminadas".
+    await tester.tap(find.text('Terminadas'));
     await tester.pumpAndSettle();
 
     expect(

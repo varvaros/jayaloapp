@@ -169,6 +169,10 @@ void main() {
         actions: const [],
       )));
       await tester.pumpAndSettle();
+      // Cerrada es TERMINAL (Task 4, PO 2026-09-13): vive en el segmento
+      // "Terminadas", no en "Activas" (donde abre la pantalla por defecto).
+      await tester.tap(find.text('Terminadas'));
+      await tester.pumpAndSettle();
 
       final card = tester.widget<JayaloCard>(find
           .ancestor(
@@ -207,6 +211,9 @@ void main() {
         othersFetch: () async => [],
         actions: const [],
       )));
+      await tester.pumpAndSettle();
+      // Cerrada es TERMINAL (Task 4, PO 2026-09-13): vive en "Terminadas".
+      await tester.tap(find.text('Terminadas'));
       await tester.pumpAndSettle();
     }
 

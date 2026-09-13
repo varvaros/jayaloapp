@@ -185,6 +185,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   bool _others = false; // false = Mías, true = De otros
   Future<List<Map<String, dynamic>>>? _othersLoad;
 
+  /// Segmento de «Mis solicitudes» (PO 2026-09-13). Abre en activas.
+  bool _terminadas = false;
+
   Future<List<Map<String, dynamic>>> _fetchOthers() =>
       (widget.othersFetch ?? allOpenRequests)();
 
@@ -543,6 +546,22 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
               ],
             ),
           ),
+          if (!_others)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _filterButton('Activas', !_terminadas, () {
+                    if (_terminadas) setState(() => _terminadas = false);
+                  }),
+                  _filterButton('Terminadas', _terminadas, () {
+                    if (!_terminadas) setState(() => _terminadas = true);
+                  }),
+                ],
+              ),
+            ),
           Expanded(
             // El colapso del header (esconder buscador) escucha el scroll de
             // CUALQUIERA de las dos pestañas: antes solo envolvía "Mías", por eso
@@ -599,7 +618,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                           if (!snap.hasData) {
                             return const JayaloLoaderBlock();
                           }
-                          final items = snap.data!;
+                          final todos = snap.data!;
+                          // El MISMO reparto que prueba la batería de phase.dart,
+                          // y por debajo el MISMO predicado que tiñe la tarjeta.
+                          final List<
+                              (Map<String, dynamic>, RequestPhase, int,
+                                  ClosedReason?)> items;
+                          if (_others) {
+                            items = todos;
+                          } else {
+                            final (:activas, :terminadas) =
+                                partitionBySegment(todos, (r) => r.$2);
+                            items = _terminadas ? terminadas : activas;
+                          }
                           // La pista de swipe se enseña en la PRIMERA tarjeta
                           // que de verdad se puede deslizar: hacerlo en una
                           // bloqueada enseñaría el gesto donde no funciona.
@@ -609,6 +640,66 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                           final firstOpen = items.indexWhere(
                             (r) => blockedDeleteReasonForPhase(r.$2) == null,
                           );
+                          if (items.isEmpty && !_others && !_terminadas &&
+                              todos.isNotEmpty) {
+                            // Pidió, pero no le queda nada activo. Decir «aún no
+                            // has pedido nada» aqui seria falso.
+                            return ListView(
+                              controller: homeScrollController,
+                              padding: EdgeInsets.only(
+                                top: 24,
+                                bottom: navBarReservedSpace(context),
+                              ),
+                              children: [
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 24),
+                                  child: Text(
+                                    'No te queda ninguna solicitud activa.\n'
+                                    'Las terminadas están en su pestaña.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                Center(
+                                  child: FilledButton(
+                                    onPressed: () =>
+                                        setState(() => _terminadas = true),
+                                    child: const Text('Ver las terminadas'),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+                          if (items.isEmpty && _terminadas) {
+                            return ListView(
+                              controller: homeScrollController,
+                              padding: EdgeInsets.only(
+                                top: 24,
+                                bottom: navBarReservedSpace(context),
+                              ),
+                              children: [
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 24),
+                                  child: Text(
+                                    'Aún no has terminado ninguna.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
                           if (items.isEmpty) {
                             return ListView(
                               controller: homeScrollController,
