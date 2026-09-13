@@ -160,4 +160,73 @@ void main() {
     expect(closedReasonFor([o('accepted')]), isNull);
     expect(closedReasonFor([]), isNull);
   });
+
+  test('isTerminalPhase: solo completed y closed', () {
+    expect(isTerminalPhase(RequestPhase.completed), isTrue);
+    expect(isTerminalPhase(RequestPhase.closed), isTrue);
+    expect(isTerminalPhase(RequestPhase.waiting), isFalse);
+    expect(isTerminalPhase(RequestPhase.withOffers), isFalse);
+    expect(isTerminalPhase(RequestPhase.accepted), isFalse);
+    expect(isTerminalPhase(RequestPhase.unlocked), isFalse);
+  });
+
+  test('isTerminalPhase cubre TODAS las fases del enum', () {
+    // Si alguien anade una fase y no decide de que lado cae, este test le
+    // obliga a venir aqui en vez de heredar un `false` silencioso.
+    expect(RequestPhase.values.length, 6);
+  });
+
+  group('partitionBySegment', () {
+    // El extractor imita la forma REAL de la lista de la pantalla: registros
+    // donde la fase es el segundo campo.
+    RequestPhase faseDe((String, RequestPhase) r) => r.$2;
+
+    test('manda completed y closed a terminadas, el resto a activas', () {
+      final (:activas, :terminadas) = partitionBySegment(
+        [
+          ('a', RequestPhase.waiting),
+          ('b', RequestPhase.completed),
+          ('c', RequestPhase.withOffers),
+          ('d', RequestPhase.closed),
+          ('e', RequestPhase.accepted),
+          ('f', RequestPhase.unlocked),
+        ],
+        faseDe,
+      );
+      expect(activas.map((r) => r.$1), ['a', 'c', 'e', 'f']);
+      expect(terminadas.map((r) => r.$1), ['b', 'd']);
+    });
+
+    test('conserva el orden de entrada dentro de cada segmento', () {
+      final (:terminadas, activas: _) = partitionBySegment(
+        [('x', RequestPhase.closed), ('y', RequestPhase.completed)],
+        faseDe,
+      );
+      expect(terminadas.map((r) => r.$1), ['x', 'y']);
+    });
+
+    test('lista vacia devuelve los dos segmentos vacios', () {
+      final (:activas, :terminadas) =
+          partitionBySegment(<(String, RequestPhase)>[], faseDe);
+      expect(activas, isEmpty);
+      expect(terminadas, isEmpty);
+    });
+
+    test('todo terminado deja activas vacio: el caso que hace mentir al vacio', () {
+      final (:activas, :terminadas) = partitionBySegment(
+        [('x', RequestPhase.completed), ('y', RequestPhase.closed)],
+        faseDe,
+      );
+      expect(activas, isEmpty);
+      expect(terminadas.length, 2);
+    });
+
+    test('usa isTerminalPhase y no una copia: coinciden en las SEIS fases', () {
+      for (final f in RequestPhase.values) {
+        final (:terminadas, activas: _) =
+            partitionBySegment([('x', f)], faseDe);
+        expect(terminadas.length == 1, isTerminalPhase(f), reason: '$f');
+      }
+    });
+  });
 }

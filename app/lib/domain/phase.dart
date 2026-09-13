@@ -89,3 +89,37 @@ RequestPhase phaseForRequest({
   if (acceptedOffers.isNotEmpty) return RequestPhase.accepted;
   return offers.isEmpty ? RequestPhase.waiting : RequestPhase.withOffers;
 }
+
+/// Fase TERMINAL: el trato ya no avanza, sea porque se concreto o porque murio.
+///
+/// ⚠️ UNICA fuente de esa decision en la app. Antes vivia escrita a mano dentro
+/// del widget de la tarjeta de «Mis solicitudes», y desde 2026-09-13 la
+/// consumen DOS cosas —el tinte gris de la tarjeta y el segmento
+/// Activas/Terminadas—, asi que una copia suelta las dejaria divergir.
+/// Espejo de `isTerminalPhase` en `src/lib/requestPhase.ts`.
+bool isTerminalPhase(RequestPhase p) =>
+    p == RequestPhase.completed || p == RequestPhase.closed;
+
+/// Reparte una lista en los dos segmentos de «Mis solicitudes».
+///
+/// ⚠️ UNICA puerta a `isTerminalPhase` desde la interfaz de la app. Vive aqui y
+/// no dentro de la pantalla para que su bateria pueda ejercer CODIGO DE
+/// PRODUCCION: un reparto escrito en el widget solo se puede probar
+/// reimplementandolo en el test, y ese test sigue verde aunque la pantalla se
+/// rompa. Espejo de `partitionBySegment` en `src/lib/requestPhase.ts`.
+///
+/// `faseDe` es un parametro porque las fichas de esa lista son REGISTROS, no
+/// objetos con campo: la pantalla pasa `(r) => r.$2`.
+///
+/// Conserva el orden de entrada dentro de cada segmento.
+({List<T> activas, List<T> terminadas}) partitionBySegment<T>(
+  Iterable<T> items,
+  RequestPhase Function(T) faseDe,
+) {
+  final activas = <T>[];
+  final terminadas = <T>[];
+  for (final it in items) {
+    (isTerminalPhase(faseDe(it)) ? terminadas : activas).add(it);
+  }
+  return (activas: activas, terminadas: terminadas);
+}

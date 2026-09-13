@@ -883,8 +883,7 @@ class _RequestCard extends StatelessWidget {
     // el estado lo dicen el chip y el riel, no el fondo. Las TERMINALES
     // (completada/cerrada) conservan su tinte gris + foto apagada (pedido PO
     // 2026-08-03): una solicitud muerta no debe leerse como activa.
-    final tinted =
-        phase == RequestPhase.completed || phase == RequestPhase.closed;
+    final tinted = isTerminalPhase(phase);
     final bg = tinted ? tone.bg : cs.surfaceContainerLowest;
     final fg = tinted ? tone.ink : cs.onSurface;
     var (_, label) = phaseChip(phase, offerCount, closedReason: closedReason);
