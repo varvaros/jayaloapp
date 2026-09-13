@@ -1196,8 +1196,7 @@ class _RequestCard extends StatelessWidget {
     // fondo no bastaba: la foto a todo color es lo primero que mira el ojo y
     // seguía leyéndose como una solicitud viva. Cerrada también está
     // terminada y corre el mismo riesgo de leerse como viva a todo color.
-    Widget muted(Widget child) => phase == RequestPhase.completed ||
-            phase == RequestPhase.closed
+    Widget muted(Widget child) => tinted
         ? ColorFiltered(
             colorFilter: const ColorFilter.matrix(_grayscaleMatrix),
             child: child,
