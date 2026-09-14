@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jayalo_app/core/error_reporter.dart';
 import 'package:jayalo_app/domain/request_share_message.dart';
 import 'package:jayalo_app/features/admin/recruit_share.dart';
 
@@ -45,12 +46,20 @@ void main() {
     expect(texto, buildRequestShareText(_r));
   });
 
-  test('si los dos fallan, avisa y no lanza', () async {
+  test('si los dos fallan, avisa, reporta y no lanza', () async {
     String? aviso;
+    Object? reportado;
+    debugOnReport = (e) => reportado = e;
+    addTearDown(() => debugOnReport = null);
+
     await compartirSolicitud(_r,
         abrir: (_) async => false,
         hoja: (_) async => throw Exception('nada'),
         aviso: (m) => aviso = m);
+
     expect(aviso, 'No se pudo abrir WhatsApp');
+    expect(reportado, isA<Exception>(),
+        reason: 'un `catch (_) {}` mudo dejaba este fallo total sin rastro '
+            'en error_events aunque nadie enganche `aviso`');
   });
 }

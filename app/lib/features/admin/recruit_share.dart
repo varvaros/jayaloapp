@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/error_reporter.dart';
 import '../../domain/request_share_message.dart';
 
 /// Ofrecer una solicitud por WhatsApp.
@@ -32,7 +35,12 @@ Future<void> compartirSolicitud(
 
   try {
     await hojaFn(texto);
-  } catch (_) {
+  } catch (e, st) {
+    // A diferencia del catch de arriba, este SÍ se reporta: no tener
+    // WhatsApp es esperable, pero que falle también la hoja del sistema no
+    // lo es, y un `catch (_) {}` aquí dejaba ese fallo sin rastro en
+    // `error_events` aunque nadie enganche `aviso`.
+    unawaited(reportError(e, st));
     aviso?.call('No se pudo abrir WhatsApp');
   }
 }
