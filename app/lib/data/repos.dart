@@ -14,6 +14,7 @@ import '../domain/credit_shop.dart' show ShopPackage;
 import '../domain/phase.dart';
 import '../domain/profile_address.dart';
 import '../domain/request_requirements.dart';
+import '../domain/request_share_message.dart' show kShareableRequestCols;
 import '../features/client/catalog_articulos.dart';
 import 'location_body.dart';
 
@@ -3201,6 +3202,49 @@ Future<List<Map<String, dynamic>>> allOpenRequests({String? kind}) async {
   return List<Map<String, dynamic>>.from(
     await q.order('created_at', ascending: false).limit(100),
   );
+}
+
+/// Lo que pide la PANTALLA "Reclutar" (solo admin): la lista blanca del mensaje
+/// mas `created_at` para pintar la fecha. La frontera de privacidad NO es esta
+/// lista sino `ShareableRequest.fromRow`, que solo lee claves de
+/// `kShareableRequestCols` — ver `domain/request_share_message.dart`.
+const kAdminListCols = <String>[...kShareableRequestCols, 'created_at'];
+
+/// Solicitudes abiertas para la pantalla "Reclutar".
+///
+/// No hay guarda de admin en el cliente A PROPOSITO: la pone la RLS de
+/// `customer_requests` (la politica `Requests: select` trae
+/// `has_role(auth.uid(),'admin')`). Un usuario normal ve aqui solo las abiertas
+/// y publicas, que ya son publicas de todos modos — nada que proteger en el
+/// cliente, que ademas no se puede actualizar una vez repartido el APK.
+Future<List<Map<String, dynamic>>> adminListRequests({int limit = 100}) async =>
+    List<Map<String, dynamic>>.from(
+      await supa
+          .from('customer_requests')
+          .select(kAdminListCols.join(','))
+          .eq('status', 'open')
+          .order('created_at', ascending: false)
+          .limit(limit),
+    );
+
+/// Cobertura por solicitud: id → cuantos proveedores FUERTES (mismo rubro u
+/// oficio) le tocan hoy. Una sola llamada por pagina, nunca una por fila.
+///
+/// Se queda con `fuertes` y descarta `amplios`: el chip habla de a quien le toca
+/// de verdad, y contar el circulo amplio diria que hay cobertura donde no la
+/// hay.
+Future<Map<String, int>> adminRequestCoverage(List<String> ids) async {
+  if (ids.isEmpty) return {};
+  final rows = List<Map<String, dynamic>>.from(
+    await supa.rpc(
+      'admin_request_match_counts_bulk',
+      params: {'_request_ids': ids},
+    ),
+  );
+  return {
+    for (final r in rows)
+      r['request_id'] as String: (r['fuertes'] as num).toInt(),
+  };
 }
 
 // ── Catálogo (Task 6): listado de productos/servicios publicados ───────────
