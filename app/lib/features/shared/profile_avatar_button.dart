@@ -270,10 +270,10 @@ Future<void> openProfileMenu(BuildContext context,
                   const Divider(height: 1),
                 ],
                 // Solo admin (pedido PO 2026-07-22): registro rápido de
-                // proveedores por correo. El item se auto-oculta si no es admin.
-                _AdminMenuItem(
-                    onSelect: () =>
-                        Navigator.pop(ctx, '/admin/quick-register')),
+                // proveedores por correo, y (Task 6, 2026-09-14) "Reclutar",
+                // las solicitudes sin proveedor para ofrecer por WhatsApp. El
+                // widget se auto-oculta si no es admin.
+                AdminMenuItems(onSelect: (ruta) => Navigator.pop(ctx, ruta)),
                 ListTile(
                   leading: const Icon(Icons.settings_outlined),
                   title: const Text('Ajustes'),
@@ -322,22 +322,29 @@ Future<void> openExternalWallet(BuildContext context) => openCreditShop(context)
 /// negocio, por eso se destacan). El saldo se pide al abrir el menú,
 /// best-effort: si falla o aún no llega, la banda muestra "Créditos" sin número
 /// pero el "+" sigue disponible (recargar nunca queda inalcanzable).
-/// Item de menú "Registro rápido" que SOLO aparece si el usuario es admin
-/// (consulta `isAdmin()` al montarse; mientras tanto no ocupa espacio).
-class _AdminMenuItem extends StatefulWidget {
-  const _AdminMenuItem({required this.onSelect});
-  final VoidCallback onSelect;
+/// Los items de menú que SOLO ve un admin: "Registro rápido" y (Task 6,
+/// 2026-09-14) "Reclutar". Público (no `_`) para poder probarlo sin montar
+/// el menú entero; `esAdmin` es para el test — en producción queda `null` y
+/// lo decide `isAdmin()`.
+class AdminMenuItems extends StatefulWidget {
+  const AdminMenuItems({super.key, required this.onSelect, this.esAdmin});
+  final void Function(String ruta) onSelect;
+  final bool? esAdmin;
   @override
-  State<_AdminMenuItem> createState() => _AdminMenuItemState();
+  State<AdminMenuItems> createState() => _AdminMenuItemsState();
 }
 
-class _AdminMenuItemState extends State<_AdminMenuItem> {
+class _AdminMenuItemsState extends State<AdminMenuItems> {
   bool _admin = false;
 
   @override
   void initState() {
     super.initState();
-    isAdmin().then((v) => mounted ? setState(() => _admin = v) : null);
+    if (widget.esAdmin != null) {
+      _admin = widget.esAdmin!;
+    } else {
+      isAdmin().then((v) => mounted ? setState(() => _admin = v) : null);
+    }
   }
 
   @override
@@ -350,7 +357,13 @@ class _AdminMenuItemState extends State<_AdminMenuItem> {
         leading: Icon(Icons.person_add_alt, color: cs.primary),
         title: const Text('Registro rápido'),
         subtitle: const Text('Registrar un proveedor por correo'),
-        onTap: widget.onSelect,
+        onTap: () => widget.onSelect('/admin/quick-register'),
+      ),
+      ListTile(
+        leading: Icon(Icons.campaign_outlined, color: cs.primary),
+        title: const Text('Reclutar'),
+        subtitle: const Text('Solicitudes sin proveedor'),
+        onTap: () => widget.onSelect('/admin/recruit'),
       ),
     ]);
   }

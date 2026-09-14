@@ -16,6 +16,7 @@ import '../features/client/package_detail_screen.dart';
 import '../features/client/product_detail_screen.dart';
 import '../features/client/provider_store_screen.dart';
 import '../features/admin/quick_register_screen.dart';
+import '../features/admin/recruit_screen.dart';
 import '../features/client/reputation_screen.dart';
 import '../features/client/request_status_screen.dart';
 import '../features/notifications/notifications_screen.dart';
@@ -290,6 +291,18 @@ GoRouter buildRouter() => GoRouter(
                 redirect: (_, _) async => await isAdmin() ? null : '/gate',
                 builder: (_, _) =>
                     const BackGuard(child: AdminQuickRegisterScreen())),
+            GoRoute(
+                path: '/admin/recruit',
+                // Mismo gate que quick-register, y por la misma razon: esto es
+                // defensa en profundidad. La barrera REAL es del servidor — la
+                // RLS de `customer_requests` y el `has_role` del RPC
+                // `admin_request_match_counts_bulk` — porque el APK ya
+                // repartido no se puede actualizar.
+                redirect: (_, _) async => await isAdmin() ? null : '/gate',
+                // Sin `const` (ver el comentario del constructor de
+                // RecruitScreen): las rutas de al lado si lo llevan, y copiarlas
+                // aqui no compila.
+                builder: (_, _) => BackGuard(child: RecruitScreen())),
             GoRoute(
                 path: '/messages',
                 builder: (_, _) => const BackGuard(child: ConversationsScreen())),
