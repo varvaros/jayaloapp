@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/domain/request_share_message.dart';
 
@@ -130,6 +131,48 @@ void main() {
       expect(u.origin, 'https://wa.me');
       expect(u.path, '/');
       expect(u.queryParameters['text'], buildRequestShareText(_r(id: 'r7', zone: 'Piantini')));
+    });
+  });
+
+  group('guarda estatica: fromRow no puede leer una columna fuera de la lista blanca', () {
+    // En la web esto lo hace el COMPILADOR (`tsc` con `satisfies` + `AssertCovers`
+    // sobre SHAREABLE_FIELDS en requestShareMessage.ts); Dart no tiene equivalente
+    // estatico, asi que este test LEE EL CODIGO FUENTE de `fromRow` (mismo patron
+    // que no_link_out_test.dart) y compara cada `r['clave']` que lee contra
+    // `kShareableRequestCols`. Hace falta ADEMAS del test de mutacion de arriba:
+    // ese solo caza un campo fugado si alguien lo mete en el TEXTO del mensaje: un
+    // campo que se agregue a la clase y a `fromRow` pero que todavia no se use en
+    // `buildRequestShareText` pasa desapercibido — y deja la fuga cargada para el
+    // siguiente que edite la funcion y si la use.
+    test('ANCLA-ESTATICA: toda clave que fromRow lee de la fila esta en kShareableRequestCols', () {
+      final src = File('lib/domain/request_share_message.dart').readAsStringSync();
+
+      final inicio =
+          src.indexOf('factory ShareableRequest.fromRow(Map<String, dynamic> r) =>');
+      expect(inicio, greaterThanOrEqualTo(0),
+          reason: 'no se encontro "factory ShareableRequest.fromRow" en '
+              'request_share_message.dart — ¿se renombro o se movio? esta guarda '
+              'depende de poder localizar y leer su cuerpo como texto.');
+      final fin = src.indexOf(';', inicio);
+      expect(fin, greaterThan(inicio));
+      final cuerpo = src.substring(inicio, fin);
+
+      final lector = RegExp(r'''r\[['"]([A-Za-z0-9_]+)['"]\]''');
+      final leidas = lector.allMatches(cuerpo).map((m) => m.group(1)!).toSet();
+
+      expect(leidas, isNotEmpty,
+          reason: 'no se encontro ninguna r[\'...\'] dentro del cuerpo de fromRow '
+              '— el regex de este test dejo de encajar con el codigo real; '
+              'revisalo antes de confiar en que este test protege algo.');
+
+      final fuera = leidas.difference(kShareableRequestCols.toSet());
+      expect(fuera, isEmpty,
+          reason: 'fromRow lee ${fuera.join(", ")} de la fila, pero esa clave NO '
+              'esta en kShareableRequestCols. Este mensaje sale de la plataforma '
+              'por WhatsApp a alguien SIN SESION: si ${fuera.join(", ")} es algo '
+              'como city/sector/lat/lng, es el barrio donde vive el cliente. '
+              'Agregala a kShareableRequestCols solo si /requests/<id> ya la '
+              'muestra sin sesion; si no, sacala de fromRow.');
     });
   });
 }
