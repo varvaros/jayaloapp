@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/repos.dart';
 import '../../domain/request_share_message.dart';
+import 'recruit_share.dart';
 
 /// "Reclutar" (SOLO admin): las solicitudes abiertas, marcando cuales no tienen
 /// ni un proveedor al que les toque, para ofrecerselas por WhatsApp a alguien
@@ -53,6 +56,19 @@ class _RecruitScreenState extends State<RecruitScreen> {
   void initState() {
     super.initState();
     _cargar();
+  }
+
+  // El messenger se captura ANTES del await, y el aviso va detras de
+  // `mounted`. `unawaited` es el idioma del repo (core/error_reporter.dart).
+  void _compartir(ShareableRequest r) {
+    final messenger = ScaffoldMessenger.of(context);
+    unawaited(compartirSolicitud(
+      r,
+      aviso: (m) {
+        if (!mounted) return;
+        messenger.showSnackBar(SnackBar(content: Text(m)));
+      },
+    ));
   }
 
   Future<void> _cargar() async {
@@ -187,7 +203,7 @@ class _RecruitScreenState extends State<RecruitScreen> {
                                               visibles[i]['id'])
                                       ? _cobertura[visibles[i]['id']]
                                       : null,
-                                  onShare: widget.onShare,
+                                  onShare: widget.onShare ?? _compartir,
                                 ),
                               ),
                             ),
