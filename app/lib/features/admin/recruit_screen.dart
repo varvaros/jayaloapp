@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/repos.dart';
 import '../../domain/request_share_message.dart';
+import '../client/my_requests_screen.dart' show timeAgo;
 import 'recruit_share.dart';
 
 /// "Reclutar" (SOLO admin): las solicitudes abiertas, marcando cuales no tienen
@@ -71,11 +72,18 @@ class _RecruitScreenState extends State<RecruitScreen> {
     ));
   }
 
-  Future<void> _cargar() async {
-    setState(() {
-      _cargando = true;
-      _error = false;
-    });
+  /// `silencioso: true` es el pull-to-refresh: NO pasa por `_cargando`, que
+  /// reemplaza TODA la pantalla por un spinner centrado y tapa la lista que
+  /// el `RefreshIndicator` ya está pintando arriba con su propio indicador
+  /// nativo. Un fallo silencioso tampoco tumba lo que ya se ve — se queda con
+  /// los datos viejos, igual que un fallo de `widget.coverage` de abajo.
+  Future<void> _cargar({bool silencioso = false}) async {
+    if (!silencioso) {
+      setState(() {
+        _cargando = true;
+        _error = false;
+      });
+    }
     try {
       final filas = await widget.load();
       Map<String, int> cob = const {};
@@ -96,6 +104,7 @@ class _RecruitScreenState extends State<RecruitScreen> {
       });
     } catch (_) {
       if (!mounted) return;
+      if (silencioso) return; // se queda con lo que ya había en pantalla.
       setState(() {
         _error = true;
         _cargando = false;
@@ -177,22 +186,41 @@ class _RecruitScreenState extends State<RecruitScreen> {
                       ),
                     ),
                     Expanded(
-                      child: visibles.isEmpty
-                          ? Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(24),
-                                child: Text(
-                                  _soloHuecos
-                                      ? 'Ninguna solicitud abierta se quedó sin proveedor'
-                                      : 'No hay solicitudes abiertas',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(color: cs.onSurfaceVariant),
+                      // El RefreshIndicator envuelve TAMBIÉN el vacío — antes
+                      // solo existía en la rama con filas, y "Sin proveedor"
+                      // vacío es justo cuando más ganas hay de reintentar.
+                      // `AlwaysScrollableScrollPhysics` en las dos ramas: sin
+                      // ella el gesto de pull-to-refresh no arranca cuando el
+                      // contenido no llena la pantalla (lista corta o vacía).
+                      child: RefreshIndicator(
+                        onRefresh: () => _cargar(silencioso: true),
+                        child: visibles.isEmpty
+                            ? LayoutBuilder(
+                                builder: (context, constraints) => ListView(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  children: [
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                          minHeight: constraints.maxHeight),
+                                      child: Center(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(24),
+                                          child: Text(
+                                            _soloHuecos
+                                                ? 'Ninguna solicitud abierta se quedó sin proveedor'
+                                                : 'No hay solicitudes abiertas',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                                color: cs.onSurfaceVariant),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            )
-                          : RefreshIndicator(
-                              onRefresh: _cargar,
-                              child: ListView.separated(
+                              )
+                            : ListView.separated(
+                                physics: const AlwaysScrollableScrollPhysics(),
                                 itemCount: visibles.length,
                                 separatorBuilder: (_, _) =>
                                     const Divider(height: 1),
@@ -206,7 +234,7 @@ class _RecruitScreenState extends State<RecruitScreen> {
                                   onShare: widget.onShare ?? _compartir,
                                 ),
                               ),
-                            ),
+                      ),
                     ),
                   ],
                 ),
@@ -248,14 +276,25 @@ class _Fila extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final titulo = (fila['title'] as String?)?.trim();
     final zona = (fila['zone'] as String?)?.trim();
+    // `created_at` viaja en `kAdminListCols` desde siempre "para pintar la
+    // fecha" (ver el comentario en repos.dart), pero la pantalla nunca la
+    // usó. Para reclutar importa: una solicitud de hace 30 días no se ofrece
+    // igual que una de hoy. `Wrap`, no `Row`: con zona larga + fecha + chip
+    // en una sola línea fija, un teléfono angosto la desborda.
+    final creadaEn = fila['created_at'] as String?;
+    final creadaEnFecha = creadaEn == null ? null : DateTime.tryParse(creadaEn);
+    final fecha = creadaEnFecha == null ? null : timeAgo(creadaEnFecha);
     return ListTile(
       title: Text(titulo == null || titulo.isEmpty ? 'Sin título' : titulo),
-      subtitle: Row(
+      subtitle: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          if (zona != null && zona.isNotEmpty) ...[
+          if (fecha != null)
+            Text(fecha, style: TextStyle(color: cs.onSurfaceVariant)),
+          if (zona != null && zona.isNotEmpty)
             Text(zona, style: TextStyle(color: cs.onSurfaceVariant)),
-            const SizedBox(width: 8),
-          ],
           if (fuertes != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

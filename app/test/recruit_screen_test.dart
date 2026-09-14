@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/features/admin/recruit_screen.dart';
+import 'package:jayalo_app/features/client/my_requests_screen.dart'
+    show timeAgo;
 
 Map<String, dynamic> _fila(String id, String titulo) => {
       'id': id,
@@ -150,5 +154,92 @@ void main() {
     ));
     await t.pumpAndSettle();
     expect(find.text('Reintentar'), findsOneWidget);
+  });
+
+  // `created_at` viaja en `kAdminListCols` desde siempre "para pintar la
+  // fecha" pero la fila nunca la usaba. Se fija a 5 días: lo bastante lejos
+  // de "ahora" para que los milisegundos que tarda el test en correr no
+  // puedan empujarla a un día distinto (un `hace 0 min` sí sería frágil).
+  testWidgets('la fila pinta la fecha relativa de created_at', (t) async {
+    final creadaEn = DateTime.now().subtract(const Duration(days: 5));
+    await t.pumpWidget(_app(
+      filas: [
+        {..._fila('r1', 'Silla de caoba'), 'created_at': creadaEn.toIso8601String()},
+      ],
+      cobertura: {'r1': 0},
+    ));
+    await t.pumpAndSettle();
+    expect(find.text(timeAgo(creadaEn)), findsOneWidget);
+  });
+
+  group('pull-to-refresh', () {
+    testWidgets(
+        'refrescar NO reemplaza la lista por un spinner a pantalla completa',
+        (t) async {
+      var llamadas = 0;
+      final segundaCarga = Completer<List<Map<String, dynamic>>>();
+      await t.pumpWidget(MaterialApp(
+        home: RecruitScreen(
+          load: ({int limit = 100}) {
+            llamadas++;
+            if (llamadas == 1) {
+              return Future.value([_fila('r1', 'Silla de caoba')]);
+            }
+            return segundaCarga.future;
+          },
+          coverage: (ids) async => {'r1': 0},
+        ),
+      ));
+      await t.pumpAndSettle();
+      expect(find.text('Silla de caoba'), findsOneWidget);
+
+      // Gesto real de pull-to-refresh (mismo patrón que
+      // conversations_screen_test.dart) sobre la lista ya montada.
+      await t.fling(find.byType(ListView), const Offset(0, 300), 1000);
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 500));
+
+      // La segunda carga (llamadas == 2) sigue PENDIENTE (el Completer no se
+      // ha resuelto): si `_cargar` hubiera vuelto a poner `_cargando = true`,
+      // el body entero se reemplazaría por el `CircularProgressIndicator`
+      // centrado y esta fila desaparecería.
+      expect(llamadas, 2);
+      expect(find.text('Silla de caoba'), findsOneWidget);
+
+      segundaCarga.complete([_fila('r1', 'Silla de caoba')]);
+      await t.pumpAndSettle();
+      expect(find.text('Silla de caoba'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    });
+
+    testWidgets('el vacío también admite el gesto y recarga', (t) async {
+      var llamadas = 0;
+      await t.pumpWidget(MaterialApp(
+        home: RecruitScreen(
+          load: ({int limit = 100}) async {
+            llamadas++;
+            return llamadas == 1 ? const [] : [_fila('r1', 'Silla de caoba')];
+          },
+          // Cobertura 0 para lo que venga: sigue visible en "Sin proveedor"
+          // (el filtro con el que arranca la pantalla) tras la recarga.
+          coverage: (ids) async => {for (final id in ids) id: 0},
+        ),
+      ));
+      await t.pumpAndSettle();
+      // "Sin proveedor" (el filtro que arranca por defecto) con la lista
+      // vacía: antes esta rama no tenía ningún `RefreshIndicator`.
+      expect(find.text('Ninguna solicitud abierta se quedó sin proveedor'),
+          findsOneWidget);
+      expect(find.byType(RefreshIndicator), findsOneWidget);
+      expect(find.byType(ListView), findsOneWidget);
+
+      await t.fling(find.byType(ListView), const Offset(0, 300), 1000);
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 500));
+      await t.pumpAndSettle();
+
+      expect(llamadas, 2);
+      expect(find.text('Silla de caoba'), findsOneWidget);
+    });
   });
 }

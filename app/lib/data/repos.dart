@@ -3217,12 +3217,23 @@ const kAdminListCols = <String>[...kShareableRequestCols, 'created_at'];
 /// `has_role(auth.uid(),'admin')`). Un usuario normal ve aqui solo las abiertas
 /// y publicas, que ya son publicas de todos modos — nada que proteger en el
 /// cliente, que ademas no se puede actualizar una vez repartido el APK.
+///
+/// Excluye las DIRIGIDAS (`target_business_id` no nulo): esa politica RLS le
+/// enseña la fila al admin (que ve todo), pero su pagina publica
+/// `jayalo.com/requests/<id>` exige sesion y un visitante sin cuenta NO la
+/// carga. Reclutar manda esa URL por WhatsApp a alguien que TODAVIA no esta
+/// en Jayalo — sin este filtro le llegaria un enlace MUERTO, y encima se le
+/// ofreceria algo que el cliente dirigio a otro negocio. Peor todavia: el RPC
+/// de cobertura (`adminRequestCoverage`) ignora el targeting, asi que una
+/// dirigida sin rubros coincidentes aparecia justo en "Sin proveedor" — la
+/// pestaña que mas se comparte.
 Future<List<Map<String, dynamic>>> adminListRequests({int limit = 100}) async =>
     List<Map<String, dynamic>>.from(
       await supa
           .from('customer_requests')
           .select(kAdminListCols.join(','))
           .eq('status', 'open')
+          .isFilter('target_business_id', null)
           .order('created_at', ascending: false)
           .limit(limit),
     );
