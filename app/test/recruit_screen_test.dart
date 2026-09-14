@@ -36,7 +36,15 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('Silla de caoba'), findsOneWidget);
     expect(find.text('Nevera'), findsNothing);
-    expect(find.text('Sin proveedor'), findsOneWidget);
+    // 🔴 "Sin proveedor" sale DOS veces en pantalla (la pastilla del filtro
+    // y el chip de la fila) siempre que la cobertura cargó bien — acotar al
+    // `ListTile` es lo único que distingue el chip de la fila. Sin el
+    // `descendant`, esto cuenta la pastilla también y falla en falso (dice
+    // 2 cuando la intención era comprobar 1 fila con chip).
+    expect(
+        find.descendant(
+            of: find.byType(ListTile), matching: find.text('Sin proveedor')),
+        findsOneWidget);
   });
 
   testWidgets('en "Todas" salen las dos y LA CABECERA CAMBIA DE TEXTO',
@@ -90,6 +98,8 @@ void main() {
     await t.pumpAndSettle();
     // Cae a "Todas" porque sin cobertura no se puede saber que es un hueco.
     expect(find.text('Silla de caoba'), findsOneWidget);
+    // Aquí SÍ vale `find.text` sin acotar: con la cobertura caída no se
+    // pinta ni la pastilla (va tras `if (_coberturaOk)`) ni ningún chip.
     expect(find.text('Sin proveedor'), findsNothing);
     // `pumpAndSettle` no falla por una excepcion que el framework ya capturo;
     // esto la hace explicita (idioma de la suite: brand_kit_test.dart:174).
@@ -116,7 +126,17 @@ void main() {
     await t.tap(find.text('Todas'));
     await t.pumpAndSettle();
     expect(find.text('Silla de caoba'), findsOneWidget);
-    expect(find.text('Sin proveedor'), findsNothing);
+    // 🔴 La pastilla del filtro SIGUE diciendo "Sin proveedor" aquí (la
+    // cobertura cargó bien, solo cambió qué segmento está seleccionado):
+    // un `find.text` sin acotar encontraría la pastilla y este `findsNothing`
+    // fallaría en falso. Acotar al `ListTile` es lo que de verdad comprueba
+    // que NINGUNA fila visible lleva el chip (r1 quedó sin entrada en el
+    // mapa de cobertura, así que no pinta chip; ver el `containsKey` de
+    // `_visibles`).
+    expect(
+        find.descendant(
+            of: find.byType(ListTile), matching: find.text('Sin proveedor')),
+        findsNothing);
     expect(find.text('3 proveedores'), findsOneWidget);
     expect(t.takeException(), isNull);
   });

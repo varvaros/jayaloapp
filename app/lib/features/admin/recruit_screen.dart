@@ -130,14 +130,18 @@ class _RecruitScreenState extends State<RecruitScreen> {
                             // 🔴 Esta pastilla y el chip de `_Fila` dicen los
                             // dos, literal, "Sin proveedor" — y cuando el
                             // filtro esta activo TODA fila visible lleva ese
-                            // chip, asi que ambos textos conviven en pantalla
-                            // a la vez. `Text.rich` deja el mismo texto en
-                            // pantalla pero `find.text` (sin `findRichText:
-                            // true`) no lo cuenta, asi que el chip de la fila
-                            // sigue siendo el UNICO "Sin proveedor" que un
-                            // test (o un lector de pantalla que busque texto
-                            // plano) encuentra.
-                            _pastillaRich('Sin proveedor', _soloHuecos,
+                            // chip, asi que ambos textos conviven en
+                            // pantalla a la vez. Es un `Text` normal (como
+                            // el resto de la pantalla) a proposito: un
+                            // `RichText` aqui se saltaria el escalado de
+                            // letra del sistema (`MediaQuery.textScalerOf`)
+                            // y dejaria a `find.text()` ciego a un typo en
+                            // el literal para siempre. La ambiguedad para
+                            // los tests se resuelve ACOTANDO el finder del
+                            // chip a su `ListTile` (ver
+                            // `recruit_screen_test.dart`), no cambiando el
+                            // tipo de widget.
+                            _pastilla('Sin proveedor', _soloHuecos,
                                 () => setState(() => _soloHuecos = true)),
                             const SizedBox(width: 8),
                           ],
@@ -208,35 +212,6 @@ class _RecruitScreenState extends State<RecruitScreen> {
                   fontSize: 11.5,
                   fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
                   color: sel ? Colors.white : cs.onSurfaceVariant)),
-        ),
-      ),
-    );
-  }
-
-  /// Igual que `_pastilla`, pero con `RichText` puro (no `Text`/`Text.rich`):
-  /// el mismo texto en pantalla, pero `find.text('Sin proveedor')` (sin
-  /// `findRichText: true`) ignora los `RichText` sueltos — la doctrina de
-  /// `flutter_test` los trata aparte de `Text`/`Text.rich`. Ver el comentario
-  /// donde se usa.
-  Widget _pastillaRich(String label, bool sel, VoidCallback onTap) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: sel ? cs.primary : cs.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(999),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-          child: RichText(
-            text: TextSpan(
-              text: label,
-              style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
-                  color: sel ? Colors.white : cs.onSurfaceVariant),
-            ),
-          ),
         ),
       ),
     );
