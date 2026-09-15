@@ -22,6 +22,7 @@ import '../../core/motion.dart';
 import '../../domain/image_pick.dart';
 import '../../domain/improve_offer_error.dart';
 import '../../domain/money.dart';
+import 'widgets/assistant_bar.dart';
 import 'widgets/bubbles.dart';
 import 'widgets/calendar_link.dart';
 import 'widgets/chat_dialogs.dart';
@@ -1650,13 +1651,27 @@ class _ChatScreenState extends State<ChatScreen> {
                       style: TextStyle(fontSize: 12))),
           ]));
     }
-    return ChatComposer(
+    // La barra del asistente solo la ve el PROVEEDOR y solo con el chat
+    // abierto: las dos condiciones son las mismas con las que decide la web.
+    // Los `return` de arriba ya han descartado el chat cerrado.
+    final composer = ChatComposer(
       isProvider: _isProvider,
       sending: _sending || _uploadingImage,
       onSendText: _sendText,
       onTyping: _notifyTyping,
       onPlusAction: _handlePlus,
       onQuickItem: _sendQuickItem,
+    );
+    if (!_isProvider) return composer;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AssistantBar(
+          conversationId: widget.conversationId,
+          onReplied: () => unawaited(_load()),
+        ),
+        composer,
+      ],
     );
   }
 }
