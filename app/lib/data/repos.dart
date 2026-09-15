@@ -813,6 +813,28 @@ Future<String?> myBusinessId() async {
   return row?['id'] as String?;
 }
 
+/// Los negocios del proveedor, ordenados **igual que el servidor**.
+///
+/// Existe aparte de [myBusinessId] por el orden: cuando la app no manda
+/// `business_id`, el servidor elige «el primero por created_at ascendente», y
+/// [myBusinessId] usa `.limit(1)` SIN ordenar. Con dos negocios podrían elegir
+/// distintos.
+///
+/// ⚠️ Ninguna columna de [kProviderBusinessesSinSelect] puede entrar aquí:
+/// tumbaría la consulta ENTERA con 42501.
+Future<List<({String id, String name})>> myBusinessesForAssistant() async {
+  final uid = supa.auth.currentUser!.id;
+  final rows = await supa
+      .from('provider_businesses')
+      .select('id,name,created_at')
+      .eq('user_id', uid)
+      .order('created_at', ascending: true);
+  return [
+    for (final r in rows as List)
+      (id: r['id'] as String, name: (r['name'] as String?) ?? 'Mi negocio'),
+  ];
+}
+
 /// El negocio con el que se oferta, **y** las capacidades que tiene declaradas.
 ///
 /// Existe aparte de [myBusinessId] a propósito: esa la llaman también el estado

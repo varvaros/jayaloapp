@@ -34,6 +34,7 @@ import '../../domain/credit_shop.dart';
 import '../shared/moneda.dart';
 import '../shared/recharge_celebration.dart';
 import '../shell/floating_nav_bar.dart' show navBarReservedSpace;
+import 'assistant_monthly_card.dart';
 
 /// Reparte [n] monedas en filas, de ABAJO ARRIBA, para apilarlas en la
 /// tarjeta: pirámide con un tope de 4 por fila (más no cabe en una tarjeta de
@@ -906,6 +907,10 @@ class _CreditShopScreenState extends State<CreditShopScreen> {
                         },
                       ),
           ),
+          // Fuera del Expanded a propósito: así sobrevive a los tres estados de
+          // la tienda (cargando, error de Play y catálogo pintado). Se paga con
+          // créditos, no con dinero: no tiene nada que ver con Play Billing.
+          const AssistantMonthlyCard(),
         ],
       ),
     );
