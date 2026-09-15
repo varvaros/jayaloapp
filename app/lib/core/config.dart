@@ -12,6 +12,7 @@ abstract final class AppConfig {
   static const reverseGeocodeEndpoint = '$siteUrl/api/app/reverse-geocode';
   static const deleteAccountEndpoint = '$siteUrl/api/app/delete-account';
   static const playVerifyEndpoint = '$siteUrl/api/app/play-verify';
+  static const assistantEndpoint = '$siteUrl/api/app/assistant';
   static const termsUrl = '$siteUrl/terminos';
   static const privacyUrl = '$siteUrl/privacidad';
 
