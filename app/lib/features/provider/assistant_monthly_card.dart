@@ -30,11 +30,28 @@ class AssistantMonthlyCard extends StatefulWidget {
 
 class _AssistantMonthlyCardState extends State<AssistantMonthlyCard> {
   late final AssistantClient _client = widget.client ?? AssistantClient();
+
+  /// Ordenados por `created_at` ascendente, IGUAL que el servidor. Nunca se
+  /// elige aquí: el servidor siempre resuelve el negocio con el que activa el
+  /// asistente como «el primero de esta lista» (`conversations` no tiene
+  /// `business_id`), así que la tarjeta no puede ofrecer un negocio distinto
+  /// — hacerlo cobraría dos créditos por chat, indefinidamente, sin avisar.
   List<({String id, String name})> _negocios = const [];
-  String? _elegido;
   SubscriptionInfo? _info;
   bool _ocupado = false;
-  bool _roto = false;
+  bool _cargando = false;
+
+  /// El proveedor no tiene ningún negocio: no hay nada que ofrecer, y no es
+  /// un fallo — no aplica reintentar.
+  bool _sinNegocio = false;
+
+  /// La ÚLTIMA carga (inicial o recarga) falló.
+  ///
+  /// Si nunca hubo [_info] pintada, el efecto es el de siempre: invisible
+  /// (`build` corta antes de mirar esta bandera). Pero si YA había algo
+  /// pintado — p. ej. la recarga que sigue a `_suscribir` — esta bandera SÍ
+  /// importa: un fallo de red no puede borrar lo que el proveedor ya vio.
+  bool _error = false;
 
   String? get _token => widget.tokenProvider != null
       ? widget.tokenProvider!()
@@ -47,37 +64,45 @@ class _AssistantMonthlyCardState extends State<AssistantMonthlyCard> {
   }
 
   Future<void> _cargar() async {
+    setState(() => _cargando = true);
     try {
       final negocios =
           await (widget.loadBusinesses ?? myBusinessesForAssistant)();
       if (negocios.isEmpty) {
-        if (mounted) setState(() => _roto = true);
+        if (!mounted) return;
+        setState(() {
+          _sinNegocio = true;
+          _error = false;
+        });
         return;
       }
-      final id = _elegido ?? negocios.first.id;
+      final id = negocios.first.id;
       final t = _token;
       if (t == null) {
-        if (mounted) setState(() => _roto = true);
+        if (!mounted) return;
+        setState(() => _error = true);
         return;
       }
       final info = await _client.subscription(businessId: id, accessToken: t);
       if (!mounted) return;
       setState(() {
         _negocios = negocios;
-        _elegido = id;
         _info = info;
-        _roto = false;
+        _error = false;
+        _sinNegocio = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _roto = true);
+      setState(() => _error = true);
+    } finally {
+      if (mounted) setState(() => _cargando = false);
     }
   }
 
   Future<void> _suscribir() async {
     final t = _token;
-    final id = _elegido;
-    if (t == null || id == null) return;
+    if (t == null || _negocios.isEmpty) return;
+    final id = _negocios.first.id;
     setState(() => _ocupado = true);
     try {
       final r = await _client.subscribe(businessId: id, accessToken: t);
@@ -121,10 +146,21 @@ class _AssistantMonthlyCardState extends State<AssistantMonthlyCard> {
 
   @override
   Widget build(BuildContext context) {
+    if (_sinNegocio) return const SizedBox.shrink();
     final info = _info;
-    if (_roto || info == null) return const SizedBox.shrink();
+    // Sin nada pintado todavía (cargando, o la PRIMERA carga falló):
+    // invisible, igual que siempre — no hay nada que evaporar. Ver el
+    // comentario de [_error]: lo que cambia es la recarga DESPUÉS de haber
+    // pintado algo, más abajo.
+    if (info == null) return const SizedBox.shrink();
+
     final cs = Theme.of(context).colorScheme;
     final activa = info.activeUntil != null;
+    final variosNegocios = _negocios.length > 1;
+    // La RPC calcula el coste con GREATEST(1, …): un coste ≤ 0 nunca es
+    // legítimo, siempre significa que no llegó. El precio no se inventa en
+    // el cliente, así que sin coste válido no se pinta el botón.
+    final precioValido = info.monthlyCost > 0;
 
     return Container(
       width: double.infinity,
@@ -155,46 +191,68 @@ class _AssistantMonthlyCardState extends State<AssistantMonthlyCard> {
             'Todos los chats de este negocio incluidos por 30 días.',
             style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
           ),
-          // El selector SOLO existe con más de un negocio: hoy ningún proveedor
-          // tiene dos, y una lista de un elemento sería ruido.
-          if (_negocios.length > 1) ...[
-            const SizedBox(height: 8),
-            DropdownButton<String>(
-              value: _elegido,
-              isExpanded: true,
-              items: [
-                for (final n in _negocios)
-                  DropdownMenuItem(value: n.id, child: Text(n.name)),
-              ],
-              onChanged: _ocupado
-                  ? null
-                  : (v) {
-                      setState(() => _elegido = v);
-                      _cargar();
-                    },
+          // Nunca se elige el negocio aquí (ver el comentario de _negocios):
+          // con más de uno, la tarjeta al menos DICE a cuál se aplica. Con
+          // uno solo, nada cambia en pantalla.
+          if (variosNegocios) ...[
+            const SizedBox(height: 2),
+            Text(
+              'Se aplica a ${_negocios.first.name}.',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
             ),
           ],
+          if (_error) ...[
+            const SizedBox(height: 8),
+            _avisoRecarga(context),
+          ],
           const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: _ocupado ? null : _suscribir,
-              child: _ocupado
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : Row(mainAxisSize: MainAxisSize.min, children: [
-                      Text(activa ? 'Renovar' : 'Activar'),
-                      const SizedBox(width: 6),
-                      const MonedaJayalo(size: 14),
-                      const SizedBox(width: 3),
-                      Text('${info.monthlyCost}'),
-                    ]),
+          if (precioValido)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _ocupado ? null : _suscribir,
+                child: _ocupado
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text(activa ? 'Renovar' : 'Activar'),
+                        const SizedBox(width: 6),
+                        const MonedaJayalo(size: 14),
+                        const SizedBox(width: 3),
+                        Text('${info.monthlyCost}'),
+                      ]),
+              ),
             ),
-          ),
         ],
       ),
+    );
+  }
+
+  /// Ya había [_info] pintada y la ÚLTIMA recarga falló (p. ej. al refrescar
+  /// después de suscribirse): se avisa sin borrar lo que ya se sabía.
+  Widget _avisoRecarga(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(Icons.error_outline, size: 14, color: cs.error),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            'No se pudo actualizar. Puede que esto ya no sea lo más reciente.',
+            style: TextStyle(fontSize: 11, color: cs.error),
+          ),
+        ),
+        TextButton(
+          style: TextButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+          ),
+          onPressed: _cargando ? null : _cargar,
+          child: const Text('Reintentar', style: TextStyle(fontSize: 11.5)),
+        ),
+      ],
     );
   }
 }

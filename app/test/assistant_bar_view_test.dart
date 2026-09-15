@@ -65,4 +65,23 @@ void main() {
     expect(v.kind, AssistantBarKind.off);
     expect(v.cost, 2);
   });
+
+  test('apagado sin coste válido: como si aún no se supiera (nunca un 0)', () {
+    expect(assistantBarView(estado(cost: 0)).kind, AssistantBarKind.loading);
+    expect(assistantBarView(estado(cost: -1)).kind, AssistantBarKind.loading);
+  });
+
+  test('el motivo de una no-respuesta se traduce, nunca el identificador crudo',
+      () {
+    expect(assistantReplyReasonMessage('handover'),
+        contains('pidió hablar con una persona'));
+    expect(assistantReplyReasonMessage('disabled'),
+        contains('está apagado'));
+    expect(assistantReplyReasonMessage('guardrail'), isNot(contains('guardrail')));
+    expect(assistantReplyReasonMessage('gateway_500'),
+        contains('proveedor de IA'));
+    expect(assistantReplyReasonMessage('algo-nuevo-desconocido'),
+        'No se generó respuesta.');
+    expect(assistantReplyReasonMessage(null), 'No se generó respuesta.');
+  });
 }

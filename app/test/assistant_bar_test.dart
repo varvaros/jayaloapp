@@ -92,6 +92,100 @@ void main() {
     expect(find.byType(IconButton), findsNothing);
   });
 
+  testWidgets(
+      'maestro apagado explica el alcance: no es solo este chat, es el negocio',
+      (tester) async {
+    await tester.pumpWidget(montar(clienteQueDevuelve({
+      'active': true,
+      'paused': false,
+      'handoverRequested': false,
+      'enabled': false,
+      'perChatCost': 2,
+    })));
+    await tester.pumpAndSettle();
+    expect(find.text('Asistente IA apagado'), findsOneWidget);
+    expect(find.textContaining('No responderá en ningún chat de este negocio'),
+        findsOneWidget);
+  });
+
+  testWidgets('apagado sin coste válido: no pinta un «Activar 🪙 0»',
+      (tester) async {
+    await tester.pumpWidget(montar(clienteQueDevuelve({
+      'active': false,
+      'paused': false,
+      'handoverRequested': false,
+      'enabled': true,
+      'perChatCost': 0,
+    })));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Asistente'), findsNothing);
+  });
+
+  testWidgets('si activar falla (p. ej. timeout), la barra se refresca igual',
+      (tester) async {
+    var lecturas = 0;
+    final client = AssistantClient(inner: MockClient((req) async {
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      if (body['action'] == 'activate') {
+        return http.Response(jsonEncode({'error': 'timeout'}), 504);
+      }
+      // El primer estado (antes de pulsar) sale apagado; el servidor SÍ
+      // activó el chat pese a que la respuesta de `activate` no llegó, así
+      // que la lectura siguiente ya lo ve activo.
+      lecturas++;
+      final activo = lecturas > 1;
+      return http.Response(
+          jsonEncode({
+            'active': activo,
+            'paused': false,
+            'handoverRequested': false,
+            'enabled': true,
+            'perChatCost': 2,
+          }),
+          200);
+    }));
+    await tester.pumpWidget(montar(client));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Activar'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Activar'));
+    await tester.pumpAndSettle();
+
+    // El POST de activar falló, pero la barra volvió a preguntar por el
+    // estado y ahora sabe que el chat SÍ quedó activo: no puede seguir
+    // mintiendo con «Activar».
+    expect(find.text('Asistente IA activo'), findsOneWidget);
+  });
+
+  testWidgets('si no hay respuesta, dice el motivo traducido — no el crudo',
+      (tester) async {
+    final client = AssistantClient(inner: MockClient((req) async {
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      if (body['action'] == 'reply') {
+        return http.Response(
+            jsonEncode({'sent': false, 'reason': 'handover'}), 200);
+      }
+      return http.Response(
+          jsonEncode({
+            'active': true,
+            'paused': false,
+            'handoverRequested': false,
+            'enabled': true,
+            'perChatCost': 2,
+          }),
+          200);
+    }));
+    await tester.pumpWidget(montar(client));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Responder ahora'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.textContaining('pidió hablar con una persona'), findsOneWidget);
+    expect(find.textContaining('(handover)'), findsNothing);
+  });
+
   testWidgets('si el estado falla, la barra no se pinta', (tester) async {
     final c = AssistantClient(
         inner: MockClient((_) async =>

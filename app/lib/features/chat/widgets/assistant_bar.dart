@@ -107,6 +107,11 @@ class _AssistantBarState extends State<AssistantBar> {
       await _refrescar();
     } catch (e) {
       _avisoDeFallo(e);
+      // Un timeout no dice si la acción llegó a completarse en el servidor
+      // (p. ej. `activate` cobra y genera la primera respuesta ANTES de
+      // contestar). Sin refrescar, la barra seguiría ofreciendo «Activar»
+      // sobre un chat que el servidor ya dio por activo y cobrado.
+      await _refrescar();
     } finally {
       if (mounted) setState(() => _ocupado = false);
     }
@@ -149,7 +154,10 @@ class _AssistantBarState extends State<AssistantBar> {
           _aviso('El asistente respondió.');
           widget.onReplied?.call();
         } else {
-          _aviso('No se generó respuesta.');
+          // El servidor manda un `reason` de una lista cerrada precisamente
+          // para que el proveedor sepa POR QUÉ calló; el identificador crudo
+          // no le dice nada.
+          _aviso(assistantReplyReasonMessage(r.reason));
         }
       });
 
@@ -179,18 +187,47 @@ class _AssistantBarState extends State<AssistantBar> {
               size: 16, color: tinta),
           const SizedBox(width: 6),
           Flexible(
-            child: Text(
-              switch (v.kind) {
-                AssistantBarKind.disabled => 'Asistente IA apagado',
-                AssistantBarKind.off => 'Asistente IA',
-                AssistantBarKind.on => 'Asistente IA activo',
-                AssistantBarKind.paused => 'Asistente IA pausado',
-                AssistantBarKind.loading => '',
-              },
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 12.5, fontWeight: FontWeight.w600, color: tinta),
-            ),
+            child: apagado
+                // El apagado es la acción con más alcance de la barra: sin
+                // esta segunda línea, un proveedor DENTRO de un chat concreto
+                // cree que «Encender» solo enciende ESE chat, cuando en
+                // realidad suelta al bot sobre TODAS las conversaciones
+                // abiertas del negocio.
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Asistente IA apagado',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: tinta),
+                      ),
+                      Text(
+                        'No responderá en ningún chat de este negocio.',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 10.5,
+                            color: tinta.withValues(alpha: 0.85)),
+                      ),
+                    ],
+                  )
+                : Text(
+                    switch (v.kind) {
+                      AssistantBarKind.off => 'Asistente IA',
+                      AssistantBarKind.on => 'Asistente IA activo',
+                      AssistantBarKind.paused => 'Asistente IA pausado',
+                      AssistantBarKind.disabled => '',
+                      AssistantBarKind.loading => '',
+                    },
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: tinta),
+                  ),
           ),
           if (v.handover) ...[
             const SizedBox(width: 6),
