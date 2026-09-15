@@ -97,17 +97,28 @@ class AssistantClient {
     Map<String, dynamic> body,
     String accessToken,
   ) async {
-    final res = await _http
-        .post(
-          Uri.parse(AppConfig.assistantEndpoint),
-          headers: {
-            'Content-Type': 'application/json',
-            'Origin': AppConfig.siteUrl,
-            'Authorization': 'Bearer $accessToken',
-          },
-          body: jsonEncode(body),
-        )
-        .timeout(_timeout);
+    final http.Response res;
+    try {
+      res = await _http
+          .post(
+            Uri.parse(AppConfig.assistantEndpoint),
+            headers: {
+              'Content-Type': 'application/json',
+              'Origin': AppConfig.siteUrl,
+              'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+    } catch (e) {
+      // Sin red, DNS caído o el timeout de arriba: la respuesta nunca llegó.
+      // Mismo patrón que `PlayVerifyClient` — el contrato de esta clase es
+      // lanzar SOLO AssistantException, y quien la use solo atrapa esa.
+      throw AssistantException(
+        0,
+        'No se pudo completar la acción. Revisa tu conexión e intenta de nuevo.',
+      );
+    }
 
     // Un 502 de Cloudflare llega como HTML: decodificarlo a ciegas reventaría
     // con FormatException en vez de con el fallo que de verdad ocurrió.
@@ -122,8 +133,8 @@ class AssistantClient {
       throw AssistantException(
         res.statusCode,
         parsed['error']?.toString() ?? 'No se pudo completar la acción.',
-        cost: parsed['cost'] as int?,
-        balance: parsed['balance'] as int?,
+        cost: (parsed['cost'] as num?)?.toInt(),
+        balance: (parsed['balance'] as num?)?.toInt(),
       );
     }
     return parsed;
@@ -217,9 +228,19 @@ class AssistantClient {
   }) async {
     final m = await _post(
         {'action': 'subscribe', 'business_id': businessId}, accessToken);
+    final expires = m['expires_at']?.toString();
+    if (expires == null) {
+      // El servidor SIEMPRE manda `expires_at` en un 200 de `subscribe`; que
+      // falte (o que el cuerpo no se pudiera parsear y cayera al mapa vacío)
+      // es un contrato roto, no una fecha que se pueda inventar aquí.
+      throw AssistantException(
+        200,
+        'No se pudo completar la acción. Intenta de nuevo.',
+      );
+    }
     return SubscribeResult(
       charged: (m['charged'] as num?)?.toInt() ?? 0,
-      expiresAt: DateTime.parse(m['expires_at'].toString()),
+      expiresAt: DateTime.parse(expires),
     );
   }
 }

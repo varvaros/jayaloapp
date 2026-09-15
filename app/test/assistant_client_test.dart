@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:http/http.dart' as http;
@@ -60,6 +61,74 @@ void main() {
     expect(r.balance, 40);
   });
 
+  test('activate manda business_id cuando NO es nulo', () async {
+    late http.Request captured;
+    final mock = MockClient((req) async {
+      captured = req;
+      return http.Response(
+          jsonEncode({'ok': true, 'charged': 2, 'billing_mode': 'per_chat'}),
+          200);
+    });
+    await AssistantClient(inner: mock).activate(
+      conversationId: 'c',
+      accessToken: 't',
+      businessId: 'biz-1',
+    );
+    expect(jsonDecode(captured.body)['business_id'], 'biz-1');
+  });
+
+  test('un timeout llega como AssistantException, no TimeoutException',
+      () async {
+    final mock = MockClient((req) async {
+      // Nunca responde dentro del plazo: fuerza el timeout del cliente.
+      await Future.delayed(const Duration(milliseconds: 50));
+      return http.Response(jsonEncode({'ok': true}), 200);
+    });
+    final client = AssistantClient(
+      inner: mock,
+      timeout: const Duration(milliseconds: 1),
+    );
+    try {
+      await client.state(conversationId: 'c', accessToken: 't');
+      fail('debía lanzar');
+    } on AssistantException catch (e) {
+      expect(e.status, 0);
+      expect(e.message, isNot(contains('TimeoutException')));
+    }
+  });
+
+  test('sin red llega como AssistantException, no SocketException', () async {
+    final mock = MockClient((req) async {
+      throw const SocketException('Failed host lookup');
+    });
+    try {
+      await AssistantClient(inner: mock)
+          .state(conversationId: 'c', accessToken: 't');
+      fail('debía lanzar');
+    } on AssistantException catch (e) {
+      expect(e.status, 0);
+    }
+  });
+
+  test('un fallo de red al envolver NO se traga un 402 ya formado',
+      () async {
+    // El propio contrato: la excepción de red tiene status 0, así que si el
+    // 402 sobrevive intacto es porque no pasó por ese envoltorio.
+    final mock = MockClient((req) async => http.Response(
+        jsonEncode({'error': 'saldo insuficiente', 'cost': 3, 'balance': 0}),
+        402));
+    try {
+      await AssistantClient(inner: mock)
+          .activate(conversationId: 'c', accessToken: 't');
+      fail('debía lanzar');
+    } on AssistantException catch (e) {
+      expect(e.status, 402);
+      expect(e.cost, 3);
+      expect(e.balance, 0);
+      expect(e.sinSaldo, true);
+    }
+  });
+
   test('pause manda el booleano', () async {
     late http.Request captured;
     final mock = MockClient((req) async {
@@ -84,6 +153,20 @@ void main() {
       expect(e.cost, 2);
       expect(e.balance, 1);
       expect(e.sinSaldo, true);
+    }
+  });
+
+  test('cost y balance toleran venir como número no entero', () async {
+    final mock = MockClient((req) async => http.Response(
+        jsonEncode({'error': 'saldo insuficiente', 'cost': 2.0, 'balance': 1.0}),
+        402));
+    try {
+      await AssistantClient(inner: mock)
+          .activate(conversationId: 'c', accessToken: 't');
+      fail('debía lanzar');
+    } on AssistantException catch (e) {
+      expect(e.cost, 2);
+      expect(e.balance, 1);
     }
   });
 
@@ -132,6 +215,18 @@ void main() {
         .subscription(businessId: 'b', accessToken: 't');
     expect(r.activeUntil, isNull);
     expect(r.monthlyCost, 20);
+  });
+
+  test('subscribe sin expires_at no revienta con FormatException', () async {
+    final mock = MockClient(
+        (req) async => http.Response(jsonEncode({'ok': true, 'charged': 20}), 200));
+    try {
+      await AssistantClient(inner: mock)
+          .subscribe(businessId: 'b', accessToken: 't');
+      fail('debía lanzar');
+    } on AssistantException catch (e) {
+      expect(e.status, 200);
+    }
   });
 
   test('subscribe devuelve lo cobrado', () async {
