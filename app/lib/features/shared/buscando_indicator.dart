@@ -6,11 +6,13 @@
 /// pasiva, se lee como que el sistema se detuvo. El movimiento no añade
 /// información — dice que sigue trabajando.
 ///
-/// ⚠️ ESTE ES EL PRIMER BUCLE PERPETUO DE LA APP, y eso es deliberado en
-/// contra de lo que `motion.dart` documenta para el saludo del borde violeta
-/// («un latido perpetuo … habría costado repintar la tarjeta mientras
-/// estuviera en pantalla, en una LISTA»). Esa objeción se paga con dos cosas,
-/// no se ignora:
+/// ⚠️ Bucles en `repeat()` hay ya una veintena en la app (la mascota de los
+/// estados vacíos, el titileo de las cabeceras de Reputación, el
+/// "escribiendo" del chat…). Lo que NO había es uno dentro de la TARJETA de
+/// una lista, que es justo la objeción que `motion.dart` documenta al
+/// explicar por qué el saludo del borde violeta es finito: «un latido
+/// perpetuo … habría costado repintar la tarjeta mientras estuviera en
+/// pantalla, en una LISTA». Esa objeción se paga con dos cosas, no se ignora:
 ///   1. [idle] — quien lo monta en una LISTA pasa UN solo controlador
 ///      compartido por toda la pantalla (patrón de `stats_screen.dart`), en
 ///      vez de un ticker por tarjeta.

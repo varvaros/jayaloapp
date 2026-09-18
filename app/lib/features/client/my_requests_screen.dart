@@ -182,8 +182,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   /// lo que pase, y además los relojes de todas las tarjetas van sincronizados
   /// en vez de arrancar cada uno cuando le toque reconstruirse. Mismo patrón
   /// que `stats_screen.dart`.
-  late final AnimationController _idle =
-      AnimationController(vsync: this, duration: JayaloMotion.idleCycle);
+  ///
+  /// Se crea en `initState`, NO como `late final … = AnimationController(…)`:
+  /// un `late` solo se resuelve al primer uso, y si ese primer uso acabara
+  /// cayendo en `dispose()`, `createTicker` iría a buscar el `TickerMode` de
+  /// un elemento ya desactivado y lanzaría. Hoy no pasaría —
+  /// `didChangeDependencies` lo toca en las dos ramas—, pero entonces la
+  /// seguridad dependería de no borrar una línea de otro método. Mismo gotcha
+  /// que documentan `jayalo_loader.dart`, `typing_indicator.dart` y
+  /// `buscando_indicator.dart`.
+  late final AnimationController _idle;
 
   /// Ver el gotcha de `BuscandoIndicator`: bajo `flutter test` el bucle no
   /// arranca, o un ticker en `repeat()` deja la prueba esperando para siempre.
@@ -244,6 +252,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   @override
   void initState() {
     super.initState();
+    _idle = AnimationController(vsync: this, duration: JayaloMotion.idleCycle);
     requestsChanged.addListener(_reload);
   }
 
@@ -1285,7 +1294,22 @@ class _RequestCard extends StatelessWidget {
       child: Row(
         children: [
           for (var i = 0; i < labels.length; i++)
+            // El paso ACTUAL pesa el doble que los otros dos.
+            //
+            // No es cosmético: con tercios iguales la píldora pedía 148,8 px
+            // en una columna de 109,3 (medido a 388 dp, el ancho del teléfono
+            // del PO) y DESBORDABA ~20 px — un defecto que ya existía antes de
+            // los tres puntos y que en release no pinta rayas amarillas, solo
+            // se ve mal en silencio. La causa es que la píldora va SIN
+            // Flexible a propósito (ver la nota de `pill`), así que el tercio
+            // no la puede encoger: hay que darle el hueco.
+            //
+            // Con 2:1:1 caben los tres pasos —incluido «Esperando» con los
+            // puntos— en cualquier ancho de teléfono real, y es el reparto
+            // honesto: el paso actual lleva una píldora con texto y los otros
+            // dos son un aro de 10 px.
             Expanded(
+              flex: i == current ? 2 : 1,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

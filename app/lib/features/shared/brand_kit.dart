@@ -386,6 +386,12 @@ class StatusChip extends StatelessWidget {
   /// se dibujara su propia píldora a mano y las dos se fueran separando con el
   /// tiempo. [label] sigue siendo obligatorio porque es lo que el chip
   /// SIGNIFICA — quien pase [content] debe decir lo mismo.
+  ///
+  /// ⚠️ [content] SE SALTA el `Flexible` + ellipsis de abajo, que está ahí
+  /// porque un `Row` con `mainAxisSize: min` da ancho INFINITO a sus hijos y
+  /// en un contenedor angosto eso revienta en overflow. Quien pase [content]
+  /// se lleva esa responsabilidad consigo (`BuscandoIndicator` trae su propio
+  /// `Flexible`).
   final Widget? content;
 
   @override

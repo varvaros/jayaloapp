@@ -5,6 +5,7 @@ import 'package:jayalo_app/app.dart';
 import 'package:jayalo_app/domain/phase.dart';
 import 'package:jayalo_app/features/client/my_requests_screen.dart';
 import 'package:jayalo_app/features/client/request_detail_sheet.dart';
+import 'package:jayalo_app/features/client/request_status_screen.dart';
 import 'package:jayalo_app/features/shared/buscando_indicator.dart';
 import 'package:jayalo_app/features/shared/onboarding_store.dart';
 
@@ -81,8 +82,7 @@ void main() {
 
   group('copy de la fase', () {
     test('el chip de «esperando» dice que se está BUSCANDO, no esperando', () {
-      expect(phaseChip(RequestPhase.waiting, 0).$2, buscandoProveedoresCopy);
-      expect(buscandoProveedoresCopy, 'Buscando proveedores');
+      expect(phaseChip(RequestPhase.waiting, 0).$2, 'Buscando proveedores');
     });
 
     test('el ícono de la tupla NO cambia: no es el del chip', () {
@@ -161,13 +161,19 @@ void main() {
   });
 
   group('el bucle no se escapa', () {
-    // ESTE es el test que importa. `BuscandoIndicator` es la primera
-    // animación en bucle de la app; sin el guardia `FLUTTER_TEST` un ticker
-    // en `repeat()` deja `pumpAndSettle()` girando hasta el timeout y toda la
-    // batería que monte esta pantalla muere con "Pending timers".
+    // Sin el guardia `FLUTTER_TEST`, un ticker en `repeat()` deja
+    // `pumpAndSettle()` girando hasta el timeout y toda la batería que monte
+    // estas pantallas muere con "Pending timers".
     //
-    // Cubre los DOS dueños posibles del ticker: el controlador compartido de
-    // `_MyRequestsScreenState` (lista) y el propio del widget (hoja suelta).
+    // Hay DOS dueños de ticker y cada caso cubre UNO, no los dos:
+    //   - la lista → el `AnimationController` compartido de
+    //     `_MyRequestsScreenState`. Verificado por mutación: anular ESE
+    //     guardia tumba 23 tests de la suite.
+    //   - la hoja del detalle → el controlador propio de `BuscandoIndicator`,
+    //     que es el único camino por el que se monta sin `idle` externo.
+    //     Anular el guardia del widget tumba este caso (y un test que ya
+    //     existía en `client_request_detail_sheet_test.dart`), pero NO el de
+    //     la lista: allí el ticker del widget ni se crea.
     testWidgets('la lista en espera termina de asentarse', (tester) async {
       await tester.pumpWidget(host(lista(RequestPhase.waiting)));
       await tester.pumpAndSettle();
@@ -180,5 +186,79 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.binding.transientCallbackCount, 0);
     });
+  });
+
+  group('cabe en un teléfono', () {
+    // El viewport por defecto de `flutter_test` es 800×600, así que NINGÚN
+    // test de esta pantalla pintaba la tarjeta a ancho de teléfono y los
+    // desbordes pasaban invisibles. Medido a 388 dp (el ancho del device del
+    // PO): la píldora del riel pedía 148,8 px en una columna de 109,3 y
+    // desbordaba ~20 px ANTES de este cambio, y ~39 px con los tres puntos.
+    // La cura fue darle al paso actual el doble de peso (`flex: 2`).
+    //
+    // En RELEASE un overflow no pinta rayas amarillas: se ve mal en silencio.
+    // Por eso esto es un test y no una inspección a ojo.
+    testWidgets('el riel no desborda al ancho del teléfono del PO',
+        (tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(388, 900);
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(host(lista(RequestPhase.waiting)));
+      await tester.pumpAndSettle();
+
+      // El 2º indicador es el del riel (el 1º es el chip de la tarjeta).
+      final riel = find.byType(BuscandoIndicator).at(1);
+      final pildora =
+          find.ancestor(of: riel, matching: find.byType(Container)).first;
+      final columna =
+          find.ancestor(of: pildora, matching: find.byType(Expanded)).first;
+
+      expect(
+        tester.getSize(pildora).width,
+        lessThanOrEqualTo(tester.getSize(columna).width),
+        reason: 'la píldora del riel no cabe en su columna: vuelve el '
+            'desborde silencioso de release',
+      );
+    });
+  });
+
+  group('el contrato de layout del detalle', () {
+    // `RequestDetailSheet` vive en un `SliverFillRemaining(hasScrollBody:
+    // false)`, que le pide `getMaxIntrinsicHeight` a su hijo — y hay widgets
+    // que no saben responder (un `LayoutBuilder`, un `AspectRatio`), que
+    // lanzan en tiempo de LAYOUT y que `flutter analyze` no ve.
+    //
+    // El resto de la batería monta la hoja pelada dentro de un `Scaffold`,
+    // donde no hay sliver que ejercer, y el test que sí monta el widget real
+    // usa `withOffers`. Este es el único que mete la fase `waiting` —la única
+    // con el indicador animado dentro— por el camino de verdad.
+    testWidgets('la fase en espera sobrevive al sliver de alto intrínseco',
+        (tester) async {
+      await tester.pumpWidget(host(Scaffold(
+        body: RequestDetailBody(
+          request: solicitud(),
+          phase: RequestPhase.waiting,
+          offers: const [],
+          images: const [],
+          unreadCount: 0,
+          onSeeOffers: () {},
+        ),
+      )));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(BuscandoIndicator), findsOneWidget);
+    });
+  });
+
+  testWidgets('un lector de pantalla oye el estado, no el adorno',
+      (tester) async {
+    await tester.pumpWidget(host(detalle(RequestPhase.waiting)));
+    await tester.pumpAndSettle();
+
+    // El reloj y los puntos van bajo `ExcludeSemantics`: lo que se anuncia es
+    // la palabra.
+    expect(find.bySemanticsLabel('Buscando'), findsOneWidget);
   });
 }

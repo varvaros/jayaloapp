@@ -156,9 +156,11 @@ abstract final class JayaloMotion {
   /// mismos de los Jayi de la app—; se suben a token al aparecer el segundo
   /// consumidor, que es justo cuando dos copias empiezan a poder divergir.
   ///
-  /// ⚠️ Lo OCIOSO es lo único que corre en bucle en esta app, y solo mientras
-  /// el estado que describe sigue vivo. Todo lo demás —incluido el saludo de
-  /// aquí abajo— es finito a propósito.
+  /// ⚠️ Un bucle ocioso corre mientras su estado siga vivo, así que solo se
+  /// pone donde el movimiento SIGNIFICA que algo sigue corriendo. El saludo
+  /// del borde de aquí abajo es finito por la razón contraria, y la de ahí
+  /// sigue valiendo: dentro de una LISTA, el bucle se comparte entre las
+  /// filas y se acota con un `RepaintBoundary`, nunca uno por tarjeta.
   static const idleCycle = Duration(milliseconds: 4800);
 
   // ── El SALUDO del borde de "sin ver" (PO 2026-08-19/20) ───────────────
