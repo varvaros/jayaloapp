@@ -1102,7 +1102,8 @@ class _SlideCopy extends StatelessWidget {
           dy: 6,
           child: Text(
             slide.shout!,
-            textAlign: TextAlign.left,
+            // PO 2026-09-18: el grito va CENTRADO, como el resto del copy.
+            textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 38,
               height: 1,
@@ -1153,9 +1154,7 @@ class _SlideCopy extends StatelessWidget {
     }
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: slide.shout != null
-          ? CrossAxisAlignment.start
-          : CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: children,
     );
   }

@@ -42,7 +42,8 @@ class IntroReveal extends StatelessWidget {
         end: const Offset(1, 1),
         duration: duration,
         curve: curve,
-        alignment: Alignment.centerLeft,
+        // El grito crece desde su centro: va centrado (PO 2026-09-18).
+        alignment: Alignment.center,
       );
     }
     return a;

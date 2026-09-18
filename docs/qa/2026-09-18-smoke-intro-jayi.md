@@ -1,10 +1,10 @@
-# Smoke — intro «Jayi te recibe» (APK 1.0.4+134)
+# Smoke — intro «Jayi te recibe» (APK 1.0.4+135)
 
 Antes: `adb uninstall com.jayalo.app` (un APK local no se instala encima del de
 Play, y desinstalar borra `intro_seen_v1`, que es lo que se quiere).
 `adb shell pm grant com.jayalo.app android.permission.POST_NOTIFICATIONS` para que el
 diálogo de permiso no tape los recuadros. Instalar con ruta Windows:
-`adb install C:\Users\ac\Downloads\jayalo-1.0.4+134-intro-jayi.apk`.
+`adb install C:\Users\ac\Downloads\jayalo-1.0.4+135-intro-jayi.apk`.
 
 1. Abrir. Jayi cae y aplasta; el titular entra palabra a palabra; «¿Tú qué eres?» en
    violeta; los dos recuadros suben. Íconos SIN fondo.
