@@ -154,6 +154,21 @@ void main() {
     await t.pump(const Duration(milliseconds: 100));
     final quieto = await shot();
 
+    // GUARDIA de la referencia: la comparación de abajo solo vale si dos
+    // escenas montadas con el MISMO calendario dan el mismo píxel. Si un
+    // cambio futuro desalinea el reloj, esto falla aquí y no deja pasar el
+    // `isNot` de abajo por la razón equivocada.
+    await t.pumpWidget(const SizedBox());
+    await t.pumpWidget(host(JayiPose.thumbsUp));
+    await t.pump(const Duration(seconds: 2));
+    await t.pump(const Duration(milliseconds: 100));
+    final quieto2 = await shot();
+    expect(
+      quieto2,
+      equals(quieto),
+      reason: 'dos montajes idénticos deben pintar lo mismo en el mismo frame',
+    );
+
     await t.pumpWidget(const SizedBox()); // desmontar: el reloj vuelve a 0
     await t.pumpWidget(host(JayiPose.open));
     await t.pump(const Duration(seconds: 2)); // el aterrizaje ya terminó
@@ -168,44 +183,53 @@ void main() {
     );
   });
 
-  testWidgets(
-    'con reduce-motion el cambio de pose es INSTANTÁNEO y sin accesorio saliente',
-    (t) async {
-      final a = await pintar(t, JayiPose.thumbsUp);
-      late List<int> directo;
-      await t.runAsync(() async => directo = await png(a));
-      a.dispose();
+  // Una vez por pose ENTRANTE: el estado final no puede depender de por dónde
+  // se llegó. Se entra desde la pose siguiente del enum, así que cada accesorio
+  // aparece una vez como entrante y otra como saliente.
+  for (final destino in JayiPose.values) {
+    final desde =
+        JayiPose.values[(JayiPose.values.indexOf(destino) + 1) %
+            JayiPose.values.length];
+    testWidgets(
+      'con reduce-motion el cambio de pose es INSTANTÁNEO y sin accesorio '
+      'saliente ($desde → $destino)',
+      (t) async {
+        final a = await pintar(t, destino);
+        late List<int> directo;
+        await t.runAsync(() async => directo = await png(a));
+        a.dispose();
 
-      // Montar en `open`, cambiar a `thumbsUp`, y sin dejar pasar tiempo debe
-      // pintar exactamente lo mismo que montar directo en `thumbsUp`.
-      final key = GlobalKey();
-      Widget host(JayiPose pose) => MediaQuery(
-        data: const MediaQueryData(disableAnimations: true),
-        child: Directionality(
-          textDirection: TextDirection.ltr,
-          child: Center(
-            child: RepaintBoundary(
-              key: key,
-              child: SizedBox(width: 220, child: JayiScene(pose: pose)),
+        // Montar en otra pose, cambiar, y sin dejar pasar tiempo debe pintar
+        // exactamente lo mismo que montar directo en la pose de destino.
+        final key = GlobalKey();
+        Widget host(JayiPose pose) => MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: Center(
+              child: RepaintBoundary(
+                key: key,
+                child: SizedBox(width: 220, child: JayiScene(pose: pose)),
+              ),
             ),
           ),
-        ),
-      );
-      await t.pumpWidget(host(JayiPose.open));
-      await t.pump();
-      await t.pumpWidget(host(JayiPose.thumbsUp));
-      await t.pump();
-      late List<int> cambiado;
-      await t.runAsync(() async {
-        final render =
-            key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-        final img = await render.toImage(pixelRatio: 1);
-        cambiado = (await img.toByteData(
-          format: ui.ImageByteFormat.png,
-        ))!.buffer.asUint8List();
-        img.dispose();
-      });
-      expect(cambiado, equals(directo));
-    },
-  );
+        );
+        await t.pumpWidget(host(desde));
+        await t.pump();
+        await t.pumpWidget(host(destino));
+        await t.pump();
+        late List<int> cambiado;
+        await t.runAsync(() async {
+          final render =
+              key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+          final img = await render.toImage(pixelRatio: 1);
+          cambiado = (await img.toByteData(
+            format: ui.ImageByteFormat.png,
+          ))!.buffer.asUint8List();
+          img.dispose();
+        });
+        expect(cambiado, equals(directo));
+      },
+    );
+  }
 }

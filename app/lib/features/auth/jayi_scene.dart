@@ -171,6 +171,11 @@ class _JayiSceneState extends State<JayiScene> with TickerProviderStateMixin {
     _reduced = reduced;
     _ticker?.dispose();
     _ticker = null;
+    // El ticker nuevo cuenta desde 0, así que un `_changedAt` del reloj viejo
+    // dejaría `_since` en negativo: la pose saliente se pintaría opaca encima
+    // de una entrante todavía invisible. La transición en curso se descarta.
+    _prev = null;
+    _changedAt = 0;
     if (!reduced) {
       _ticker = createTicker((e) => _t.value = e.inMicroseconds / 1e6)..start();
     }
@@ -267,19 +272,20 @@ class _ScenePainter extends CustomPainter {
       final q = JayaloMotion.exit.transform((_since / _out).clamp(0.0, 1.0));
       _paintPose(canvas, prev!, alpha: 1 - q, thumbRot: 78 * q, saliente: true);
     }
-    _paintPose(canvas, pose, alpha: 1, thumbRot: 0, saliente: false);
+    _paintPose(canvas, pose, alpha: 1, saliente: false);
     canvas.restore();
   }
 
-  /// Pinta el accesorio de [p]. [alpha] es el fundido de salida, [thumbRot] el
-  /// grado al que se cae el pulgar al irse, y [saliente] apaga las ENTRADAS:
-  /// lo que se va no vuelve a nacer, solo se apaga desde su estado final.
+  /// Pinta el accesorio de [p]. [alpha] es el fundido de salida, [thumbRot]
+  /// FUERZA el grado del pulgar (el que se cae al irse) y `null` deja mandar a
+  /// la coreografía, y [saliente] apaga las ENTRADAS: lo que se va no vuelve a
+  /// nacer, solo se apaga desde su estado final.
   void _paintPose(
     Canvas canvas,
     JayiPose p, {
     required double alpha,
-    required double thumbRot,
     required bool saliente,
+    double? thumbRot,
   }) {
     switch (p) {
       case JayiPose.open:
@@ -299,7 +305,7 @@ class _ScenePainter extends CustomPainter {
             const [0, 0, -6, 0, -5, 0, 0],
           );
         }
-        _paintThumb(canvas, rot: thumbRot > 0 ? thumbRot : rot, alpha: alpha);
+        _paintThumb(canvas, rot: thumbRot ?? rot, alpha: alpha);
       case JayiPose.priceTag:
         final k = saliente ? 1.0 : _in(_reveal);
         _paintTag(
@@ -651,7 +657,13 @@ class _ScenePainter extends CustomPainter {
     final ps = entrando
         ? ((_since - _reveal * .5 - _land * .8) / _reveal).clamp(0.0, 1.0)
         : 1.0;
-    _grupo(canvas, alpha * aIn);
+    // El brazo NO espera a la moneda: sube solo en `intro`, la misma entrada
+    // que la etiqueta. Si compartiera el fundido de la moneda (que arranca a
+    // la mitad) la mano estaría invisible los primeros ~210 ms y la moneda
+    // saldría de detrás de una palma que no existe. Saliente: solo se funde.
+    final armIn = entrando ? _in(_reveal) : 1.0;
+    _grupo(canvas, alpha * armIn);
+    canvas.translate(0, 12 * (1 - JayaloMotion.brake.transform(armIn)));
     _arm(
       canvas,
       const Offset(104, 78),
@@ -665,19 +677,28 @@ class _ScenePainter extends CustomPainter {
       const Offset(146, 66),
       7,
     );
+    canvas.restore(); // el brazo
+    _grupo(canvas, alpha * aIn);
     const c = Offset(141, 46);
     const r = 16.0;
+    // El ciclo de 3,2 s del reposo (giro y brillo comparten fase) NO se
+    // muestrea en el reloj absoluto: así arrancaba en una fase cualquiera y una
+    // de cada tres veces la moneda saltaba a canto (sx .12) en UN frame justo
+    // al terminar la entrada. Se cuenta desde el final de la entrada, de modo
+    // que en ese instante la fase vale 0: de frente y el brillo en −26, que es
+    // exactamente donde deja las cosas la entrada. Sin animación, fase 0 = el
+    // mismo estado final.
+    final giro = animated
+        ? _phase(time.value - (changedAt + _reveal * .5 + _land), 3.2)
+        : 0.0;
     // Giro de reposo: de frente el 68 % del ciclo, de canto solo al final.
     // Mientras entra manda el giro de la entrada, que nace casi de canto.
-    final sx = pin < 1
-        ? sxIn
-        : animated
-        ? _stops(
-            _phase(_t, 3.2),
-            const [0, .68, .79, .86, 1],
-            const [1, 1, .12, .12, 1],
-          )
-        : 1.0;
+    final sxIdle = _stops(
+      giro,
+      const [0, .68, .79, .86, 1],
+      const [1, 1, .12, .12, 1],
+    );
+    final sx = pin < 1 ? sxIn : sxIdle;
     canvas.save();
     canvas.translate(0, dyIn);
     canvas.translate(c.dx, c.dy);
@@ -716,13 +737,7 @@ class _ScenePainter extends CustomPainter {
     );
     // El brillo cruza una vez por ciclo, recortado al círculo.
     // Base = -26: el brillo descansa FUERA del círculo (recortado), no cruzando la moneda.
-    final gx = animated
-        ? _stops(
-            _phase(_t, 3.2),
-            const [0, .22, .60, 1],
-            const [-26, 26, 26, -26],
-          )
-        : -26.0;
+    final gx = _stops(giro, const [0, .22, .60, 1], const [-26, 26, 26, -26]);
     canvas.save();
     canvas.clipPath(Path()..addOval(Rect.fromCircle(center: c, radius: r - 1)));
     canvas.translate(gx, 0);
