@@ -1,9 +1,13 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import '../shared/network_image.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../core/create_request_nav.dart';
+import '../../core/motion.dart';
+import '../shared/buscando_indicator.dart';
 import '../../data/repos.dart';
 import '../../domain/phase.dart';
 import '../../domain/request_requirements.dart';
@@ -30,7 +34,13 @@ String timeAgo(DateTime d) {
 (IconData, String) phaseChip(RequestPhase p, int offerCount,
         {ClosedReason? closedReason}) =>
     switch (p) {
-      RequestPhase.waiting => (Icons.schedule, 'Esperando ofertas'),
+      // «Buscando», no «Esperando» (pedido PO 2026-09-18): en pasiva y sin
+      // moverse, la fase se leía como que el sistema se había detenido. El
+      // chip de esta fase lo pinta `BuscandoIndicator`, con reloj y puntos.
+      // OJO: el ícono de esta tupla NO es el del chip — alimenta el respaldo
+      // del panel de foto en `request_status_screen.dart`, que debe seguir
+      // siendo un glifo estático.
+      RequestPhase.waiting => (Icons.schedule, buscandoProveedoresCopy),
       RequestPhase.withOffers => (
         Icons.local_offer_outlined,
         '$offerCount oferta${offerCount == 1 ? '' : 's'}',
@@ -162,7 +172,23 @@ class MyRequestsScreen extends StatefulWidget {
   State<MyRequestsScreen> createState() => _MyRequestsScreenState();
 }
 
-class _MyRequestsScreenState extends State<MyRequestsScreen> {
+class _MyRequestsScreenState extends State<MyRequestsScreen>
+    with SingleTickerProviderStateMixin {
+  /// UN solo reloj para TODAS las tarjetas en «Buscando proveedores».
+  ///
+  /// Uno por tarjeta era la alternativa obvia, y es justo la que `motion.dart`
+  /// descarta al explicar por qué el saludo del borde violeta es finito: un
+  /// bucle por fila de una LISTA. Compartido, la pantalla tiene un ticker pase
+  /// lo que pase, y además los relojes de todas las tarjetas van sincronizados
+  /// en vez de arrancar cada uno cuando le toque reconstruirse. Mismo patrón
+  /// que `stats_screen.dart`.
+  late final AnimationController _idle =
+      AnimationController(vsync: this, duration: JayaloMotion.idleCycle);
+
+  /// Ver el gotcha de `BuscandoIndicator`: bajo `flutter test` el bucle no
+  /// arranca, o un ticker en `repeat()` deja la prueba esperando para siempre.
+  static final _enTest = Platform.environment.containsKey('FLUTTER_TEST');
+
   /// Anclas del recorrido de primera vez que viven en ESTA pantalla.
   final _searchKey = GlobalKey(debugLabel: 'tour.home.search');
   final _mineKey = GlobalKey(debugLabel: 'tour.home.mine');
@@ -222,9 +248,20 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_enTest || JayaloMotion.reduced(context)) {
+      _idle.stop();
+    } else if (!_idle.isAnimating) {
+      _idle.repeat();
+    }
+  }
+
+  @override
   void dispose() {
     requestsChanged.removeListener(_reload);
     _openRow.dispose();
+    _idle.dispose();
     super.dispose();
   }
 
@@ -803,6 +840,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                       unseen: unseen,
                                       requirements: requirementsFromRow(r),
                                       onTap: open,
+                                      idle: _idle,
                                       // Sin margen propio: lo aplica el swipe.
                                       margin: EdgeInsets.zero,
                                     );
@@ -946,6 +984,7 @@ class _RequestCard extends StatelessWidget {
     this.unseen = false,
     this.requirements = RequestRequirements.none,
     this.margin,
+    this.idle,
   });
 
   final String title;
@@ -977,6 +1016,12 @@ class _RequestCard extends StatelessWidget {
   /// Null = margen estándar de lista; se pasa cero cuando el card vive dentro
   /// de [SwipeToActions] (el swipe aplica el margen exterior).
   final EdgeInsetsGeometry? margin;
+
+  /// El reloj ocioso COMPARTIDO de la pantalla (0..1 por vuelta). Solo lo usa
+  /// la fase `waiting`; el resto de fases lo ignoran. Null deja el chip y el
+  /// riel quietos, que es lo correcto para una tarjeta montada suelta en un
+  /// test o en un catálogo de widgets.
+  final Animation<double>? idle;
 
 
   @override
@@ -1131,20 +1176,23 @@ class _RequestCard extends StatelessWidget {
     final ink = unseen
         ? (dark ? JayaloColors.dSuccess : JayaloColors.success)
         : cs.primary;
+    final estilo = TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      color: ink,
+    );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
       decoration: BoxDecoration(
         color: ink.withValues(alpha: dark ? .20 : .12),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: ink,
-        ),
-      ),
+      // Solo la fase que ESPERA se mueve (PO 2026-09-18). Las demás dicen un
+      // hecho consumado —tantas ofertas, aceptada, en contacto— y un hecho no
+      // se anima: el movimiento aquí significa "esto sigue corriendo".
+      child: phase == RequestPhase.waiting
+          ? BuscandoIndicator(label: label, estilo: estilo, idle: idle)
+          : Text(label, style: estilo),
     );
   }
 
@@ -1187,23 +1235,37 @@ class _RequestCard extends StatelessWidget {
         shape: BoxShape.circle,
       ),
     );
-    Widget pill(String l) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(
-        color: pillBg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        l,
-        maxLines: 1,
-        style: TextStyle(
-          fontSize: 11.5,
-          height: 1.2,
-          fontWeight: FontWeight.w600,
-          color: pillInk,
+    Widget pill(String l) {
+      final estilo = TextStyle(
+        fontSize: 11.5,
+        height: 1.2,
+        fontWeight: FontWeight.w600,
+        color: pillInk,
+      );
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: pillBg,
+          borderRadius: BorderRadius.circular(999),
         ),
-      ),
-    );
+        // En el primer paso la píldora respira con los tres puntos, SIN
+        // reloj: aquí ya hay un vocabulario de glifos (los aros de los pasos
+        // pendientes) y un segundo ícono compitiendo con ellos emborrona la
+        // línea de progreso. El reloj vive en el chip de arriba.
+        //
+        // La etiqueta sigue diciendo «Esperando» y no «Buscando» a propósito:
+        // `labels[0]` se repinta en gris como paso CUMPLIDO cuando la
+        // solicitud ya pasó a «Ofertas», y un gerundio en pasado se lee mal.
+        child: phase == RequestPhase.waiting
+            ? BuscandoIndicator(
+                label: l,
+                estilo: estilo,
+                reloj: false,
+                idle: idle,
+              )
+            : Text(l, maxLines: 1, style: estilo),
+      );
+    }
 
     return Container(
       decoration: BoxDecoration(

@@ -366,6 +366,7 @@ class StatusChip extends StatelessWidget {
     required this.tone,
     this.icon,
     this.leading,
+    this.content,
   });
 
   final String label;
@@ -376,6 +377,17 @@ class StatusChip extends StatelessWidget {
   /// Jayalo en los chips de costo en créditos. Cuando viene, [icon] no se pinta.
   final Widget? leading;
 
+  /// Contenido propio en lugar de la fila `icono + etiqueta` — hoy solo el
+  /// indicador animado de «Buscando proveedores», que tiene que meter el reloj
+  /// y los tres puntos DENTRO de esta misma píldora.
+  ///
+  /// Existe para que la geometría del chip (relleno 10×4, radio 99, el tono)
+  /// siga viviendo en un solo sitio: la alternativa era que la hoja del detalle
+  /// se dibujara su propia píldora a mano y las dos se fueran separando con el
+  /// tiempo. [label] sigue siendo obligatorio porque es lo que el chip
+  /// SIGNIFICA — quien pase [content] debe decir lo mismo.
+  final Widget? content;
+
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -383,34 +395,35 @@ class StatusChip extends StatelessWidget {
           color: tone.bg,
           borderRadius: BorderRadius.circular(99),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (leading != null) ...[
-              leading!,
-              const SizedBox(width: 4),
-            ] else if (icon != null) ...[
-              Icon(icon, size: 14, color: tone.ink),
-              const SizedBox(width: 4),
-            ],
-            // `Flexible` + `overflow: ellipsis` (antes el `Text` no tenía
-            // ninguno de los dos): un `Row` con `mainAxisSize: min` da ancho
-            // INFINITO a un hijo que no sea `Flexible`/`Expanded`, así que
-            // sin esto un contenedor angosto (p. ej. una fila con un ícono al
-            // lado) revienta en overflow en vez de truncar con "…". Nunca
-            // recorta en el uso normal — un chip con espacio de sobra se ve
-            // exactamente igual que antes.
-            Flexible(
-              child: Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: tone.ink)),
+        child: content ??
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (leading != null) ...[
+                  leading!,
+                  const SizedBox(width: 4),
+                ] else if (icon != null) ...[
+                  Icon(icon, size: 14, color: tone.ink),
+                  const SizedBox(width: 4),
+                ],
+                // `Flexible` + `overflow: ellipsis` (antes el `Text` no tenía
+                // ninguno de los dos): un `Row` con `mainAxisSize: min` da
+                // ancho INFINITO a un hijo que no sea `Flexible`/`Expanded`,
+                // así que sin esto un contenedor angosto (p. ej. una fila con
+                // un ícono al lado) revienta en overflow en vez de truncar con
+                // "…". Nunca recorta en el uso normal — un chip con espacio de
+                // sobra se ve exactamente igual que antes.
+                Flexible(
+                  child: Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: tone.ink)),
+                ),
+              ],
             ),
-          ],
-        ),
       );
 }
 

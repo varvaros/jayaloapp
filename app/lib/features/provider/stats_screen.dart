@@ -87,8 +87,8 @@ class _StatsViewState extends State<StatsView>
   /// UN solo reloj para los tres íconos de las cabeceras: así el titileo, la
   /// respiración y el meceo van sincronizados. Mismo patrón y misma duración
   /// que los Jayi de la app (4,8 s por vuelta).
-  late final AnimationController _idle = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 4800));
+  late final AnimationController _idle =
+      AnimationController(vsync: this, duration: JayaloMotion.idleCycle);
 
   /// Un mando por sección. Los pulsa la tarjeta que se toca y responde la
   /// pastilla de SU cabecera — nada más: no navegan (decisión PO 2026-09-04).

@@ -148,6 +148,19 @@ abstract final class JayaloMotion {
   /// Escala de una superficie mientras está presionada.
   static const pressedScale = .98;
 
+  /// UNA vuelta del bucle OCIOSO: el gesto de reposo de los íconos de las
+  /// cabeceras de Reputación (la estrella titila, la tienda respira, la bolsa
+  /// se mece) y la vuelta del reloj de «Buscando proveedores».
+  ///
+  /// Estos 4,8 s ya existían escritos a mano en `stats_screen.dart` —y son los
+  /// mismos de los Jayi de la app—; se suben a token al aparecer el segundo
+  /// consumidor, que es justo cuando dos copias empiezan a poder divergir.
+  ///
+  /// ⚠️ Lo OCIOSO es lo único que corre en bucle en esta app, y solo mientras
+  /// el estado que describe sigue vivo. Todo lo demás —incluido el saludo de
+  /// aquí abajo— es finito a propósito.
+  static const idleCycle = Duration(milliseconds: 4800);
+
   // ── El SALUDO del borde de "sin ver" (PO 2026-08-19/20) ───────────────
   //
   // El borde violeta que marca una oferta/solicitud que aún no has abierto

@@ -7,6 +7,7 @@ import '../../domain/phase.dart';
 import '../../domain/request_requirements.dart';
 import '../chat/widgets/rating_form.dart';
 import '../shared/brand_kit.dart';
+import '../shared/buscando_indicator.dart';
 import '../shared/detail_tiles.dart';
 import '../shared/onboarding_copy.dart';
 import '../shared/onboarding_guide.dart';
@@ -27,8 +28,13 @@ import 'request_status_screen.dart';
 /// el compilador ahora obliga a tocar esta función Y `_phaseTitleFor`.
 String _phaseCopyFor(RequestPhase phase, ClosedReason? closedReason) =>
     switch (phase) {
+      // Aquí vive la frase COMPLETA (PO 2026-09-18). El chip de arriba dice
+      // «Buscando» a secas por ancho: con «Buscando proveedores» al lado de un
+      // título de 22pt, en un teléfono de 360dp el título se queda en unos
+      // pocos caracteres por línea. El cuerpo es donde hay sitio.
       RequestPhase.waiting =>
-        'Tu solicitud está publicada. Los proveedores la están viendo.',
+        'Tu solicitud está publicada y estamos buscando proveedores que '
+            'respondan.',
       RequestPhase.withOffers => 'Revisa las ofertas: puedes aceptar hasta 3.',
       RequestPhase.accepted => 'El proveedor te contactará pronto.',
       RequestPhase.unlocked => 'Ya puedes hablar con el proveedor.',
@@ -49,7 +55,8 @@ String _phaseCopyFor(RequestPhase phase, ClosedReason? closedReason) =>
 /// función-en-vez-de-mapa que `_phaseCopyFor`.
 String _phaseTitleFor(RequestPhase phase, ClosedReason? closedReason) =>
     switch (phase) {
-      RequestPhase.waiting => 'Esperando ofertas',
+      // Una palabra, no la frase: ver la nota de ancho en `_phaseCopyFor`.
+      RequestPhase.waiting => 'Buscando',
       RequestPhase.withOffers => 'Con ofertas',
       RequestPhase.accepted => 'Oferta aceptada',
       // "En contacto", no "desbloqueado" (pedido PO 2026-07-23): el CLIENTE
@@ -154,6 +161,24 @@ class RequestDetailSheet extends StatelessWidget {
               StatusChip(
                 label: _phaseTitleFor(phase, closedReason),
                 tone: tone,
+                // La MISMA fase tiene que leerse igual en la lista y aquí: si
+                // la tarjeta de «Mis solicitudes» se mueve y esta hoja no, el
+                // cliente ve dos estados distintos para una sola solicitud.
+                //
+                // Sin `idle` compartido a propósito: esto es UNA hoja, no una
+                // lista, así que el indicador monta su propio ticker. La
+                // objeción de `motion.dart` es sobre repetir el bucle por
+                // fila, y aquí no hay filas.
+                content: phase == RequestPhase.waiting
+                    ? BuscandoIndicator(
+                        label: _phaseTitleFor(phase, closedReason),
+                        estilo: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: tone.ink,
+                        ),
+                      )
+                    : null,
               ),
             ],
           ),
