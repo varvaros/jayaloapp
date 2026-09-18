@@ -4400,7 +4400,10 @@ int welcomeCreditsFrom(dynamic row) {
   }
   if (r is! Map) return 0;
   final v = r['welcome_credits'];
-  final n = v is num ? v.toInt() : int.tryParse('$v') ?? 0;
+  // `num.tryParse` y no `int.tryParse`: una cadena DECIMAL («5.0», que es como
+  // sale un `numeric` de Postgres serializado a texto) daba 0 en silencio, y
+  // con 0 la lámina de la moneda ni existe.
+  final n = v is num ? v.toInt() : (num.tryParse('$v')?.toInt() ?? 0);
   return n < 0 ? 0 : n;
 }
 
