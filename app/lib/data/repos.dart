@@ -4384,3 +4384,37 @@ Future<Map<String, int>?> categoryCountsUnion() async {
 /// RPC falla (el caller enseña la lista completa).
 Future<Set<String>?> categoriasConCatalogoTodas() async =>
     (await categoryCountsUnion())?.keys.toSet();
+
+// ── Bono de bienvenida (intro de primera apertura, spec 2026-09-18) ────────
+
+/// `welcome_credits` de la respuesta de `bonus_config()`. Pura.
+///
+/// La RPC es `RETURNS TABLE`, así que PostgREST puede devolver una lista de
+/// una fila o la fila sola según el cliente. Cualquier cosa que no sea un
+/// entero ≥ 0 vale 0: el intro solo promete créditos que de verdad se pagan.
+int welcomeCreditsFrom(dynamic row) {
+  var r = row;
+  if (r is List) {
+    if (r.isEmpty) return 0;
+    r = r.first;
+  }
+  if (r is! Map) return 0;
+  final v = r['welcome_credits'];
+  final n = v is num ? v.toInt() : int.tryParse('$v') ?? 0;
+  return n < 0 ? 0 : n;
+}
+
+/// Cuántos créditos regala el alta de proveedor hoy. `anon` puede ejecutar
+/// `bonus_config()` (medido 2026-09-18): se llama ANTES de autenticarse.
+/// Nunca lanza; sin red o pasados 3 s devuelve 0, y la lámina de la moneda
+/// no existe.
+Future<int> fetchWelcomeCredits() async {
+  try {
+    final res = await supa
+        .rpc('bonus_config')
+        .timeout(const Duration(seconds: 3));
+    return welcomeCreditsFrom(res);
+  } catch (_) {
+    return 0;
+  }
+}
