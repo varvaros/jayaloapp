@@ -376,7 +376,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+          // 9 y no 13 de relleno lateral (PO 2026-09-18: «que quepan los 3
+          // arriba»). Medido en el teléfono del PO: a 388 dp las tres píldoras
+          // sumaban 355 dp contra los 356 libres —«Terminadas» caía a una
+          // segunda línea por UN dp—; con 9 bajan a ~327 y sobran ~29.
+          //
+          // Sigue siendo un `Wrap`: con la fuente del sistema agrandada el
+          // texto vuelve a no caber, y bajar de línea es mejor que recortar.
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
           child: Text(
             label,
             style: TextStyle(
@@ -590,7 +597,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           // Botones violeta alineados a la izquierda (Wrap: si no caben en un
           // teléfono angosto, bajan a la segunda línea en vez de desbordar).
           child: Wrap(
-            spacing: 8,
+            spacing: 6,
             runSpacing: 8,
             children: [
               // Seleccionado solo cuando de verdad se están viendo las
