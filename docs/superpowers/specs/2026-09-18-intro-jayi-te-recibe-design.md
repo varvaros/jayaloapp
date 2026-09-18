@@ -51,7 +51,7 @@ Marca en el titular: **«Jáyalo» con tilde** (como en el pitch). El wordmark p
 | Paso | Lámina | Titular | Apoyo | Acción |
 |---|---|---|---|---|
 | `ask` | 0 (común) | En Jáyalo conectamos clientes con proveedores. | **¿Tú qué eres?** (violeta, línea propia) | Recuadros «Soy un cliente» / «Soy un proveedor» |
-| `react` | 1 | grito **¡Genial!** (cliente) / **¡Bien!** (proveedor) | Aquí haces una solicitud y esperas que proveedores te hagan ofertas. / Aquí encontrarás clientes que buscan exactamente lo que vendes. | Avanza sola a los 2,6 s; «Siguiente» fantasma desde el segundo 1 |
+| `react` | 1 | grito **¡Genial!** (cliente) / **¡Bien!** (proveedor) | Aquí haces una solicitud y esperas que proveedores te hagan ofertas. / Aquí encontrarás clientes que buscan exactamente lo que vendes. | Avanza sola a los 3,2 s; «Siguiente» fantasma desde el segundo 1 |
 | `consumerFree` | 2 (cliente, final) | Para ti, todas las funciones son gratis. | Navega con libertad. | Accesos |
 | `providerOffers` | 2 (proveedor) | Hacer ofertas es gratis. | Responde a las solicitudes de tu zona sin gastar ni un crédito. | «Siguiente» (o accesos si no hay bono) |
 | `providerCoin` | 3 (proveedor, final) | Tienes **{n}** créditos de regalo para desbloquear clientes. | — | Accesos |
@@ -87,12 +87,12 @@ introSteps(role: provider, skipped: *,     credits) = [ask, react, providerOffer
   retrocede una lámina. Volver a la 0 deja el rol guardado y permite reelegir; reelegir
   vuelve a llamar a `IntroRoleStore.save`. Retroceder desde `react` **cancela** su
   temporizador.
-- **Reacción**: al entrar en `react` se arma `Timer(introRead = 2 600 ms)` → `goToPage(2)`
+- **Reacción**: al entrar en `react` se arma `Timer(introRead = 3 200 ms)` → `goToPage(2)`
   si sigue siendo la lámina actual y la pantalla sigue montada. A `introHint = 1 000 ms`
   aparece «Siguiente» (fantasma: texto violeta sin relleno). Ambos temporizadores se
   cancelan en `onPageChanged`, en atrás y en `dispose` (si no, los tests de widgets fallan
   por temporizadores pendientes). **Con «reducir movimiento» la lámina también avanza sola
-  a los 2,6 s**: es tiempo de lectura, no animación.
+  a los 3,2 s**: es tiempo de lectura, no animación.
 - **Restaurar** con rol ya guardado (`_restore`): se aterriza en la última lámina, como hoy.
   El número de páginas sale de `introSteps` con los créditos ya resueltos o, si aún no
   llegaron, se espera a `fetchWelcomeCredits` **antes** de saltar (ver §6).
@@ -106,7 +106,7 @@ Todo sale de `JayaloMotion`. Duraciones ilustrativas **nuevas** en `core/motion.
 | `intro` | 420 | palabras del titular, recuadros, frase de la reacción, accesos, la etiqueta |
 | `introGesture` | 560 | pulgar, saltito de Jayi, «¡Genial!» |
 | `introLand` | 720 | Jayi aterriza; la moneda sube y aterriza |
-| `introRead` | 2 600 | la reacción avanza sola |
+| `introRead` | 3 200 | la reacción avanza sola |
 | `introHint` | 1 000 | aparece «Siguiente» fantasma |
 | `bounce` (curva) | `Cubic(.34, 1.45, .64, 1)` | **el ÚNICO rebote del sistema**: pulgar y «¡Genial!» |
 
@@ -234,7 +234,7 @@ aterrizaje (primeros 720 ms desde el montaje), el saltito (primeros 560 ms tras 
 - `login_intro_carousel_test` (reescritura de los 13): copy nuevo en la lámina 0; los DOS
   recuadros; elegir proveedor con 5 créditos ⇒ 4 puntos y la moneda al final con «5»; con 0
   créditos ⇒ 3 láminas y los accesos en «Hacer ofertas es gratis»; la reacción avanza sola
-  a los 2 600 ms (pump 2 599 no, 2 601 sí); «Siguiente» fantasma aparece a 1 000 ms; atrás
+  a los 3 200 ms (pump 3 199 no, 3 201 sí); «Siguiente» fantasma aparece a 1 000 ms; atrás
   desde la reacción cancela el avance; los dos recuadros seguidos: gana el primero; con rol
   guardado arranca en la última lámina (esperando a los créditos); saltar sin rol ⇒ 2
   láminas con el cierre neutro y sin rol guardado; PopScope igual que hoy; el avance con

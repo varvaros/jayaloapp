@@ -823,6 +823,11 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // Hijo vacío arriba: `spaceBetween` reparte el aire sobrante
+              // entre este hueco y la acción, así que el texto queda a media
+              // altura entre Jayi y el botón (PO 2026-09-18: «centraliza el
+              // texto»), en vez de pegado a la escena con un vacío debajo.
+              const SizedBox.shrink(),
               _SlideCopy(
                 slide,
                 wordByWord: step == IntroStep.ask,

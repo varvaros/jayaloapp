@@ -242,7 +242,9 @@ abstract final class JayaloMotion {
 
   /// Tiempo de lectura de la reacción antes de avanzar sola. NO es
   /// animación: con «reducir animaciones» se respeta igual.
-  static const introRead = Duration(milliseconds: 2600);
+  /// PO 2026-09-18 tras verlo en el teléfono: «un poco más de tiempo al
+  /// cruce automático»: 2 600 → 3 200 ms.
+  static const introRead = Duration(milliseconds: 3200);
 
   /// Cuándo aparece el «Siguiente» fantasma de la reacción.
   static const introHint = Duration(milliseconds: 1000);
