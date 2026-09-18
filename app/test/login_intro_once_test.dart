@@ -3,6 +3,7 @@
 // Jayi 3D sobre el pattern de isotipos) y los accesos, sin carrusel.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jayalo_app/core/motion.dart';
 import 'package:jayalo_app/features/auth/intro_seen_store.dart';
 import 'package:jayalo_app/features/auth/login_screen.dart';
 import 'package:jayalo_app/features/auth/portada_jayi.dart';
@@ -13,8 +14,11 @@ void main() {
 
   /// Animaciones del sistema APAGADAS: tanto la escena de Jayi como la Portada
   /// Jayi animan con un `Ticker` perpetuo y `pumpAndSettle` no asentaría
-  /// nunca. Ambas respetan `JayaloMotion.reduced`.
+  /// nunca. Ambas respetan `JayaloMotion.reduced`. Y sin `splashFactory` el
+  /// ripple de Material sigue corriendo reloj FAKE tras cada toque, ajeno a
+  /// `disableAnimations` — ver `login_intro_carousel_test.dart`.
   Widget app() => MaterialApp(
+    theme: ThemeData(splashFactory: NoSplash.splashFactory),
     home: LoginScreen(fetchWelcomeCredits: () async => 5),
     builder: (ctx, child) => MediaQuery(
       data: MediaQuery.of(ctx).copyWith(disableAnimations: true),
@@ -91,6 +95,9 @@ void main() {
     // Reacción: todavía no ha terminado el intro.
     expect(await IntroSeenStore().read(), isFalse);
 
+    // El «Siguiente» de la reacción es fantasma: inerte hasta `introHint`.
+    await t.pump(JayaloMotion.introHint + const Duration(milliseconds: 1));
+    await t.pump();
     // Proveedor con bono son CUATRO láminas: reacción, etiqueta y moneda.
     await t.tap(find.text('Siguiente'));
     await t.pumpAndSettle();

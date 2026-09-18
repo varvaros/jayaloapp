@@ -155,6 +155,34 @@ class _LoginScreenState extends State<LoginScreen> {
   /// de reentrada de [_chooseRole].
   bool _choosing = false;
 
+  /// La reacción avanza sola tras `introRead`; el «Siguiente» fantasma
+  /// aparece a `introHint`. Se cancelan al cambiar de lámina, al retroceder y
+  /// en dispose (si no, los tests de widgets mueren por temporizadores vivos).
+  Timer? _readTimer;
+  Timer? _hintTimer;
+  bool _hintVisible = false;
+
+  void _armReaction(int i) {
+    _disarmReaction();
+    if (_steps[i] != IntroStep.react) return;
+    _hintTimer = Timer(JayaloMotion.introHint, () {
+      if (mounted) setState(() => _hintVisible = true);
+    });
+    // Tiempo de LECTURA, no animación: con «reducir animaciones» también avanza.
+    _readTimer = Timer(JayaloMotion.introRead, () {
+      if (!mounted || _page != i || _busy) return;
+      unawaited(_goToPage(i + 1));
+    });
+  }
+
+  void _disarmReaction() {
+    _readTimer?.cancel();
+    _hintTimer?.cancel();
+    _readTimer = null;
+    _hintTimer = null;
+    if (_hintVisible) _hintVisible = false;
+  }
+
   /// Créditos de bienvenida según el servidor; `null` mientras no llega.
   int? _welcomeCredits;
 
@@ -195,6 +223,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _disarmReaction();
     _pages.dispose();
     super.dispose();
   }
@@ -353,6 +382,7 @@ class _LoginScreenState extends State<LoginScreen> {
   /// dejaría reelegir rol mientras `_go()` sigue autenticando.
   void _back() {
     if (_choosing || _busy || _page == 0) return;
+    _disarmReaction();
     _choosing = true;
     unawaited(_goToPage(_page - 1).whenComplete(() => _choosing = false));
   }
@@ -485,8 +515,12 @@ class _LoginScreenState extends State<LoginScreen> {
                               : null,
                           itemCount: _steps.length,
                           onPageChanged: (i) {
-                            setState(() => _page = i);
+                            setState(() {
+                              _page = i;
+                              _disarmReaction();
+                            });
                             _markSeenIfDone();
+                            _armReaction(i);
                           },
                           itemBuilder: _buildSlide,
                         ),
@@ -620,6 +654,29 @@ class _LoginScreenState extends State<LoginScreen> {
     final Widget action = switch (step) {
       IntroStep.ask => _roleCards(context),
       _ when _isAccessSlide(i) => _accessStack(context),
+      IntroStep.react => AnimatedOpacity(
+        key: const Key('intro-ghost-next'),
+        opacity: _hintVisible ? 1 : 0,
+        duration: JayaloMotion.reduced(context)
+            ? Duration.zero
+            : JayaloMotion.base,
+        curve: JayaloMotion.enter,
+        child: IgnorePointer(
+          ignoring: !_hintVisible,
+          child: TextButton(
+            onPressed: () => _goToPage(i + 1),
+            style: TextButton.styleFrom(
+              minimumSize: const Size.fromHeight(54),
+              foregroundColor: JayaloColors.primary,
+              textStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            child: const Text('Siguiente'),
+          ),
+        ),
+      ),
       _ => FilledButton(
         style: _pill,
         onPressed: () => _goToPage(i + 1),

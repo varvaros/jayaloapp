@@ -19,7 +19,14 @@ void main() {
   /// 1. es una conducta que hay que respetar igual (`JayaloMotion.reduced`), y
   /// 2. la escena de Jayi anima con un `Ticker` perpetuo — con ellas
   ///    encendidas `pumpAndSettle` no asienta NUNCA.
+  ///
+  /// Y sin `splashFactory` el ripple de Material del `InkWell` de los
+  /// recuadros sigue corriendo ~700 ms de reloj FAKE tras cada toque (no lo
+  /// apaga `disableAnimations`): de sobra para pisar el margen de los tests
+  /// de «la reacción», que miden milisegundos exactos contra `introRead` /
+  /// `introHint`.
   Widget app({int credits = 5, bool reduced = true}) => MaterialApp(
+    theme: ThemeData(splashFactory: NoSplash.splashFactory),
     home: LoginScreen(fetchWelcomeCredits: () async => credits),
     builder: (ctx, child) => MediaQuery(
       data: MediaQuery.of(ctx).copyWith(disableAnimations: reduced),
@@ -37,6 +44,23 @@ void main() {
 
   Finder dots() => find.byKey(const Key('intro-dots'));
   int dotCount(WidgetTester t) => t.widget<Row>(dots()).children.length;
+
+  /// Asienta sin gastar reloj FAKE, a diferencia de `pumpAndSettle()`, que
+  /// avanza el reloj en pasos de 100 ms como mínimo aunque no quede nada por
+  /// animar (`binding.pump(duration)` SIEMPRE consume ese paso). El aterrizaje
+  /// en la reacción necesita 2-3 frames de asentamiento (el `jumpToPage` +
+  /// `onPageChanged` + `setState` en cascada) que con el paso de 100 ms ya se
+  /// comen 200-300 ms del margen de `introRead`/`introHint` — de sobra para
+  /// que el test de milisegundo exacto falle por una carrera ajena al
+  /// temporizador. `t.pump()` sin duración procesa un frame sin tocar el
+  /// reloj.
+  Future<void> settleWithoutClock(WidgetTester t) async {
+    var guard = 0;
+    while (t.binding.hasScheduledFrame) {
+      await t.pump();
+      if (++guard > 200) break; // defensivo: nunca debería hacer falta.
+    }
+  }
 
   /// Lo que se VE, no lo que está en el árbol: los dos controles de la fila
   /// superior («Saltar» y el chevrón) se quedan siempre montados y se apagan
@@ -91,6 +115,9 @@ void main() {
       await t.tap(find.text(proveedor));
       await t.pumpAndSettle();
       expect(dotCount(t), 4);
+      // El «Siguiente» de la reacción es fantasma: inerte hasta `introHint`.
+      await t.pump(JayaloMotion.introHint + const Duration(milliseconds: 1));
+      await t.pump();
       await t.tap(find.text('Siguiente'));
       await t.pumpAndSettle();
       expect(find.text('Hacer ofertas es gratis.'), findsOneWidget);
@@ -113,6 +140,9 @@ void main() {
       await t.tap(find.text(proveedor));
       await t.pumpAndSettle();
       expect(dotCount(t), 3);
+      // El «Siguiente» de la reacción es fantasma: inerte hasta `introHint`.
+      await t.pump(JayaloMotion.introHint + const Duration(milliseconds: 1));
+      await t.pump();
       await t.tap(find.text('Siguiente'));
       await t.pumpAndSettle();
       expect(find.text('Hacer ofertas es gratis.'), findsOneWidget);
@@ -154,6 +184,9 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('¡Genial!'), findsOneWidget);
     expect(dotCount(t), 3);
+    // El «Siguiente» de la reacción es fantasma: inerte hasta `introHint`.
+    await t.pump(JayaloMotion.introHint + const Duration(milliseconds: 1));
+    await t.pump();
     await t.tap(find.text('Siguiente'));
     await t.pumpAndSettle();
     expect(
@@ -277,6 +310,9 @@ void main() {
       await t.pumpAndSettle();
       // En la REACCIÓN no se ofrece saltar: Jayi acaba de contestar.
       expect(skipOpacity(t), 0, reason: '«Saltar» apagado en la reacción');
+      // El «Siguiente» de la reacción es fantasma: inerte hasta `introHint`.
+      await t.pump(JayaloMotion.introHint + const Duration(milliseconds: 1));
+      await t.pump();
       await t.tap(find.text('Siguiente'));
       await t.pumpAndSettle();
       expect(skipOpacity(t), 1, reason: 'y encendido en la de la etiqueta');
@@ -331,6 +367,9 @@ void main() {
 
       await t.tap(find.text(proveedor));
       await t.pumpAndSettle();
+      // El «Siguiente» de la reacción es fantasma: inerte hasta `introHint`.
+      await t.pump(JayaloMotion.introHint + const Duration(milliseconds: 1));
+      await t.pump();
       await t.tap(find.text('Siguiente'));
       await t.pumpAndSettle();
       await t.tap(find.text('Siguiente'));
@@ -346,6 +385,82 @@ void main() {
       // dos atrás.
       expect(find.text('Hacer ofertas es gratis.'), findsOneWidget);
       expect(find.text(cliente), findsNothing);
+    });
+  });
+
+  group('la reacción', () {
+    testWidgets('avanza sola a los 2 600 ms, no antes', (t) async {
+      phone(t);
+      await t.pumpWidget(app());
+      await t.pumpAndSettle();
+      await t.tap(find.text(cliente));
+      // Sin gastar reloj: el aterrizaje en la reacción (jumpToPage +
+      // onPageChanged en cascada) necesita 2-3 frames de asentamiento, y con
+      // `pumpAndSettle()` (pasos de 100 ms) eso solo ya se come 200-300 ms del
+      // margen de `introRead` — de sobra para que la comprobación de «todavía
+      // leyendo», un milisegundo antes del disparo, falle por esa carrera y no
+      // por el temporizador.
+      await settleWithoutClock(t);
+      expect(find.text('¡Genial!'), findsOneWidget);
+      await t.pump(JayaloMotion.introRead - const Duration(milliseconds: 1));
+      expect(find.text('¡Genial!'), findsOneWidget, reason: 'todavía leyendo');
+      await t.pump(const Duration(milliseconds: 2));
+      await t.pumpAndSettle();
+      expect(
+        find.text('Para ti, todas las funciones son gratis.'),
+        findsOneWidget,
+      );
+      expect(find.text('¡Genial!'), findsNothing);
+    });
+
+    testWidgets('«Siguiente» aparece al segundo y permite adelantarse', (
+      t,
+    ) async {
+      phone(t);
+      await t.pumpWidget(app());
+      await t.pumpAndSettle();
+      await t.tap(find.text(cliente));
+      await t.pumpAndSettle();
+      final ghost = find.byKey(const Key('intro-ghost-next'));
+      expect(t.widget<AnimatedOpacity>(ghost).opacity, 0);
+      await t.pump(JayaloMotion.introHint + const Duration(milliseconds: 1));
+      await t.pump();
+      expect(t.widget<AnimatedOpacity>(ghost).opacity, 1);
+      await t.tap(find.text('Siguiente'));
+      await t.pumpAndSettle();
+      expect(
+        find.text('Para ti, todas las funciones son gratis.'),
+        findsOneWidget,
+      );
+      // Y el temporizador de lectura ya no dispara nada raro después.
+      await t.pump(JayaloMotion.introRead);
+      await t.pumpAndSettle();
+      expect(
+        find.text('Para ti, todas las funciones son gratis.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('atrás desde la reacción CANCELA el avance', (t) async {
+      phone(t);
+      await t.pumpWidget(app());
+      await t.pumpAndSettle();
+      await t.tap(find.text(cliente));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('intro-back')));
+      await t.pumpAndSettle();
+      expect(find.text(cliente), findsOneWidget);
+      await t.pump(JayaloMotion.introRead + const Duration(milliseconds: 10));
+      await t.pumpAndSettle();
+      expect(
+        find.text(cliente),
+        findsOneWidget,
+        reason: 'no saltó a la lámina 2 por su cuenta',
+      );
+      expect(
+        find.text('Para ti, todas las funciones son gratis.'),
+        findsNothing,
+      );
     });
   });
 }
