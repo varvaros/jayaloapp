@@ -532,22 +532,23 @@ class _ScenePainter extends CustomPainter {
       const Offset(122, 70),
     );
     if (bubbles) {
-      // En el PRIMER montaje las burbujas esperan a que Jayi aterrice; si
-      // llegan por un cambio de lámina entran ya, con el resto del accesorio.
+      // En el PRIMER montaje las burbujas esperan a que Jayi aterrice y suben
+      // por su cuenta; si llegan por un cambio de lámina ya las sube el grupo
+      // (los 12 px de arriba), así que aquí van a 1 para no subir el doble.
       final espera = prev == null; // saliente siempre trae `prev`
       _bubble(
         canvas,
         x: 0,
         delay: 0,
         alpha: 1,
-        entra: saliente ? 1 : _in(_reveal, espera ? _land * .8 : 0),
+        entra: espera ? _in(_reveal, _land * .8) : 1,
       );
       _bubble(
         canvas,
         x: 138,
         delay: 1.7,
         alpha: .72,
-        entra: saliente ? 1 : _in(_reveal, espera ? _land * .9 : 0),
+        entra: espera ? _in(_reveal, _land * .9) : 1,
       );
     }
     canvas.restore();

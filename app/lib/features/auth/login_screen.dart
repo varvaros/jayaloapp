@@ -457,6 +457,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _skip() {
+    // Misma guarda que `_back()`: durante el compás de «Elegir» (300 ms) el
+    // «Saltar» de la lámina 0 sigue vivo; sin esto saltaba a los accesos y el
+    // `_goToPage(1)` en cola devolvía al usuario de un tirón.
+    if (_choosing || _busy) return;
     setState(() => _skipped = true);
     // Última lámina SIEMPRE, sea cual sea el largo del carrusel: sin rol son
     // 2 (cierre neutro); con rol ya elegido son 3 o 4 — p.ej. volver a la

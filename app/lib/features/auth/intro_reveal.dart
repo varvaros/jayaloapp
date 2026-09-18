@@ -148,9 +148,9 @@ class _IntroCounterState extends State<IntroCounter> {
       return Text('$to', style: widget.style);
     }
     if (!_started) {
-      // Invisible pero OCUPANDO el sitio de una cifra: si el titular midiera
-      // sin el número, se recolocaría entero en cuanto empezara la cuenta.
-      return Opacity(opacity: 0, child: Text('0', style: widget.style));
+      // Invisible pero OCUPANDO el sitio del número FINAL (una o dos cifras):
+      // si el titular midiera sin él, se recolocaría entero durante la cuenta.
+      return Opacity(opacity: 0, child: Text('$to', style: widget.style));
     }
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: to.toDouble()),
