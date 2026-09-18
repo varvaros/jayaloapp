@@ -64,3 +64,5 @@ ningún test a 388 dp con fuente grande. Ola de fixes (`dd45791..d7a0e8b`, 5 com
 `.superpowers/sdd/fix-final-report.md`): los 14 puntos A–N aplicados; suite **2103/2103**, analyze limpio.
 Tokens nuevos: `introSkip` 900, `introPick` 220, `salida` 180, `linear`. Re-revisión: `.superpowers/sdd/final-review-2.md`.
 _(pendiente — lo completa el controlador)_
+
+Adenda tras la re-revisión (`final-review-2.md`, 14/14 ✅, 0 Critical/Important, 8 Minor): arreglados en `5439e5d` y `97d2899` el `_skip()` sin guarda `_choosing`, la doble subida de las burbujas del `open` entrante y la reserva de cifras del contador. Minors que quedan abiertos (no bloquean): test del reseteo de `_picked` con animaciones ON; el primer tercio de la cuenta cae dentro del fundido; 16/10 px del spec expresados como fracción (2:1); wordmark con `brake` y no `enter`; el test de 388 dp corre con animaciones apagadas; el smoke no avisa de los 900 ms de «Saltar».
