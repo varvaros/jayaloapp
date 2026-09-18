@@ -10,7 +10,7 @@ import '../../core/config.dart';
 import '../../core/motion.dart';
 import '../../core/turnstile.dart';
 import '../../data/repos.dart' as repos show fetchWelcomeCredits;
-import '../shared/brand_kit.dart' show JayaloCard;
+import '../shared/brand_kit.dart' show JayaloCard, kCardRadius;
 import '../shared/jayalo_loader.dart';
 import 'intro_copy.dart';
 import 'intro_reveal.dart';
@@ -155,6 +155,48 @@ class _LoginScreenState extends State<LoginScreen> {
   /// de reentrada de [_chooseRole].
   bool _choosing = false;
 
+  /// El recuadro TOCADO, mientras dura el compás de «Elegir» (spec §5): crece
+  /// 4 % con anillo violeta y el otro se hunde y se apaga. Vuelve a `null` al
+  /// terminar la transición, para que al retroceder a la lámina 0 los dos
+  /// recuadros estén otra vez enteros.
+  IntroRole? _picked;
+
+  /// Segunda mitad de ese compás: el elegido sube 16 px y se va.
+  bool _lifting = false;
+
+  /// Los compases de «Elegir», como temporizadores CANCELABLES. Un
+  /// `Future.delayed` sobreviviría al desmontaje y los tests de widgets
+  /// mueren con «A Timer is still pending».
+  Timer? _pickTimer;
+  Completer<void>? _pickWait;
+
+  /// «Saltar» en la lámina 0 aparece a `introSkip` (900 ms), cuando Jayi ya
+  /// aterrizó y los recuadros subieron. Con «reducir animaciones» está desde
+  /// el primer frame.
+  bool _skipReady = false;
+  Timer? _skipTimer;
+
+  /// Espera [d] de forma cancelable: el futuro se cierra al vencer, o al
+  /// desmontar la pantalla (y entonces el `if (!mounted) return` de quien
+  /// espera corta la secuencia).
+  Future<void> _pause(Duration d) {
+    _cancelPick();
+    final c = Completer<void>();
+    _pickWait = c;
+    _pickTimer = Timer(d, () {
+      if (!c.isCompleted) c.complete();
+    });
+    return c.future;
+  }
+
+  void _cancelPick() {
+    _pickTimer?.cancel();
+    _pickTimer = null;
+    final c = _pickWait;
+    _pickWait = null;
+    if (c != null && !c.isCompleted) c.complete();
+  }
+
   /// La reacción avanza sola tras `introRead`; el «Siguiente» fantasma
   /// aparece a `introHint`. Se cancelan al cambiar de lámina, al retroceder y
   /// en dispose (si no, los tests de widgets mueren por temporizadores vivos).
@@ -224,6 +266,8 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void dispose() {
     _disarmReaction();
+    _cancelPick();
+    _skipTimer?.cancel();
     _pages.dispose();
     super.dispose();
   }
@@ -259,6 +303,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
     final role = await IntroRoleStore().read();
     if (!mounted) return;
+    _armSkip();
     if (role == null) {
       setState(() => _introSeen = false);
       return;
@@ -267,9 +312,17 @@ class _LoginScreenState extends State<LoginScreen> {
     // cuántas láminas hay: sin el bono no se sabe si el proveedor tiene 3 o 4,
     // y aterrizar en la lámina equivocada movería el carrusel bajo el dedo del
     // usuario. Por eso aquí SÍ se espera — pero al MISMO futuro que ya está en
-    // vuelo desde arriba, y la espera está acotada por el timeout del repo
-    // (`fetchWelcomeCredits` corta a los 3 s y devuelve 0).
-    final credits = _welcomeCredits ?? await _creditsFuture;
+    // vuelo desde arriba, y ACOTADA por lo que Jayi tarda en aterrizar
+    // (`introLand`, 720 ms). Pasado eso se congela 0 y el proveedor ve 3
+    // láminas (el fallback de §6): los 3 s del timeout del repo eran 3 s de
+    // pantalla EN BLANCO con mala cobertura, porque hasta que esto no resuelve
+    // `_introSeen` sigue en `null` y no se pinta ni el carrusel ni la portada.
+    final credits =
+        _welcomeCredits ??
+        await _creditsFuture.timeout(
+          JayaloMotion.introLand,
+          onTimeout: () => 0,
+        );
     if (!mounted) return;
     setState(() {
       _introSeen = false;
@@ -344,10 +397,20 @@ class _LoginScreenState extends State<LoginScreen> {
   /// el que resolviera último, que no tiene por qué ser el que tocó el usuario.
   /// Y durante la transición el recuadro de al lado sigue en pantalla y se
   /// puede tocar.
+  ///
+  /// El compás de «Elegir» (spec §5) corre DENTRO de la guarda: el tocado
+  /// crece con anillo violeta y el otro se hunde y se apaga; a `introPick`
+  /// (220 ms) el elegido sube 16 px y se va; a `page` (300 ms) se pide la
+  /// lámina 1. Con «reducir animaciones» no hay esperas: guardar, `setState` y
+  /// saltar, igual que antes de que el compás existiera.
   Future<void> _chooseRole(IntroRole role) async {
     if (_choosing) return;
     _choosing = true;
     try {
+      final anima = !JayaloMotion.reduced(context);
+      // ANTES de guardar: el recuadro tiene que responder al dedo, no al
+      // disco (`save()` es una escritura en `SharedPreferences`).
+      if (anima) setState(() => _picked = role);
       await IntroRoleStore().save(role);
       if (!mounted) return;
       setState(() {
@@ -357,10 +420,40 @@ class _LoginScreenState extends State<LoginScreen> {
         // la de accesos de sitio.
         _credits = _welcomeCredits ?? 0;
       });
+      if (!anima) {
+        await _afterLayout(() => _goToPage(1));
+        return;
+      }
+      await _pause(JayaloMotion.introPick);
+      if (!mounted) return;
+      setState(() => _lifting = true);
+      await _pause(JayaloMotion.page - JayaloMotion.introPick);
+      if (!mounted) return;
       await _afterLayout(() => _goToPage(1));
     } finally {
       _choosing = false;
+      // Los recuadros vuelven enteros: la lámina 0 ya está fuera de pantalla,
+      // y si el usuario retrocede con el chevrón tiene que encontrarlos ahí.
+      if (mounted && (_picked != null || _lifting)) {
+        setState(() {
+          _picked = null;
+          _lifting = false;
+        });
+      }
     }
+  }
+
+  /// «Saltar» en la lámina 0 no nace con la pantalla: aparece a `introSkip`.
+  /// Se arma UNA vez, al entrar en modo intro, y se cancela en `dispose`.
+  void _armSkip() {
+    if (_skipReady || _skipTimer != null) return;
+    if (JayaloMotion.reduced(context)) {
+      _skipReady = true;
+      return;
+    }
+    _skipTimer = Timer(JayaloMotion.introSkip, () {
+      if (mounted) setState(() => _skipReady = true);
+    });
   }
 
   void _skip() {
@@ -382,7 +475,10 @@ class _LoginScreenState extends State<LoginScreen> {
   /// dejaría reelegir rol mientras `_go()` sigue autenticando.
   void _back() {
     if (_choosing || _busy || _page == 0) return;
-    _disarmReaction();
+    // En `setState`: `_disarmReaction` apaga `_hintVisible`, y sin repintar
+    // aquí el «Siguiente» fantasma se quedaba a la vista los ~150 ms que dura
+    // el retroceso, hasta que `onPageChanged` lo corregía.
+    setState(_disarmReaction);
     _choosing = true;
     unawaited(_goToPage(_page - 1).whenComplete(() => _choosing = false));
   }
@@ -557,6 +653,9 @@ class _LoginScreenState extends State<LoginScreen> {
   /// saltar justo cuando Jayi acaba de responder al usuario suena a que la
   /// app quiere terminar la conversación que ella misma empezó.
   bool get _showSkip {
+    // En la lámina 0 espera a `introSkip` (spec §5: «Saltar aparece a los
+    // 900 ms»), cuando Jayi ya aterrizó y los recuadros terminaron de subir.
+    if (_page == 0 && !_skipReady) return false;
     if (_steps.length == 1) return true;
     final i = _page.clamp(0, _steps.length - 1);
     return i != _steps.length - 1 && _steps[i] != IntroStep.react;
@@ -609,7 +708,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
-            const Expanded(child: Center(child: _Wordmark())),
+            // La marca funde al abrir (spec §5, «Wordmark 250 ms»). Es la
+            // primera pieza del guion: sin esto aparecía de golpe mientras
+            // todo lo demás entraba.
+            const Expanded(
+              child: Center(
+                child: IntroReveal(
+                  duration: JayaloMotion.base,
+                  dy: 0,
+                  child: _Wordmark(),
+                ),
+              ),
+            ),
             SizedBox(
               width: _topSide,
               child: Align(
@@ -661,19 +771,32 @@ class _LoginScreenState extends State<LoginScreen> {
             ? Duration.zero
             : JayaloMotion.base,
         curve: JayaloMotion.enter,
-        child: IgnorePointer(
-          ignoring: !_hintVisible,
-          child: TextButton(
-            onPressed: () => _goToPage(i + 1),
-            style: TextButton.styleFrom(
-              minimumSize: const Size.fromHeight(54),
-              foregroundColor: JayaloColors.primary,
-              textStyle: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
+        // Invisible es invisible también para TalkBack, igual que el chevrón y
+        // «Saltar»: durante el primer segundo el lector podía enfocar un botón
+        // que no está.
+        child: ExcludeSemantics(
+          excluding: !_hintVisible,
+          child: IgnorePointer(
+            ignoring: !_hintVisible,
+            child: TextButton(
+              // Desarma el temporizador de lectura ANTES de pedir la página:
+              // si el toque cae a los 2,45-2,6 s, el temporizador volvía a
+              // pedir la misma página con la animación ya en vuelo y el
+              // deslizamiento se reiniciaba (micro-tirón).
+              onPressed: () {
+                setState(_disarmReaction);
+                unawaited(_goToPage(i + 1));
+              },
+              style: TextButton.styleFrom(
+                minimumSize: const Size.fromHeight(54),
+                foregroundColor: JayaloColors.primary,
+                textStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+              child: const Text('Siguiente'),
             ),
-            child: const Text('Siguiente'),
           ),
         ),
       ),
@@ -727,6 +850,9 @@ class _LoginScreenState extends State<LoginScreen> {
               icon: Icons.search_rounded,
               title: kIntroConsumerCard.title,
               sub: kIntroConsumerCard.sub,
+              picked: _picked == IntroRole.consumer,
+              dimmed: _picked == IntroRole.provider,
+              lifted: _lifting && _picked == IntroRole.consumer,
               onTap: () => _chooseRole(IntroRole.consumer),
             ),
           ),
@@ -740,6 +866,9 @@ class _LoginScreenState extends State<LoginScreen> {
               icon: Icons.storefront_outlined,
               title: kIntroProviderCard.title,
               sub: kIntroProviderCard.sub,
+              picked: _picked == IntroRole.provider,
+              dimmed: _picked == IntroRole.consumer,
+              lifted: _lifting && _picked == IntroRole.provider,
               onTap: () => _chooseRole(IntroRole.provider),
             ),
           ),
@@ -868,8 +997,10 @@ const _cardDelay1 = Duration(milliseconds: 560);
 /// El segundo, 80 ms detrás del primero: se leen como dos, no como un bloque.
 const _cardDelay2 = Duration(milliseconds: 640);
 
-/// El grito de la reacción, tras el cambio de pose de Jayi: primero el pulgar,
-/// después la palabra.
+/// El grito de la reacción. Se cuenta desde que la lámina se MONTA, o sea
+/// desde el frame 0 del deslizamiento — y la pose de Jayi cambia en
+/// `onPageChanged`, en ese mismo tramo: en la práctica el pulgar y la palabra
+/// salen a la vez, no uno detrás del otro.
 const _shoutDelay = Duration(milliseconds: 110);
 
 /// Y la frase que lo explica, cuando el grito ya rebotó
@@ -881,9 +1012,15 @@ const _shoutSubDelay = Duration(milliseconds: 520);
 /// `final` y no `const` porque multiplicar una `Duration` no es constante.
 final _accessDelay1 = JayaloMotion.page * 1.1;
 
-/// El texto de apoyo y el enlace, 90 y 170 ms detrás de él.
+/// El texto de apoyo y el enlace, escalonados 90 ms (spec §5): 90 y 180 ms
+/// detrás de él.
 final _accessDelay2 = _accessDelay1 + const Duration(milliseconds: 90);
-final _accessDelay3 = _accessDelay1 + const Duration(milliseconds: 170);
+final _accessDelay3 = _accessDelay1 + const Duration(milliseconds: 180);
+
+/// El copy de la lámina ENTRANTE espera a que la saliente vaya por la mitad
+/// (spec §5: «180·0,6», 108 ms). No aplica ni a la pregunta (entra palabra a
+/// palabra con su propio compás) ni a la reacción (el grito manda).
+final _incomingDelay = JayaloMotion.salida * .6;
 
 /// El imagotipo pequeño de la fila superior. Ancho fijo y alto derivado de la
 /// proporción real del logo, para que no se deforme nunca.
@@ -972,7 +1109,7 @@ class _SlideCopy extends StatelessWidget {
       children.add(
         wordByWord
             ? IntroWords(text: slide.headline, style: _head)
-            : IntroReveal(child: _headline(slide)),
+            : IntroReveal(delay: _incomingDelay, child: _headline(slide)),
       );
     }
     if (slide.sub.isNotEmpty) {
@@ -980,10 +1117,11 @@ class _SlideCopy extends StatelessWidget {
       children.add(
         IntroReveal(
           // Tras el grito, cuando ya rebotó; en la pregunta, cuando el titular
-          // terminó de escribirse; en el resto, junto con el titular.
+          // terminó de escribirse; en el resto, junto con el titular (que ya
+          // espera a que la lámina saliente vaya por la mitad).
           delay: slide.shout != null
               ? _shoutSubDelay
-              : (question ? JayaloMotion.intro * 1.4 : Duration.zero),
+              : (question ? JayaloMotion.intro * 1.4 : _incomingDelay),
           child: Text(
             slide.sub,
             textAlign: TextAlign.center,
@@ -1058,21 +1196,80 @@ class _SlideCopy extends StatelessWidget {
   }
 }
 
+/// Un recuadro de la pregunta, con el compás de «Elegir» del spec §5.
+///
+/// [picked] = este recuadro es el que se tocó (crece 4 % y gana anillo
+/// violeta); [dimmed] = se tocó el OTRO (este se hunde 10 px y se apaga);
+/// [lifted] = segunda mitad del compás del elegido (sube 16 px y se va).
+/// Todo con widgets implícitos: con «reducir animaciones» las duraciones son
+/// cero y los tres estados se pintan de golpe.
 class _RoleCard extends StatelessWidget {
   const _RoleCard({
     required this.icon,
     required this.title,
     required this.sub,
     required this.onTap,
+    required this.picked,
+    required this.dimmed,
+    required this.lifted,
   });
 
   final IconData icon;
   final String title;
   final String sub;
   final VoidCallback onTap;
+  final bool picked;
+  final bool dimmed;
+  final bool lifted;
 
   @override
   Widget build(BuildContext context) {
+    final reduced = JayaloMotion.reduced(context);
+    // El que se VA (el elegido levantándose, o el otro hundiéndose) acelera al
+    // irse; el que crece, desacelera al llegar.
+    final salida = reduced
+        ? Duration.zero
+        : (lifted ? JayaloMotion.base : JayaloMotion.salida);
+    return AnimatedSlide(
+      offset: lifted
+          ? const Offset(0, -.12)
+          : (dimmed ? const Offset(0, .06) : Offset.zero),
+      duration: salida,
+      curve: JayaloMotion.exit,
+      child: AnimatedOpacity(
+        opacity: (dimmed || lifted) ? 0 : 1,
+        duration: salida,
+        curve: JayaloMotion.exit,
+        child: AnimatedScale(
+          // Con llave propia: `JayaloCard` trae su PROPIO `AnimatedScale` (el
+          // de presionar), y buscar «el AnimatedScale del recuadro» a ciegas
+          // encuentra aquel.
+          key: Key('intro-card-scale-$title'),
+          scale: picked ? 1.04 : 1,
+          duration: reduced ? Duration.zero : JayaloMotion.fast,
+          curve: JayaloMotion.enter,
+          child: AnimatedContainer(
+            duration: reduced ? Duration.zero : JayaloMotion.fast,
+            curve: JayaloMotion.enter,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(kCardRadius),
+              // El anillo va por sombra y no por borde: un borde de verdad
+              // encogería el contenido 2 px al encenderse.
+              boxShadow: [
+                BoxShadow(
+                  color: JayaloColors.primary.withValues(alpha: picked ? 1 : 0),
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: _card(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _card(BuildContext context) {
     // Colores FIJOS del tema claro: estos recuadros viven sobre la portada de
     // arena, que no tiene modo oscuro.
     return JayaloCard(
@@ -1116,10 +1313,27 @@ class _RoleCard extends StatelessWidget {
 /// de láminas — antes estaba fijo en 3 y con el camino de «Saltar sin rol»
 /// (2 láminas) se veía el punto del medio encendido de tres, como si faltara
 /// una lámina.
-class _Dots extends StatelessWidget {
+class _Dots extends StatefulWidget {
   const _Dots({required this.active, required this.count});
   final int active;
   final int count;
+
+  @override
+  State<_Dots> createState() => _DotsState();
+}
+
+class _DotsState extends State<_Dots> {
+  /// Cuántos puntos había ANTES del cambio en curso. Los que ya estaban no
+  /// nacen: el rebote está reservado al punto NUEVO (el 4.º, el que añade el
+  /// bono del proveedor). En la primera apertura los tres aparecían creciendo
+  /// desde cero con rebote, que es justo lo que el spec no pide.
+  late int _prevCount = widget.count;
+
+  @override
+  void didUpdateWidget(covariant _Dots old) {
+    super.didUpdateWidget(old);
+    if (widget.count != old.count) _prevCount = old.count;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1127,19 +1341,21 @@ class _Dots extends StatelessWidget {
     return Row(
       key: const Key('intro-dots'),
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(count, (i) {
-        final on = i == active;
-        // El punto que NACE (el bono del proveedor añade una lámina) crece
-        // desde cero en vez de aparecer de golpe: la `ValueKey` es lo que hace
-        // que los que ya estaban conserven su estado y no vuelvan a nacer.
+      children: List.generate(widget.count, (i) {
+        final on = i == widget.active;
+        // La `ValueKey` es lo que hace que los puntos que ya estaban conserven
+        // su estado: su `TweenAnimationBuilder` no se recrea y por tanto no
+        // vuelve a arrancar aunque el `begin` cambie.
         return TweenAnimationBuilder<double>(
           key: ValueKey(i),
-          tween: Tween<double>(begin: 0, end: 1),
+          tween: Tween<double>(begin: i >= _prevCount ? 0 : 1, end: 1),
           duration: reduced ? Duration.zero : JayaloMotion.page,
           curve: JayaloMotion.bounce,
           builder: (_, s, child) => Transform.scale(scale: s, child: child),
           child: AnimatedContainer(
-            duration: reduced ? Duration.zero : JayaloMotion.base,
+            // El activo se estira de 7 a 22 px en `page` (spec §5), el mismo
+            // tiempo que tarda el PageView en cambiar de lámina.
+            duration: reduced ? Duration.zero : JayaloMotion.page,
             curve: JayaloMotion.emphasized,
             margin: const EdgeInsets.symmetric(horizontal: 3),
             width: on ? 22 : 7,

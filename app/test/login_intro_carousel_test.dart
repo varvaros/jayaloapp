@@ -74,6 +74,13 @@ void main() {
       )
       .opacity;
   double skipOpacity(WidgetTester t) => opacityOf(t, find.text('Saltar'));
+
+  /// El compás de «Elegir»: el destino al que apuntan los widgets implícitos
+  /// del recuadro, no su valor a mitad de animación.
+  double scaleTarget(WidgetTester t, String title) =>
+      t.widget<AnimatedScale>(find.byKey(Key('intro-card-scale-$title'))).scale;
+  double cardOpacity(WidgetTester t, String title) =>
+      opacityOf(t, find.text(title));
   double backOpacity(WidgetTester t) =>
       opacityOf(t, find.byKey(const Key('intro-back')));
 
@@ -199,12 +206,17 @@ void main() {
     expect(find.text('Continuar con Google'), findsOneWidget);
   });
 
+  // ⚠️ `flutter_animate` implementa `delay` con `Future.delayed`, que bajo
+  // `FakeAsync` NO se cancela al desmontar: todo retardo vivo tiene que ser más
+  // corto que lo que se bombea, o la corrida muere con «A Timer is still
+  // pending» apuntando a cualquier sitio menos a la causa.
   testWidgets('CON animaciones: el avance ANIMA, no salta', (t) async {
-    // El camino de producción: `addPostFrameCallback` + `animateToPage`, que
-    // existe justo porque el `itemCount` pasa de 1 a 3 en el mismo `setState`.
-    // Aquí NO se puede usar `pumpAndSettle`: el `Ticker` perpetuo de
-    // `JayiScene` no deja asentar nunca. Todo va con pumps de duración
-    // explícita, tomada de los mismos tokens que usa la pantalla.
+    // El camino de producción: el compás de «Elegir» (spec §5) y después
+    // `addPostFrameCallback` + `animateToPage`, que existe justo porque el
+    // `itemCount` pasa de 1 a 3 en el mismo `setState`. Aquí NO se puede usar
+    // `pumpAndSettle`: el `Ticker` perpetuo de `JayiScene` no deja asentar
+    // nunca. Todo va con pumps de duración explícita, tomada de los mismos
+    // tokens que usa la pantalla.
     phone(t);
     await t.pumpWidget(
       MaterialApp(home: LoginScreen(fetchWelcomeCredits: () async => 5)),
@@ -214,7 +226,21 @@ void main() {
     await t.pump(JayaloMotion.introLand); // los recuadros ya se revelaron
     expect(find.text(cliente), findsOneWidget);
     await t.tap(find.text(cliente));
+    await t.pump(); // el recuadro tocado ya respondió (antes del save)
     await t.pump(); // save() resuelve
+
+    // A 100 ms del toque: el elegido creció y el otro ya se apaga.
+    await t.pump(const Duration(milliseconds: 100));
+    expect(scaleTarget(t, cliente), 1.04, reason: 'el elegido crece 4 %');
+    expect(cardOpacity(t, proveedor), 0, reason: 'el otro se apaga');
+
+    // A 250 ms (pasado `introPick`) el elegido ya se está yendo.
+    await t.pump(const Duration(milliseconds: 150));
+    expect(cardOpacity(t, cliente), 0, reason: 'el elegido sube y se va');
+
+    // A los 300 ms (`page`) se pide la lámina 1; a mitad del deslizamiento las
+    // dos láminas están en pantalla.
+    await t.pump(JayaloMotion.page - const Duration(milliseconds: 250));
     await t.pump(); // postFrame pidió la página
     await t.pump(JayaloMotion.fast); // 150 de los 300 ms de `page`
     expect(find.text(cliente), findsOneWidget, reason: 'la lámina 0 aún sale');
@@ -226,6 +252,63 @@ void main() {
     await t.pump(JayaloMotion.page + JayaloMotion.introGesture);
     expect(find.text(cliente), findsNothing);
     expect(find.text('¡Genial!'), findsOneWidget);
+  });
+
+  testWidgets('«Saltar» en la lámina 0 aparece a los 900 ms', (t) async {
+    phone(t);
+    await t.pumpWidget(
+      MaterialApp(home: LoginScreen(fetchWelcomeCredits: () async => 5)),
+    );
+    await t.pump();
+    await t.pump(JayaloMotion.fast);
+    expect(skipOpacity(t), 0, reason: 'todavía se está pintando la lámina');
+    await t.pump(JayaloMotion.introSkip);
+    await t.pump();
+    expect(skipOpacity(t), 1);
+  });
+
+  testWidgets('con reduce-motion «Saltar» está desde el primer frame', (
+    t,
+  ) async {
+    phone(t);
+    await t.pumpWidget(app());
+    await t.pumpAndSettle();
+    expect(skipOpacity(t), 1);
+  });
+
+  testWidgets('a 388 dp con la fuente al 130 % nada desborda', (t) async {
+    // El device del PO mide 388 dp, y en RELEASE un overflow no pinta rayas:
+    // nadie lo ve hasta que lo reporta él (lección del riel, 09-18).
+    t.view.physicalSize = const Size(388 * 3, 760 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: LoginScreen(fetchWelcomeCredits: () async => 5),
+        builder: (ctx, child) => MediaQuery(
+          data: MediaQuery.of(ctx).copyWith(
+            disableAnimations: true,
+            textScaler: const TextScaler.linear(1.3),
+          ),
+          child: child!,
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(t.takeException(), isNull, reason: 'la lámina de la pregunta');
+    await t.tap(find.text(proveedor));
+    await t.pumpAndSettle();
+    expect(t.takeException(), isNull, reason: 'la reacción');
+    await t.pump(JayaloMotion.introHint + const Duration(milliseconds: 1));
+    await t.pump();
+    await t.tap(find.text('Siguiente'));
+    await t.pumpAndSettle();
+    expect(t.takeException(), isNull, reason: 'la etiqueta');
+    await t.tap(find.text('Siguiente'));
+    await t.pumpAndSettle();
+    expect(t.takeException(), isNull, reason: 'la moneda');
+    expect(find.text('Continuar con Google'), findsOneWidget);
   });
 
   testWidgets('tocar los DOS recuadros seguidos: gana el primero', (t) async {
@@ -440,6 +523,30 @@ void main() {
       expect(
         find.text('Para ti, todas las funciones son gratis.'),
         findsOneWidget,
+      );
+    });
+
+    testWidgets('el «Siguiente» fantasma es INERTE antes del segundo', (
+      t,
+    ) async {
+      // Si el `IgnorePointer` se cayera, un toque a ciegas saltaría de lámina
+      // y la suite seguiría verde: aquí se TOCA, no se mide la opacidad.
+      phone(t);
+      await t.pumpWidget(app());
+      await t.pumpAndSettle();
+      await t.tap(find.text(cliente));
+      await t.pumpAndSettle();
+      expect(find.text('¡Genial!'), findsOneWidget);
+      await t.tap(find.text('Siguiente'), warnIfMissed: false);
+      await t.pump();
+      expect(
+        find.text('¡Genial!'),
+        findsOneWidget,
+        reason: 'el fantasma no navega antes de `introHint`',
+      );
+      expect(
+        find.text('Para ti, todas las funciones son gratis.'),
+        findsNothing,
       );
     });
 
