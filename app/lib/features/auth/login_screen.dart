@@ -9,9 +9,11 @@ import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/motion.dart';
 import '../../core/turnstile.dart';
+import '../../data/repos.dart' as repos show fetchWelcomeCredits;
 import '../shared/brand_kit.dart' show JayaloCard;
 import '../shared/jayalo_loader.dart';
 import 'intro_copy.dart';
+import 'intro_reveal.dart';
 import 'intro_role_store.dart';
 import 'intro_seen_store.dart';
 import 'jayalo_imagotipo.dart';
@@ -100,7 +102,7 @@ String passwordLoginError(Object e) {
   return 'No pudimos entrar. Revisa tu conexión e inténtalo de nuevo.';
 }
 
-/// Primera apertura de la app: carrusel de TRES láminas que termina en los
+/// Primera apertura de la app: el guion del PO en láminas, que termina en los
 /// accesos de siempre.
 ///
 /// Las láminas viven aquí dentro y no en rutas nuevas por un motivo duro:
@@ -108,7 +110,14 @@ String passwordLoginError(Object e) {
 /// '/login';` — sin sesión, toda ruta que no sea `/login` rebota. Metiendo el
 /// carrusel dentro de `/login` no se toca el router.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({
+    super.key,
+    this.fetchWelcomeCredits = repos.fetchWelcomeCredits,
+  });
+
+  /// Inyectable para los tests: cuántos créditos regala el alta de proveedor.
+  final Future<int> Function() fetchWelcomeCredits;
+
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -118,8 +127,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   final _pages = PageController();
 
-  /// La elección de rol YA GUARDADA. `null` = todavía no eligió, y entonces las
-  /// láminas 2 y 3 no existen (ver [_pageCount]).
+  /// La elección de rol YA GUARDADA. `null` = todavía no eligió, y entonces
+  /// solo existe la lámina de la pregunta (ver [_steps]).
   IntroRole? _introRole;
 
   /// Tocó «Saltar» sin elegir lado. No guarda nada — tras autenticar cae en
@@ -146,15 +155,28 @@ class _LoginScreenState extends State<LoginScreen> {
   /// de reentrada de [_chooseRole].
   bool _choosing = false;
 
-  /// Sin rol elegido el carrusel es de UNA lámina: así no se puede deslizar a
-  /// una lámina que todavía no sabe de qué lado está el usuario. En cuanto se
-  /// «Salta» sin elegir, se abre una segunda (y última) lámina de cierre
-  /// NEUTRO — no las 3 del camino con rol, porque no hay rol con el que
-  /// pintar contenido dedicado para una lámina intermedia.
-  int get _pageCount {
-    if (_introRole != null) return 3;
-    return _skipped ? 2 : 1;
-  }
+  /// Créditos de bienvenida según el servidor; `null` mientras no llega.
+  int? _welcomeCredits;
+
+  /// Los créditos CONGELADOS al elegir rol. Que el valor llegue después no
+  /// cambia el número de láminas: si no, la lámina de accesos se movería bajo
+  /// el dedo del usuario.
+  int _credits = 0;
+
+  /// La secuencia de láminas. Pura y derivada: la pantalla no la guarda, la
+  /// lee — así el largo del carrusel y el copy nunca se desincronizan.
+  List<IntroStep> get _steps =>
+      introSteps(role: _introRole, skipped: _skipped, credits: _credits);
+
+  /// Qué hace Jayi en cada lámina. Es UN SOLO widget, montado fuera del
+  /// carrusel: aquí solo se decide su pose, y la escena anima el cambio.
+  JayiPose _poseFor(int i) => switch (_steps[i.clamp(0, _steps.length - 1)]) {
+    IntroStep.ask || IntroStep.neutralClose => JayiPose.open,
+    IntroStep.react => JayiPose.thumbsUp,
+    IntroStep.consumerFree => JayiPose.free,
+    IntroStep.providerOffers => JayiPose.priceTag,
+    IntroStep.providerCoin => JayiPose.coin,
+  };
 
   @override
   void initState() {
@@ -189,32 +211,47 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _introSeen = true);
       return;
     }
+    // Los créditos se piden en paralelo con el rol: no bloquean la lámina 0.
+    unawaited(
+      widget.fetchWelcomeCredits().then((n) {
+        if (mounted) setState(() => _welcomeCredits = n);
+      }),
+    );
     final role = await IntroRoleStore().read();
+    if (!mounted) return;
+    if (role == null) {
+      setState(() => _introSeen = false);
+      return;
+    }
+    // Con rol ya guardado se aterriza en los accesos: hace falta saber cuántas
+    // láminas hay, así que aquí SÍ se espera a los créditos (3 s como mucho).
+    final credits = _welcomeCredits ?? await widget.fetchWelcomeCredits();
     if (!mounted) return;
     setState(() {
       _introSeen = false;
-      if (role == null) return;
       _introRole = role;
-      _page = 2; // los puntos y el «Saltar» ya nacen en su sitio, sin parpadeo
+      _credits = credits;
+      // Los puntos y el «Saltar» ya nacen en su sitio, sin parpadeo.
+      _page = _steps.length - 1;
     });
-    if (role == null) return;
     // Volver con lado ya elegido aterriza en los accesos, que es el final del
     // carrusel: para el usuario el intro ya está visto.
     _markSeenIfDone();
     unawaited(
       _afterLayout(() async {
-        if (_pages.hasClients) _pages.jumpToPage(2);
+        if (_pages.hasClients) _pages.jumpToPage(_steps.length - 1);
       }),
     );
   }
 
   /// ¿La lámina `i` es la de los accesos, o sea el FINAL del carrusel?
   ///
-  /// No vale `i == _pageCount - 1`: mientras no se elige lado ni se salta, el
-  /// carrusel mide UNA lámina y esa única lámina es la de los recuadros de rol
-  /// — marcar ahí daría el intro por visto a quien no ha visto nada. Ver
-  /// [_buildSlide], que reparte las acciones con este mismo criterio.
-  bool _isAccessSlide(int i) => _introRole == null ? i >= 1 : i >= 2;
+  /// No vale `i == _steps.length - 1` a secas: mientras no se elige lado ni se
+  /// salta, el carrusel mide UNA lámina y esa única lámina es la de la
+  /// pregunta — marcar ahí daría el intro por visto a quien no ha visto nada.
+  /// El criterio vive en `intro_copy.dart` y lo comparten [_buildSlide] y
+  /// [_markSeenIfDone].
+  bool _isAccessSlide(int i) => introStepIsAccess(_steps, i);
 
   /// Deja la marca de «visto» en cuanto el usuario alcanza los accesos, por
   /// cualquiera de los tres caminos (elegir lado y avanzar, «Saltar», o volver
@@ -269,7 +306,13 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await IntroRoleStore().save(role);
       if (!mounted) return;
-      setState(() => _introRole = role);
+      setState(() {
+        _introRole = role;
+        // CONGELADOS aquí: si `_steps` leyera `_welcomeCredits`, un bono que
+        // llega tarde añadiría una lámina bajo el dedo del usuario y movería
+        // la de accesos de sitio.
+        _credits = _welcomeCredits ?? 0;
+      });
       await _afterLayout(() => _goToPage(1));
     } finally {
       _choosing = false;
@@ -279,11 +322,24 @@ class _LoginScreenState extends State<LoginScreen> {
   void _skip() {
     setState(() => _skipped = true);
     // Última lámina SIEMPRE, sea cual sea el largo del carrusel: sin rol son
-    // 2 (cierre neutro, índice 1); con rol ya elegido son 3 (índice 2) — p.ej.
-    // volver deslizando a la lámina 0 con «Vendo algo» ya guardado y tocar
-    // «Saltar» debe caer en los accesos, no quedarse en la lámina de
-    // contenido del rol (índice 1). Hardcodear el 1 aquí fue el bug.
-    unawaited(_afterLayout(() => _goToPage(_pageCount - 1)));
+    // 2 (cierre neutro); con rol ya elegido son 3 o 4 — p.ej. volver a la
+    // lámina 0 con «Soy un proveedor» ya guardado y tocar «Saltar» debe caer
+    // en los accesos, no quedarse en una lámina de contenido. Hardcodear el 1
+    // aquí fue el bug.
+    unawaited(_afterLayout(() => _goToPage(_steps.length - 1)));
+  }
+
+  /// El chevrón de la fila superior (y el atrás de Android): una lámina atrás.
+  ///
+  /// Misma guarda de reentrada que [_chooseRole]: un back machacado en mitad
+  /// de una transición no debe lanzar una segunda `animateToPage` en paralelo
+  /// con la que ya está en vuelo. Y con el login en vuelo el carrusel está
+  /// congelado (mismo motivo que la física del `PageView`): retroceder aquí
+  /// dejaría reelegir rol mientras `_go()` sigue autenticando.
+  void _back() {
+    if (_choosing || _busy || _page == 0) return;
+    _choosing = true;
+    unawaited(_goToPage(_page - 1).whenComplete(() => _choosing = false));
   }
 
   Future<void> _openPasswordSheet() => showModalBottomSheet<void>(
@@ -340,16 +396,7 @@ class _LoginScreenState extends State<LoginScreen> {
   /// de verdad.
   void _handleBackPop(bool didPop, Object? result) {
     if (didPop) return;
-    // Misma guarda de reentrada que [_chooseRole]: un back machacado en
-    // mitad de una transición no debe lanzar una segunda `animateToPage` en
-    // paralelo con la que ya está en vuelo.
-    if (_choosing) return;
-    // Con el login en vuelo el carrusel está congelado (mismo motivo que la
-    // física del `PageView`, ver el comentario en `build`): retroceder aquí
-    // dejaría reelegir rol mientras `_go()` sigue autenticando.
-    if (_busy) return;
-    _choosing = true;
-    unawaited(_goToPage(_page - 1).whenComplete(() => _choosing = false));
+    _back();
   }
 
   @override
@@ -377,102 +424,157 @@ class _LoginScreenState extends State<LoginScreen> {
           : _introSeen!
           ? _classicLogin(context)
           : PopScope<Object?>(
-        // Solo la lámina 0 deja salir de verdad (cerrar la app / volver a
-        // donde sea que llevó a `/login`). En cualquier otra, el atrás de
-        // Android retrocede una lámina en vez de sacar al usuario del
-        // onboarding (I-2: desde las láminas 2-3 se salía de la app entera).
-        canPop: _page == 0,
-        onPopInvokedWithResult: _handleBackPop,
-        child: Scaffold(
-          // Arena FIJA de marca (no `cs.background`: el intro no tiene modo
-          // oscuro). El CTA mantiene el violeta FIJO por la misma razón.
-          //
-          // Lienzo LIMPIO, como la maqueta de onboarding: la ilustración es la
-          // escena de cada lámina, no un fondo. La «Portada Jayi» (render 3D a
-          // pantalla completa + patrón de isotipos) vivía aquí y se retiró: su
-          // render era el mismo en las tres láminas y su claim fijo («Todo
-          // comienza con una idea») dejaba DOS titulares apilados compitiendo
-          // con el de la lámina.
-          backgroundColor: JayaloColors.background,
-          body: SafeArea(
-            child: Column(
-              children: [
-                _topRow(context),
-                Expanded(
-                  child: PageView.builder(
-                    controller: _pages,
-                    // Con el login en vuelo el carrusel se congela: si no,
-                    // se puede deslizar de vuelta a los recuadros y
-                    // reescribir la elección MIENTRAS se autentica, y el
-                    // alta consumiría un rol distinto del que se ve.
-                    physics: _busy
-                        ? const NeverScrollableScrollPhysics()
-                        : null,
-                    itemCount: _pageCount,
-                    onPageChanged: (i) {
-                      setState(() => _page = i);
-                      _markSeenIfDone();
-                    },
-                    itemBuilder: _buildSlide,
+              // Solo la lámina 0 deja salir de verdad (cerrar la app / volver a
+              // donde sea que llevó a `/login`). En cualquier otra, el atrás de
+              // Android retrocede una lámina en vez de sacar al usuario del
+              // onboarding (I-2: desde las láminas 2-3 se salía de la app entera).
+              canPop: _page == 0,
+              onPopInvokedWithResult: _handleBackPop,
+              child: Scaffold(
+                // Arena FIJA de marca (no `cs.background`: el intro no tiene modo
+                // oscuro). El CTA mantiene el violeta FIJO por la misma razón.
+                //
+                // Lienzo LIMPIO, como la maqueta de onboarding: la ilustración es la
+                // escena de cada lámina, no un fondo. La «Portada Jayi» (render 3D a
+                // pantalla completa + patrón de isotipos) vivía aquí y se retiró: su
+                // render era el mismo en las tres láminas y su claim fijo («Todo
+                // comienza con una idea») dejaba DOS titulares apilados compitiendo
+                // con el de la lámina.
+                backgroundColor: JayaloColors.background,
+                body: SafeArea(
+                  child: Column(
+                    children: [
+                      _topRow(context),
+                      // UN SOLO Jayi, fuera del carrusel: nunca se remonta, solo
+                      // cambia de pose (y la escena anima ese cambio). Dentro del
+                      // `PageView` cada lámina montaba el suyo, así que Jayi se
+                      // deslizaba con el texto en vez de reaccionar.
+                      Padding(
+                        padding: const EdgeInsets.only(top: 18, bottom: 6),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 210),
+                            child: JayiScene(pose: _poseFor(_page)),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: PageView.builder(
+                          controller: _pages,
+                          // Con el login en vuelo el carrusel se congela: si no,
+                          // se puede deslizar de vuelta a los recuadros y
+                          // reescribir la elección MIENTRAS se autentica, y el
+                          // alta consumiría un rol distinto del que se ve.
+                          physics: _busy
+                              ? const NeverScrollableScrollPhysics()
+                              : null,
+                          itemCount: _steps.length,
+                          onPageChanged: (i) {
+                            setState(() => _page = i);
+                            _markSeenIfDone();
+                          },
+                          itemBuilder: _buildSlide,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      // Con 1 sola lámina (todavía sin elegir ni saltar)
+                      // se siguen pintando los 3 puntos de siempre: esa
+                      // lámina es la de elección, y de ahí se puede llegar
+                      // tanto al camino de 3 (con rol) como al de 2 (sin
+                      // rol) — pintar 1 solo punto ahí sugeriría un
+                      // carrusel de una sola lámina que no existe. Fuera de
+                      // ese caso transitorio, el conteo real evita el punto
+                      // del medio encendido de tres cuando en realidad solo
+                      // hay 2 (el bug que reportó el coordinador).
+                      _Dots(
+                        active: _page,
+                        count: _steps.length == 1 ? 3 : _steps.length,
+                      ),
+                      const SizedBox(height: 20),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 14),
-                // Con 1 sola lámina (todavía sin elegir ni saltar)
-                // se siguen pintando los 3 puntos de siempre: esa
-                // lámina es la de elección, y de ahí se puede llegar
-                // tanto al camino de 3 (con rol) como al de 2 (sin
-                // rol) — pintar 1 solo punto ahí sugeriría un
-                // carrusel de una sola lámina que no existe. Fuera de
-                // ese caso transitorio, el conteo real evita el punto
-                // del medio encendido de tres cuando en realidad solo
-                // hay 2 (el bug que reportó el coordinador).
-                _Dots(active: _page, count: _pageCount == 1 ? 3 : _pageCount),
-                const SizedBox(height: 20),
-              ],
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 
   /// «Saltar» arriba a la derecha en toda lámina salvo la última (la de los
   /// accesos): ahí ya no hay nada que saltar. Con una sola lámina (todavía
   /// sin elegir ni saltar) esa última lámina es la única que hay, así que se
-  /// ve igual: es la que tiene los recuadros de rol, no la de acceso.
-  bool get _showSkip => _pageCount == 1 || _page != _pageCount - 1;
+  /// ve igual: es la de la pregunta, no la de acceso.
+  ///
+  /// Y tampoco en la REACCIÓN: esa lámina dura lo que dura leerla, y ofrecer
+  /// saltar justo cuando Jayi acaba de responder al usuario suena a que la
+  /// app quiere terminar la conversación que ella misma empezó.
+  bool get _showSkip {
+    if (_steps.length == 1) return true;
+    final i = _page.clamp(0, _steps.length - 1);
+    return i != _steps.length - 1 && _steps[i] != IntroStep.react;
+  }
 
-  /// Marca a la izquierda y «Saltar» a la derecha, como el `.top` de la
-  /// maqueta. El imagotipo vive aquí desde que se retiró la portada, que era
-  /// quien lo pintaba — y va PEQUEÑO: en el intro la marca sitúa, no protagoniza.
+  /// Ancho de las celdas laterales de la fila superior. Fijas y iguales para
+  /// que el imagotipo quede CENTRADO pase lo que pase con los dos extremos
+  /// (uno aparece al avanzar, el otro desaparece al llegar al final).
+  static const _topSide = 104.0;
+
+  /// Chevrón atrás, marca centrada y «Saltar», como el `.top` de la maqueta.
+  /// El imagotipo vive aquí desde que se retiró la portada, que era quien lo
+  /// pintaba — y va PEQUEÑO: en el intro la marca sitúa, no protagoniza.
   ///
   /// El alto se reserva SIEMPRE para que nada salte al llegar.
   Widget _topRow(BuildContext context) {
-    final visible = _showSkip;
+    final skip = _showSkip;
+    final back = _page > 0;
+    final d = JayaloMotion.reduced(context) ? Duration.zero : JayaloMotion.fast;
     return SizedBox(
-      height: 44,
+      height: 48,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Row(
           children: [
-            const _Wordmark(),
-            const Spacer(),
-            AnimatedOpacity(
-              opacity: visible ? 1 : 0,
-              duration: JayaloMotion.reduced(context)
-                  ? Duration.zero
-                  : JayaloMotion.fast,
-              curve: JayaloMotion.enter,
-              child: IgnorePointer(
-                ignoring: !visible,
-                child: TextButton(
-                  onPressed: _skip,
-                  child: Text(
-                    'Saltar',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
+            SizedBox(
+              width: _topSide,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: AnimatedOpacity(
+                  opacity: back ? 1 : 0,
+                  duration: d,
+                  curve: JayaloMotion.enter,
+                  child: IgnorePointer(
+                    ignoring: !back,
+                    child: IconButton(
+                      key: const Key('intro-back'),
+                      onPressed: _back,
+                      icon: const Icon(Icons.chevron_left_rounded),
                       color: JayaloColors.foreground.withValues(alpha: .75),
+                      tooltip: 'Atrás',
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const Expanded(child: Center(child: _Wordmark())),
+            SizedBox(
+              width: _topSide,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: AnimatedOpacity(
+                  opacity: skip ? 1 : 0,
+                  duration: d,
+                  curve: JayaloMotion.enter,
+                  child: IgnorePointer(
+                    ignoring: !skip,
+                    child: TextButton(
+                      onPressed: _skip,
+                      child: Text(
+                        'Saltar',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: JayaloColors.foreground.withValues(alpha: .75),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -485,30 +587,21 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildSlide(BuildContext context, int i) {
-    final IntroSlide slide;
-    final Widget action;
-    if (_introRole == null) {
-      // Saltó sin elegir lado: 2 láminas, ambas con el copy común — no hay
-      // rol con el que pintar contenido dedicado para ninguna de las dos.
-      // Lámina 0 = elegir; lámina 1 (última) = cierre neutro con los accesos.
-      slide = kIntroCommon;
-      action = i == 0 ? _roleCards(context) : _accessStack(context);
-    } else {
-      slide = i == 0 ? kIntroCommon : kIntroSlides[_introRole]![i - 1];
-      action = switch (i) {
-        0 => _roleCards(context),
-        1 => FilledButton(
-          style: _pill,
-          onPressed: () => _goToPage(2),
-          child: const Text('Siguiente'),
-        ),
-        _ => _accessStack(context),
-      };
-    }
-    // Escena + copy arriba y la acción abajo, con el hueco repartido entre las
-    // dos — el `spacer / scene / benefit / sub / spacer / actions` de la
-    // maqueta. Desplazable porque con la fuente del sistema en gigante los
-    // titulares crecen y no deben desbordar sobre la escena.
+    final step = _steps[i];
+    final slide = introSlideFor(step, role: _introRole, credits: _credits);
+    final Widget action = switch (step) {
+      IntroStep.ask => _roleCards(context),
+      _ when _isAccessSlide(i) => _accessStack(context),
+      _ => FilledButton(
+        style: _pill,
+        onPressed: () => _goToPage(i + 1),
+        child: const Text('Siguiente'),
+      ),
+    };
+    // Copy arriba y la acción abajo, con el hueco repartido entre las dos — el
+    // `spacer / benefit / sub / spacer / actions` de la maqueta. Jayi ya no
+    // vive aquí: está fuera del carrusel, sobre esta columna. Desplazable
+    // porque con la fuente del sistema en gigante los titulares crecen.
     return LayoutBuilder(
       builder: (context, box) => SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -518,27 +611,8 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Hueco de arriba: `spaceBetween` reparte el sobrante entre este
-              // hijo vacío y la acción, así que la escena queda a media altura
-              // en vez de pegada bajo la marca.
-              const SizedBox.shrink(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 220),
-                      child: JayiScene.kind(_sceneFor(i)),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  _SlideCopy(slide),
-                ],
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 22),
-                child: action,
-              ),
+              _SlideCopy(slide, wordByWord: step == IntroStep.ask),
+              Padding(padding: const EdgeInsets.only(top: 22), child: action),
             ],
           ),
         ),
@@ -546,42 +620,39 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// Qué hace Jayi en cada lámina. La 0 es siempre la común (bracitos abiertos
-  /// entre las dos partes); las demás dependen del lado elegido. Sin rol, la
-  /// lámina de cierre repite la común: su copy también es el común, y no hay
-  /// lado con el que pintar una escena dedicada.
-  JayiSceneKind _sceneFor(int i) {
-    if (i == 0 || _introRole == null) return JayiSceneKind.common;
-    return switch ((_introRole!, i)) {
-      (IntroRole.consumer, 1) => JayiSceneKind.consumerOffers,
-      (IntroRole.consumer, _) => JayiSceneKind.consumerLock,
-      (IntroRole.provider, 1) => JayiSceneKind.providerTray,
-      (IntroRole.provider, _) => JayiSceneKind.providerCoin,
-    };
-  }
-
-  /// Los dos recuadros de la lámina común: tarjeta blanca sin borde, sombra
-  /// suave, ícono lineal. NO son botones a propósito — se leen como una
+  /// Los dos recuadros de la pregunta: tarjeta blanca sin borde, sombra suave,
+  /// ícono lineal SIN fondo. NO son botones a propósito — se leen como una
   /// elección entre pares.
+  ///
+  /// Entran ESCALONADOS y después de que Jayi aterriza: primero se ve quién
+  /// pregunta, después las dos respuestas.
   Widget _roleCards(BuildContext context) => IntrinsicHeight(
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
-          child: _RoleCard(
-            icon: Icons.shopping_bag_outlined,
-            title: 'Busco algo',
-            sub: 'Quiero pedir',
-            onTap: () => _chooseRole(IntroRole.consumer),
+          child: IntroReveal(
+            delay: _cardDelay1,
+            dy: 14,
+            child: _RoleCard(
+              icon: Icons.search_rounded,
+              title: kIntroConsumerCard.title,
+              sub: kIntroConsumerCard.sub,
+              onTap: () => _chooseRole(IntroRole.consumer),
+            ),
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: _RoleCard(
-            icon: Icons.storefront_outlined,
-            title: 'Vendo algo',
-            sub: 'Quiero ofertar',
-            onTap: () => _chooseRole(IntroRole.provider),
+          child: IntroReveal(
+            delay: _cardDelay2,
+            dy: 14,
+            child: _RoleCard(
+              icon: Icons.storefront_outlined,
+              title: kIntroProviderCard.title,
+              sub: kIntroProviderCard.sub,
+              onTap: () => _chooseRole(IntroRole.provider),
+            ),
           ),
         ),
       ],
@@ -617,54 +688,102 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// La pila de acceso de siempre. Google REGISTRA; el correo solo inicia
   /// sesión — por eso uno va en pill y el otro en enlace discreto.
+  ///
+  /// Los tres entran escalonados DESPUÉS de que la lámina termina de deslizar:
+  /// el botón que cierra el intro no debe llegar antes que el texto que lo
+  /// justifica. En el login clásico (sin carrusel) los retardos se pagan una
+  /// sola vez al abrir y se ven como la entrada de la portada.
   Widget _accessStack(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     mainAxisSize: MainAxisSize.min,
     children: [
-      SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          onPressed: _busy ? null : _go,
-          style: _pill,
-          icon: _busy
-              ? const JayaloSpinner(size: 18, color: Colors.white)
-              : const Icon(Icons.g_mobiledata, size: 26),
-          label: const Text('Continuar con Google'),
+      IntroReveal(
+        delay: _accessDelay1,
+        dy: 14,
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _busy ? null : _go,
+            style: _pill,
+            icon: _busy
+                ? const JayaloSpinner(size: 18, color: Colors.white)
+                : const Icon(Icons.g_mobiledata, size: 26),
+            label: const Text('Continuar con Google'),
+          ),
         ),
       ),
       const SizedBox(height: 12),
       // El registro es NATIVO desde el onboarding (spec 2026-07-16):
       // mandar a jayalo.com sería mentirle al usuario nuevo.
-      Text(
-        '¿Primera vez? Entra con Google y creamos tu cuenta al momento.',
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          fontSize: 12,
-          height: 1.4,
-          fontWeight: FontWeight.w400,
-          // Sobre la arena de la portada, tinta (antes blanco
-          // sobre el mar de FONDO PLAYA).
-          color: JayaloColors.foreground.withValues(alpha: .8),
+      IntroReveal(
+        delay: _accessDelay2,
+        dy: 14,
+        child: Text(
+          '¿Primera vez? Entra con Google y creamos tu cuenta al momento.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12,
+            height: 1.4,
+            fontWeight: FontWeight.w400,
+            // Sobre la arena de la portada, tinta (antes blanco
+            // sobre el mar de FONDO PLAYA).
+            color: JayaloColors.foreground.withValues(alpha: .8),
+          ),
         ),
       ),
       // Puerta para las cuentas creadas en jayalo.com con correo y
       // contraseña: sin esto quedaban fuera de la app si su correo
       // no era de Google (2026-08-10).
-      TextButton(
-        onPressed: _busy ? null : _openPasswordSheet,
-        child: Text(
-          'Entrar con correo y contraseña',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            // Violeta de acción sobre la arena (antes blanco).
-            color: JayaloColors.primary,
+      IntroReveal(
+        delay: _accessDelay3,
+        dy: 14,
+        child: TextButton(
+          onPressed: _busy ? null : _openPasswordSheet,
+          child: Text(
+            'Entrar con correo y contraseña',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              // Violeta de acción sobre la arena (antes blanco).
+              color: JayaloColors.primary,
+            ),
           ),
         ),
       ),
     ],
   );
 }
+
+// ── Retardos de las revelaciones del intro ───────────────────────────────
+//
+// Son los ÚNICOS `Duration(milliseconds:)` de esta pantalla, y existen porque
+// no son duraciones sino COMPASES: el instante en que cada pieza entra
+// respecto de otra que ya se está moviendo. Las duraciones y las curvas siguen
+// saliendo enteras de `JayaloMotion`.
+
+/// El primer recuadro, TRAS el aterrizaje de Jayi (`JayaloMotion.introLand`,
+/// 720 ms): entra cuando el salto ya frenó, no encima de él.
+const _cardDelay1 = Duration(milliseconds: 560);
+
+/// El segundo, 80 ms detrás del primero: se leen como dos, no como un bloque.
+const _cardDelay2 = Duration(milliseconds: 640);
+
+/// El grito de la reacción, tras el cambio de pose de Jayi: primero el pulgar,
+/// después la palabra.
+const _shoutDelay = Duration(milliseconds: 110);
+
+/// Y la frase que lo explica, cuando el grito ya rebotó
+/// (`JayaloMotion.introGesture`, 560 ms).
+const _shoutSubDelay = Duration(milliseconds: 520);
+
+/// El acceso principal, tras el deslizamiento de la lámina
+/// (`JayaloMotion.page`, con un 10 % de margen para no pisar el frenado).
+/// `final` y no `const` porque multiplicar una `Duration` no es constante.
+final _accessDelay1 = JayaloMotion.page * 1.1;
+
+/// El texto de apoyo y el enlace, 90 y 170 ms detrás de él.
+final _accessDelay2 = _accessDelay1 + const Duration(milliseconds: 90);
+final _accessDelay3 = _accessDelay1 + const Duration(milliseconds: 170);
 
 /// El imagotipo pequeño de la fila superior. Ancho fijo y alto derivado de la
 /// proporción real del logo, para que no se deforme nunca.
@@ -692,56 +811,140 @@ class _WordmarkPainter extends CustomPainter {
   bool shouldRepaint(covariant _WordmarkPainter old) => false;
 }
 
-/// Titular + apoyo de una lámina. El realce va en violeta partiendo el titular
-/// por `highlight`.
+/// El copy de una lámina: grito, titular y apoyo. Todo lo que se pinta aquí
+/// sale de `intro_copy.dart` — ninguna frase se re-escribe en la pantalla.
+///
+/// El realce va en violeta partiendo el titular por `highlight`; y si el
+/// titular trae `{n}` con un `counter`, ahí entra el contador de créditos.
 class _SlideCopy extends StatelessWidget {
-  const _SlideCopy(this.slide);
+  const _SlideCopy(this.slide, {this.wordByWord = false});
   final IntroSlide slide;
+
+  /// El titular de la PREGUNTA entra palabra a palabra: es lo primero que se
+  /// lee de la app y se quiere ver escribirse.
+  final bool wordByWord;
+
+  // Pesos 400-700: el 700 es solo del grito, que es un gesto de personaje.
+  static const _head = TextStyle(
+    fontSize: 22,
+    height: 1.28,
+    fontWeight: FontWeight.w600,
+    color: JayaloColors.head,
+  );
 
   @override
   Widget build(BuildContext context) {
-    final i = slide.headline.indexOf(slide.highlight);
-    final head = i < 0
-        ? TextSpan(text: slide.headline)
-        : TextSpan(
-            children: [
-              TextSpan(text: slide.headline.substring(0, i)),
-              TextSpan(
-                text: slide.highlight,
-                style: const TextStyle(color: JayaloColors.primary),
-              ),
-              TextSpan(
-                text: slide.headline.substring(i + slide.highlight.length),
-              ),
-            ],
-          );
+    final children = <Widget>[];
+    if (slide.shout != null) {
+      children.add(
+        IntroReveal(
+          delay: _shoutDelay,
+          duration: JayaloMotion.introGesture,
+          curve: JayaloMotion.bounce,
+          scaleFrom: .72,
+          dy: 6,
+          child: Text(
+            slide.shout!,
+            textAlign: TextAlign.left,
+            style: const TextStyle(
+              fontSize: 38,
+              height: 1,
+              fontWeight: FontWeight.w700,
+              color: JayaloColors.primary,
+            ),
+          ),
+        ),
+      );
+      children.add(const SizedBox(height: 10));
+    }
+    if (slide.headline.isNotEmpty) {
+      children.add(
+        wordByWord
+            ? IntroWords(text: slide.headline, style: _head)
+            : IntroReveal(child: _headline(slide)),
+      );
+    }
+    if (slide.sub.isNotEmpty) {
+      children.add(const SizedBox(height: 10));
+      final isQuestion = slide == introSlideFor(IntroStep.ask);
+      children.add(
+        IntroReveal(
+          // Tras el grito, cuando ya rebotó; en la pregunta, cuando el titular
+          // terminó de escribirse; en el resto, junto con el titular.
+          delay: slide.shout != null
+              ? _shoutSubDelay
+              : (isQuestion ? JayaloMotion.intro * 1.4 : Duration.zero),
+          child: Text(
+            slide.sub,
+            textAlign: TextAlign.center,
+            style: isQuestion
+                // «¿Tú qué eres?» no es un apoyo: es LA pregunta.
+                ? const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w500,
+                    color: JayaloColors.primary,
+                  )
+                : TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    fontWeight: FontWeight.w400,
+                    color: JayaloColors.foreground.withValues(alpha: .9),
+                  ),
+          ),
+        ),
+      );
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        Text.rich(
-          head,
-          textAlign: TextAlign.center,
-          // Pesos 400-600, nunca bold: la doctrina tipográfica de la app.
-          style: const TextStyle(
-            fontSize: 19,
-            height: 1.3,
-            fontWeight: FontWeight.w600,
-            color: JayaloColors.head,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          slide.sub,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 12.5,
-            height: 1.5,
-            fontWeight: FontWeight.w400,
-            color: JayaloColors.foreground.withValues(alpha: .9),
-          ),
-        ),
-      ],
+      crossAxisAlignment: slide.shout != null
+          ? CrossAxisAlignment.start
+          : CrossAxisAlignment.center,
+      children: children,
     );
+  }
+
+  /// El titular con el realce en violeta; si trae `{n}` y `counter`, ahí va el
+  /// contador (la moneda).
+  Widget _headline(IntroSlide s) {
+    if (s.counter != null && s.headline.contains('{n}')) {
+      final parts = s.headline.split('{n}');
+      return Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(text: parts[0]),
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: IntroCounter(
+                to: s.counter!,
+                style: _head.copyWith(
+                  color: JayaloColors.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            TextSpan(text: parts[1]),
+          ],
+        ),
+        textAlign: TextAlign.center,
+        style: _head,
+      );
+    }
+    final h = s.highlight;
+    final i = h == null ? -1 : s.headline.indexOf(h);
+    final span = i < 0
+        ? TextSpan(text: s.headline)
+        : TextSpan(
+            children: [
+              TextSpan(text: s.headline.substring(0, i)),
+              TextSpan(
+                text: h,
+                style: const TextStyle(color: JayaloColors.primary),
+              ),
+              TextSpan(text: s.headline.substring(i + h!.length)),
+            ],
+          );
+    return Text.rich(span, textAlign: TextAlign.center, style: _head);
   }
 }
 
@@ -812,20 +1015,31 @@ class _Dots extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduced = JayaloMotion.reduced(context);
     return Row(
+      key: const Key('intro-dots'),
       mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(count, (i) {
         final on = i == active;
-        return AnimatedContainer(
-          duration: reduced ? Duration.zero : JayaloMotion.base,
-          curve: JayaloMotion.emphasized,
-          margin: const EdgeInsets.symmetric(horizontal: 3),
-          width: on ? 22 : 7,
-          height: 7,
-          decoration: BoxDecoration(
-            color: on
-                ? JayaloColors.primary
-                : JayaloColors.foreground.withValues(alpha: .22),
-            borderRadius: BorderRadius.circular(999),
+        // El punto que NACE (el bono del proveedor añade una lámina) crece
+        // desde cero en vez de aparecer de golpe: la `ValueKey` es lo que hace
+        // que los que ya estaban conserven su estado y no vuelvan a nacer.
+        return TweenAnimationBuilder<double>(
+          key: ValueKey(i),
+          tween: Tween<double>(begin: 0, end: 1),
+          duration: reduced ? Duration.zero : JayaloMotion.page,
+          curve: JayaloMotion.bounce,
+          builder: (_, s, child) => Transform.scale(scale: s, child: child),
+          child: AnimatedContainer(
+            duration: reduced ? Duration.zero : JayaloMotion.base,
+            curve: JayaloMotion.emphasized,
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            width: on ? 22 : 7,
+            height: 7,
+            decoration: BoxDecoration(
+              color: on
+                  ? JayaloColors.primary
+                  : JayaloColors.foreground.withValues(alpha: .22),
+              borderRadius: BorderRadius.circular(999),
+            ),
           ),
         );
       }),

@@ -1,13 +1,13 @@
-// La ilustración del intro: cada lámina tiene su ESCENA, y el fondo es el
-// lienzo arena limpio de la maqueta — no la «Portada Jayi» a pantalla completa.
+// La ilustración del intro: UN SOLO Jayi, fuera del carrusel, que cambia de
+// POSE según la lámina. El fondo es el lienzo arena limpio de la maqueta — no
+// la «Portada Jayi» a pantalla completa.
 //
-// El PO reportó exactamente esta regresión: las tres láminas enseñaban el mismo
+// El PO reportó exactamente esa regresión: las láminas enseñaban el mismo
 // render 3D y encima quedaban dos titulares apilados (el claim fijo de la
 // portada y el de la lámina). Los tests de abajo la fijan por los dos lados.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/features/auth/intro_copy.dart';
-import 'package:jayalo_app/features/auth/intro_role_store.dart';
 import 'package:jayalo_app/features/auth/jayi_scene.dart';
 import 'package:jayalo_app/features/auth/login_screen.dart';
 import 'package:jayalo_app/features/auth/portada_jayi.dart';
@@ -18,8 +18,8 @@ void main() {
 
   /// Con las animaciones apagadas: `JayiScene` mueve un `Ticker` perpetuo y con
   /// ellas encendidas `pumpAndSettle` no asienta NUNCA.
-  Widget app() => MaterialApp(
-    home: const LoginScreen(),
+  Widget app({int credits = 5}) => MaterialApp(
+    home: LoginScreen(fetchWelcomeCredits: () async => credits),
     builder: (ctx, child) => MediaQuery(
       data: MediaQuery.of(ctx).copyWith(disableAnimations: true),
       child: child!,
@@ -32,105 +32,97 @@ void main() {
     addTearDown(t.view.reset);
   }
 
-  Finder scene(JayiSceneKind kind) => find.byWidgetPredicate(
-    (w) => w is JayiScene && w.kind == kind,
-    description: 'JayiScene($kind)',
-  );
+  JayiPose poseOnScreen(WidgetTester t) =>
+      t.widget<JayiScene>(find.byType(JayiScene)).pose;
 
-  testWidgets('lámina común: Jayi entre quien pide y quien vende', (t) async {
+  testWidgets('hay UN SOLO Jayi y vive fuera del carrusel', (t) async {
     phone(t);
     await t.pumpWidget(app());
     await t.pumpAndSettle();
-
-    expect(scene(JayiSceneKind.common), findsOneWidget);
+    expect(find.byType(JayiScene), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(PageView),
+        matching: find.byType(JayiScene),
+      ),
+      findsNothing,
+    );
+    expect(poseOnScreen(t), JayiPose.open);
   });
 
-  testWidgets('el fondo es el lienzo limpio, NO la portada a pantalla completa', (
-    t,
-  ) async {
+  testWidgets('cliente: pulgar arriba y luego libre — el MISMO widget cambia '
+      'de pose', (t) async {
     phone(t);
     await t.pumpWidget(app());
     await t.pumpAndSettle();
-
-    expect(find.byType(PortadaJayi), findsNothing);
-    // El claim fijo de la portada competía con el titular de la lámina: en la
-    // lámina común se leían DOS titulares, uno encima del otro.
-    expect(find.text('Todo comienza con una idea'), findsNothing);
-    expect(find.text(kIntroCommon.headline), findsOneWidget);
-  });
-
-  testWidgets('cliente: ofertas que suben y luego el candado', (t) async {
-    phone(t);
-    await t.pumpWidget(app());
+    final antes = t.state(find.byType(JayiScene));
+    await t.tap(find.text('Soy un cliente'));
     await t.pumpAndSettle();
-
-    await t.tap(find.text('Busco algo'));
-    await t.pumpAndSettle();
-    expect(scene(JayiSceneKind.consumerOffers), findsOneWidget);
-
+    expect(poseOnScreen(t), JayiPose.thumbsUp);
+    expect(
+      identical(t.state(find.byType(JayiScene)), antes),
+      isTrue,
+      reason: 'no se remonta',
+    );
     await t.tap(find.text('Siguiente'));
     await t.pumpAndSettle();
-    expect(scene(JayiSceneKind.consumerLock), findsOneWidget);
+    expect(poseOnScreen(t), JayiPose.free);
   });
 
-  testWidgets('proveedor: la bandeja y luego la moneda', (t) async {
+  testWidgets('proveedor: pulgar, etiqueta y moneda', (t) async {
     phone(t);
-    await t.pumpWidget(app());
+    await t.pumpWidget(app(credits: 5));
     await t.pumpAndSettle();
-
-    await t.tap(find.text('Vendo algo'));
+    await t.tap(find.text('Soy un proveedor'));
     await t.pumpAndSettle();
-    expect(scene(JayiSceneKind.providerTray), findsOneWidget);
-
+    expect(poseOnScreen(t), JayiPose.thumbsUp);
     await t.tap(find.text('Siguiente'));
     await t.pumpAndSettle();
-    expect(scene(JayiSceneKind.providerCoin), findsOneWidget);
+    expect(poseOnScreen(t), JayiPose.priceTag);
+    await t.tap(find.text('Siguiente'));
+    await t.pumpAndSettle();
+    expect(poseOnScreen(t), JayiPose.coin);
   });
 
-  testWidgets('cada lámina trae SU escena, no la misma repetida', (t) async {
+  testWidgets('saltar sin elegir: el cierre neutro sigue con los brazos '
+      'abiertos', (t) async {
     phone(t);
     await t.pumpWidget(app());
     await t.pumpAndSettle();
-    await t.tap(find.text('Busco algo'));
-    await t.pumpAndSettle();
-
-    // La del cliente entró y la común NO se quedó pegada: si la ilustración
-    // fuera un fondo compartido, este expect no distinguiría nada.
-    expect(scene(JayiSceneKind.consumerOffers), findsOneWidget);
-    expect(scene(JayiSceneKind.providerTray), findsNothing);
-  });
-
-  testWidgets('saltar sin elegir lado: la escena común también cierra', (
-    t,
-  ) async {
-    phone(t);
-    await t.pumpWidget(app());
-    await t.pumpAndSettle();
-
     await t.tap(find.text('Saltar'));
     await t.pumpAndSettle();
-
-    expect(await IntroRoleStore().read(), isNull);
-    expect(find.text('Continuar con Google'), findsOneWidget);
-    expect(scene(JayiSceneKind.common), findsWidgets);
+    expect(poseOnScreen(t), JayiPose.open);
   });
 
-  // Las cinco escenas se pintan de verdad: un radio negativo o un shader sobre
+  testWidgets(
+    'el fondo es el lienzo limpio, NO la portada a pantalla completa',
+    (t) async {
+      phone(t);
+      await t.pumpWidget(app());
+      await t.pumpAndSettle();
+
+      expect(find.byType(PortadaJayi), findsNothing);
+      // El claim fijo de la portada competía con el titular de la lámina: se
+      // leían DOS titulares, uno encima del otro.
+      expect(find.text('Todo comienza con una idea'), findsNothing);
+      // El titular de la pregunta entra palabra a palabra, así que se comprueba
+      // por su apoyo, que sí es un `Text` entero.
+      expect(find.text(introSlideFor(IntroStep.ask).sub), findsOneWidget);
+    },
+  );
+
+  // Las cinco poses se pintan de verdad: un radio negativo o un shader sobre
   // un Rect vacío revientan en `paint`, y eso no lo ve `flutter analyze`.
-  for (final kind in JayiSceneKind.values) {
-    testWidgets('$kind se pinta sin reventar', (t) async {
+  for (final pose in JayiPose.values) {
+    testWidgets('$pose se pinta sin reventar', (t) async {
       await t.pumpWidget(
-        MediaQuery(
-          data: const MediaQueryData(disableAnimations: true),
-          child: Directionality(
-            textDirection: TextDirection.ltr,
-            child: Center(
-              child: SizedBox(width: 220, child: JayiScene(kind: kind)),
-            ),
+        MaterialApp(
+          home: Center(
+            child: SizedBox(width: 200, child: JayiScene(pose: pose)),
           ),
         ),
       );
-      await t.pumpAndSettle();
+      await t.pump();
       expect(t.takeException(), isNull);
       expect(find.byType(JayiScene), findsOneWidget);
     });

@@ -11,11 +11,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  /// Animaciones del sistema APAGADAS: tanto la escena de cada lámina como la
-  /// Portada Jayi animan con un `Ticker` perpetuo y `pumpAndSettle` no
-  /// asentaría nunca. Ambas respetan `JayaloMotion.reduced`.
+  /// Animaciones del sistema APAGADAS: tanto la escena de Jayi como la Portada
+  /// Jayi animan con un `Ticker` perpetuo y `pumpAndSettle` no asentaría
+  /// nunca. Ambas respetan `JayaloMotion.reduced`.
   Widget app() => MaterialApp(
-    home: const LoginScreen(),
+    home: LoginScreen(fetchWelcomeCredits: () async => 5),
     builder: (ctx, child) => MediaQuery(
       data: MediaQuery.of(ctx).copyWith(disableAnimations: true),
       child: child!,
@@ -33,7 +33,7 @@ void main() {
     await t.pumpWidget(app());
     await t.pumpAndSettle();
 
-    expect(find.text('Busco algo'), findsOneWidget);
+    expect(find.text('Soy un cliente'), findsOneWidget);
     expect(find.text('Saltar'), findsOneWidget);
     expect(find.byType(PortadaJayi), findsNothing);
   });
@@ -50,8 +50,8 @@ void main() {
     expect(find.text('Continuar con Google'), findsOneWidget);
     expect(find.text('Entrar con correo y contraseña'), findsOneWidget);
     // Nada del carrusel: ni recuadros de rol, ni «Saltar», ni puntos.
-    expect(find.text('Busco algo'), findsNothing);
-    expect(find.text('Vendo algo'), findsNothing);
+    expect(find.text('Soy un cliente'), findsNothing);
+    expect(find.text('Soy un proveedor'), findsNothing);
     expect(find.text('Saltar'), findsNothing);
     expect(find.byType(PageView), findsNothing);
   });
@@ -86,9 +86,14 @@ void main() {
     await t.pumpWidget(app());
     await t.pumpAndSettle();
 
-    await t.tap(find.text('Vendo algo'));
+    await t.tap(find.text('Soy un proveedor'));
     await t.pumpAndSettle();
-    // Lámina de contenido del proveedor: todavía no ha terminado el intro.
+    // Reacción: todavía no ha terminado el intro.
+    expect(await IntroSeenStore().read(), isFalse);
+
+    // Proveedor con bono son CUATRO láminas: reacción, etiqueta y moneda.
+    await t.tap(find.text('Siguiente'));
+    await t.pumpAndSettle();
     expect(await IntroSeenStore().read(), isFalse);
 
     await t.tap(find.text('Siguiente'));
@@ -110,7 +115,7 @@ void main() {
     await t.drag(find.byType(PageView), const Offset(400, 0));
     await t.pumpAndSettle();
 
-    expect(find.text('Busco algo'), findsOneWidget);
+    expect(find.text('Soy un cliente'), findsOneWidget);
     expect(await IntroSeenStore().read(), isTrue);
   });
 }

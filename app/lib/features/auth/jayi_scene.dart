@@ -37,16 +37,6 @@ enum JayiPose {
   coin,
 }
 
-/// PUENTE hasta la Task 6 del plan 2026-09-18: `login_screen.dart` todavía
-/// habla en láminas viejas. Se borra junto con este enum.
-enum JayiSceneKind {
-  common,
-  consumerOffers,
-  consumerLock,
-  providerTray,
-  providerCoin,
-}
-
 /// Violeta del ISOTIPO (`--violeta-jayi`), que NO es el violeta de acción
 /// (`JayaloColors.primary`, #7147F2). La maqueta los distingue a propósito:
 /// el de acción significa «esto se toca» y Jayi no se toca.
@@ -118,18 +108,6 @@ void _grupo(Canvas canvas, double alpha) {
 /// La escena de una lámina. Mantiene su relación 168:132 y se centra sola.
 class JayiScene extends StatefulWidget {
   const JayiScene({super.key, required this.pose});
-
-  /// PUENTE hasta la Task 6: traduce la lámina vieja a la pose nueva.
-  factory JayiScene.kind(JayiSceneKind kind, {Key? key}) => JayiScene(
-    key: key,
-    pose: switch (kind) {
-      JayiSceneKind.common => JayiPose.open,
-      JayiSceneKind.consumerOffers ||
-      JayiSceneKind.consumerLock => JayiPose.free,
-      JayiSceneKind.providerTray => JayiPose.priceTag,
-      JayiSceneKind.providerCoin => JayiPose.coin,
-    },
-  );
 
   final JayiPose pose;
 
