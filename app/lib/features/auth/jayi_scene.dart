@@ -19,21 +19,31 @@ import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../../core/motion.dart';
 
-/// Qué está haciendo Jayi. Una por lámina del intro.
+/// Qué tiene Jayi en la mano. Una pose por lámina del intro.
+enum JayiPose {
+  /// Pregunta y cierre neutro: bracitos abiertos entre la solicitud y la oferta.
+  open,
+
+  /// La reacción: pulgar arriba.
+  thumbsUp,
+
+  /// «Navega con libertad»: bracitos abiertos y flote amplio.
+  free,
+
+  /// «Hacer ofertas es gratis»: la etiqueta de precio.
+  priceTag,
+
+  /// Los créditos de regalo: la moneda dorada.
+  coin,
+}
+
+/// PUENTE hasta la Task 6 del plan 2026-09-18: `login_screen.dart` todavía
+/// habla en láminas viejas. Se borra junto con este enum.
 enum JayiSceneKind {
-  /// Lámina común: bracitos abiertos entre quien pide y quien vende.
   common,
-
-  /// Cliente 2: las ofertas suben hacia él.
   consumerOffers,
-
-  /// Cliente 3: cierra el candado (sus datos son suyos).
   consumerLock,
-
-  /// Proveedor 2: las solicitudes caen en su bandeja.
   providerTray,
-
-  /// Proveedor 3: la moneda gira (ofertar es gratis, cobras al final).
   providerCoin,
 }
 
@@ -50,6 +60,12 @@ const _halo = Color(0xFF7147F2);
 
 /// Sombra de piso: marrón cálido de la arena, no negro.
 const _piso = Color(0xFF5D4826);
+
+/// La moneda: lo ÚNICO no violeta del intro (PO 2026-09-18).
+const _oroBorde = Color(0xFFC98D1F);
+const _oroLuz = Color(0xFFFFF0BF);
+const _oroClaro = Color(0xFFFBD66E);
+const _oroOscuro = Color(0xFFE5A72A);
 
 const double _vbW = 168;
 const double _vbH = 132;
@@ -84,9 +100,21 @@ double _stops(double p, List<double> at, List<double> v) {
 
 /// La escena de una lámina. Mantiene su relación 168:132 y se centra sola.
 class JayiScene extends StatefulWidget {
-  const JayiScene({super.key, required this.kind});
+  const JayiScene({super.key, required this.pose});
 
-  final JayiSceneKind kind;
+  /// PUENTE hasta la Task 6: traduce la lámina vieja a la pose nueva.
+  factory JayiScene.kind(JayiSceneKind kind, {Key? key}) => JayiScene(
+    key: key,
+    pose: switch (kind) {
+      JayiSceneKind.common => JayiPose.open,
+      JayiSceneKind.consumerOffers ||
+      JayiSceneKind.consumerLock => JayiPose.free,
+      JayiSceneKind.providerTray => JayiPose.priceTag,
+      JayiSceneKind.providerCoin => JayiPose.coin,
+    },
+  );
+
+  final JayiPose pose;
 
   @override
   State<JayiScene> createState() => _JayiSceneState();
@@ -129,7 +157,7 @@ class _JayiSceneState extends State<JayiScene> with TickerProviderStateMixin {
     child: RepaintBoundary(
       child: CustomPaint(
         painter: _ScenePainter(
-          kind: widget.kind,
+          pose: widget.pose,
           time: _t,
           animated: !_reduced,
         ),
@@ -140,12 +168,12 @@ class _JayiSceneState extends State<JayiScene> with TickerProviderStateMixin {
 
 class _ScenePainter extends CustomPainter {
   _ScenePainter({
-    required this.kind,
+    required this.pose,
     required this.time,
     required this.animated,
   }) : super(repaint: time);
 
-  final JayiSceneKind kind;
+  final JayiPose pose;
   final ValueNotifier<double> time;
 
   /// Con "reducir animaciones" se pinta el ESTADO BASE de cada figura (sin
@@ -173,16 +201,16 @@ class _ScenePainter extends CustomPainter {
     _paintHalo(canvas);
     _paintGround(canvas);
     _paintJayi(canvas);
-    switch (kind) {
-      case JayiSceneKind.common:
-        _paintCommon(canvas);
-      case JayiSceneKind.consumerOffers:
-        _paintOffers(canvas);
-      case JayiSceneKind.consumerLock:
-        _paintLock(canvas);
-      case JayiSceneKind.providerTray:
-        _paintTray(canvas);
-      case JayiSceneKind.providerCoin:
+    switch (pose) {
+      case JayiPose.open:
+        _paintOpen(canvas, bubbles: true);
+      case JayiPose.free:
+        _paintOpen(canvas, bubbles: false);
+      case JayiPose.thumbsUp:
+        _paintThumb(canvas);
+      case JayiPose.priceTag:
+        _paintTag(canvas);
+      case JayiPose.coin:
         _paintCoin(canvas);
     }
     canvas.restore();
@@ -193,8 +221,11 @@ class _ScenePainter extends CustomPainter {
   void _paintHalo(Canvas canvas) {
     final op = animated ? _pingPong(_phase(_t, 4), 1, .65) : 1.0;
     final c = Offset(_vbW / 2, _vbH * .46);
-    void disc(double r, double a) =>
-        canvas.drawCircle(c, r, Paint()..color = _halo.withValues(alpha: a * op));
+    void disc(double r, double a) => canvas.drawCircle(
+      c,
+      r,
+      Paint()..color = _halo.withValues(alpha: a * op),
+    );
     disc(133, .022); // box-shadow 46px
     disc(109, .04); //  box-shadow 22px
     disc(38.3, .08); // el degradado, sólido hasta el 44 % del radio
@@ -256,7 +287,13 @@ class _ScenePainter extends CustomPainter {
     canvas.restore();
   }
 
-  void _arm(Canvas canvas, Offset from, Offset ctrl, Offset to, [double w = 8]) {
+  void _arm(
+    Canvas canvas,
+    Offset from,
+    Offset ctrl,
+    Offset to, [
+    double w = 8,
+  ]) {
     canvas.drawPath(
       Path()
         ..moveTo(from.dx, from.dy)
@@ -265,15 +302,21 @@ class _ScenePainter extends CustomPainter {
     );
   }
 
-  // ── Lámina común: los dos bracitos abiertos y una burbuja a cada lado ────
-  void _paintCommon(Canvas canvas) {
-    _arm(canvas, const Offset(33, 78), const Offset(24, 76), const Offset(18, 70));
+  // ── Bracitos abiertos. Con [bubbles], una burbuja a cada lado ───────────
+  void _paintOpen(Canvas canvas, {required bool bubbles}) {
+    _arm(
+      canvas,
+      const Offset(33, 78),
+      const Offset(24, 76),
+      const Offset(18, 70),
+    );
     _arm(
       canvas,
       const Offset(107, 78),
       const Offset(116, 76),
       const Offset(122, 70),
     );
+    if (!bubbles) return;
     _bubble(canvas, x: 0, delay: 0, alpha: 1);
     _bubble(canvas, x: 138, delay: 1.7, alpha: .72);
   }
@@ -302,137 +345,154 @@ class _ScenePainter extends CustomPainter {
     canvas.restore();
   }
 
-  // ── Cliente 2: tres ofertas que suben y se desvanecen ───────────────────
-  void _paintOffers(Canvas canvas) {
+  // ── Proveedor: la etiqueta de precio («Hacer ofertas es gratis») ────────
+  void _paintTag(Canvas canvas) {
+    final dy = animated ? _pingPong(_phase(_t, 3.4), 0, -6) : 0.0;
     _arm(
       canvas,
       const Offset(104, 78),
-      const Offset(118, 78),
-      const Offset(126, 76),
+      const Offset(114, 76),
+      const Offset(120, 68),
     );
-    _offer(canvas, const Rect.fromLTWH(118, 66, 40, 15), 7.5, 1, 0);
-    _offer(canvas, const Rect.fromLTWH(124, 46, 34, 14), 7, .7, 1.2);
-    _offer(canvas, const Rect.fromLTWH(120, 26, 30, 13), 6.5, .45, 2.4);
-  }
-
-  void _offer(Canvas canvas, Rect r, double radius, double alpha, double delay) {
-    var dy = 0.0;
-    var op = 1.0;
-    if (animated) {
-      final p = _phase(_t, 3.6, delay);
-      dy = 18 + (-16 - 18) * p; // `rise`: de +18 a -16, lineal
-      op = _stops(p, const [0, .26, .68, 1], const [0, 1, 1, 0]);
-    }
     canvas.save();
     canvas.translate(0, dy);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(r, Radius.circular(radius)),
-      Paint()..color = _jayi.withValues(alpha: alpha * op),
-    );
-    canvas.restore();
-  }
-
-  // ── Cliente 3: el candado, con el golpecito de `tick` ───────────────────
-  void _paintLock(Canvas canvas) {
-    // `transform-origin: 4% 96%` sobre la caja del grupo (x 104..151,
-    // y 32..78): el hombro, para que el golpe salga del brazo y no del aire.
-    const pivot = Offset(105.9, 76.2);
-    final rot = animated
-        ? _stops(
-            _phase(_t, 5),
-            const [0, .84, .89, .94, 1],
-            const [0, 0, -7, 4, 0],
-          )
-        : 0.0;
-    canvas.save();
-    canvas.translate(pivot.dx, pivot.dy);
-    canvas.rotate(rot * math.pi / 180);
-    canvas.translate(-pivot.dx, -pivot.dy);
-    _arm(canvas, const Offset(104, 78), const Offset(120, 74), const Offset(126, 64));
-    // El arco del SVG (`a9 9 0 0 1 18 0`) es media circunferencia exacta:
-    // cuerda 18, radio 9. En horario y con la Y hacia abajo, sube.
     canvas.drawPath(
       Path()
-        ..moveTo(128, 47)
-        ..lineTo(128, 41)
-        ..arcToPoint(
-          const Offset(146, 41),
-          radius: const Radius.circular(9),
-          clockwise: true,
-        )
-        ..lineTo(146, 47),
-      _stroke(5),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        const Rect.fromLTWH(123, 46, 28, 21),
-        const Radius.circular(7),
-      ),
+        ..moveTo(118, 30)
+        ..lineTo(144, 30)
+        ..arcToPoint(const Offset(152, 38), radius: const Radius.circular(8))
+        ..lineTo(152, 58)
+        ..arcToPoint(const Offset(144, 66), radius: const Radius.circular(8))
+        ..lineTo(118, 66)
+        ..lineTo(106, 48)
+        ..close(),
       _fill,
     );
     canvas.drawCircle(
-      const Offset(137, 56),
-      3.5,
+      const Offset(124, 47),
+      4,
       Paint()..color = const Color(0xFFFFFFFF),
     );
+    final linea = _stroke(3.4, const Color(0xFFFFFFFF));
+    canvas.drawLine(const Offset(134, 42), const Offset(147, 42), linea);
+    canvas.drawLine(const Offset(134, 52), const Offset(143, 52), linea);
     canvas.restore();
   }
 
-  // ── Proveedor 2: la solicitud cae en la bandeja ─────────────────────────
-  void _paintTray(Canvas canvas) {
-    // El paquete va PRIMERO: cae por detrás de la bandeja, como en la maqueta.
-    var dy = 0.0;
-    var op = 1.0;
-    if (animated) {
-      final p = _phase(_t, 3);
-      dy = -16 + 42 * math.min(p / .68, 1); // de -16 a +26 hasta el 68 %
-      op = _stops(p, const [0, .22, .68, 1], const [0, .6, 0, 0]);
-    }
-    canvas.save();
-    canvas.translate(0, dy);
+  // ── La reacción: pulgar arriba. Un solo grupo que rota desde el hombro ──
+  /// [rot] en grados: 0 = arriba; 78 = brazo caído (estado de entrada).
+  void _paintThumb(Canvas canvas, {double rot = 0, double alpha = 1}) {
+    const shoulder = Offset(104, 78);
+    canvas.saveLayer(null, Paint()..color = Color.fromRGBO(0, 0, 0, alpha));
+    canvas.translate(shoulder.dx, shoulder.dy);
+    canvas.rotate(rot * math.pi / 180);
+    canvas.translate(-shoulder.dx, -shoulder.dy);
+    _arm(canvas, shoulder, const Offset(116, 72), const Offset(124, 60));
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        const Rect.fromLTWH(122, 24, 28, 20),
-        const Radius.circular(6),
-      ),
-      Paint()..color = _jayi.withValues(alpha: op),
-    );
-    canvas.restore();
-
-    _arm(canvas, const Offset(104, 80), const Offset(120, 78), const Offset(126, 72));
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        const Rect.fromLTWH(116, 58, 42, 28),
-        const Radius.circular(9),
+        const Rect.fromLTWH(116, 50, 21, 17),
+        const Radius.circular(7.5),
       ),
       _fill,
     );
-    final linea = _stroke(3.6, const Color(0xFFFFFFFF));
-    canvas.drawLine(const Offset(124, 68), const Offset(150, 68), linea);
-    canvas.drawLine(const Offset(124, 76), const Offset(141, 76), linea);
+    canvas.save();
+    canvas.translate(119.75, 53);
+    canvas.rotate(-14 * math.pi / 180);
+    canvas.translate(-119.75, -53);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(115.5, 35, 8.5, 20),
+        const Radius.circular(4.25),
+      ),
+      _fill,
+    );
+    canvas.restore();
+    final nudillo = _stroke(1.6, _hondo.withValues(alpha: .55));
+    canvas.drawLine(const Offset(122, 58.5), const Offset(131, 58.5), nudillo);
+    canvas.drawLine(const Offset(122, 63), const Offset(130, 63), nudillo);
+    canvas.restore();
   }
 
-  // ── Proveedor 3: la moneda girando de canto ─────────────────────────────
+  // ── Los créditos: la moneda dorada en la palma ──────────────────────────
   void _paintCoin(Canvas canvas) {
-    _arm(canvas, const Offset(104, 78), const Offset(120, 74), const Offset(126, 62));
-    const c = Offset(138, 43);
+    _arm(
+      canvas,
+      const Offset(104, 78),
+      const Offset(118, 76),
+      const Offset(126, 66),
+    );
+    _arm(
+      canvas,
+      const Offset(124, 68),
+      const Offset(134, 72),
+      const Offset(146, 66),
+      7,
+    );
+    const c = Offset(141, 46);
+    const r = 16.0;
+    // Giro de reposo: de frente el 68 % del ciclo, de canto solo al final.
     final sx = animated
         ? _stops(
             _phase(_t, 3.2),
-            const [0, .44, .56, 1],
-            const [1, .08, .08, 1],
+            const [0, .68, .79, .86, 1],
+            const [1, 1, .12, .12, 1],
           )
         : 1.0;
     canvas.save();
     canvas.translate(c.dx, c.dy);
     canvas.scale(sx, 1);
     canvas.translate(-c.dx, -c.dy);
-    canvas.drawCircle(c, 16, _fill);
-    canvas.drawCircle(c, 9, _stroke(3.2, const Color(0xFFFFFFFF)));
+    final rect = Rect.fromCircle(center: c, radius: r);
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_oroClaro, _oroOscuro],
+        ).createShader(rect),
+    );
+    canvas.drawCircle(c, r, _stroke(2.6, _oroBorde));
+    canvas.drawCircle(c, 10.5, _stroke(2, _oroLuz.withValues(alpha: .9)));
+    // La «J».
+    final j = _stroke(2.4, _oroBorde);
+    canvas.drawPath(
+      Path()
+        ..moveTo(137, 40)
+        ..lineTo(142.5, 40)
+        ..arcToPoint(const Offset(142.5, 46), radius: const Radius.circular(3))
+        ..lineTo(137, 46)
+        ..moveTo(137, 46)
+        ..lineTo(137, 52.5),
+      j,
+    );
+    // El brillo cruza una vez por ciclo, recortado al círculo.
+    final gx = animated
+        ? _stops(
+            _phase(_t, 3.2),
+            const [0, .22, .60, 1],
+            const [-26, 26, 26, -26],
+          )
+        : 0.0;
+    canvas.save();
+    canvas.clipPath(Path()..addOval(Rect.fromCircle(center: c, radius: r - 1)));
+    canvas.translate(gx, 0);
+    canvas.translate(c.dx, c.dy);
+    canvas.rotate(28 * math.pi / 180);
+    canvas.translate(-c.dx, -c.dy);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(137.5, 26, 7, 40),
+        const Radius.circular(3.5),
+      ),
+      Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: .55),
+    );
+    canvas.restore();
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant _ScenePainter old) =>
-      old.kind != kind || old.animated != animated; // el tiempo va por `repaint`
+      old.pose != pose || old.animated != animated; // el tiempo va por `repaint`
 }

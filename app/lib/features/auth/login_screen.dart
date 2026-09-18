@@ -528,7 +528,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 220),
-                      child: JayiScene(kind: _sceneFor(i)),
+                      child: JayiScene.kind(_sceneFor(i)),
                     ),
                   ),
                   const SizedBox(height: 18),
