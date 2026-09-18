@@ -247,9 +247,27 @@ abstract final class JayaloMotion {
   /// Cuándo aparece el «Siguiente» fantasma de la reacción.
   static const introHint = Duration(milliseconds: 1000);
 
+  /// Cuándo aparece «Saltar» en la lámina 0: cuando Jayi ya aterrizó y los
+  /// dos recuadros terminaron de subir. Ofrecer irse de una pantalla que
+  /// todavía se está pintando es ofrecer irse de nada.
+  static const introSkip = Duration(milliseconds: 900);
+
+  /// El compás del recuadro ELEGIDO: lo que espera, desde el toque, antes de
+  /// levantarse 16 px e irse (spec §5, «Elegir»). Mientras tanto el recuadro
+  /// que no se eligió ya se está hundiendo.
+  static const introPick = Duration(milliseconds: 220);
+
+  /// SALIR cuesta menos que entrar; paridad con
+  /// `--transition-duration-salida` de la web.
+  static const salida = Duration(milliseconds: 180);
+
   /// El ÚNICO rebote del sistema de movimiento. Solo lo usan el pulgar de
   /// Jayi y el grito de la reacción: es un gesto de personaje, no un menú.
   static const bounce = Cubic(.34, 1.45, .64, 1);
+
+  /// Progreso = tiempo real, sin aceleración ni frenado. Es la curva de lo que
+  /// CUENTA (el contador de créditos del intro), no la de lo que se mueve.
+  static const linear = Curves.linear;
 
   /// La subida frenada de las HOJAS que salen desde abajo.
   ///
