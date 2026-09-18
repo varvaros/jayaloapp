@@ -116,10 +116,10 @@ abstract final class JayaloMotion {
   /// `devicePixelRatio` de la pantalla (ver [dragForBrake]); se resuelve en el
   /// momento del fling con la del `ScrollMetrics` real.
   static double scrollDragFor(double toleranceVelocity) => dragForBrake(
-        scrollBrake,
-        velocity: flingReference,
-        toleranceVelocity: toleranceVelocity,
-      );
+    scrollBrake,
+    velocity: flingReference,
+    toleranceVelocity: toleranceVelocity,
+  );
 
   /// Entrada de las VENTANAS que se deslizan desde la derecha (el chat).
   /// Mismo carácter que [sheetRise]: 1.5s con la curva [brake] — el recorrido
@@ -215,8 +215,7 @@ abstract final class JayaloMotion {
     final valle = (1 - math.cos(2 * math.pi * (u - i))) / 2; // 0 → 1 → 0
     final fondo = pulseBreaths == 1
         ? pulseDepth
-        : pulseDepth +
-            (pulseDepthLast - pulseDepth) * (i / (pulseBreaths - 1));
+        : pulseDepth + (pulseDepthLast - pulseDepth) * (i / (pulseBreaths - 1));
     return 1 - valle * (1 - fondo);
   }
 
@@ -229,6 +228,28 @@ abstract final class JayaloMotion {
   /// 2026-07-22): lo que dura la explosión ANTES de cerrar la hoja. Corre en
   /// paralelo con el RPC del cobro, así que no retrasa el acceso al contacto.
   static const mascotPum = Duration(milliseconds: 560);
+
+  // ── Intro de primera apertura (spec 2026-09-18-intro-jayi-te-recibe) ──
+  /// Revelaciones de texto y objetos pequeños: palabras del titular,
+  /// recuadros, la frase de la reacción, los accesos, la etiqueta.
+  static const intro = Duration(milliseconds: 420);
+
+  /// Un gesto de Jayi: el pulgar que sube, el saltito, el grito «¡Genial!».
+  static const introGesture = Duration(milliseconds: 560);
+
+  /// Jayi aterriza al abrir; la moneda sube y aterriza.
+  static const introLand = Duration(milliseconds: 720);
+
+  /// Tiempo de lectura de la reacción antes de avanzar sola. NO es
+  /// animación: con «reducir animaciones» se respeta igual.
+  static const introRead = Duration(milliseconds: 2600);
+
+  /// Cuándo aparece el «Siguiente» fantasma de la reacción.
+  static const introHint = Duration(milliseconds: 1000);
+
+  /// El ÚNICO rebote del sistema de movimiento. Solo lo usan el pulgar de
+  /// Jayi y el grito de la reacción: es un gesto de personaje, no un menú.
+  static const bounce = Cubic(.34, 1.45, .64, 1);
 
   /// La subida frenada de las HOJAS que salen desde abajo.
   ///
