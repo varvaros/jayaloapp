@@ -176,6 +176,9 @@ class _JayiSceneState extends State<JayiScene> with TickerProviderStateMixin {
     // de una entrante todavía invisible. La transición en curso se descarta.
     _prev = null;
     _changedAt = 0;
+    // El primer frame del ticker nuevo pinta ANTES de que corra su callback,
+    // con el valor viejo del reloj: se reinicia aquí también.
+    _t.value = 0;
     if (!reduced) {
       _ticker = createTicker((e) => _t.value = e.inMicroseconds / 1e6)..start();
     }
@@ -685,10 +688,11 @@ class _ScenePainter extends CustomPainter {
     // muestrea en el reloj absoluto: así arrancaba en una fase cualquiera y una
     // de cada tres veces la moneda saltaba a canto (sx .12) en UN frame justo
     // al terminar la entrada. Se cuenta desde el final de la entrada, de modo
-    // que en ese instante la fase vale 0: de frente y el brillo en −26, que es
-    // exactamente donde deja las cosas la entrada. Sin animación, fase 0 = el
-    // mismo estado final.
-    final giro = animated
+    // que en ese instante la fase vale 0.
+    // El ciclo de reposo (giro + brillo) solo corre para la moneda ENTRANTE y
+    // después de aterrizar: la saliente se funde de frente, y durante la
+    // entrada el brillo descansa en -26. Arranca en fase 0 justo al aterrizar.
+    final giro = (animated && entrando && pin >= 1)
         ? _phase(time.value - (changedAt + _reveal * .5 + _land), 3.2)
         : 0.0;
     // Giro de reposo: de frente el 68 % del ciclo, de canto solo al final.
