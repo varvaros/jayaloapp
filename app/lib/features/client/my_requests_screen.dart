@@ -31,46 +31,48 @@ String timeAgo(DateTime d) {
 
 /// Ícono y copy corto por fase. Con ofertas muestra el conteo real — es el
 /// dato que hace abrir la app.
-(IconData, String) phaseChip(RequestPhase p, int offerCount,
-        {ClosedReason? closedReason}) =>
-    switch (p) {
-      // «Buscando», no «Esperando» (pedido PO 2026-09-18): en pasiva y sin
-      // moverse, la fase se leía como que el sistema se había detenido. El
-      // chip de esta fase lo pinta `BuscandoIndicator`, con reloj y puntos.
-      // OJO: el ícono de esta tupla NO es el del chip — alimenta el respaldo
-      // del panel de foto en `request_status_screen.dart`, que debe seguir
-      // siendo un glifo estático.
-      RequestPhase.waiting => (Icons.schedule, buscandoProveedoresCopy),
-      RequestPhase.withOffers => (
-        Icons.local_offer_outlined,
-        '$offerCount oferta${offerCount == 1 ? '' : 's'}',
-      ),
-      // Modelo de hasta 3 finalistas: aunque ya aceptaste, el cliente sigue
-      // viendo cuántas ofertas recibió (antes se ocultaba al pasar a
-      // 'accepted').
-      RequestPhase.accepted => (
-        Icons.handshake,
-        'Aceptada · $offerCount oferta${offerCount == 1 ? '' : 's'}',
-      ),
-      // "En contacto", no "Desbloqueado" (pedido PO 2026-07-23): el cliente
-      // nunca desbloquea — el ícono de chat refuerza que ya están conversando.
-      RequestPhase.unlocked => (
-        Icons.forum_outlined,
-        'En contacto · $offerCount oferta${offerCount == 1 ? '' : 's'}',
-      ),
-      RequestPhase.completed => (Icons.done_all, 'Completada'),
-      // Sin el conteo de ofertas que llevan las fases vivas: el trato ya se
-      // decidió, cuántas llegaron dejó de ser accionable.
-      RequestPhase.closed => (
-        Icons.lock_outline,
-        switch (closedReason) {
-          ClosedReason.inactivity => 'Cerrada por inactividad',
-          ClosedReason.notAgreed => 'No concretada',
-          // Razones mezcladas entre finalistas: genérico antes que inventar.
-          null => 'Cerrada',
-        },
-      ),
-    };
+(IconData, String) phaseChip(
+  RequestPhase p,
+  int offerCount, {
+  ClosedReason? closedReason,
+}) => switch (p) {
+  // «Buscando», no «Esperando» (pedido PO 2026-09-18): en pasiva y sin
+  // moverse, la fase se leía como que el sistema se había detenido. El
+  // chip de esta fase lo pinta `BuscandoIndicator`, con reloj y puntos.
+  // OJO: el ícono de esta tupla NO es el del chip — alimenta el respaldo
+  // del panel de foto en `request_status_screen.dart`, que debe seguir
+  // siendo un glifo estático.
+  RequestPhase.waiting => (Icons.schedule, buscandoProveedoresCopy),
+  RequestPhase.withOffers => (
+    Icons.local_offer_outlined,
+    '$offerCount oferta${offerCount == 1 ? '' : 's'}',
+  ),
+  // Modelo de hasta 3 finalistas: aunque ya aceptaste, el cliente sigue
+  // viendo cuántas ofertas recibió (antes se ocultaba al pasar a
+  // 'accepted').
+  RequestPhase.accepted => (
+    Icons.handshake,
+    'Aceptada · $offerCount oferta${offerCount == 1 ? '' : 's'}',
+  ),
+  // "En contacto", no "Desbloqueado" (pedido PO 2026-07-23): el cliente
+  // nunca desbloquea — el ícono de chat refuerza que ya están conversando.
+  RequestPhase.unlocked => (
+    Icons.forum_outlined,
+    'En contacto · $offerCount oferta${offerCount == 1 ? '' : 's'}',
+  ),
+  RequestPhase.completed => (Icons.done_all, 'Completada'),
+  // Sin el conteo de ofertas que llevan las fases vivas: el trato ya se
+  // decidió, cuántas llegaron dejó de ser accionable.
+  RequestPhase.closed => (
+    Icons.lock_outline,
+    switch (closedReason) {
+      ClosedReason.inactivity => 'Cerrada por inactividad',
+      ClosedReason.notAgreed => 'No concretada',
+      // Razones mezcladas entre finalistas: genérico antes que inventar.
+      null => 'Cerrada',
+    },
+  ),
+};
 
 /// Motivo por el que una solicitud NO se puede EDITAR, o null si sí.
 ///
@@ -90,7 +92,9 @@ String? blockedEditReasonForPhase(RequestPhase p) => switch (p) {
 /// 2026-08-03 también las de trato cerrado aunque el proveedor haya pagado el
 /// desbloqueo (el lead ya se consumió y el chat no puede reabrirse).
 String? blockedDeleteReasonForPhase(RequestPhase p) => switch (p) {
-  RequestPhase.waiting || RequestPhase.withOffers || RequestPhase.closed => null,
+  RequestPhase.waiting ||
+  RequestPhase.withOffers ||
+  RequestPhase.closed => null,
   RequestPhase.accepted => 'Ya aceptaste una oferta: no puede eliminarse',
   RequestPhase.unlocked => 'Ya están en contacto: no puede eliminarse',
   RequestPhase.completed => 'Solicitud completada',
@@ -123,10 +127,10 @@ void sortRequestRows(
 /// filtro sin Supabase — es el requisito de rendimiento del brief hecho test:
 /// si alguien mete otro estado en el filtro, salta.
 List<String> dealOfferIds(List<Map<String, dynamic>> offers) => [
-      for (final o in offers)
-        if (o['status'] == 'accepted' || o['status'] == 'completed')
-          o['id'] as String,
-    ];
+  for (final o in offers)
+    if (o['status'] == 'accepted' || o['status'] == 'completed')
+      o['id'] as String,
+];
 
 class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({
@@ -205,7 +209,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   late Future<List<(Map<String, dynamic>, RequestPhase, int, ClosedReason?)>>
   _load = _startLoad();
   int _seenTick = requestsChanged.value;
-
 
   /// Solicitudes con al menos una oferta NUEVA sin leer (= con notificación
   /// `offer_new` sin leer). Van PRIMERO en la lista, con punto rojo + borde
@@ -358,8 +361,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   /// 2026-08-10, doctrina "las tarjetas son las protagonistas, no los
   /// filtros"): la activa en violeta pleno, la inactiva en neutro tenue —
   /// sustituye a los dos botones violeta del pedido 2026-07-22.
-  Widget _filterButton(String label, bool selected, VoidCallback onTap,
-      {Key? key}) {
+  Widget _filterButton(
+    String label,
+    bool selected,
+    VoidCallback onTap, {
+    Key? key,
+  }) {
     final cs = Theme.of(context).colorScheme;
     return Material(
       key: key,
@@ -430,9 +437,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     _unseenReqIds = unseenReqIds;
     final byReq = <String, List<OfferLite>>{};
     for (final o in offers) {
-      byReq.putIfAbsent(o['request_id'] as String, () => []).add(
-            offerLite(o, closedReason: closedReasons[o['id'] as String]),
-          );
+      byReq
+          .putIfAbsent(o['request_id'] as String, () => [])
+          .add(offerLite(o, closedReason: closedReasons[o['id'] as String]));
     }
     // Ronda de arreglo 1 (Task 11): el 4° elemento es la razón de cierre de
     // ESTA solicitud (`closedReasonFor`, null si sigue viva o si las
@@ -503,41 +510,41 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   Widget build(BuildContext context) {
     _refetchIfStale();
     final body = Column(
-        children: [
-          // Header violeta: avatar → menú de perfil, "Jayalo" centrado, campana,
-          // saludo grande y el buscador (envuelto por el header, doctrina).
-          // Al navegar la lista se pliega COMPLETO (avatar y campana incluidos,
-          // pedido PO 2026-07-21) y queda solo la flecha para bajarlo.
-          //
-          // Incrustada no lleva header: el de la pantalla anfitriona ya está
-          // arriba, y dos headers violeta apilados serían absurdos.
-          // Recorrido de la primera vez (PO 2026-09-05): cada elemento de esta
-          // pantalla, en orden. Vive aquí (no en el shell) porque la mayoría
-          // de sus anclas son de esta pantalla; las del shell (el `+`, la
-          // barra) llegan por `TourAnchors`. Incrustada en Mis ofertas del
-          // proveedor no hay buscador ni píldoras ni barra de cliente: ahí no
-          // sale. Los textos, en `onboarding_copy.dart`.
-          OnboardingGuide(
-            guideKey: 'client.home_tour.v1',
-            enabled: !widget.embedded,
-            steps: anchorSteps(
-              onboardingCopy['client.home_tour.v1']!,
-              [
-                _searchKey,
-                _mineKey,
-                _todasKey,
-                TourAnchors.plus,
-                TourAnchors.nav('/catalog'),
-                TourAnchors.nav('/messages'),
-                TourAnchors.nav('/client/reputation'),
-              ],
-              // Tocar el `+` real a través del hueco crea la solicitud Y da el
-              // recorrido por visto: se aprende haciéndolo.
-              tapThroughAt: 3,
-            ),
-            child: const SizedBox.shrink(),
+      children: [
+        // Header violeta: avatar → menú de perfil, "Jayalo" centrado, campana,
+        // saludo grande y el buscador (envuelto por el header, doctrina).
+        // Al navegar la lista se pliega COMPLETO (avatar y campana incluidos,
+        // pedido PO 2026-07-21) y queda solo la flecha para bajarlo.
+        //
+        // Incrustada no lleva header: el de la pantalla anfitriona ya está
+        // arriba, y dos headers violeta apilados serían absurdos.
+        // Recorrido de la primera vez (PO 2026-09-05): cada elemento de esta
+        // pantalla, en orden. Vive aquí (no en el shell) porque la mayoría
+        // de sus anclas son de esta pantalla; las del shell (el `+`, la
+        // barra) llegan por `TourAnchors`. Incrustada en Mis ofertas del
+        // proveedor no hay buscador ni píldoras ni barra de cliente: ahí no
+        // sale. Los textos, en `onboarding_copy.dart`.
+        OnboardingGuide(
+          guideKey: 'client.home_tour.v1',
+          enabled: !widget.embedded,
+          steps: anchorSteps(
+            onboardingCopy['client.home_tour.v1']!,
+            [
+              _searchKey,
+              _mineKey,
+              _todasKey,
+              TourAnchors.plus,
+              TourAnchors.nav('/catalog'),
+              TourAnchors.nav('/messages'),
+              TourAnchors.nav('/client/reputation'),
+            ],
+            // Tocar el `+` real a través del hueco crea la solicitud Y da el
+            // recorrido por visto: se aprende haciéndolo.
+            tapThroughAt: 3,
           ),
-          if (!widget.embedded)
+          child: const SizedBox.shrink(),
+        ),
+        if (!widget.embedded)
           CollapsibleHeader(
             hidden: _searchHidden,
             onReveal: () => setState(() => _searchHidden = false),
@@ -568,335 +575,354 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               ),
             ),
           ),
-          // Incrustada tampoco lleva los botones de filtro: el segmentado de la
-          // pantalla anfitriona ya cumple ese papel, y "Ver solicitudes de
-          // usuarios" para un proveedor es su propia pestaña Solicitudes.
-          if (!widget.embedded)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            // Botones violeta alineados a la izquierda (Wrap: si no caben en un
-            // teléfono angosto, bajan a la segunda línea en vez de desbordar).
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _filterButton('Mis solicitudes', !_others, () {
-                  if (_others) setState(() => _others = false);
-                }, key: _mineKey),
+        // UN solo riel de filtros (PO 2026-09-18): «Mis solicitudes» YA
+        // significa las activas, así que el chip «Activas» sobraba diciendo
+        // dos veces lo mismo, y «Terminadas» sube a esta misma línea. Los
+        // tres son excluyentes: el seleccionado es el que se está mirando.
+        //
+        // Incrustada no lleva «Todas las solicitudes» —el segmentado de la
+        // pantalla anfitriona ya cumple ese papel, y "Ver solicitudes de
+        // usuarios" para un proveedor es su propia pestaña Solicitudes—,
+        // pero SÍ lleva las otras dos: sin ellas, un proveedor mirando "Mis
+        // pedidos" se quedaría sin manera de ver sus solicitudes terminadas.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+          // Botones violeta alineados a la izquierda (Wrap: si no caben en un
+          // teléfono angosto, bajan a la segunda línea en vez de desbordar).
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              // Seleccionado solo cuando de verdad se están viendo las
+              // propias ACTIVAS: con `!_others` a secas se quedaba encendido
+              // también sobre «Terminadas», que es justo la confusión que
+              // este riel viene a quitar.
+              _filterButton('Mis solicitudes', !_others && !_terminadas, () {
+                if (_others || _terminadas) {
+                  setState(() {
+                    _others = false;
+                    _terminadas = false;
+                  });
+                }
+              }, key: _mineKey),
+              if (!widget.embedded)
                 _filterButton('Todas las solicitudes', _others, () {
                   setState(() {
                     _others = true;
                     _othersLoad ??= _fetchOthers();
                   });
                 }, key: _todasKey),
-              ],
-            ),
+              _filterButton('Terminadas', !_others && _terminadas, () {
+                if (_others || !_terminadas) {
+                  setState(() {
+                    _others = false;
+                    _terminadas = true;
+                  });
+                }
+              }),
+            ],
           ),
-          if (!_others)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _filterButton('Activas', !_terminadas, () {
-                    if (_terminadas) setState(() => _terminadas = false);
-                  }),
-                  _filterButton('Terminadas', _terminadas, () {
-                    if (!_terminadas) setState(() => _terminadas = true);
-                  }),
-                ],
-              ),
-            ),
-          Expanded(
-            // El colapso del header (esconder buscador) escucha el scroll de
-            // CUALQUIERA de las dos pestañas: antes solo envolvía "Mías", por eso
-            // en "De otros" el header no subía con el scroll (bug PO 2026-07-22).
-            child: NotificationListener<ScrollNotification>(
-              onNotification: _onListScroll,
-              child: _others
-                  ? FutureBuilder<List<Map<String, dynamic>>>(
-                      future: _othersLoad,
-                      builder: (context, snap) {
-                        if (!snap.hasData) return const JayaloLoaderBlock();
-                        final list = snap.data!;
-                        if (list.isEmpty) {
-                          return const EmptyState(
-                            message:
-                                'Todavía no hay solicitudes de otros usuarios.',
-                          );
-                        }
-                        return ListView.builder(
-                          padding: EdgeInsets.only(
-                            top: 8,
-                            bottom: 8 + navBarReservedSpace(context),
-                          ),
-                          itemCount: list.length,
-                          itemBuilder: (_, i) {
-                            final r = list[i];
-                            return _OtherRequestCard(
-                              title: r['title'] as String? ?? 'Solicitud',
-                              createdAt: DateTime.parse(
-                                r['created_at'] as String,
-                              ),
-                              imageUrl: _firstImage(r),
-                              kind: r['kind'] as String?,
-                              wholesale: r['is_wholesale'] == true,
-                              requirements: requirementsFromRow(r),
-                              onTap: () => context.push(
-                                '/client/other-request/${r['id']}',
-                              ),
-                            ).cascadeIn(i);
-                          },
+        ),
+        Expanded(
+          // El colapso del header (esconder buscador) escucha el scroll de
+          // CUALQUIERA de las dos pestañas: antes solo envolvía "Mías", por eso
+          // en "De otros" el header no subía con el scroll (bug PO 2026-07-22).
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _onListScroll,
+            child: _others
+                ? FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _othersLoad,
+                    builder: (context, snap) {
+                      if (!snap.hasData) return const JayaloLoaderBlock();
+                      final list = snap.data!;
+                      if (list.isEmpty) {
+                        return const EmptyState(
+                          message:
+                              'Todavía no hay solicitudes de otros usuarios.',
                         );
-                      },
-                    )
-                  : JayaloRefresh(
-                      // onRefresh espera Future<void>; setState para no devolver Future.
-                      onRefresh: () async {
-                        setState(() {
-                          _load = _startLoad();
-                        });
-                      },
-                      child: FutureBuilder(
-                        future: _load,
-                        builder: (context, snap) {
-                          if (!snap.hasData) {
-                            return const JayaloLoaderBlock();
-                          }
-                          final todos = snap.data!;
-                          // El MISMO reparto que prueba la batería de phase.dart,
-                          // y por debajo el MISMO predicado que tiñe la tarjeta.
-                          //
-                          // Sin rama para `_others`: este `FutureBuilder` solo
-                          // se monta cuando `!_others` (ver el ternario de más
-                          // arriba, `_others ? FutureBuilder(...) : JayaloRefresh(...)`),
-                          // así que aquí `_others` ya es siempre `false`.
-                          final (:activas, :terminadas) =
-                              partitionBySegment(todos, (r) => r.$2);
-                          final items = _terminadas ? terminadas : activas;
-                          // La pista de swipe se enseña en la PRIMERA tarjeta
-                          // que de verdad se puede deslizar: hacerlo en una
-                          // bloqueada enseñaría el gesto donde no funciona.
-                          // Calculado una sola vez por construcción de la
-                          // lista (no dentro del itemBuilder, que corre por
-                          // cada fila en cada scroll: sería O(n²)).
-                          final firstOpen = items.indexWhere(
-                            (r) => blockedDeleteReasonForPhase(r.$2) == null,
-                          );
-                          if (items.isEmpty && !_others && !_terminadas &&
-                              todos.isNotEmpty) {
-                            // Pidió, pero no le queda nada activo. Decir «aún no
-                            // has pedido nada» aqui seria falso.
-                            return ListView(
-                              controller: homeScrollController,
-                              padding: EdgeInsets.only(
-                                top: 24,
-                                bottom: navBarReservedSpace(context),
-                              ),
-                              children: [
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 24),
-                                  child: Text(
-                                    'No te queda ninguna solicitud activa.\n'
-                                    'Las terminadas están en su pestaña.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                Center(
-                                  child: FilledButton(
-                                    onPressed: () =>
-                                        setState(() => _terminadas = true),
-                                    child: const Text('Ver las terminadas'),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-                          if (items.isEmpty && _terminadas) {
-                            return ListView(
-                              controller: homeScrollController,
-                              padding: EdgeInsets.only(
-                                top: 24,
-                                bottom: navBarReservedSpace(context),
-                              ),
-                              children: [
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 24),
-                                  child: Text(
-                                    'Aún no has terminado ninguna.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-                          if (items.isEmpty) {
-                            return ListView(
-                              controller: homeScrollController,
-                              padding: EdgeInsets.only(
-                                top: 12,
-                                bottom: navBarReservedSpace(context),
-                              ),
-                              children: [
-                                const _ExampleRequestCard(),
-                                const SizedBox(height: 12),
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 24),
-                                  child: Text(
-                                    'Aún no has pedido nada.\n'
-                                    'Cuéntanos qué buscas y los proveedores te '
-                                    'harán ofertas.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                Center(
-                                  child: FilledButton(
-                                    onPressed: () =>
-                                        pushCreateRequestOnce(context),
-                                    child: const Text('Crear solicitud'),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                      }
+                      return ListView.builder(
+                        padding: EdgeInsets.only(
+                          top: 8,
+                          bottom: 8 + navBarReservedSpace(context),
+                        ),
+                        itemCount: list.length,
+                        itemBuilder: (_, i) {
+                          final r = list[i];
+                          return _OtherRequestCard(
+                            title: r['title'] as String? ?? 'Solicitud',
+                            createdAt: DateTime.parse(
+                              r['created_at'] as String,
+                            ),
+                            imageUrl: _firstImage(r),
+                            kind: r['kind'] as String?,
+                            wholesale: r['is_wholesale'] == true,
+                            requirements: requirementsFromRow(r),
+                            onTap: () => context.push(
+                              '/client/other-request/${r['id']}',
+                            ),
+                          ).cascadeIn(i);
+                        },
+                      );
+                    },
+                  )
+                : JayaloRefresh(
+                    // onRefresh espera Future<void>; setState para no devolver Future.
+                    onRefresh: () async {
+                      setState(() {
+                        _load = _startLoad();
+                      });
+                    },
+                    child: FutureBuilder(
+                      future: _load,
+                      builder: (context, snap) {
+                        if (!snap.hasData) {
+                          return const JayaloLoaderBlock();
+                        }
+                        final todos = snap.data!;
+                        // El MISMO reparto que prueba la batería de phase.dart,
+                        // y por debajo el MISMO predicado que tiñe la tarjeta.
+                        //
+                        // Sin rama para `_others`: este `FutureBuilder` solo
+                        // se monta cuando `!_others` (ver el ternario de más
+                        // arriba, `_others ? FutureBuilder(...) : JayaloRefresh(...)`),
+                        // así que aquí `_others` ya es siempre `false`.
+                        final (:activas, :terminadas) = partitionBySegment(
+                          todos,
+                          (r) => r.$2,
+                        );
+                        final items = _terminadas ? terminadas : activas;
+                        // La pista de swipe se enseña en la PRIMERA tarjeta
+                        // que de verdad se puede deslizar: hacerlo en una
+                        // bloqueada enseñaría el gesto donde no funciona.
+                        // Calculado una sola vez por construcción de la
+                        // lista (no dentro del itemBuilder, que corre por
+                        // cada fila en cada scroll: sería O(n²)).
+                        final firstOpen = items.indexWhere(
+                          (r) => blockedDeleteReasonForPhase(r.$2) == null,
+                        );
+                        if (items.isEmpty &&
+                            !_others &&
+                            !_terminadas &&
+                            todos.isNotEmpty) {
+                          // Pidió, pero no le queda nada activo. Decir «aún no
+                          // has pedido nada» aqui seria falso.
+                          return ListView(
+                            controller: homeScrollController,
+                            padding: EdgeInsets.only(
+                              top: 24,
+                              bottom: navBarReservedSpace(context),
+                            ),
                             children: [
-                              _SecRow(
-                                count: items.length,
-                                terminadas: _terminadas,
-                              ),
-                              Expanded(
-                                child: ListView.builder(
-                                  controller: homeScrollController,
-                                  padding: EdgeInsets.only(
-                                    top: 2,
-                                    bottom: 8 + navBarReservedSpace(context),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                ),
+                                child: Text(
+                                  'No te queda ninguna solicitud activa.\n'
+                                  'Las terminadas están en su pestaña.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                   ),
-                                  itemCount: items.length,
-                                  itemBuilder: (_, i) {
-                                    final (r, phase, offerCount, closedReason) =
-                                        items[i];
-                                    final id = r['id'] as String;
-                                    // push (no go): apila el detalle SOBRE la lista para
-                                    // que su atrás pueda volver. Con go() la pila se
-                                    // reemplazaba y el `context.pop()` del detalle
-                                    // (flecha) no tenía nada que popear — la flecha "no
-                                    // funcionaba". El resto de detalles (chat/catálogo)
-                                    // ya usa push por esto mismo.
-                                    final unseen = _unseenReqIds.contains(id);
-                                    // El "leído" se marca por oferta DENTRO del
-                                    // detalle; al volver, re-fetch para reflejar
-                                    // el punto/orden si ya no quedan sin leer.
-                                    void open() {
-                                      context
-                                          .push('/client/request/$id')
-                                          .then((_) {
-                                        if (mounted && unseen) _reload();
-                                      });
-                                    }
-                                    // El swipe (eliminar/editar) solo aplica
-                                    // mientras la solicitud está viva. En el
-                                    // resto de fases la tarjeta YA NO queda
-                                    // inerte: cede con goma y dice por qué (la
-                                    // RPC de borrar solo permite `open`, y
-                                    // editar una aceptada no aplica).
-                                    final blockedEdit =
-                                        blockedEditReasonForPhase(phase);
-                                    final blockedDelete =
-                                        blockedDeleteReasonForPhase(phase);
-                                    // El row queda "bloqueado" (franja gris que
-                                    // explica) solo si NINGUNA acción aplica.
-                                    // Se muestra el motivo de EDICIÓN: es la
-                                    // cadena que ya veían accepted/unlocked, y
-                                    // debía quedar exacta.
-                                    final blocked =
-                                        blockedDelete != null && blockedEdit != null
-                                            ? blockedEdit
-                                            : null;
-                                    final card = _RequestCard(
-                                      title: r['title'] as String,
-                                      createdAt: DateTime.parse(
-                                        r['created_at'] as String,
-                                      ),
-                                      phase: phase,
-                                      offerCount: offerCount,
-                                      closedReason: closedReason,
-                                      imageUrl: _firstImage(r),
-                                      kind: r['kind'] as String?,
-                                      wholesale: r['is_wholesale'] == true,
-                                      unseen: unseen,
-                                      requirements: requirementsFromRow(r),
-                                      onTap: open,
-                                      idle: _idle,
-                                      // Sin margen propio: lo aplica el swipe.
-                                      margin: EdgeInsets.zero,
-                                    );
-                                    return SwipeToActions(
-                                      id: id,
-                                      group: _openRow,
-                                      blockedReason: blocked,
-                                      peekKey: (blocked == null && i == firstOpen)
-                                          ? 'requests.swipe.v1'
-                                          : null,
-                                      actions: [
-                                        if (blockedDelete == null)
-                                          SwipeAction(
-                                            icon: Icons.delete_outline,
-                                            label: 'Eliminar',
-                                            color:
-                                                Theme.of(context).colorScheme.error,
-                                            onTap: () =>
-                                                _deleteRequest(id, offerCount),
-                                          ),
-                                        if (blockedEdit == null)
-                                          SwipeAction(
-                                            icon: Icons.edit_outlined,
-                                            label: 'Editar',
-                                            color: const Color(0xFF378ADD),
-                                            // Editar llega en una sesión
-                                            // próxima (decisión PO).
-                                            onTap: () async => showJayaloToast(
-                                              context,
-                                              'Editar solicitud: próximamente.',
-                                            ),
-                                          ),
-                                      ],
-                                      child: card,
-                                    ).cascadeIn(i);
-                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Center(
+                                child: FilledButton(
+                                  onPressed: () =>
+                                      setState(() => _terminadas = true),
+                                  child: const Text('Ver las terminadas'),
                                 ),
                               ),
                             ],
                           );
-                        },
-                      ),
+                        }
+                        if (items.isEmpty && _terminadas) {
+                          return ListView(
+                            controller: homeScrollController,
+                            padding: EdgeInsets.only(
+                              top: 24,
+                              bottom: navBarReservedSpace(context),
+                            ),
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                ),
+                                child: Text(
+                                  'Aún no has terminado ninguna.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+                        if (items.isEmpty) {
+                          return ListView(
+                            controller: homeScrollController,
+                            padding: EdgeInsets.only(
+                              top: 12,
+                              bottom: navBarReservedSpace(context),
+                            ),
+                            children: [
+                              const _ExampleRequestCard(),
+                              const SizedBox(height: 12),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                ),
+                                child: Text(
+                                  'Aún no has pedido nada.\n'
+                                  'Cuéntanos qué buscas y los proveedores te '
+                                  'harán ofertas.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Center(
+                                child: FilledButton(
+                                  onPressed: () =>
+                                      pushCreateRequestOnce(context),
+                                  child: const Text('Crear solicitud'),
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _SecRow(
+                              count: items.length,
+                              terminadas: _terminadas,
+                            ),
+                            Expanded(
+                              child: ListView.builder(
+                                controller: homeScrollController,
+                                padding: EdgeInsets.only(
+                                  top: 2,
+                                  bottom: 8 + navBarReservedSpace(context),
+                                ),
+                                itemCount: items.length,
+                                itemBuilder: (_, i) {
+                                  final (r, phase, offerCount, closedReason) =
+                                      items[i];
+                                  final id = r['id'] as String;
+                                  // push (no go): apila el detalle SOBRE la lista para
+                                  // que su atrás pueda volver. Con go() la pila se
+                                  // reemplazaba y el `context.pop()` del detalle
+                                  // (flecha) no tenía nada que popear — la flecha "no
+                                  // funcionaba". El resto de detalles (chat/catálogo)
+                                  // ya usa push por esto mismo.
+                                  final unseen = _unseenReqIds.contains(id);
+                                  // El "leído" se marca por oferta DENTRO del
+                                  // detalle; al volver, re-fetch para reflejar
+                                  // el punto/orden si ya no quedan sin leer.
+                                  void open() {
+                                    context.push('/client/request/$id').then((
+                                      _,
+                                    ) {
+                                      if (mounted && unseen) _reload();
+                                    });
+                                  }
+
+                                  // El swipe (eliminar/editar) solo aplica
+                                  // mientras la solicitud está viva. En el
+                                  // resto de fases la tarjeta YA NO queda
+                                  // inerte: cede con goma y dice por qué (la
+                                  // RPC de borrar solo permite `open`, y
+                                  // editar una aceptada no aplica).
+                                  final blockedEdit = blockedEditReasonForPhase(
+                                    phase,
+                                  );
+                                  final blockedDelete =
+                                      blockedDeleteReasonForPhase(phase);
+                                  // El row queda "bloqueado" (franja gris que
+                                  // explica) solo si NINGUNA acción aplica.
+                                  // Se muestra el motivo de EDICIÓN: es la
+                                  // cadena que ya veían accepted/unlocked, y
+                                  // debía quedar exacta.
+                                  final blocked =
+                                      blockedDelete != null &&
+                                          blockedEdit != null
+                                      ? blockedEdit
+                                      : null;
+                                  final card = _RequestCard(
+                                    title: r['title'] as String,
+                                    createdAt: DateTime.parse(
+                                      r['created_at'] as String,
+                                    ),
+                                    phase: phase,
+                                    offerCount: offerCount,
+                                    closedReason: closedReason,
+                                    imageUrl: _firstImage(r),
+                                    kind: r['kind'] as String?,
+                                    wholesale: r['is_wholesale'] == true,
+                                    unseen: unseen,
+                                    requirements: requirementsFromRow(r),
+                                    onTap: open,
+                                    idle: _idle,
+                                    // Sin margen propio: lo aplica el swipe.
+                                    margin: EdgeInsets.zero,
+                                  );
+                                  return SwipeToActions(
+                                    id: id,
+                                    group: _openRow,
+                                    blockedReason: blocked,
+                                    peekKey: (blocked == null && i == firstOpen)
+                                        ? 'requests.swipe.v1'
+                                        : null,
+                                    actions: [
+                                      if (blockedDelete == null)
+                                        SwipeAction(
+                                          icon: Icons.delete_outline,
+                                          label: 'Eliminar',
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.error,
+                                          onTap: () =>
+                                              _deleteRequest(id, offerCount),
+                                        ),
+                                      if (blockedEdit == null)
+                                        SwipeAction(
+                                          icon: Icons.edit_outlined,
+                                          label: 'Editar',
+                                          color: const Color(0xFF378ADD),
+                                          // Editar llega en una sesión
+                                          // próxima (decisión PO).
+                                          onTap: () async => showJayaloToast(
+                                            context,
+                                            'Editar solicitud: próximamente.',
+                                          ),
+                                        ),
+                                    ],
+                                    child: card,
+                                  ).cascadeIn(i);
+                                },
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
-            ),
+                  ),
           ),
-        ],
-      );
+        ),
+      ],
+    );
     // Incrustada NO abre su propio Scaffold: iría uno dentro de otro y el de
     // adentro se comería el `extendBody` del shell (el hueco que la barra
     // flotante necesita para flotar sobre el contenido).
@@ -988,6 +1014,7 @@ class _RequestCard extends StatelessWidget {
     required this.imageUrl,
     required this.kind,
     required this.onTap,
+    this.example = false,
     this.closedReason,
     this.wholesale = false,
     this.unseen = false,
@@ -1002,7 +1029,17 @@ class _RequestCard extends StatelessWidget {
   final int offerCount;
   final String? imageUrl;
   final String? kind;
-  final VoidCallback onTap;
+
+  /// `null` en la tarjeta de MUESTRA del estado vacío: no lleva a ninguna
+  /// solicitud, así que tampoco debe responder al dedo.
+  final VoidCallback? onTap;
+
+  /// Tarjeta de muestra del estado vacío: añade la píldora «Ejemplo» junto a
+  /// la hora y nada más. Sale de la queja del PO (2026-09-18): la muestra se
+  /// había quedado con un diseño viejo —sin riel de fases, con miniatura
+  /// pequeña— mientras la tarjeta real seguía cambiando. Construyéndola con
+  /// ESTA clase no puede volver a desviarse.
+  final bool example;
 
   /// Solo aplica cuando `phase` es `closed`; ver `phaseChip`. Ronda de
   /// arreglo 1 de la Task 11: el PO reportó el "Cerrada" ambiguo sobre ESTA
@@ -1031,7 +1068,6 @@ class _RequestCard extends StatelessWidget {
   /// riel quietos, que es lo correcto para una tarjeta montada suelta en un
   /// test o en un catálogo de widgets.
   final Animation<double>? idle;
-
 
   @override
   Widget build(BuildContext context) {
@@ -1081,94 +1117,115 @@ class _RequestCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.all(11),
             child: Row(
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  _thumb(context, tinted, tone),
-                  if (wholesale) const WholesaleRibbon(radius: 15),
-                ],
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        // +2pt (pedido PO 2026-07-22: otro punto sobre el +1).
-                        fontSize: 16,
-                        height: 1.3,
-                        fontWeight: FontWeight.w600,
-                        color: fg,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          timeAgo(createdAt),
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: fg.withValues(alpha: .7),
-                          ),
-                        ),
-                        // Guardado con `hasAnyRequirement`: un
-                        // `SizedBox.shrink()` dentro de este `Wrap` igual
-                        // consume su `spacing`.
-                        if (hasAnyRequirement(requirements))
-                          RequestRequirementBadges(
-                            req: requirements,
-                            variant: RequirementBadgeVariant.symbols,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    // Completada: banda violeta CENTRADA (pedido PO
-                    // 2026-08-03). Sustituye a la píldora de estado, no la
-                    // acompaña: dos etiquetas diciendo lo mismo en la misma
-                    // tarjeta es ruido. El violeta pleno sobre el gris apagado
-                    // es lo que hace legible el cierre de un vistazo.
-                    if (phase == RequestPhase.completed)
-                      Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: cs.primary,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: const Text(
-                            'Completado',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      )
-                    else if (tinted)
-                      _pill(label, tone, tinted, dark)
-                    else
-                      _liveChip(context, label),
+                    _thumb(context, tinted, tone),
+                    if (wholesale) const WholesaleRibbon(radius: 15),
                   ],
                 ),
-              ),
-              Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: fg.withValues(alpha: .4),
-              ),
-            ],
-          ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          // +2pt (pedido PO 2026-07-22: otro punto sobre el +1).
+                          fontSize: 16,
+                          height: 1.3,
+                          fontWeight: FontWeight.w600,
+                          color: fg,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            timeAgo(createdAt),
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: fg.withValues(alpha: .7),
+                            ),
+                          ),
+                          if (example)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: cs.primaryContainer,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                'Ejemplo',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: cs.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                          // Guardado con `hasAnyRequirement`: un
+                          // `SizedBox.shrink()` dentro de este `Wrap` igual
+                          // consume su `spacing`.
+                          if (hasAnyRequirement(requirements))
+                            RequestRequirementBadges(
+                              req: requirements,
+                              variant: RequirementBadgeVariant.symbols,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      // Completada: banda violeta CENTRADA (pedido PO
+                      // 2026-08-03). Sustituye a la píldora de estado, no la
+                      // acompaña: dos etiquetas diciendo lo mismo en la misma
+                      // tarjeta es ruido. El violeta pleno sobre el gris apagado
+                      // es lo que hace legible el cierre de un vistazo.
+                      if (phase == RequestPhase.completed)
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: cs.primary,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: const Text(
+                              'Completado',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        )
+                      else if (tinted)
+                        _pill(label, tone, tinted, dark)
+                      else
+                        _liveChip(context, label),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right,
+                  size: 20,
+                  color: fg.withValues(alpha: .4),
+                ),
+              ],
+            ),
           ),
           _phaseRail(context, tone, tinted),
         ],
@@ -1215,8 +1272,9 @@ class _RequestCard extends StatelessWidget {
   Widget _phaseRail(BuildContext context, StatusTone tone, bool tinted) {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final done =
-        tinted ? tone.ink : (dark ? JayaloColors.dSuccess : JayaloColors.success);
+    final done = tinted
+        ? tone.ink
+        : (dark ? JayaloColors.dSuccess : JayaloColors.success);
     final pillBg = tinted ? tone.ink : cs.primary;
     final pillInk = tinted && dark ? tone.bg : Colors.white;
     final muted = tinted
@@ -1285,10 +1343,11 @@ class _RequestCard extends StatelessWidget {
         color: tinted
             ? tone.ink.withValues(alpha: .07)
             : dark
-                ? cs.surfaceContainerHighest.withValues(alpha: .5)
-                : const Color(0xFFFBF7EF),
-        borderRadius:
-            const BorderRadius.vertical(bottom: Radius.circular(kCardRadius)),
+            ? cs.surfaceContainerHighest.withValues(alpha: .5)
+            : const Color(0xFFFBF7EF),
+        borderRadius: const BorderRadius.vertical(
+          bottom: Radius.circular(kCardRadius),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(14, 9, 14, 8),
       child: Row(
@@ -1363,8 +1422,9 @@ class _RequestCard extends StatelessWidget {
     final holderBg = tinted
         ? (dark ? tone.ink : Colors.white.withValues(alpha: .65))
         : cs.surfaceContainerHighest;
-    final holderIcon =
-        (tinted && dark ? tone.bg : tone.ink).withValues(alpha: .8);
+    final holderIcon = (tinted && dark ? tone.bg : tone.ink).withValues(
+      alpha: .8,
+    );
     // 80px (mockup aprobado 2026-08-10: "la foto llena su contenedor" — la
     // miniatura de 54 se perdía al lado del título).
     Widget placeholder() => Container(
@@ -1395,17 +1455,19 @@ class _RequestCard extends StatelessWidget {
         : child;
     final url = imageUrl;
     if (url == null) return muted(placeholder());
-    return muted(ClipRRect(
-      borderRadius: BorderRadius.circular(15),
-      child: JayaloNetworkImage(
-        url,
-        width: 80,
-        height: 80,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => placeholder(),
-        loadingBuilder: (_, child, p) => p == null ? child : placeholder(),
+    return muted(
+      ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: JayaloNetworkImage(
+          url,
+          width: 80,
+          height: 80,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => placeholder(),
+          loadingBuilder: (_, child, p) => p == null ? child : placeholder(),
+        ),
       ),
-    ));
+    );
   }
 
   /// Chip de estado: sobre tarjeta teñida va en píldora blanca translúcida con
@@ -1538,8 +1600,10 @@ class _OtherRequestCard extends StatelessWidget {
                   children: [
                     Text(
                       timeAgo(createdAt),
-                      style:
-                          TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: cs.onSurfaceVariant,
+                      ),
                     ),
                     // Guardado con `hasAnyRequirement`: un `SizedBox.shrink()`
                     // dentro de este `Wrap` igual consume su `spacing`.
@@ -1573,91 +1637,23 @@ class _ExampleRequestCard extends StatelessWidget {
   const _ExampleRequestCard();
 
   @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Opacity(
-      opacity: .9,
-      child: JayaloCard(
-        tint: cs.surfaceContainerLowest,
-        child: Row(
-          children: [
-            Container(
-              width: 54,
-              height: 54,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(Icons.inventory_2_outlined,
-                  size: 24, color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          'Nevera 11 pies, poco uso',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: cs.primaryContainer,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'Ejemplo',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                            color: cs.onPrimaryContainer,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text('hace 2 h',
-                      style: TextStyle(
-                          fontSize: 11.5, color: cs.onSurfaceVariant)),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 11, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: cs.primaryContainer,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '3 ofertas',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: cs.onPrimaryContainer,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Opacity(
+    // Ligeramente apagada: se lee como muestra, no como una solicitud real
+    // que el cliente hubiera olvidado.
+    opacity: .9,
+    child: _RequestCard(
+      title: 'Nevera 11 pies, poco uso',
+      // Dos horas atrás: `timeAgo` la pinta como «hace 2 h», que es lo que
+      // decía la muestra vieja.
+      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
+      // Con ofertas, que es la pantalla que se le quiere prometer: el chip
+      // dice «3 ofertas» y el riel deja «Esperando» cumplido en verde.
+      phase: RequestPhase.withOffers,
+      offerCount: 3,
+      imageUrl: null,
+      kind: 'producto',
+      onTap: null,
+      example: true,
+    ),
+  );
 }
