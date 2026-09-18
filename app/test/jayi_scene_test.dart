@@ -7,6 +7,7 @@
 // portada y el de la lámina). Los tests de abajo la fijan por los dos lados.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jayalo_app/core/motion.dart';
 import 'package:jayalo_app/features/auth/intro_copy.dart';
 import 'package:jayalo_app/features/auth/jayi_scene.dart';
 import 'package:jayalo_app/features/auth/login_screen.dart';
@@ -64,6 +65,9 @@ void main() {
       isTrue,
       reason: 'no se remonta',
     );
+    // El «Siguiente» de la reacción es fantasma: inerte hasta `introHint`.
+    await t.pump(JayaloMotion.introHint + const Duration(milliseconds: 1));
+    await t.pump();
     await t.tap(find.text('Siguiente'));
     await t.pumpAndSettle();
     expect(poseOnScreen(t), JayiPose.free);
@@ -76,6 +80,9 @@ void main() {
     await t.tap(find.text('Soy un proveedor'));
     await t.pumpAndSettle();
     expect(poseOnScreen(t), JayiPose.thumbsUp);
+    // El «Siguiente» de la reacción es fantasma: inerte hasta `introHint`.
+    await t.pump(JayaloMotion.introHint + const Duration(milliseconds: 1));
+    await t.pump();
     await t.tap(find.text('Siguiente'));
     await t.pumpAndSettle();
     expect(poseOnScreen(t), JayiPose.priceTag);
