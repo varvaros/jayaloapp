@@ -1,6 +1,8 @@
 // Revelaciones del intro: fade + subida con retardo, palabra a palabra, y el
 // contador de créditos. Todas respetan «reducir animaciones» pintando el
 // estado FINAL desde el primer frame (no el instante 0).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -64,24 +66,41 @@ class IntroWords extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    assert(
+      style.fontSize != null,
+      'IntroWords calcula el espaciado con el fontSize del titular',
+    );
+    final size = style.fontSize ?? 16;
     final words = text.split(' ');
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: style.fontSize! * .28,
-      runSpacing: 0,
-      children: [
-        for (var i = 0; i < words.length; i++)
-          IntroReveal(
-            delay: delay + step * i,
-            child: Text(words[i], style: style),
-          ),
-      ],
+    // El titular es UNA frase, no seis palabras sueltas: sin esto TalkBack
+    // pedía un gesto por `Text` para oír la primera pantalla de la app (era
+    // un solo nodo cuando el titular era un `Text.rich`).
+    return Semantics(
+      label: text,
+      excludeSemantics: true,
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: size * .28,
+        runSpacing: 0,
+        children: [
+          for (var i = 0; i < words.length; i++)
+            IntroReveal(
+              delay: delay + step * i,
+              child: Text(words[i], style: style),
+            ),
+        ],
+      ),
     );
   }
 }
 
 /// Cuenta de 0 a [to] a 120 ms por cifra; cada cifra entra a 122 % y baja.
-class IntroCounter extends StatelessWidget {
+///
+/// El tween NACE al vencer [delay], no al montarse. Con el tween arrancando en
+/// el montaje y el fundido esperando el retardo, las cifras que el usuario
+/// alcanzaba a VER eran las dos últimas: para cuando el número se hacía
+/// visible la cuenta ya iba por 4 y parecía que el «5» simplemente aparecía.
+class IntroCounter extends StatefulWidget {
   const IntroCounter({
     super.key,
     required this.to,
@@ -98,23 +117,54 @@ class IntroCounter extends StatelessWidget {
   static const stepPerDigit = Duration(milliseconds: 120);
 
   @override
+  State<IntroCounter> createState() => _IntroCounterState();
+}
+
+class _IntroCounterState extends State<IntroCounter> {
+  /// El retardo, como temporizador cancelable. Un `Future.delayed` no se
+  /// cancela al desmontar y en los tests de widgets eso sale como «A Timer is
+  /// still pending» apuntando a cualquier otro sitio.
+  Timer? _arranque;
+  bool _started = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _arranque = Timer(widget.delay, () {
+      if (mounted) setState(() => _started = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _arranque?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final to = widget.to;
     if (JayaloMotion.reduced(context) || to <= 0) {
-      return Text('$to', style: style);
+      return Text('$to', style: widget.style);
+    }
+    if (!_started) {
+      // Invisible pero OCUPANDO el sitio de una cifra: si el titular midiera
+      // sin el número, se recolocaría entero en cuanto empezara la cuenta.
+      return Opacity(opacity: 0, child: Text('0', style: widget.style));
     }
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: to.toDouble()),
-      duration: stepPerDigit * to,
-      curve: Curves.linear,
+      duration: IntroCounter.stepPerDigit * to,
+      curve: JayaloMotion.linear,
       builder: (_, v, _) {
         final shown = v.ceil();
         final frac = v - v.floorToDouble();
         final scale = (shown == 0 || frac == 0) ? 1.0 : 1.22 - .22 * frac;
         return Transform.scale(
           scale: scale,
-          child: Text('$shown', style: style),
+          child: Text('$shown', style: widget.style),
         );
       },
-    ).animate(delay: delay).fadeIn(duration: JayaloMotion.fast);
+    ).animate().fadeIn(duration: JayaloMotion.fast);
   }
 }
