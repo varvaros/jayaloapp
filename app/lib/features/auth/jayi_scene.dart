@@ -337,13 +337,22 @@ class _ScenePainter extends CustomPainter {
   /// El cuerpo canónico: cuadrado redondeado, UN ojo descentrado con la pupila
   /// abajo-derecha y DOS antenas curvas. No cambia nunca entre láminas.
   void _paintJayi(Canvas canvas) {
-    final libre = pose == JayiPose.free;
-    var dy = animated
-        ? _pingPong(_phase(_t, libre ? 3.4 : 4), 0, libre ? -9 : -4)
-        : 0.0;
-    var sx = 1.0, sy = 1.0, rot = 0.0;
-    if (libre && animated) {
-      rot = _pingPong(_phase(_t, 3.4), -1.2, 1.2) * math.pi / 180;
+    var dy = 0.0, sx = 1.0, sy = 1.0, rot = 0.0;
+    if (animated) {
+      // El flote de `free` es OTRO reloj (3,4 s / −9 px y ±1,2°) que el del
+      // resto (4 s / −4 px, sin balanceo): muestreados en el mismo instante los
+      // dos valores no coinciden, así que al entrar o salir de `free` Jayi
+      // daba un salto seco de hasta ~8,5 unidades del viewBox. Se interpolan
+      // igual que la pupila, con el progreso de la entrada de la pose nueva.
+      final k = prev == null
+          ? 1.0
+          : JayaloMotion.emphasized.transform(_in(_reveal));
+      final dyDe = _floatOf(prev ?? pose);
+      final dyA = _floatOf(pose);
+      dy = dyDe + (dyA - dyDe) * k;
+      final rotDe = _swayOf(prev ?? pose);
+      final rotA = _swayOf(pose);
+      rot = (rotDe + (rotA - rotDe) * k) * math.pi / 180;
     }
     // Aterrizaje al abrir (los primeros `introLand` s desde el montaje).
     if (_sinceMount < _land) {
@@ -464,6 +473,16 @@ class _ScenePainter extends CustomPainter {
     JayiPose.coin => const Offset(4, -2),
   };
 
+  /// El flote OCIOSO de cada pose, en unidades del viewBox. `free` flota más
+  /// alto y más despacio (spec §5, «Jayi flota más alto: 9 px, ciclo 3,4 s»).
+  double _floatOf(JayiPose p) => p == JayiPose.free
+      ? _pingPong(_phase(_t, 3.4), 0, -9)
+      : _pingPong(_phase(_t, 4), 0, -4);
+
+  /// Y su balanceo en GRADOS: solo `free` se mece (±1,2°).
+  double _swayOf(JayiPose p) =>
+      p == JayiPose.free ? _pingPong(_phase(_t, 3.4), -1.2, 1.2) : 0.0;
+
   /// La pupila mira al objeto nuevo en `intro` s, con `emphasized`.
   Offset _pupil() {
     final to = _lookOf(pose);
@@ -494,7 +513,12 @@ class _ScenePainter extends CustomPainter {
     double alpha = 1,
     bool saliente = false,
   }) {
-    _grupo(canvas, alpha);
+    // Cambio de mano (spec §5): el accesorio ENTRANTE sube 12 px en `intro`
+    // con `brake` y funde. En el PRIMER montaje (`prev == null`) no hay cambio
+    // —los bracitos vienen con el aterrizaje— y el saliente se va tal cual.
+    final entra = (saliente || prev == null) ? 1.0 : _in(_reveal);
+    _grupo(canvas, alpha * entra);
+    canvas.translate(0, 12 * (1 - JayaloMotion.brake.transform(entra)));
     _arm(
       canvas,
       const Offset(33, 78),
