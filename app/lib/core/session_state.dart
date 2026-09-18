@@ -34,7 +34,7 @@ String? redirectTarget({
 
 /// Task 4: a dónde saltar desde `/onboarding` según la elección guardada en
 /// el intro (Task 1). El rol REAL manda: quien ya es cliente no entra al
-/// alta de proveedor aunque en el intro tocara «Vendo algo». Pura para poder
+/// alta de proveedor aunque en el intro tocara «Soy un proveedor». Pura para poder
 /// testearla sin router.
 String? introRoleRedirect({
   required RoleState role,

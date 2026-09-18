@@ -109,8 +109,9 @@ void main() {
           isTrue,
           reason: '$step',
         );
-        if (step != IntroStep.providerCoin)
+        if (step != IntroStep.providerCoin) {
           expect(s.sub, isNotEmpty, reason: '$step');
+        }
       }
     });
     test('los recuadros dicen quién eres', () {

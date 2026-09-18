@@ -23,7 +23,7 @@ void main() {
         '/onboarding/provider');
   });
 
-  // Caso borde obligatorio del brief: eligió "Vendo algo" en el intro pero su
+  // Caso borde obligatorio del brief: eligió "Soy un proveedor" en el intro pero su
   // cuenta de Google ya existe como cliente. El rol real manda; meterlo en el
   // alta de proveedor sería un error.
   test('rol real ya resuelto con elección contraria → null (rol real gana)',

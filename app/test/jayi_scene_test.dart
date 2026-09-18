@@ -18,8 +18,11 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   /// Con las animaciones apagadas: `JayiScene` mueve un `Ticker` perpetuo y con
-  /// ellas encendidas `pumpAndSettle` no asienta NUNCA.
+  /// ellas encendidas `pumpAndSettle` no asienta NUNCA. Y sin `splashFactory`
+  /// el ripple de Material sigue corriendo reloj FAKE tras cada toque, ajeno a
+  /// `disableAnimations` — ver `login_intro_carousel_test.dart`.
   Widget app({int credits = 5}) => MaterialApp(
+    theme: ThemeData(splashFactory: NoSplash.splashFactory),
     home: LoginScreen(fetchWelcomeCredits: () async => credits),
     builder: (ctx, child) => MediaQuery(
       data: MediaQuery.of(ctx).copyWith(disableAnimations: true),

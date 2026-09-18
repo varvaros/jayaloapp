@@ -11,7 +11,7 @@ import '../core/session_state.dart';
 /// nada que ofrecer —sin cuenta no hay chats ni ofertas que avisar— y sí tiene
 /// mucho que romper:
 ///
-/// - Tapaba los recuadros «Busco algo / Vendo algo» de la primera apertura, y
+/// - Tapaba los recuadros «Soy un cliente / Soy un proveedor» de la primera apertura, y
 ///   desde 2026-08-20 esa apertura es la ÚNICA en la vida del teléfono
 ///   ([IntroSeenStore]): perdérsela ya no se arregla volviendo a abrir la app.
 /// - Con el gotcha de MIUI (los toques atraviesan los overlays), un toque en

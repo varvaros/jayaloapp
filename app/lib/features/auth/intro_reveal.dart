@@ -99,13 +99,14 @@ class IntroCounter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (JayaloMotion.reduced(context) || to <= 0)
+    if (JayaloMotion.reduced(context) || to <= 0) {
       return Text('$to', style: style);
+    }
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: to.toDouble()),
       duration: stepPerDigit * to,
       curve: Curves.linear,
-      builder: (_, v, __) {
+      builder: (_, v, _) {
         final shown = v.ceil();
         final frac = v - v.floorToDouble();
         final scale = (shown == 0 || frac == 0) ? 1.0 : 1.22 - .22 * frac;

@@ -274,7 +274,7 @@ Future<void> initPush(GoRouter router) async {
   // Iba aquí, el último de la lista, porque es el que se cuelga — pero se
   // pedía igual con la app recién abierta y SIN sesión, y entonces aterrizaba
   // encima de la primera pantalla que hubiera: el intro. Tapaba los recuadros
-  // «Busco algo / Vendo algo» justo en la única apertura en que se ven
+  // «Soy un cliente / Soy un proveedor» justo en la única apertura en que se ven
   // (PO 2026-08-20), y con el gotcha de MIUI —los toques atraviesan los
   // overlays— un toque en «No permitir» podía además elegir lado por debajo.
   //

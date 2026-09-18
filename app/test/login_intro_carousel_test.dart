@@ -58,7 +58,9 @@ void main() {
     var guard = 0;
     while (t.binding.hasScheduledFrame) {
       await t.pump();
-      if (++guard > 200) break; // defensivo: nunca debería hacer falta.
+      if (++guard > 200) {
+        fail('settleWithoutClock: la UI no asienta sin gastar reloj');
+      }
     }
   }
 
