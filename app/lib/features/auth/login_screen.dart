@@ -158,6 +158,15 @@ class _LoginScreenState extends State<LoginScreen> {
   /// Créditos de bienvenida según el servidor; `null` mientras no llega.
   int? _welcomeCredits;
 
+  /// EL viaje al servidor por el bono: uno solo por montaje de la pantalla.
+  ///
+  /// `late final` a propósito — el futuro NACE en el primer acceso, que está
+  /// dentro de [_restore] y solo en modo intro: el login clásico (el 99 % de
+  /// las aperturas) no pide el bono nunca. Las dos ramas de [_restore] —la
+  /// suscripción en paralelo y la espera con rol guardado— comparten ESTE
+  /// futuro, así que la RPC se hace una vez y no dos.
+  late final Future<int> _creditsFuture = widget.fetchWelcomeCredits();
+
   /// Los créditos CONGELADOS al elegir rol. Que el valor llegue después no
   /// cambia el número de láminas: si no, la lámina de accesos se movería bajo
   /// el dedo del usuario.
@@ -212,8 +221,10 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
     // Los créditos se piden en paralelo con el rol: no bloquean la lámina 0.
+    // Aquí es donde nace `_creditsFuture`, y es el ÚNICO viaje: abajo se
+    // espera a este mismo futuro, nunca se lanza otro.
     unawaited(
-      widget.fetchWelcomeCredits().then((n) {
+      _creditsFuture.then((n) {
         if (mounted) setState(() => _welcomeCredits = n);
       }),
     );
@@ -223,9 +234,13 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _introSeen = false);
       return;
     }
-    // Con rol ya guardado se aterriza en los accesos: hace falta saber cuántas
-    // láminas hay, así que aquí SÍ se espera a los créditos (3 s como mucho).
-    final credits = _welcomeCredits ?? await widget.fetchWelcomeCredits();
+    // Con rol ya guardado se aterriza en los accesos, y para eso hay que saber
+    // cuántas láminas hay: sin el bono no se sabe si el proveedor tiene 3 o 4,
+    // y aterrizar en la lámina equivocada movería el carrusel bajo el dedo del
+    // usuario. Por eso aquí SÍ se espera — pero al MISMO futuro que ya está en
+    // vuelo desde arriba, y la espera está acotada por el timeout del repo
+    // (`fetchWelcomeCredits` corta a los 3 s y devuelve 0).
+    final credits = _welcomeCredits ?? await _creditsFuture;
     if (!mounted) return;
     setState(() {
       _introSeen = false;
@@ -541,14 +556,20 @@ class _LoginScreenState extends State<LoginScreen> {
                   opacity: back ? 1 : 0,
                   duration: d,
                   curve: JayaloMotion.enter,
-                  child: IgnorePointer(
-                    ignoring: !back,
-                    child: IconButton(
-                      key: const Key('intro-back'),
-                      onPressed: _back,
-                      icon: const Icon(Icons.chevron_left_rounded),
-                      color: JayaloColors.foreground.withValues(alpha: .75),
-                      tooltip: 'Atrás',
+                  // Invisible es invisible también para TalkBack: sin el
+                  // `ExcludeSemantics` el lector cantaba «Atrás» en la lámina 0,
+                  // donde el chevrón no está.
+                  child: ExcludeSemantics(
+                    excluding: !back,
+                    child: IgnorePointer(
+                      ignoring: !back,
+                      child: IconButton(
+                        key: const Key('intro-back'),
+                        onPressed: _back,
+                        icon: const Icon(Icons.chevron_left_rounded),
+                        color: JayaloColors.foreground.withValues(alpha: .75),
+                        tooltip: 'Atrás',
+                      ),
                     ),
                   ),
                 ),
@@ -563,16 +584,23 @@ class _LoginScreenState extends State<LoginScreen> {
                   opacity: skip ? 1 : 0,
                   duration: d,
                   curve: JayaloMotion.enter,
-                  child: IgnorePointer(
-                    ignoring: !skip,
-                    child: TextButton(
-                      onPressed: _skip,
-                      child: Text(
-                        'Saltar',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: JayaloColors.foreground.withValues(alpha: .75),
+                  // Igual que el chevrón: apagado a la vista, apagado también
+                  // para el lector de pantalla.
+                  child: ExcludeSemantics(
+                    excluding: !skip,
+                    child: IgnorePointer(
+                      ignoring: !skip,
+                      child: TextButton(
+                        onPressed: _skip,
+                        child: Text(
+                          'Saltar',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: JayaloColors.foreground.withValues(
+                              alpha: .75,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -611,7 +639,11 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _SlideCopy(slide, wordByWord: step == IntroStep.ask),
+              _SlideCopy(
+                slide,
+                wordByWord: step == IntroStep.ask,
+                question: step == IntroStep.ask,
+              ),
               Padding(padding: const EdgeInsets.only(top: 22), child: action),
             ],
           ),
@@ -678,7 +710,14 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.fromLTRB(28, 14, 28, 22),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [const Spacer(), _accessStack(context)],
+              children: [
+                const Spacer(),
+                // Sin escalonado: el login clásico pinta sus botones AL
+                // INSTANTE, como siempre. Los retardos son del guion del
+                // intro (el CTA no debe llegar antes que el texto que lo
+                // justifica) y aquí no hay guion que respetar.
+                _accessStack(context, reveal: false),
+              ],
             ),
           ),
         ),
@@ -689,69 +728,70 @@ class _LoginScreenState extends State<LoginScreen> {
   /// La pila de acceso de siempre. Google REGISTRA; el correo solo inicia
   /// sesión — por eso uno va en pill y el otro en enlace discreto.
   ///
-  /// Los tres entran escalonados DESPUÉS de que la lámina termina de deslizar:
-  /// el botón que cierra el intro no debe llegar antes que el texto que lo
-  /// justifica. En el login clásico (sin carrusel) los retardos se pagan una
-  /// sola vez al abrir y se ven como la entrada de la portada.
-  Widget _accessStack(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      IntroReveal(
-        delay: _accessDelay1,
-        dy: 14,
-        child: SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _busy ? null : _go,
-            style: _pill,
-            icon: _busy
-                ? const JayaloSpinner(size: 18, color: Colors.white)
-                : const Icon(Icons.g_mobiledata, size: 26),
-            label: const Text('Continuar con Google'),
-          ),
-        ),
-      ),
-      const SizedBox(height: 12),
-      // El registro es NATIVO desde el onboarding (spec 2026-07-16):
-      // mandar a jayalo.com sería mentirle al usuario nuevo.
-      IntroReveal(
-        delay: _accessDelay2,
-        dy: 14,
-        child: Text(
-          '¿Primera vez? Entra con Google y creamos tu cuenta al momento.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 12,
-            height: 1.4,
-            fontWeight: FontWeight.w400,
-            // Sobre la arena de la portada, tinta (antes blanco
-            // sobre el mar de FONDO PLAYA).
-            color: JayaloColors.foreground.withValues(alpha: .8),
-          ),
-        ),
-      ),
-      // Puerta para las cuentas creadas en jayalo.com con correo y
-      // contraseña: sin esto quedaban fuera de la app si su correo
-      // no era de Google (2026-08-10).
-      IntroReveal(
-        delay: _accessDelay3,
-        dy: 14,
-        child: TextButton(
-          onPressed: _busy ? null : _openPasswordSheet,
-          child: Text(
-            'Entrar con correo y contraseña',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              // Violeta de acción sobre la arena (antes blanco).
-              color: JayaloColors.primary,
+  /// Con [reveal] los tres entran escalonados DESPUÉS de que la lámina termina
+  /// de deslizar: el botón que cierra el intro no debe llegar antes que el
+  /// texto que lo justifica. El login CLÁSICO la llama con `reveal: false` y
+  /// los pinta al instante — esa pantalla no cambia con el intro.
+  Widget _accessStack(BuildContext context, {bool reveal = true}) {
+    Widget entra(Duration delay, Widget child) =>
+        reveal ? IntroReveal(delay: delay, dy: 14, child: child) : child;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        entra(
+          _accessDelay1,
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _busy ? null : _go,
+              style: _pill,
+              icon: _busy
+                  ? const JayaloSpinner(size: 18, color: Colors.white)
+                  : const Icon(Icons.g_mobiledata, size: 26),
+              label: const Text('Continuar con Google'),
             ),
           ),
         ),
-      ),
-    ],
-  );
+        const SizedBox(height: 12),
+        // El registro es NATIVO desde el onboarding (spec 2026-07-16):
+        // mandar a jayalo.com sería mentirle al usuario nuevo.
+        entra(
+          _accessDelay2,
+          Text(
+            '¿Primera vez? Entra con Google y creamos tu cuenta al momento.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.4,
+              fontWeight: FontWeight.w400,
+              // Sobre la arena de la portada, tinta (antes blanco
+              // sobre el mar de FONDO PLAYA).
+              color: JayaloColors.foreground.withValues(alpha: .8),
+            ),
+          ),
+        ),
+        // Puerta para las cuentas creadas en jayalo.com con correo y
+        // contraseña: sin esto quedaban fuera de la app si su correo
+        // no era de Google (2026-08-10).
+        entra(
+          _accessDelay3,
+          TextButton(
+            onPressed: _busy ? null : _openPasswordSheet,
+            child: Text(
+              'Entrar con correo y contraseña',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                // Violeta de acción sobre la arena (antes blanco).
+                color: JayaloColors.primary,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ── Retardos de las revelaciones del intro ───────────────────────────────
@@ -761,8 +801,11 @@ class _LoginScreenState extends State<LoginScreen> {
 // respecto de otra que ya se está moviendo. Las duraciones y las curvas siguen
 // saliendo enteras de `JayaloMotion`.
 
-/// El primer recuadro, TRAS el aterrizaje de Jayi (`JayaloMotion.introLand`,
-/// 720 ms): entra cuando el salto ya frenó, no encima de él.
+/// El primer recuadro, SOLAPADO con el final del aterrizaje de Jayi
+/// (`JayaloMotion.introLand`, 720 ms): a los 560 ms el salto y su aplastado ya
+/// pasaron y solo queda el último asentamiento, así que los recuadros empiezan
+/// a subir mientras Jayi termina de posarse. Es lo que hace la maqueta
+/// aprobada: esperar los 720 ms enteros dejaba un hueco muerto.
 const _cardDelay1 = Duration(milliseconds: 560);
 
 /// El segundo, 80 ms detrás del primero: se leen como dos, no como un bloque.
@@ -817,12 +860,23 @@ class _WordmarkPainter extends CustomPainter {
 /// El realce va en violeta partiendo el titular por `highlight`; y si el
 /// titular trae `{n}` con un `counter`, ahí entra el contador de créditos.
 class _SlideCopy extends StatelessWidget {
-  const _SlideCopy(this.slide, {this.wordByWord = false});
+  const _SlideCopy(
+    this.slide, {
+    this.wordByWord = false,
+    this.question = false,
+  });
   final IntroSlide slide;
 
   /// El titular de la PREGUNTA entra palabra a palabra: es lo primero que se
   /// lee de la app y se quiere ver escribirse.
   final bool wordByWord;
+
+  /// Esta lámina es la de la pregunta (`IntroStep.ask`), donde el apoyo no es
+  /// apoyo sino LA pregunta y se pinta en violeta y grande. Es una bandera
+  /// explícita y no una comparación de `slide` con `introSlideFor(ask)`: esa
+  /// comparación dependía de la identidad de una instancia const y se rompería
+  /// en silencio en cuanto el copy dejara de serlo.
+  final bool question;
 
   // Pesos 400-700: el 700 es solo del grito, que es un gesto de personaje.
   static const _head = TextStyle(
@@ -866,18 +920,17 @@ class _SlideCopy extends StatelessWidget {
     }
     if (slide.sub.isNotEmpty) {
       children.add(const SizedBox(height: 10));
-      final isQuestion = slide == introSlideFor(IntroStep.ask);
       children.add(
         IntroReveal(
           // Tras el grito, cuando ya rebotó; en la pregunta, cuando el titular
           // terminó de escribirse; en el resto, junto con el titular.
           delay: slide.shout != null
               ? _shoutSubDelay
-              : (isQuestion ? JayaloMotion.intro * 1.4 : Duration.zero),
+              : (question ? JayaloMotion.intro * 1.4 : Duration.zero),
           child: Text(
             slide.sub,
             textAlign: TextAlign.center,
-            style: isQuestion
+            style: question
                 // «¿Tú qué eres?» no es un apoyo: es LA pregunta.
                 ? const TextStyle(
                     fontSize: 19,

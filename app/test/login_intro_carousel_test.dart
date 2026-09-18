@@ -38,6 +38,19 @@ void main() {
   Finder dots() => find.byKey(const Key('intro-dots'));
   int dotCount(WidgetTester t) => t.widget<Row>(dots()).children.length;
 
+  /// Lo que se VE, no lo que está en el árbol: los dos controles de la fila
+  /// superior («Saltar» y el chevrón) se quedan siempre montados y se apagan
+  /// con `AnimatedOpacity`, así que `findsOneWidget` los da por presentes
+  /// aunque el usuario no vea nada.
+  double opacityOf(WidgetTester t, Finder f) => t
+      .widget<AnimatedOpacity>(
+        find.ancestor(of: f, matching: find.byType(AnimatedOpacity)).first,
+      )
+      .opacity;
+  double skipOpacity(WidgetTester t) => opacityOf(t, find.text('Saltar'));
+  double backOpacity(WidgetTester t) =>
+      opacityOf(t, find.byKey(const Key('intro-back')));
+
   final ask = introSlideFor(IntroStep.ask);
   const cliente = 'Soy un cliente';
   const proveedor = 'Soy un proveedor';
@@ -55,6 +68,8 @@ void main() {
     expect(find.text(proveedor), findsOneWidget);
     expect(find.text('Continuar con Google'), findsNothing);
     expect(dotCount(t), 3, reason: 'sin elegir se pintan 3, nunca 1');
+    // En la lámina 0 no hay nada atrás: el chevrón está montado pero APAGADO.
+    expect(backOpacity(t), 0, reason: 'el chevrón no se ve en la lámina 0');
   });
 
   testWidgets('tocar «Soy un proveedor» persiste la elección', (t) async {
@@ -203,6 +218,36 @@ void main() {
     expect(find.textContaining('créditos de regalo'), findsOneWidget);
   });
 
+  testWidgets('con rol guardado el bono se pide UNA sola vez', (t) async {
+    // La rama de rol guardado ESPERA al bono (sin él no se sabe si el
+    // proveedor tiene 3 láminas o 4). Antes lanzaba un SEGUNDO viaje cuando el
+    // primero todavía no había resuelto — que es lo normal, porque lo único
+    // que hay en medio es una lectura de `SharedPreferences`.
+    SharedPreferences.setMockInitialValues({IntroRoleStore.kKey: 'provider'});
+    phone(t);
+    var viajes = 0;
+    final bono = Completer<int>();
+    await t.pumpWidget(
+      MaterialApp(
+        home: LoginScreen(
+          fetchWelcomeCredits: () {
+            viajes++;
+            return bono.future;
+          },
+        ),
+        builder: (ctx, child) => MediaQuery(
+          data: MediaQuery.of(ctx).copyWith(disableAnimations: true),
+          child: child!,
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    bono.complete(5);
+    await t.pumpAndSettle();
+    expect(viajes, 1, reason: 'una RPC por montaje, no dos');
+    expect(find.textContaining('créditos de regalo'), findsOneWidget);
+  });
+
   group('«Saltar» sin elegir lado', () {
     testWidgets('cierra en neutro con los DOS accesos y sin rol guardado', (
       t,
@@ -230,9 +275,11 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.text(proveedor));
       await t.pumpAndSettle();
+      // En la REACCIÓN no se ofrece saltar: Jayi acaba de contestar.
+      expect(skipOpacity(t), 0, reason: '«Saltar» apagado en la reacción');
       await t.tap(find.text('Siguiente'));
       await t.pumpAndSettle();
-      expect(find.text('Saltar'), findsOneWidget);
+      expect(skipOpacity(t), 1, reason: 'y encendido en la de la etiqueta');
       await t.tap(find.text('Saltar'));
       await t.pumpAndSettle();
       expect(find.text('Continuar con Google'), findsOneWidget);
