@@ -459,22 +459,29 @@ class _ScenePainter extends CustomPainter {
     final j = _stroke(2.4, _oroBorde);
     canvas.drawPath(
       Path()
-        ..moveTo(137, 40)
-        ..lineTo(142.5, 40)
-        ..arcToPoint(const Offset(142.5, 46), radius: const Radius.circular(3))
-        ..lineTo(137, 46)
-        ..moveTo(137, 46)
-        ..lineTo(137, 52.5),
+        // barra superior
+        ..moveTo(137.5, 39.5)
+        ..lineTo(146, 39.5)
+        // el palo, a la derecha
+        ..moveTo(143, 39.5)
+        ..lineTo(143, 49)
+        // el gancho: media vuelta por abajo hacia la izquierda
+        ..arcToPoint(
+          const Offset(138, 49),
+          radius: const Radius.circular(2.5),
+          clockwise: true,
+        ),
       j,
     );
     // El brillo cruza una vez por ciclo, recortado al círculo.
+    // Base = -26: el brillo descansa FUERA del círculo (recortado), no cruzando la moneda.
     final gx = animated
         ? _stops(
             _phase(_t, 3.2),
             const [0, .22, .60, 1],
             const [-26, 26, 26, -26],
           )
-        : 0.0;
+        : -26.0;
     canvas.save();
     canvas.clipPath(Path()..addOval(Rect.fromCircle(center: c, radius: r - 1)));
     canvas.translate(gx, 0);
