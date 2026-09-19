@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:jayalo_app/features/admin/recruit_screen.dart';
 import 'package:jayalo_app/features/client/my_requests_screen.dart'
     show timeAgo;
@@ -240,6 +241,76 @@ void main() {
 
       expect(llamadas, 2);
       expect(find.text('Silla de caoba'), findsOneWidget);
+    });
+  });
+
+  group('abrir el detalle', () {
+    testWidgets('tocar la fila abre la solicitud tocada', (t) async {
+      final abiertas = <String>[];
+      await t.pumpWidget(MaterialApp(
+        home: RecruitScreen(
+          load: ({int limit = 100}) async =>
+              [_fila('r1', 'Silla de caoba'), _fila('r2', 'Nevera')],
+          coverage: (ids) async => {'r1': 0, 'r2': 0},
+          onOpen: abiertas.add,
+        ),
+      ));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Nevera'));
+      await t.pumpAndSettle();
+      // El id, no el indice: con el filtro puesto las visibles no coinciden
+      // con `_filas`, y abrir la solicitud equivocada seria peor que no abrir.
+      expect(abiertas, ['r2']);
+    });
+
+    testWidgets('compartir NO abre el detalle', (t) async {
+      final abiertas = <String>[];
+      final compartidas = <String>[];
+      await t.pumpWidget(MaterialApp(
+        home: RecruitScreen(
+          load: ({int limit = 100}) async => [_fila('r1', 'Silla de caoba')],
+          coverage: (ids) async => {'r1': 0},
+          onShare: (r) => compartidas.add(r.id),
+          onOpen: abiertas.add,
+        ),
+      ));
+      await t.pumpAndSettle();
+      await t.tap(find.byIcon(Icons.share_outlined));
+      await t.pumpAndSettle();
+      expect(compartidas, ['r1']);
+      // 🔴 El boton vive DENTRO del `ListTile`: si no se comiera el toque,
+      // compartir abriria ademas el detalle y taparia el WhatsApp recien
+      // lanzado.
+      expect(abiertas, isEmpty);
+    });
+
+    // 🔴 Sin `onOpen` inyectado corre el camino REAL (`context.push`). Sin este
+    // caso, un typo en la ruta o un `:id` que no casa no lo veria nadie hasta
+    // el device: los dos tests de arriba pasan igual con la ruta rota.
+    testWidgets('sin inyectar, empuja la ruta del detalle con el id',
+        (t) async {
+      final router = GoRouter(
+        initialLocation: '/admin/recruit',
+        routes: [
+          GoRoute(
+            path: '/admin/recruit',
+            builder: (_, _) => RecruitScreen(
+              load: ({int limit = 100}) async => [_fila('r2', 'Nevera')],
+              coverage: (ids) async => {'r2': 0},
+            ),
+          ),
+          GoRoute(
+            path: '/client/other-request/:id',
+            builder: (_, s) =>
+                Scaffold(body: Text('detalle ${s.pathParameters['id']}')),
+          ),
+        ],
+      );
+      await t.pumpWidget(MaterialApp.router(routerConfig: router));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Nevera'));
+      await t.pumpAndSettle();
+      expect(find.text('detalle r2'), findsOneWidget);
     });
   });
 }

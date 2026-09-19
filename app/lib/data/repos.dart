@@ -797,6 +797,12 @@ Future<Map<String, dynamic>?> requestById(String id) async => await supa
       // NO `updated_at`: esa se resella con las ofertas de terceros — ver
       // `updatedAtForRequests` más abajo.
       ',content_updated_at'
+      // target_business_id: el "Enviar a proveedor" del admin (detalle de una
+      // solicitud ajena) se apaga en las DIRIGIDAS — su página pública exige
+      // sesión y el enlace llegaría muerto. `authenticated` tiene GRANT de
+      // SELECT sobre esta columna (comprobado con `has_column_privilege`
+      // 2026-09-18): sin él, ESTE select fallaría ENTERO.
+      ',target_business_id'
       ',$requestRequirementCols',
     )
     .eq('id', id)

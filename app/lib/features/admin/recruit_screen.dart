@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/repos.dart';
 import '../../domain/request_share_message.dart';
@@ -27,6 +28,7 @@ class RecruitScreen extends StatefulWidget {
     Future<List<Map<String, dynamic>>> Function({int limit})? load,
     Future<Map<String, int>> Function(List<String>)? coverage,
     this.onShare,
+    this.onOpen,
   })  : load = load ?? adminListRequests,
         coverage = coverage ?? adminRequestCoverage;
 
@@ -35,6 +37,10 @@ class RecruitScreen extends StatefulWidget {
 
   /// La rellena la Task 5. Se inyecta para que el test no abra WhatsApp.
   final void Function(ShareableRequest)? onShare;
+
+  /// Abrir el detalle de la solicitud. Se inyecta para que el test no necesite
+  /// un GoRouter montado (`context.push` revienta bajo un `MaterialApp` pelado).
+  final void Function(String id)? onOpen;
 
   @override
   State<RecruitScreen> createState() => _RecruitScreenState();
@@ -70,6 +76,23 @@ class _RecruitScreenState extends State<RecruitScreen> {
         messenger.showSnackBar(SnackBar(content: Text(m)));
       },
     ));
+  }
+
+  /// Toda la fila lleva al detalle READ-ONLY de la solicitud — la misma
+  /// pantalla que usa "De otros" en Tus solicitudes (`/client/other-request/`),
+  /// que lee por id y se apoya en la RLS: el admin la ve toda. NO se usa
+  /// `/provider/request/:id`: esa es la pantalla de OFERTAR, y además sella la
+  /// solicitud como vista por el proveedor (`opened_requests`) — abrir para
+  /// mirar no puede tocar datos.
+  void _abrir(Map<String, dynamic> fila) {
+    final id = fila['id'] as String?;
+    if (id == null || id.isEmpty) return;
+    final onOpen = widget.onOpen;
+    if (onOpen != null) {
+      onOpen(id);
+      return;
+    }
+    context.push('/client/other-request/$id');
   }
 
   /// `silencioso: true` es el pull-to-refresh: NO pasa por `_cargando`, que
@@ -232,6 +255,7 @@ class _RecruitScreenState extends State<RecruitScreen> {
                                       ? _cobertura[visibles[i]['id']]
                                       : null,
                                   onShare: widget.onShare ?? _compartir,
+                                  onTap: () => _abrir(visibles[i]),
                                 ),
                               ),
                       ),
@@ -263,13 +287,20 @@ class _RecruitScreenState extends State<RecruitScreen> {
 }
 
 class _Fila extends StatelessWidget {
-  const _Fila({required this.fila, required this.fuertes, this.onShare});
+  const _Fila(
+      {required this.fila,
+      required this.fuertes,
+      this.onShare,
+      this.onTap});
   final Map<String, dynamic> fila;
 
   /// null = no se pudo saber (el RPC fallo o esta solicitud ya no aparece en
   /// la cobertura): no se pinta chip.
   final int? fuertes;
   final void Function(ShareableRequest)? onShare;
+
+  /// Tocar la fila (fuera del boton de compartir) abre el detalle.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -285,6 +316,9 @@ class _Fila extends StatelessWidget {
     final creadaEnFecha = creadaEn == null ? null : DateTime.tryParse(creadaEn);
     final fecha = creadaEnFecha == null ? null : timeAgo(creadaEnFecha);
     return ListTile(
+      // El `IconButton` de compartir se come su propio toque, asi que este
+      // `onTap` no se dispara al compartir.
+      onTap: onTap,
       title: Text(titulo == null || titulo.isEmpty ? 'Sin título' : titulo),
       subtitle: Wrap(
         spacing: 8,
