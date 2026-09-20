@@ -199,13 +199,13 @@ String sanitizarIlike(String term) =>
 /// esto, «instalacion» sin tilde no encontraba «Instalación…» (medido
 /// 2026-09-19: 0 con `ilike` crudo, 1 con `search_norm`).
 ///
-/// Los comodines de LIKE y los delimitadores de PostgREST se cambian por
-/// espacio, no se borran, para no pegar palabras que el usuario separó.
+/// `%` `_` `*` son comodines de LIKE/PostgREST; `,` parte los filtros `or=(...)`.
+/// Se reemplazan por espacio, no se borran, para no pegar palabras que el usuario separó.
 String? catalogSearchPattern(String? search) {
   if (search == null) return null;
   final plegado = searchFold(
     search,
-  ).replaceAll(RegExp(r'[%_,()*]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  ).replaceAll(RegExp(r'[%_,*]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
   if (plegado.length < 2) return null;
   return '%$plegado%';
 }

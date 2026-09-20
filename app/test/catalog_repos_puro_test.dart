@@ -39,16 +39,18 @@ void main() {
       expect(catalogSearchPattern('Instalación'), '%instalacion%');
       expect(catalogSearchPattern('  Máquina  '), '%maquina%');
     });
-    test('quita los comodines de LIKE y los delimitadores de PostgREST', () {
-      // `%`/`_` son comodines; `,` `(` `)` `*` rompen el parametro `or=(...)`.
-      expect(catalogSearchPattern('taladro (grande)'), '%taladro grande%');
+    test('quita los comodines de LIKE y la coma, conserva los paréntesis', () {
+      // `%` `_` `*` son comodines de LIKE/PostgREST; `,` parte filtros de or=(...).
+      expect(catalogSearchPattern('taladro (grande)'), '%taladro (grande)%');
       expect(catalogSearchPattern('50%_'), '%50%');
+      expect(catalogSearchPattern('a*b'), '%a b%');
     });
     test('con menos de 2 caracteres utiles no filtra', () {
       expect(catalogSearchPattern('a'), isNull);
       expect(catalogSearchPattern('***'), isNull);
       expect(catalogSearchPattern(null), isNull);
       expect(catalogSearchPattern('   '), isNull);
+      expect(catalogSearchPattern('ab'), '%ab%');
     });
   });
 }
