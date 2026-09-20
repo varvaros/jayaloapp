@@ -6,6 +6,7 @@ import '../../core/create_request_nav.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../../domain/profile_sections.dart';
+import '../../domain/store_ownership.dart';
 import '../shared/brand_kit.dart';
 import '../shared/business_cover_hero.dart';
 import '../shared/business_details_card.dart';
@@ -107,8 +108,19 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       // colapsa "sin permiso"/"sin coordenadas" a null — no hace falta
       // `.catchError` aqui tampoco.
       final locationF = businessLocation(widget.businessId);
-      final duenoF = myBusinessId()
-          .then((id) => id != null && id == widget.businessId)
+      // I-5: NO comparar contra `myBusinessId()` — esa hace `.limit(1)` SIN
+      // `ORDER BY` sobre `provider_businesses` y un proveedor con DOS
+      // negocios podía ver «Pedir cotización» en su propia segunda tienda
+      // (podía devolver el otro negocio). Se compara contra TODOS sus
+      // negocios (`esDuenoDe`, lógica pura, `domain/store_ownership.dart`).
+      // Falla de red ⇒ "no dueño" (misma degradación de antes).
+      final duenoF = myBusinessesForAssistant()
+          .then(
+            (negocios) => esDuenoDe(
+              [for (final n in negocios) n.id],
+              widget.businessId,
+            ),
+          )
           .catchError((_) => false);
       final results = await Future.wait([
         myStoreProducts(widget.businessId),
