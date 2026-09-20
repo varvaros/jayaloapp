@@ -17,14 +17,26 @@ const kCreateRequestRoute = '/client/create';
 /// Tampoco se usa un `bool _pushing` con temporizador: sería un debounce por
 /// tiempo, arbitrario y frágil (si la transición dura más que el timeout, el
 /// bug vuelve). La pila del router es la fuente de verdad real.
-void pushCreateRequestOnce(BuildContext context, {String? seedFrom}) {
+void pushCreateRequestOnce(
+  BuildContext context, {
+  String? seedFrom,
+  String? targetBusinessId,
+}) {
   final router = GoRouter.of(context);
-  final yaAbierta = router.routerDelegate.currentConfiguration.matches
-      .any((m) => m.matchedLocation == kCreateRequestRoute);
+  final yaAbierta = router.routerDelegate.currentConfiguration.matches.any(
+    (m) => m.matchedLocation == kCreateRequestRoute,
+  );
   if (yaAbierta) return;
 
-  final destino = seedFrom == null
+  // `business` = cotización DIRIGIDA a un negocio (botón «Pedir cotización» de
+  // su tienda): la solicitud nace con target_business_id y solo la ve él.
+  final params = <String, String>{
+    if (targetBusinessId != null && targetBusinessId.isNotEmpty)
+      'business': targetBusinessId,
+    'seedFrom': ?seedFrom,
+  };
+  final destino = params.isEmpty
       ? kCreateRequestRoute
-      : '$kCreateRequestRoute?seedFrom=${Uri.encodeComponent(seedFrom)}';
+      : Uri(path: kCreateRequestRoute, queryParameters: params).toString();
   router.push(destino);
 }

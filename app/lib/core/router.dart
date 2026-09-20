@@ -171,7 +171,9 @@ GoRouter buildRouter() => GoRouter(
                                     child: BackGuard(
                                         child: CreateRequestScreen(
                                             seedFrom: state.uri
-                                                .queryParameters['seedFrom'])),
+                                                .queryParameters['seedFrom'],
+                                            targetBusinessId: state.uri
+                                                .queryParameters['business'])),
                                   ),
                                 ),
                               )))),

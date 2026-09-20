@@ -11,25 +11,25 @@ import 'package:jayalo_app/core/create_request_nav.dart';
 /// router, que sí se actualiza síncrona dentro del `push`.
 void main() {
   GoRouter buildRouter() => GoRouter(
-        initialLocation: '/client',
-        routes: [
-          GoRoute(
-            path: '/client',
-            builder: (context, _) => Scaffold(
-              body: Center(
-                child: ElevatedButton(
-                  onPressed: () => pushCreateRequestOnce(context),
-                  child: const Text('crear'),
-                ),
-              ),
+    initialLocation: '/client',
+    routes: [
+      GoRoute(
+        path: '/client',
+        builder: (context, _) => Scaffold(
+          body: Center(
+            child: ElevatedButton(
+              onPressed: () => pushCreateRequestOnce(context),
+              child: const Text('crear'),
             ),
           ),
-          GoRoute(
-            path: '/client/create',
-            builder: (_, _) => const Scaffold(body: Text('ventana')),
-          ),
-        ],
-      );
+        ),
+      ),
+      GoRoute(
+        path: '/client/create',
+        builder: (_, _) => const Scaffold(body: Text('ventana')),
+      ),
+    ],
+  );
 
   testWidgets('tres toques seguidos apilan UNA sola ventana', (tester) async {
     final router = buildRouter();
@@ -103,5 +103,39 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(capturedUri, '/client/create?seedFrom=abc-123');
+  });
+
+  testWidgets('con targetBusinessId abre el creador con ?business=', (
+    tester,
+  ) async {
+    String? ultimaRuta;
+    final router = GoRouter(
+      initialLocation: '/client',
+      routes: [
+        GoRoute(
+          path: '/client',
+          builder: (context, _) => Scaffold(
+            body: ElevatedButton(
+              onPressed: () =>
+                  pushCreateRequestOnce(context, targetBusinessId: 'b-123'),
+              child: const Text('cotizar'),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/client/create',
+          builder: (_, state) {
+            ultimaRuta = state.uri.toString();
+            return const Scaffold(body: Text('ventana'));
+          },
+        ),
+      ],
+    );
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('cotizar'));
+    await tester.pumpAndSettle();
+    expect(find.text('ventana'), findsOneWidget);
+    expect(ultimaRuta, '/client/create?business=b-123');
   });
 }

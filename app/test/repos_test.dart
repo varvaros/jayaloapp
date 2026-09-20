@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/data/repos.dart';
 import 'package:jayalo_app/domain/pricing.dart';
@@ -373,4 +375,17 @@ void main() {
       expect(m[kStatsBuyerKey], isNull);
     });
   });
+
+  test(
+    'submitRequest manda target_business_id desde su parametro, nunca null fijo',
+    () {
+      final src = File('lib/data/repos.dart').readAsStringSync();
+      final inicio = src.indexOf('Future<String?> submitRequest(');
+      expect(inicio, greaterThan(0));
+      final cuerpo = src.substring(inicio, src.indexOf('\n}\n', inicio));
+      expect(cuerpo, contains('String? targetBusinessId'));
+      expect(cuerpo, contains("'target_business_id': targetBusinessId,"));
+      expect(cuerpo, isNot(contains("'target_business_id': null,")));
+    },
+  );
 }

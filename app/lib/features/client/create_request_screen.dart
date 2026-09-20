@@ -188,8 +188,12 @@ class _TemplateRun {
 }
 
 class CreateRequestScreen extends StatefulWidget {
-  const CreateRequestScreen({super.key, this.seedFrom});
+  const CreateRequestScreen({super.key, this.seedFrom, this.targetBusinessId});
   final String? seedFrom;
+
+  /// Negocio al que va DIRIGIDA la solicitud («Pedir cotización» desde su
+  /// tienda). Solo viaja al insert; el resto del flujo no cambia.
+  final String? targetBusinessId;
   @override
   State<CreateRequestScreen> createState() => _CreateRequestScreenState();
 }
@@ -1439,6 +1443,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                     _wsSplit == 'cantidades_especificas'))
             ? _wsNote.trim()
             : null,
+        targetBusinessId: widget.targetBusinessId,
       );
       if (!mounted) return;
       // El botón central pasa a «Publicada» apagado en el `build` siguiente

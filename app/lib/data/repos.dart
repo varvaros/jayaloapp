@@ -601,6 +601,9 @@ Future<String?> submitRequest({
   String? wholesaleSplit,
   String? wholesalePackaging,
   String? wholesaleNote,
+  // Cotización DIRIGIDA a un negocio (botón «Pedir cotización» de su tienda,
+  // paridad con ProviderQuoteDialog de la web). Null = solicitud abierta al rubro.
+  String? targetBusinessId,
 }) async {
   final uid = supa.auth.currentUser!.id;
   final isService = kind == 'servicio';
@@ -686,7 +689,7 @@ Future<String?> submitRequest({
               ? wholesalePackaging
               : null,
           'wholesale_note': (!isService && wholesale) ? wholesaleNote : null,
-          'target_business_id': null,
+          'target_business_id': targetBusinessId,
         })
         .select('id')
         .single();

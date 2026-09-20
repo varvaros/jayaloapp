@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
+import '../../core/create_request_nav.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../../domain/profile_sections.dart';
@@ -71,6 +72,10 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
   /// `lat`/`lng` en null) a un solo `null`.
   ({double lat, double lng})? _location;
 
+  /// Dueño de este negocio mirando su propia tienda: oculta «Pedir
+  /// cotización» (pedido PO 2026-09-20, paridad con la web).
+  bool _esDueno = false;
+
   @override
   void initState() {
     super.initState();
@@ -81,17 +86,20 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
     try {
       // Bloque de confianza: adorno bajo el nombre. Si la RPC falla, el bloque
       // simplemente no aparece — nunca se tira la tienda a la pantalla de error.
-      final statsF = businessStorefrontStats(widget.businessId)
-          .catchError((_) => null);
+      final statsF = businessStorefrontStats(
+        widget.businessId,
+      ).catchError((_) => null);
       // Identidad: si falla, degrada a "Proveedor" sin logo (no rompe la
       // pantalla — mismo trato best-effort que el resto de este bloque).
-      final identityF =
-          businessPublicIdentity(widget.businessId).catchError((_) => null);
+      final identityF = businessPublicIdentity(
+        widget.businessId,
+      ).catchError((_) => null);
       // Paquetes: mientras la migración `20260809130000_packages_public_read
       // .sql` no esté aplicada, RLS filtra a lista vacía sin lanzar — igual
       // trato best-effort, la sección de PAQUETES simplemente no se pinta.
-      final paquetesF = storePackages(widget.businessId)
-          .catchError((_) => <Map<String, dynamic>>[]);
+      final paquetesF = storePackages(
+        widget.businessId,
+      ).catchError((_) => <Map<String, dynamic>>[]);
       // `businessesPhysicalLocation` ya degrada a `{}` internamente si la
       // columna aún no existe — no hace falta `.catchError` aquí.
       final physicalF = businessesPhysicalLocation([widget.businessId]);
@@ -99,6 +107,9 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       // colapsa "sin permiso"/"sin coordenadas" a null — no hace falta
       // `.catchError` aqui tampoco.
       final locationF = businessLocation(widget.businessId);
+      final duenoF = myBusinessId()
+          .then((id) => id != null && id == widget.businessId)
+          .catchError((_) => false);
       final results = await Future.wait([
         myStoreProducts(widget.businessId),
         myPortfolioItems(widget.businessId),
@@ -110,6 +121,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       final paquetes = await paquetesF;
       final physical = await physicalF;
       final location = await locationF;
+      final esDueno = await duenoF;
       if (!mounted) return;
       setState(() {
         _productos = prod;
@@ -120,6 +132,7 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
         _identity = identity;
         _hasPhysicalLocation = physical[widget.businessId] ?? false;
         _location = location;
+        _esDueno = esDueno;
         _loading = false;
       });
     } catch (_) {
@@ -129,32 +142,40 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Column(children: [
-          VioletHeader(
-            leading: HeaderCircleButton(
-              icon: Icons.arrow_back,
-              tooltip: 'Atrás',
-              onTap: () => Navigator.of(context).maybePop(),
-            ),
-            title: _identity?.name ?? 'Proveedor',
-            subtitle: 'Tienda del proveedor',
+    body: Column(
+      children: [
+        VioletHeader(
+          leading: HeaderCircleButton(
+            icon: Icons.arrow_back,
+            tooltip: 'Atrás',
+            onTap: () => Navigator.of(context).maybePop(),
           ),
-          Expanded(
-            child: _loading
-                ? const JayaloLoaderBlock()
-                : ProviderStoreView(
-                    identity: _identity,
-                    stats: _stats,
-                    hasPhysicalLocation: _hasPhysicalLocation,
-                    location: _location,
-                    productos: _productos,
-                    servicios: _servicios,
-                    paquetes: _paquetes,
-                    trabajos: _portfolio,
-                  ),
-          ),
-        ]),
-      );
+          title: _identity?.name ?? 'Proveedor',
+          subtitle: 'Tienda del proveedor',
+        ),
+        Expanded(
+          child: _loading
+              ? const JayaloLoaderBlock()
+              : ProviderStoreView(
+                  identity: _identity,
+                  stats: _stats,
+                  hasPhysicalLocation: _hasPhysicalLocation,
+                  location: _location,
+                  productos: _productos,
+                  servicios: _servicios,
+                  paquetes: _paquetes,
+                  trabajos: _portfolio,
+                  onCotizar: (_esDueno || supa.auth.currentUser == null)
+                      ? null
+                      : () => pushCreateRequestOnce(
+                          context,
+                          targetBusinessId: widget.businessId,
+                        ),
+                ),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Solo dibuja, sin fetch propio — separada de [ProviderStoreScreen] (que
@@ -175,6 +196,7 @@ class ProviderStoreView extends StatelessWidget {
     required this.servicios,
     required this.paquetes,
     required this.trabajos,
+    this.onCotizar,
   });
 
   final BusinessIdentity? identity;
@@ -193,6 +215,11 @@ class ProviderStoreView extends StatelessWidget {
   final List<Map<String, dynamic>> servicios;
   final List<Map<String, dynamic>> paquetes;
   final List<Map<String, dynamic>> trabajos;
+
+  /// «Pedir cotización» (paridad con la tienda web, `business.$id.tsx`): abre el
+  /// creador con este negocio como destino. Null = no se pinta el bloque: el
+  /// dueño mirando su propia tienda, o sin sesión.
+  final VoidCallback? onCotizar;
 
   static String _fmtResp(double minutes) {
     final m = minutes.round();
@@ -224,69 +251,87 @@ class ProviderStoreView extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       // El logo y el nombre YA no van aquí: los carga `BusinessCoverHero`
       // desde el 2026-08-01. Repetirlos era verlos dos veces seguidas.
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(
-            child: _statCell(
-              context,
-              hasRating
-                  ? '${StarScore.formatScore(s.avgRating!)}/10'
-                  : 'Nuevo',
-              hasRating
-                  ? '${s.reviewsCount} reseña${s.reviewsCount == 1 ? '' : 's'}'
-                  : 'sin reseñas aún',
-              star: hasRating,
-              score: hasRating ? s.avgRating : null,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _statCell(context, '${s.completedJobs}',
-                s.completedJobs == 1 ? 'trabajo completado' : 'trabajos completados'),
-          ),
-        ]),
-        const SizedBox(height: 8),
-        Row(children: [
-          Expanded(
-            child: _statCell(
-              context,
-              s.medianResponseMinutes != null
-                  ? _fmtResp(s.medianResponseMinutes!)
-                  : '—',
-              'tiempo de respuesta',
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _statCell(
-              context,
-              s.memberSinceYear?.toString() ?? '—',
-              'miembro desde',
-            ),
-          ),
-        ]),
-        if (badges.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Divider(height: 1, color: cs.outlineVariant.withValues(alpha: .5)),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 14,
-            runSpacing: 8,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              for (final (icon, label) in badges)
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(icon, size: 15, color: JayaloColors.success),
-                  const SizedBox(width: 5),
-                  Text(label,
-                      style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: JayaloColors.success)),
-                ]),
+              Expanded(
+                child: _statCell(
+                  context,
+                  hasRating
+                      ? '${StarScore.formatScore(s.avgRating!)}/10'
+                      : 'Nuevo',
+                  hasRating
+                      ? '${s.reviewsCount} reseña${s.reviewsCount == 1 ? '' : 's'}'
+                      : 'sin reseñas aún',
+                  star: hasRating,
+                  score: hasRating ? s.avgRating : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _statCell(
+                  context,
+                  '${s.completedJobs}',
+                  s.completedJobs == 1
+                      ? 'trabajo completado'
+                      : 'trabajos completados',
+                ),
+              ),
             ],
           ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _statCell(
+                  context,
+                  s.medianResponseMinutes != null
+                      ? _fmtResp(s.medianResponseMinutes!)
+                      : '—',
+                  'tiempo de respuesta',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _statCell(
+                  context,
+                  s.memberSinceYear?.toString() ?? '—',
+                  'miembro desde',
+                ),
+              ),
+            ],
+          ),
+          if (badges.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Divider(height: 1, color: cs.outlineVariant.withValues(alpha: .5)),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 14,
+              runSpacing: 8,
+              children: [
+                for (final (icon, label) in badges)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon, size: 15, color: JayaloColors.success),
+                      const SizedBox(width: 5),
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: JayaloColors.success,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 
@@ -300,7 +345,46 @@ class ProviderStoreView extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: OpenInMapsButton(lat: loc.lat, lng: loc.lng, label: 'Ver en el mapa'),
+        child: OpenInMapsButton(
+          lat: loc.lat,
+          lng: loc.lng,
+          label: 'Ver en el mapa',
+        ),
+      ),
+    );
+  }
+
+  /// Bloque de cotización directa. Copy literal de la web
+  /// (`src/routes/provider/business.$id.tsx:1405-1414`).
+  Widget? _cotizarBlock(BuildContext context) {
+    final onTap = onCotizar;
+    if (onTap == null) return null;
+    final cs = Theme.of(context).colorScheme;
+    final nombre = identity?.name ?? 'este proveedor';
+    return JayaloCard(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Describe lo que necesitas y $nombre te manda una oferta. '
+            'Publicar es gratis y también te ofertan otros proveedores del rubro.',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.35,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onTap,
+              icon: const Icon(Icons.chat_bubble_outline, size: 18),
+              label: const Text('Pedir cotización'),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -312,10 +396,7 @@ class ProviderStoreView extends StatelessWidget {
     if (raw == null) return null;
     final cat = categoryNameById((raw['category_id'] as String?)?.trim());
     final city = (raw['city'] as String?)?.trim();
-    final partes = [
-      ?cat,
-      if (city != null && city.isNotEmpty) city,
-    ];
+    final partes = [?cat, if (city != null && city.isNotEmpty) city];
     return partes.isEmpty ? null : partes.join(' · ');
   }
 
@@ -339,8 +420,13 @@ class ProviderStoreView extends StatelessWidget {
   /// cifra. ⚠️ Esta es la VITRINA del proveedor: antes decía «4.8» junto a una
   /// estrella suelta y se leía como 4,8 **sobre 5**, o sea que un proveedor malo
   /// parecía excelente justo donde el cliente decide.
-  Widget _statCell(BuildContext context, String value, String label,
-      {bool star = false, double? score}) {
+  Widget _statCell(
+    BuildContext context,
+    String value,
+    String label, {
+    bool star = false,
+    double? score,
+  }) {
     final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -348,34 +434,48 @@ class ProviderStoreView extends StatelessWidget {
         color: cs.surfaceContainerHighest.withValues(alpha: .5),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(children: [
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          if (star && score == null) ...[
-            const Icon(Icons.star_rounded, size: 16, color: Color(0xFFF5A623)),
-            const SizedBox(width: 3),
-          ],
-          Flexible(
-            child: Text(value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
+      child: Column(
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (star && score == null) ...[
+                const Icon(
+                  Icons.star_rounded,
+                  size: 16,
+                  color: Color(0xFFF5A623),
+                ),
+                const SizedBox(width: 3),
+              ],
+              Flexible(
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: jayaloHead(context))),
+                    color: jayaloHead(context),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ]),
-        if (score != null) ...[
-          const SizedBox(height: 3),
-          StarScore(score: score, size: 12, showNumber: false),
-        ],
-        const SizedBox(height: 2),
-        Text(label,
+          if (score != null) ...[
+            const SizedBox(height: 3),
+            StarScore(score: score, size: 12, showNumber: false),
+          ],
+          const SizedBox(height: 2),
+          Text(
+            label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 10.5, color: cs.onSurfaceVariant)),
-      ]),
+            style: TextStyle(fontSize: 10.5, color: cs.onSurfaceVariant),
+          ),
+        ],
+      ),
     );
   }
 
@@ -399,17 +499,19 @@ class ProviderStoreView extends StatelessWidget {
   /// tratamiento que `business.$id.tsx` (web): siguen su bloque propio, sin
   /// reordenarse, siempre después de productos/servicios.
   List<ProfileSection> get _catalogOrder => profileSections(
-        offers: identity?.raw['offers'] as String?,
-        productCount: productos.length,
-        serviceCount: servicios.length,
-        packageCount: paquetes.length,
-      );
+    offers: identity?.raw['offers'] as String?,
+    productCount: productos.length,
+    serviceCount: servicios.length,
+    packageCount: paquetes.length,
+  );
 
   @override
   Widget build(BuildContext context) {
     final repCard = _repCard(context);
-    final physicalBadge =
-        PhysicalLocationBadge.maybe(hasPhysicalLocation: hasPhysicalLocation);
+    final cotizarBlock = _cotizarBlock(context);
+    final physicalBadge = PhysicalLocationBadge.maybe(
+      hasPhysicalLocation: hasPhysicalLocation,
+    );
     final locationButton = _locationButton();
     final servicesBlock = _servicesBlock();
     final teamGallery = TeamGalleryBlock.maybe(
@@ -417,60 +519,77 @@ class ProviderStoreView extends StatelessWidget {
       teamPhotos: (identity?.raw['team_photos'] as List?)?.cast<String>(),
     );
     final catalogEmpty =
-        productos.isEmpty && servicios.isEmpty && paquetes.isEmpty && trabajos.isEmpty;
+        productos.isEmpty &&
+        servicios.isEmpty &&
+        paquetes.isEmpty &&
+        trabajos.isEmpty;
     final order = _catalogOrder;
-    return CustomScrollView(slivers: [
-      SliverToBoxAdapter(
-        child: BusinessCoverHero(
-          name: identity?.name ?? 'Proveedor',
-          coverUrl: identity?.coverUrl,
-          logoUrl: identity?.logoUrl,
-          subtitle: _subtitle(),
-          seals: _sealLabels(),
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: BusinessCoverHero(
+            name: identity?.name ?? 'Proveedor',
+            coverUrl: identity?.coverUrl,
+            logoUrl: identity?.logoUrl,
+            subtitle: _subtitle(),
+            seals: _sealLabels(),
+          ),
         ),
-      ),
-      // Pegado a la portada (PO 2026-08-18): lo primero bajo ella, encima de
-      // servicios y de la tarjeta de reputacion.
-      if (physicalBadge != null) SliverToBoxAdapter(child: physicalBadge),
-      if (servicesBlock != null) SliverToBoxAdapter(child: servicesBlock),
-      if (repCard != null) SliverToBoxAdapter(child: repCard),
-      if (locationButton != null) SliverToBoxAdapter(child: locationButton),
-      if (teamGallery != null) SliverToBoxAdapter(child: teamGallery),
-      SliverToBoxAdapter(
-        child: BusinessDetailsCard(business: identity?.raw ?? const {}),
-      ),
-      for (final section in order)
-        if (section == ProfileSection.productos && productos.isNotEmpty)
-          ..._itemsSection('PRODUCTOS', productos)
-        else if (section == ProfileSection.servicios && servicios.isNotEmpty)
-          ..._itemsSection('SERVICIOS', servicios),
-      if (paquetes.isNotEmpty) ..._carrilSection('PAQUETES', paquetes,
-          height: kPackageCarrilHeight,
-          tileBuilder: (p) => PackageTile(
-              item: p, onTap: () => context.push('/package/${p['id']}'))),
-      if (trabajos.isNotEmpty) ..._carrilSection('TRABAJOS', trabajos,
-          height: kPortfolioCarrilHeight,
-          tileBuilder: (t) => PortfolioTile(
+        // Pegado a la portada (PO 2026-08-18): lo primero bajo ella, encima de
+        // servicios y de la tarjeta de reputacion.
+        if (physicalBadge != null) SliverToBoxAdapter(child: physicalBadge),
+        if (servicesBlock != null) SliverToBoxAdapter(child: servicesBlock),
+        if (repCard != null) SliverToBoxAdapter(child: repCard),
+        if (cotizarBlock != null) SliverToBoxAdapter(child: cotizarBlock),
+        if (locationButton != null) SliverToBoxAdapter(child: locationButton),
+        if (teamGallery != null) SliverToBoxAdapter(child: teamGallery),
+        SliverToBoxAdapter(
+          child: BusinessDetailsCard(business: identity?.raw ?? const {}),
+        ),
+        for (final section in order)
+          if (section == ProfileSection.productos && productos.isNotEmpty)
+            ..._itemsSection('PRODUCTOS', productos)
+          else if (section == ProfileSection.servicios && servicios.isNotEmpty)
+            ..._itemsSection('SERVICIOS', servicios),
+        if (paquetes.isNotEmpty)
+          ..._carrilSection(
+            'PAQUETES',
+            paquetes,
+            height: kPackageCarrilHeight,
+            tileBuilder: (p) => PackageTile(
+              item: p,
+              onTap: () => context.push('/package/${p['id']}'),
+            ),
+          ),
+        if (trabajos.isNotEmpty)
+          ..._carrilSection(
+            'TRABAJOS',
+            trabajos,
+            height: kPortfolioCarrilHeight,
+            tileBuilder: (t) => PortfolioTile(
               item: t,
               onTap: () => showPortfolioGallery(
-                    context,
-                    images:
-                        (t['image_urls'] as List?)?.cast<String>() ?? const [],
-                    title: t['title'] as String? ?? '',
-                    description: t['description'] as String?,
-                  ))),
-      if (catalogEmpty) _empty(context),
-      SliverToBoxAdapter(
-        child: SizedBox(height: 12 + navBarReservedSpace(context)),
-      ),
-    ]);
+                context,
+                images: (t['image_urls'] as List?)?.cast<String>() ?? const [],
+                title: t['title'] as String? ?? '',
+                description: t['description'] as String?,
+              ),
+            ),
+          ),
+        if (catalogEmpty) _empty(context),
+        SliverToBoxAdapter(
+          child: SizedBox(height: 12 + navBarReservedSpace(context)),
+        ),
+      ],
+    );
   }
 
   /// Encabezado + lista vertical de una sección de PRODUCTOS/SERVICIOS —
   /// mismo `ProductListCard` de siempre, sin `onTap`/`onLongPress` (tienda
   /// ajena: solo lectura, la tarjeta navega a su detalle público por
   /// defecto).
-  List<Widget> _itemsSection(String title, List<Map<String, dynamic>> items) => [
+  List<Widget> _itemsSection(String title, List<Map<String, dynamic>> items) =>
+      [
         SliverToBoxAdapter(child: SectionHeader(text: title)),
         SliverPadding(
           padding: const EdgeInsets.only(top: 4, bottom: 8),
@@ -494,19 +613,20 @@ class ProviderStoreView extends StatelessWidget {
     required double height,
     required Widget Function(Map<String, dynamic> item) tileBuilder,
   }) => [
-        SliverToBoxAdapter(child: SectionHeader(text: title)),
-        SliverToBoxAdapter(
-          child: TileCarril(items: items, height: height, tileBuilder: tileBuilder),
-        ),
-      ];
+    SliverToBoxAdapter(child: SectionHeader(text: title)),
+    SliverToBoxAdapter(
+      child: TileCarril(items: items, height: height, tileBuilder: tileBuilder),
+    ),
+  ];
 
   Widget _empty(BuildContext context) => SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Text('Este proveedor aún no publica nada en su tienda.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Text(
+        'Este proveedor aún no publica nada en su tienda.',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    ),
+  );
 }
