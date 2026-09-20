@@ -53,4 +53,45 @@ void main() {
       expect(catalogSearchPattern('ab'), '%ab%');
     });
   });
+
+  group(
+    'catalogFiltroDeTexto (M-3): un patrón nulo NUNCA es "sin resultados"',
+    () {
+      // Antes de la Task 3 la app hacía `ilike` crudo y un carácter SÍ
+      // casaba: `catalogProducts` traducía `pattern == null` con búsqueda no
+      // vacía a `return const []`, una regresión no declarada. Paridad con
+      // la web (`searchPattern` de `src/lib/searchTerm.ts`: "null significa
+      // no apliques el filtro"): con menos de 2 caracteres se enseña el
+      // catálogo COMPLETO, igual que sin búsqueda.
+      test('un carácter ("a") ⇒ NO filtra (catálogo completo)', () {
+        final r = catalogFiltroDeTexto('a');
+        expect(r.filtrar, isFalse);
+        expect(r.patron, isNull);
+      });
+
+      test('término vacío ⇒ NO filtra', () {
+        final r = catalogFiltroDeTexto('');
+        expect(r.filtrar, isFalse);
+        expect(r.patron, isNull);
+      });
+
+      test('sin término (null) ⇒ NO filtra', () {
+        final r = catalogFiltroDeTexto(null);
+        expect(r.filtrar, isFalse);
+        expect(r.patron, isNull);
+      });
+
+      test('solo símbolos ("***") ⇒ NO filtra (no "sin resultados")', () {
+        final r = catalogFiltroDeTexto('***');
+        expect(r.filtrar, isFalse);
+        expect(r.patron, isNull);
+      });
+
+      test('término útil (2+ caracteres) ⇒ SÍ filtra con su patrón', () {
+        final r = catalogFiltroDeTexto('ab');
+        expect(r.filtrar, isTrue);
+        expect(r.patron, '%ab%');
+      });
+    },
+  );
 }

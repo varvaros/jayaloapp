@@ -3298,13 +3298,6 @@ const catalogProductCols =
     'price_min,price_max,image_urls,category_id,rubro,kind,'
     'condition,offers_shipping,color,offer_defaults';
 
-/// Saneo de un término de búsqueda antes de meterlo en un patrón `ilike`/`or`
-/// de PostgREST. Reusa [sanitizarIlike] (mismo saneo que el buscador de
-/// negocios): además de `%`/`,`, quita `(`/`)`/`*`, que son delimitadores
-/// estructurales del propio parámetro `or=(...)` — un término como
-/// `taladro (grande)` rompía el grupo y PostgREST devolvía 400.
-String sanitizeCatalogSearchTerm(String term) => sanitizarIlike(term);
-
 /// Paridad con `productHitsQ` de la web (`requests/index.tsx`): catálogo
 /// público de productos/servicios de CUALQUIER proveedor, sin paginación por
 /// cursor (la web tampoco la tiene en esta vista — `limit(60)` alcanza).
@@ -3348,15 +3341,15 @@ Future<List<Map<String, dynamic>>> catalogProducts({
   // Busca sobre `search_norm` (minúsculas, sin tildes, nombre + descripción +
   // rubro), plegando el término igual en el cliente. Antes era un `ilike`
   // crudo sobre las tres columnas y «instalacion» sin tilde daba 0.
-  final pattern = catalogSearchPattern(search);
-  // Una búsqueda hecha solo de símbolos («***», «()») queda vacía tras
-  // sanear: no hay artículo que la satisfaga, y omitir el filtro devolvería
-  // el catálogo entero.
-  if (search != null && search.trim().isNotEmpty && pattern == null) {
-    return const [];
-  }
-  if (pattern != null) {
-    q = q.like('search_norm', pattern);
+  //
+  // M-3 (revisión final 09-20): un patrón nulo NUNCA es "sin resultados" —
+  // ver `catalogFiltroDeTexto`. Antes esta función devolvía `const []` con
+  // un término de UN carácter (regresión frente al `ilike` crudo de antes de
+  // la Task 3, y frente a la web, que con menos de 2 caracteres enseña el
+  // catálogo completo).
+  final filtro = catalogFiltroDeTexto(search);
+  if (filtro.filtrar) {
+    q = q.like('search_norm', filtro.patron!);
   }
   return List<Map<String, dynamic>>.from(
     await q.order('created_at', ascending: false).limit(60),

@@ -199,8 +199,12 @@ String sanitizarIlike(String term) =>
 /// esto, «instalacion» sin tilde no encontraba «Instalación…» (medido
 /// 2026-09-19: 0 con `ilike` crudo, 1 con `search_norm`).
 ///
-/// `%` `_` `*` son comodines de LIKE/PostgREST; `,` parte los filtros `or=(...)`.
-/// Se reemplazan por espacio, no se borran, para no pegar palabras que el usuario separó.
+/// `%` `_` `*` son comodines de LIKE/PostgREST. La coma NO parte nada en este
+/// call site (un solo `.like()`, sin `or=(...)`) — se quita por PARIDAD con
+/// el saneador de la web (`normalizeSearchTerm` de `src/lib/searchTerm.ts`),
+/// que sí la quita porque ahí se reutiliza para armar filtros `or=(...)`.
+/// Todos se reemplazan por espacio, no se borran, para no pegar palabras que
+/// el usuario separó.
 String? catalogSearchPattern(String? search) {
   if (search == null) return null;
   final plegado = searchFold(
@@ -208,6 +212,23 @@ String? catalogSearchPattern(String? search) {
   ).replaceAll(RegExp(r'[%_,*]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
   if (plegado.length < 2) return null;
   return '%$plegado%';
+}
+
+/// Qué hacer con el catálogo dado un término de búsqueda crudo: filtrar (con
+/// [catalogSearchPattern]) o no filtrar en absoluto.
+///
+/// Bug M-3 (revisión final 09-20): `catalogProducts` (`data/repos.dart`)
+/// traducía `catalogSearchPattern(search) == null` con una búsqueda no vacía
+/// a "devuelve la lista VACÍA" — un término de UN carácter daba catálogo
+/// vacío en la app y catálogo ENTERO en la web. Antes de la Task 3 la app
+/// hacía `ilike` crudo y un carácter SÍ casaba, así que era una regresión no
+/// declarada. `catalogSearchPattern == null` SIEMPRE significa «no apliques
+/// el filtro» (paridad con `searchPattern` de la web), nunca «sin
+/// resultados» — sea porque el término mide menos de 2 caracteres o porque
+/// quedó vacío tras sanear símbolos («***»).
+({bool filtrar, String? patron}) catalogFiltroDeTexto(String? search) {
+  final patron = catalogSearchPattern(search);
+  return (filtrar: patron != null, patron: patron);
 }
 
 String queHace(String? description, String? categoriaDominante) {
