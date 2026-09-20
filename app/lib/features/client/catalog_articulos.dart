@@ -6,6 +6,7 @@
 library;
 
 import '../../domain/catalog.dart';
+import '../../domain/search_fold.dart';
 
 typedef NegocioCatalogo = ({
   String name,
@@ -190,6 +191,24 @@ Map<String, int> sumarConteos(Map<String, int>? a, Map<String, int>? b) {
 /// Sin comodines ni operadores de PostgREST (`*` también es comodín en ilike).
 String sanitizarIlike(String term) =>
     term.replaceAll(RegExp(r'[%_,()*]'), '').trim();
+
+/// Patrón LIKE para `provider_products.search_norm`, o `null` si no hay
+/// término aprovechable. Paridad con `searchPattern` de la web
+/// (`src/lib/searchTerm.ts`): la columna ya está en minúsculas y sin tildes
+/// (`jayalo_norm`), así que el término se pliega IGUAL en el cliente. Sin
+/// esto, «instalacion» sin tilde no encontraba «Instalación…» (medido
+/// 2026-09-19: 0 con `ilike` crudo, 1 con `search_norm`).
+///
+/// Los comodines de LIKE y los delimitadores de PostgREST se cambian por
+/// espacio, no se borran, para no pegar palabras que el usuario separó.
+String? catalogSearchPattern(String? search) {
+  if (search == null) return null;
+  final plegado = searchFold(
+    search,
+  ).replaceAll(RegExp(r'[%_,()*]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (plegado.length < 2) return null;
+  return '%$plegado%';
+}
 
 String queHace(String? description, String? categoriaDominante) {
   final d = description?.trim() ?? '';

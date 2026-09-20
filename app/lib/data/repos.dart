@@ -3342,17 +3342,18 @@ Future<List<Map<String, dynamic>>> catalogProducts({
   if (wholesaleBizIds != null) q = q.inFilter('business_id', wholesaleBizIds);
   if (categoryId != null) q = q.eq('category_id', categoryId);
   if (rubro != null) q = q.ilike('rubro', rubro);
-  final safe = search == null ? '' : sanitizeCatalogSearchTerm(search);
+  // Busca sobre `search_norm` (minúsculas, sin tildes, nombre + descripción +
+  // rubro), plegando el término igual en el cliente. Antes era un `ilike`
+  // crudo sobre las tres columnas y «instalacion» sin tilde daba 0.
+  final pattern = catalogSearchPattern(search);
   // Una búsqueda hecha solo de símbolos («***», «()») queda vacía tras
   // sanear: no hay artículo que la satisfaga, y omitir el filtro devolvería
   // el catálogo entero.
-  if (search != null && search.trim().isNotEmpty && safe.isEmpty) {
+  if (search != null && search.trim().isNotEmpty && pattern == null) {
     return const [];
   }
-  if (safe.isNotEmpty) {
-    q = q.or(
-      'name.ilike.%$safe%,description.ilike.%$safe%,rubro.ilike.%$safe%',
-    );
+  if (pattern != null) {
+    q = q.like('search_norm', pattern);
   }
   return List<Map<String, dynamic>>.from(
     await q.order('created_at', ascending: false).limit(60),

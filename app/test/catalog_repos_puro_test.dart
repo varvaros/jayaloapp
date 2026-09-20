@@ -33,4 +33,22 @@ void main() {
     expect(out.single['avg_rating'], 9.0);
     expect(out.single['kind'], 'paquete');
   });
+
+  group('catalogSearchPattern — paridad con searchPattern de la web', () {
+    test('pliega tildes y mayusculas y envuelve en comodines', () {
+      expect(catalogSearchPattern('Instalación'), '%instalacion%');
+      expect(catalogSearchPattern('  Máquina  '), '%maquina%');
+    });
+    test('quita los comodines de LIKE y los delimitadores de PostgREST', () {
+      // `%`/`_` son comodines; `,` `(` `)` `*` rompen el parametro `or=(...)`.
+      expect(catalogSearchPattern('taladro (grande)'), '%taladro grande%');
+      expect(catalogSearchPattern('50%_'), '%50%');
+    });
+    test('con menos de 2 caracteres utiles no filtra', () {
+      expect(catalogSearchPattern('a'), isNull);
+      expect(catalogSearchPattern('***'), isNull);
+      expect(catalogSearchPattern(null), isNull);
+      expect(catalogSearchPattern('   '), isNull);
+    });
+  });
 }
