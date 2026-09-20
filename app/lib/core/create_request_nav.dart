@@ -30,10 +30,16 @@ void pushCreateRequestOnce(
 
   // `business` = cotización DIRIGIDA a un negocio (botón «Pedir cotización» de
   // su tienda): la solicitud nace con target_business_id y solo la ve él.
+  //
+  // M-16 (revisión final 09-20): MISMO criterio de "ausente" para los dos
+  // parámetros — antes `seedFrom` usaba el spread null-aware de mapa
+  // (`'seedFrom': ?seedFrom`), que solo omite `null` y dejaba pasar la
+  // cadena vacía (`?seedFrom=`), mientras `business` sí exigía
+  // `isNotEmpty`. `null` O cadena vacía cuentan como "no vino" en los dos.
   final params = <String, String>{
     if (targetBusinessId != null && targetBusinessId.isNotEmpty)
       'business': targetBusinessId,
-    'seedFrom': ?seedFrom,
+    if (seedFrom != null && seedFrom.isNotEmpty) 'seedFrom': seedFrom,
   };
   final destino = params.isEmpty
       ? kCreateRequestRoute

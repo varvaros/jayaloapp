@@ -138,4 +138,85 @@ void main() {
     expect(find.text('ventana'), findsOneWidget);
     expect(ultimaRuta, '/client/create?business=b-123');
   });
+
+  testWidgets(
+    // Bug M-16 (revisión final 09-20): `?seedFrom` (spread null-aware de
+    // mapa) dejaba pasar la cadena vacía, mientras `business` exigía
+    // `isNotEmpty` — dos criterios distintos para "ausente". Con
+    // `seedFrom: ''` el guard viejo mandaba `?seedFrom=` a la pantalla
+    // destino en vez de omitirlo.
+    'con seedFrom vacío ("") NO manda el parámetro, igual que con business vacío',
+    (tester) async {
+      String? ultimaRuta;
+      final router = GoRouter(
+        initialLocation: '/client',
+        routes: [
+          GoRoute(
+            path: '/client',
+            builder: (context, _) => Scaffold(
+              body: ElevatedButton(
+                onPressed: () => pushCreateRequestOnce(context, seedFrom: ''),
+                child: const Text('crear'),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/client/create',
+            builder: (_, state) {
+              ultimaRuta = state.uri.toString();
+              return const Scaffold(body: Text('ventana'));
+            },
+          ),
+        ],
+      );
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('crear'));
+      await tester.pumpAndSettle();
+      expect(find.text('ventana'), findsOneWidget);
+      expect(ultimaRuta, '/client/create');
+    },
+  );
+
+  testWidgets(
+    'business Y seedFrom juntos sobreviven los dos, sin que uno pise al otro',
+    (tester) async {
+      String? ultimaRuta;
+      final router = GoRouter(
+        initialLocation: '/client',
+        routes: [
+          GoRoute(
+            path: '/client',
+            builder: (context, _) => Scaffold(
+              body: ElevatedButton(
+                onPressed: () => pushCreateRequestOnce(
+                  context,
+                  targetBusinessId: 'b-123',
+                  seedFrom: 'abc-123',
+                ),
+                child: const Text('crear'),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/client/create',
+            builder: (_, state) {
+              ultimaRuta = state.uri.toString();
+              return const Scaffold(body: Text('ventana'));
+            },
+          ),
+        ],
+      );
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('crear'));
+      await tester.pumpAndSettle();
+      expect(find.text('ventana'), findsOneWidget);
+      // La pantalla destino lee `business` y `seedFrom` por CLAVE
+      // (`core/router.dart`), así que lo que importa es que las dos lleguen
+      // con su valor — se ancla también la forma exacta de la URL (mismo
+      // orden con el que las arma `pushCreateRequestOnce`).
+      expect(ultimaRuta, '/client/create?business=b-123&seedFrom=abc-123');
+    },
+  );
 }
