@@ -54,6 +54,12 @@ import 'session_state.dart';
 /// silencio.
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
+/// M-16 (revisión final 09-20): la guarda de "ausente" de `pushCreateRequestOnce`
+/// (`core/create_request_nav.dart`, `null` O cadena vacía) vive también en quien
+/// LEE la URL, no solo en quien la arma — un enlace externo o un `?seedFrom=`
+/// tecleado a mano no pasa por el empujador.
+String? _seedFromParam(String? raw) => (raw == null || raw.isEmpty) ? null : raw;
+
 GoRouter buildRouter() => GoRouter(
       initialLocation: '/gate',
       navigatorKey: _rootNavigatorKey,
@@ -170,8 +176,9 @@ GoRouter buildRouter() => GoRouter(
                                     removeTop: true,
                                     child: BackGuard(
                                         child: CreateRequestScreen(
-                                            seedFrom: state.uri
-                                                .queryParameters['seedFrom'],
+                                            seedFrom: _seedFromParam(state
+                                                .uri
+                                                .queryParameters['seedFrom']),
                                             targetBusinessId: state.uri
                                                 .queryParameters['business'])),
                                   ),

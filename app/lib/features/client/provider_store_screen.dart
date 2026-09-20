@@ -38,9 +38,19 @@ import '../shell/floating_nav_bar.dart';
 /// un orden fijo (antes se reordenaba según el tipo de negocio; el PO pidió
 /// un único orden para todos).
 class ProviderStoreScreen extends StatefulWidget {
-  const ProviderStoreScreen({super.key, required this.businessId});
+  const ProviderStoreScreen({
+    super.key,
+    required this.businessId,
+    this.loadBusinesses,
+  });
 
   final String businessId;
+
+  /// Inyectable para pruebas — mismo patrón que `AssistantMonthlyCard`
+  /// (`widget.loadBusinesses ?? myBusinessesForAssistant`, `features/
+  /// provider/assistant_monthly_card.dart:70`). `null` en producción: usa
+  /// `myBusinessesForAssistant` de verdad.
+  final Future<List<({String id, String name})>> Function()? loadBusinesses;
 
   @override
   State<ProviderStoreScreen> createState() => _ProviderStoreScreenState();
@@ -114,7 +124,9 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
       // (podía devolver el otro negocio). Se compara contra TODOS sus
       // negocios (`esDuenoDe`, lógica pura, `domain/store_ownership.dart`).
       // Falla de red ⇒ "no dueño" (misma degradación de antes).
-      final duenoF = myBusinessesForAssistant()
+      // `widget.loadBusinesses` inyectable para pruebas — mismo patrón que
+      // `AssistantMonthlyCard._cargar()` (`assistant_monthly_card.dart:70`).
+      final duenoF = (widget.loadBusinesses ?? myBusinessesForAssistant)()
           .then(
             (negocios) => esDuenoDe(
               [for (final n in negocios) n.id],
@@ -122,10 +134,17 @@ class _ProviderStoreScreenState extends State<ProviderStoreScreen> {
             ),
           )
           .catchError((_) => false);
+      // Catálogo propio: best-effort igual que el resto de este método — un
+      // fallo de red aquí NO puede tirar el resto de datos ya resueltos
+      // (dueño, identidad, stats, ubicación), que hasta ahora se perdían
+      // porque esta era la ÚNICA llamada sin degradación propia (revisión
+      // final 09-20: sin esto, `_esDueno` nunca llegaba a aplicarse cuando
+      // el catálogo fallaba — el catch exterior cortaba antes de leer
+      // `duenoF`, aunque ya hubiera resuelto).
       final results = await Future.wait([
         myStoreProducts(widget.businessId),
         myPortfolioItems(widget.businessId),
-      ]);
+      ]).catchError((_) => const <List<Map<String, dynamic>>>[[], []]);
       final (prod, serv) = partitionStoreItems(results[0]);
       final portfolio = results[1];
       final stats = await statsF;

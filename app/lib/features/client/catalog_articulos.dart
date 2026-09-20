@@ -199,12 +199,18 @@ String sanitizarIlike(String term) =>
 /// esto, «instalacion» sin tilde no encontraba «Instalación…» (medido
 /// 2026-09-19: 0 con `ilike` crudo, 1 con `search_norm`).
 ///
-/// `%` `_` `*` son comodines de LIKE/PostgREST. La coma NO parte nada en este
-/// call site (un solo `.like()`, sin `or=(...)`) — se quita por PARIDAD con
-/// el saneador de la web (`normalizeSearchTerm` de `src/lib/searchTerm.ts`),
-/// que sí la quita porque ahí se reutiliza para armar filtros `or=(...)`.
-/// Todos se reemplazan por espacio, no se borran, para no pegar palabras que
-/// el usuario separó.
+/// Única divergencia real con la web (revisión final 09-20): la app TAMBIÉN
+/// quita `*` (la web solo quita `%` `_` `,`, `searchTerm.ts:25-28`). La app
+/// es el lado seguro — `*` no es comodín de PostgREST `.like()`, pero sí lo
+/// interpreta el usuario como "cualquier cosa" en un buscador; no hay que
+/// igualar esta conducta a la de la web.
+///
+/// `%` `_` son comodines de LIKE/PostgREST. La coma se quita por el MISMO
+/// criterio que el saneador de la web (`normalizeSearchTerm`,
+/// `src/lib/searchTerm.ts:25-28`), aunque hoy los dos patrones (este y el de
+/// la web) acaben solo en `.like()` — ninguno de los dos arma un filtro
+/// `or=(...)` con este término. Todos se reemplazan por espacio, no se
+/// borran, para no pegar palabras que el usuario separó.
 String? catalogSearchPattern(String? search) {
   if (search == null) return null;
   final plegado = searchFold(
