@@ -30,6 +30,21 @@ import '../verification/otp_sheet.dart';
 /// tipografía ligera (PO 2026-07-20: "la pantalla de registro debe tener el
 /// diseño de la app"). NO pide cédula/foto/logo — eso se completa después con
 /// el aviso de "completa tu perfil" (PO 2026-07-20).
+/// El aviso de créditos del último paso del alta.
+///
+/// Hasta el 09-21 era fijo y decía «Empiezas con 0 créditos», mientras el
+/// intro de primera apertura le prometía al MISMO proveedor 5 créditos de
+/// regalo (`bonus_config.welcome_credits`, que en producción vale 5). Las dos
+/// frases no podían ser ciertas a la vez. Ahora el número sale del servidor,
+/// igual que en el intro, y el 0 conserva la frase original palabra por
+/// palabra: si el bono se apaga, el alta no puede prometer un regalo que no
+/// existe.
+String hintCreditosDeAlta(int credits) => credits > 0
+    ? 'Empiezas con $credits créditos de regalo: ofertar es GRATIS; solo '
+          'pagas al desbloquear un contacto.'
+    : 'Empiezas con 0 créditos: ofertar es GRATIS; solo pagas al desbloquear '
+          'un contacto.';
+
 class ProviderOnboardingScreen extends StatefulWidget {
   const ProviderOnboardingScreen({super.key});
   @override
@@ -115,10 +130,18 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
     }
   }
 
+  /// Créditos de regalo según el servidor. Empieza en 0 a propósito: hasta
+  /// que la RPC no conteste, el alta no promete nada (mismo criterio que el
+  /// intro, `fetchWelcomeCredits`, que nunca lanza y cae a 0).
+  int _welcomeCredits = 0;
+
   @override
   void initState() {
     super.initState();
     unawaited(_loadOficios());
+    fetchWelcomeCredits().then((n) {
+      if (mounted) setState(() => _welcomeCredits = n);
+    });
     final meta = supa.auth.currentUser?.userMetadata ?? {};
     final full = ((meta['full_name'] ?? meta['name']) as String? ?? '').trim();
     final parts = full.split(RegExp(r'\s+'));
@@ -1004,8 +1027,7 @@ class _ProviderOnboardingScreenState extends State<ProviderOnboardingScreen> {
         ]),
       ),
       const SizedBox(height: 4),
-      _hint(
-          'Empiezas con 0 créditos: ofertar es GRATIS; solo pagas al desbloquear un contacto.'),
+      _hint(hintCreditosDeAlta(_welcomeCredits)),
     ]);
   }
 }
