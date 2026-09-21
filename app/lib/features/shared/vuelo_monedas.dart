@@ -30,6 +30,7 @@ class VueloMonedas extends StatefulWidget {
     required this.destino,
     required this.onAterrizaje,
     required this.onFin,
+    this.monedas = 5,
   });
 
   /// Centro de la pila de la tarjeta comprada, en coordenadas globales.
@@ -44,6 +45,16 @@ class VueloMonedas extends StatefulWidget {
 
   /// El vuelo terminó: quien lo montó retira el overlay.
   final VoidCallback onFin;
+
+  /// Cuántas monedas vuelan. Cinco en la tienda, donde una recarga SIEMPRE es
+  /// la pila de cinco. El intro lo reusa para el bono de bienvenida, que vale
+  /// lo que diga el servidor: con un bono de 3, volar 5 seria mentir. Se
+  /// recorta a 1..5 — la coreografía solo tiene cinco tiempos de salida y de
+  /// impacto, y estirarla es rehacerla.
+  final int monedas;
+
+  /// Las que de verdad vuelan, ya recortadas.
+  int get nMonedas => monedas.clamp(1, 5);
 
   @override
   State<VueloMonedas> createState() => _VueloMonedasState();
@@ -81,7 +92,7 @@ class _VueloMonedasState extends State<VueloMonedas>
       JayaloHaptics.success();
       unawaited(playSfx(Sfx.coinsCredited));
     }
-    while (_aterrizadas < 5 &&
+    while (_aterrizadas < widget.nMonedas &&
         t >= _VueloPainter.aterrizajes[_aterrizadas]) {
       widget.onAterrizaje(_aterrizadas);
       _aterrizadas++;
@@ -103,6 +114,7 @@ class _VueloMonedasState extends State<VueloMonedas>
               t: _c.value,
               origen: widget.origen,
               destino: widget.destino,
+              n: widget.nMonedas,
             ),
             child: const SizedBox.expand(),
           ),
@@ -111,11 +123,19 @@ class _VueloMonedasState extends State<VueloMonedas>
 }
 
 class _VueloPainter extends CustomPainter {
-  _VueloPainter({required this.t, required this.origen, required this.destino});
+  _VueloPainter({
+    required this.t,
+    required this.origen,
+    required this.destino,
+    this.n = 5,
+  });
 
   final double t;
   final Offset origen;
   final Offset destino;
+
+  /// Cuántas monedas se pintan (1..5): las primeras [n] de la coreografía.
+  final int n;
 
   // ── La línea de tiempo (fracciones de los 1 240 ms) ────────────────────────
   /// Fin del estallido conjunto.
@@ -153,7 +173,7 @@ class _VueloPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < n; i++) {
       _moneda(canvas, i);
       _impacto(canvas, i);
     }
@@ -279,5 +299,6 @@ class _VueloPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_VueloPainter old) =>
-      old.t != t || old.origen != origen || old.destino != destino;
+      old.t != t || old.origen != origen || old.destino != destino ||
+      old.n != n;
 }

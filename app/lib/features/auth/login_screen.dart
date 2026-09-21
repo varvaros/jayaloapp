@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/brand.dart';
 import '../../core/config.dart';
 import '../../core/motion.dart';
+import '../shared/vuelo_monedas.dart';
 import '../../core/turnstile.dart';
 import '../../data/repos.dart' as repos show fetchWelcomeCredits;
 import '../shared/brand_kit.dart' show JayaloCard, kCardRadius;
@@ -237,6 +238,23 @@ class _LoginScreenState extends State<LoginScreen> {
   /// futuro, así que la RPC se hace una vez y no dos.
   late final Future<int> _creditsFuture = widget.fetchWelcomeCredits();
 
+  /// Anclas del vuelo de monedas del bono: de la escena de Jayi (que vive
+  /// FUERA del carrusel, fija arriba) al número del titular.
+  final GlobalKey _jayiKey = GlobalKey();
+  final GlobalKey _monedaKey = GlobalKey();
+
+  /// El vuelo en curso, si lo hay. Se retira solo al acabar.
+  OverlayEntry? _vueloBono;
+
+  /// Cuántas monedas han ATERRIZADO ya: es lo que enseña el contador del
+  /// titular. Con «reducir animaciones» se pone de golpe en el total — la
+  /// lámina dice lo mismo, quieta.
+  final ValueNotifier<int> _monedasContadas = ValueNotifier<int>(0);
+
+  /// El vuelo se lanza UNA vez por apertura, no cada vez que se vuelve a la
+  /// lámina deslizando: repetir la celebración la abarata.
+  bool _vueloLanzado = false;
+
   /// Los créditos CONGELADOS al elegir rol. Que el valor llegue después no
   /// cambia el número de láminas: si no, la lámina de accesos se movería bajo
   /// el dedo del usuario.
@@ -268,6 +286,10 @@ class _LoginScreenState extends State<LoginScreen> {
     _disarmReaction();
     _cancelPick();
     _skipTimer?.cancel();
+    // Un overlay vivo tras desmontar la pantalla se queda pintado sobre lo
+    // que venga detrás.
+    _quitarVueloBono();
+    _monedasContadas.dispose();
     _pages.dispose();
     super.dispose();
   }
@@ -487,6 +509,78 @@ class _LoginScreenState extends State<LoginScreen> {
     unawaited(_goToPage(_page - 1).whenComplete(() => _choosing = false));
   }
 
+  /// El vuelo de monedas de la lámina del bono: las mismas cinco de la tienda
+  /// al acreditar una recarga (`VueloMonedas`, PO 2026-08-23), reusadas aquí
+  /// por pedido del PO (09-21) para que el regalo de bienvenida se ANUNCIE y
+  /// no solo se lea.
+  ///
+  /// Despegan de la escena de Jayi —que vive fija sobre el carrusel, así que
+  /// su caja no se mueve con el deslizamiento— y aterrizan en el número del
+  /// titular, que sube UNA por cada moneda que llega. Vuelan tantas como
+  /// créditos regale el servidor: con un bono de 3, volar 5 sería mentir.
+  ///
+  /// No se lanza si: la lámina no es la de la moneda, el bono es 0, ya voló
+  /// una vez en esta apertura, o el usuario pidió «reducir animaciones» —
+  /// entonces el total aparece puesto y la lámina dice lo mismo, quieta.
+  void _lanzarVueloBono(int i) {
+    if (_vueloLanzado) return;
+    final pasos = _steps;
+    if (i >= pasos.length || pasos[i] != IntroStep.providerCoin) return;
+    if (_credits <= 0) return;
+    _vueloLanzado = true;
+
+    if (JayaloMotion.reduced(context)) {
+      _monedasContadas.value = _credits;
+      return;
+    }
+
+    // Tras el frame: las cajas de las dos anclas no existen hasta que la
+    // lámina entrante está montada y medida.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final origen = _centroGlobal(_jayiKey);
+      final destino = _centroGlobal(_monedaKey);
+      final overlay = Overlay.maybeOf(context);
+      // Sin anclas medidas o sin overlay no hay vuelo posible: el número se
+      // pone y ya. Una celebración nunca puede dejar la pantalla a medias.
+      if (origen == null || destino == null || overlay == null) {
+        _monedasContadas.value = _credits;
+        return;
+      }
+      final entry = OverlayEntry(
+        builder: (_) => IgnorePointer(
+          child: VueloMonedas(
+            origen: origen,
+            destino: destino,
+            monedas: _credits,
+            onAterrizaje: (m) => _monedasContadas.value = m + 1,
+            // El vuelo pinta como mucho 5 monedas; si el bono fuera mayor, el
+            // número tiene que acabar en el TOTAL igualmente.
+            onFin: () {
+              _monedasContadas.value = _credits;
+              _quitarVueloBono();
+            },
+          ),
+        ),
+      );
+      _vueloBono = entry;
+      overlay.insert(entry);
+    });
+  }
+
+  void _quitarVueloBono() {
+    _vueloBono?.remove();
+    _vueloBono = null;
+  }
+
+  /// Centro de la caja de [k] en coordenadas globales; `null` si aún no está
+  /// medida.
+  Offset? _centroGlobal(GlobalKey k) {
+    final box = k.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return null;
+    return box.localToGlobal(box.size.center(Offset.zero));
+  }
+
   Future<void> _openPasswordSheet() => showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -598,6 +692,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         padding: const EdgeInsets.only(top: 18, bottom: 6),
                         child: Center(
                           child: ConstrainedBox(
+                            key: _jayiKey,
                             constraints: const BoxConstraints(maxWidth: 210),
                             child: JayiScene(pose: _poseFor(_page)),
                           ),
@@ -620,6 +715,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               _disarmReaction();
                             });
                             _markSeenIfDone();
+                            _lanzarVueloBono(i);
                             _armReaction(i);
                           },
                           itemBuilder: _buildSlide,
@@ -832,6 +928,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 slide,
                 wordByWord: step == IntroStep.ask,
                 question: step == IntroStep.ask,
+                contadorKey: step == IntroStep.providerCoin
+                    ? _monedaKey
+                    : null,
+                contador: step == IntroStep.providerCoin
+                    ? _monedasContadas
+                    : null,
               ),
               Padding(padding: const EdgeInsets.only(top: 22), child: action),
             ],
@@ -1067,8 +1169,17 @@ class _SlideCopy extends StatelessWidget {
     this.slide, {
     this.wordByWord = false,
     this.question = false,
+    this.contadorKey,
+    this.contador,
   });
   final IntroSlide slide;
+
+  /// Ancla del número del titular: es el DESTINO del vuelo de monedas.
+  final GlobalKey? contadorKey;
+
+  /// Cuántas monedas han aterrizado ya. Cuando viene, el número lo manda esto
+  /// y no el contador que se anima solo: el que cuenta es el vuelo.
+  final ValueListenable<int>? contador;
 
   /// El titular de la PREGUNTA entra palabra a palabra: es lo primero que se
   /// lee de la app y se quiere ver escribirse.
@@ -1161,7 +1272,38 @@ class _SlideCopy extends StatelessWidget {
 
   /// El titular con el realce en violeta; si trae `{n}` y `counter`, ahí va el
   /// contador (la moneda).
+  /// El titular con el contador que se anima SOLO (`IntroCounter`): el camino
+  /// de antes del vuelo de monedas. Queda para cuando no hay vuelo posible —
+  /// hoy no lo usa nadie, pero un titular con `{n}` sin número sería peor.
+  Widget _headlineConContadorPropio(IntroSlide s) {
+    final parts = s.headline.split('{n}');
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: parts[0]),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: IntroCounter(
+              to: s.counter!,
+              style: _head.copyWith(
+                color: JayaloColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          TextSpan(text: parts[1]),
+        ],
+      ),
+      textAlign: TextAlign.center,
+      style: _head,
+    );
+  }
+
   Widget _headline(IntroSlide s) {
+    if (s.counter != null && s.headline.contains('{n}') && contador == null) {
+      return _headlineConContadorPropio(s);
+    }
     if (s.counter != null && s.headline.contains('{n}')) {
       final parts = s.headline.split('{n}');
       return Text.rich(
@@ -1171,11 +1313,19 @@ class _SlideCopy extends StatelessWidget {
             WidgetSpan(
               alignment: PlaceholderAlignment.baseline,
               baseline: TextBaseline.alphabetic,
-              child: IntroCounter(
-                to: s.counter!,
-                style: _head.copyWith(
-                  color: JayaloColors.primary,
-                  fontWeight: FontWeight.w700,
+              // El número lo llevan las MONEDAS: sube una por cada una que
+              // aterriza (`_lanzarVueloBono`). Con «reducir animaciones» el
+              // total está puesto desde el principio y la lámina dice lo
+              // mismo, quieta.
+              child: ValueListenableBuilder<int>(
+                key: contadorKey,
+                valueListenable: contador!,
+                builder: (_, n, _) => Text(
+                  '$n',
+                  style: _head.copyWith(
+                    color: JayaloColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
