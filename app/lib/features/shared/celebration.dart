@@ -33,6 +33,119 @@ import '../../core/motion.dart';
 import '../../core/sfx.dart';
 import 'jayalo_loader.dart';
 
+/// El cotejo de «oferta aceptada»: un anillo que se cierra y, dentro, el
+/// palote del visto que se DIBUJA de un trazo.
+///
+/// Por qué existe (PO 2026-09-21): hasta hoy aceptar una oferta y desbloquear
+/// un contacto mostraban la misma mascota bailando y solo cambiaba el texto.
+/// Una es gratis y la otra cuesta créditos: tienen que distinguirse sin leer.
+/// La mascota se queda donde importa —el desbloqueo, que es lo que se paga— y
+/// lo gratuito se resuelve con un gesto limpio y corto.
+///
+/// [progreso] es 0..1 y lo manda el controller de la celebración; a 0 el
+/// cotejo se pinta ENTERO y quieto, que es lo que tiene que ver quien pidió
+/// «reducir animaciones» (mismo criterio que [JayiCelebration]).
+class CotejoAceptado extends StatelessWidget {
+  const CotejoAceptado({
+    super.key,
+    required this.size,
+    required this.progreso,
+    this.semanticsLabel = 'Oferta aceptada',
+  });
+
+  final double size;
+
+  /// 0..1. El 0 significa «quieto y hecho», no «sin empezar»: una celebración
+  /// con las animaciones apagadas tiene que decir lo mismo.
+  final double progreso;
+  final String semanticsLabel;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: semanticsLabel,
+    child: SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _CotejoPainter(progreso == 0 ? 1 : progreso),
+      ),
+    ),
+  );
+}
+
+class _CotejoPainter extends CustomPainter {
+  _CotejoPainter(this.t);
+
+  /// 0..1 de la coreografía: el anillo se cierra en el primer 45 % y el
+  /// palote se dibuja en el resto, solapando un pelín para que se lea como UN
+  /// gesto y no como dos.
+  final double t;
+
+  static const _finAnillo = .45;
+  static const _arranquePalote = .38;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.width * .40;
+    final grosor = size.width * .075;
+
+    // El anillo, dibujándose desde arriba en el sentido del reloj.
+    final uAnillo = (t / _finAnillo).clamp(0.0, 1.0);
+    final barrido = Curves.easeOutCubic.transform(uAnillo) * 2 * math.pi;
+    canvas.drawArc(
+      Rect.fromCircle(center: c, radius: r),
+      -math.pi / 2,
+      barrido,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = grosor
+        ..strokeCap = StrokeCap.round
+        ..color = Colors.white,
+    );
+
+    if (t < _arranquePalote) return;
+
+    // El palote: dos tramos (bajada corta, subida larga) dibujados como UNA
+    // polilínea con longitud creciente, que es lo que se lee como un trazo de
+    // rotulador y no como dos palos que aparecen.
+    final uPalote =
+        ((t - _arranquePalote) / (1 - _arranquePalote)).clamp(0.0, 1.0);
+    final avance = Curves.easeOutCubic.transform(uPalote);
+
+    final a = c + Offset(-r * .42, r * .02);
+    final b = c + Offset(-r * .12, r * .32);
+    final d = c + Offset(r * .46, -r * .30);
+    final l1 = (b - a).distance;
+    final l2 = (d - b).distance;
+    final total = l1 + l2;
+    final recorrido = total * avance;
+
+    final path = Path()..moveTo(a.dx, a.dy);
+    if (recorrido <= l1) {
+      final p = Offset.lerp(a, b, recorrido / l1)!;
+      path.lineTo(p.dx, p.dy);
+    } else {
+      path.lineTo(b.dx, b.dy);
+      final p = Offset.lerp(b, d, ((recorrido - l1) / l2).clamp(0.0, 1.0))!;
+      path.lineTo(p.dx, p.dy);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = grosor
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..color = Colors.white,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_CotejoPainter old) => old.t != t;
+}
+
 /// Overlay de la mascota celebrando (desbloqueo pagado). `footer` (pedido PO
 /// 2026-07-23): el botón de "¡Iniciar conversación!" vive DENTRO de la misma
 /// pantalla violeta — sin hoja de contacto intermedia. Con footer la
@@ -291,13 +404,29 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
                     SizedBox(
                       width: 230,
                       height: 230,
-                      child: JayiCelebration(
-                        onViolet: true,
-                        size: 230,
-                        semanticsLabel: accept
-                            ? 'Oferta aceptada'
-                            : 'Contacto desbloqueado',
-                      ),
+                      // Aceptar (gratis) y desbloquear (pagado) ya NO se ven
+                      // igual: el cotejo para lo gratuito, la mascota para lo
+                      // que costó créditos (PO 2026-09-21).
+                      child: accept
+                          ? AnimatedBuilder(
+                              animation: _ctrl,
+                              builder: (_, _) => CotejoAceptado(
+                                size: 230,
+                                progreso: reduced
+                                    ? 0
+                                    : (((_ctrl.lastElapsedDuration ??
+                                                          Duration.zero)
+                                                      .inMilliseconds /
+                                                  700)
+                                              .clamp(0.0, 1.0))
+                                          .toDouble(),
+                              ),
+                            )
+                          : JayiCelebration(
+                              onViolet: true,
+                              size: 230,
+                              semanticsLabel: 'Contacto desbloqueado',
+                            ),
                     ),
                     const SizedBox(height: 4),
                     Text(
