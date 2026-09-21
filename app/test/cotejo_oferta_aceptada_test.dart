@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jayalo_app/app.dart';
-import 'package:jayalo_app/features/shared/brand_kit.dart';
 import 'package:jayalo_app/features/shared/celebration.dart';
 
 /// Hasta el 09-21 aceptar una oferta y desbloquear un contacto mostraban
@@ -69,6 +68,23 @@ void main() {
     // `progreso: 0` es el primer frame; quieto tiene que verse HECHO, no una
     // pantalla vacía (mismo criterio que JayiCelebration).
     expect(find.byType(CotejoAceptado), findsOneWidget);
+    await t.pumpAndSettle();
+  });
+
+  testWidgets('aceptar ya NO tira confeti: el cotejo se queda solo', (t) async {
+    await abrir(t, (c) => showAcceptCelebration(c));
+    // El confeti es lo contrario de lo que pide el cotejo premium (PO 09-21,
+    // «quita el confeti»). Se pinta con un CustomPaint a pantalla completa
+    // dentro de un IgnorePointer, detrás del contenido.
+    expect(find.byKey(const ValueKey('celebration-confetti')), findsNothing);
+    await t.pumpAndSettle();
+  });
+
+  testWidgets('desbloquear SIGUE con su confeti: no se toca lo que no se pidió', (
+    t,
+  ) async {
+    await abrir(t, (c) => showUnlockCelebration(c));
+    expect(find.byKey(const ValueKey('celebration-confetti')), findsOneWidget);
     await t.pumpAndSettle();
   });
 }

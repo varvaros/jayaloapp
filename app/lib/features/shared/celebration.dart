@@ -414,8 +414,15 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
             // UNA sola explosión de confeti a PANTALLA COMPLETA que cae con
             // física real hasta salir por abajo (pedido PO 2026-07-23). Detrás
             // del contenido y sin robar toques.
-            if (!reduced)
+            //
+            // Ya NO cae al aceptar una oferta (PO 2026-09-21, tras ver el
+            // cotejo premium: «quita el confeti»). El confeti es lo contrario
+            // de lo que pide ese gesto — llega, se dibuja despacio y se queda.
+            // El DESBLOQUEO conserva el suyo: es la celebración de lo que se
+            // pagó, y ahí la fiesta es el premio.
+            if (!reduced && !accept)
               Positioned.fill(
+                key: const ValueKey('celebration-confetti'),
                 child: IgnorePointer(
                   child: AnimatedBuilder(
                     animation: _ctrl,
