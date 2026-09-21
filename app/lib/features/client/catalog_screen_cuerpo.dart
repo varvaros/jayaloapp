@@ -18,6 +18,10 @@ import 'catalog_chip_strip.dart';
 import 'catalog_secciones.dart';
 import 'catalog_tipo_strip.dart';
 
+/// Etiqueta de los negocios PROBABLES del buscador nuevo. Literal de la web
+/// (`src/components/buscar/BloqueNegocios.tsx`): «Podrian tenerlo».
+const kEtiquetaProbables = 'Podrían tenerlo:';
+
 /// Tira de tipo (Todos · Productos · Servicios · Paquetes · Proveedores) +
 /// tira de chips de categoría/rubro/mayoreo — la cabecera que llevan los
 /// cuatro cuerpos de [CatalogScreen].
@@ -68,6 +72,7 @@ Widget rejillaCatalogo({
   required bool conBusqueda,
   required bool esPaquete,
   required ValueChanged<String> onStore,
+  List<Proveedor> probables = const [],
 }) => LayoutBuilder(
   builder: (context, box) {
     final cellWidth = (box.maxWidth - 32 - 11) / 2;
@@ -85,6 +90,14 @@ Widget rejillaCatalogo({
             child: ProveedoresCoinciden(
               proveedores: coinciden,
               onStore: onStore,
+            ),
+          ),
+        if (conBusqueda && probables.isNotEmpty)
+          SliverToBoxAdapter(
+            child: ProveedoresCoinciden(
+              proveedores: probables,
+              onStore: onStore,
+              etiqueta: kEtiquetaProbables,
             ),
           ),
         SliverPadding(
@@ -137,12 +150,18 @@ Widget soloCoincidenPorNombre({
   required String search,
   required String tipo,
   required ValueChanged<String> onStore,
+  List<Proveedor> probables = const [],
 }) => ListView(
   controller: controller,
   padding: EdgeInsets.only(bottom: 12 + navBarReservedSpace(context)),
   children: [
     chips,
     ProveedoresCoinciden(proveedores: coinciden, onStore: onStore),
+    ProveedoresCoinciden(
+      proveedores: probables,
+      onStore: onStore,
+      etiqueta: kEtiquetaProbables,
+    ),
     Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Text(
@@ -192,9 +211,20 @@ Widget vacioCatalogo({
   required String tipo,
   required bool filtrado,
   required VoidCallback onQuitarFiltro,
+  List<Proveedor> probables = const [],
+  ValueChanged<String>? onStore,
 }) => Column(
   children: [
     chips,
+    // «lavadora» es justo esto: cero articulos y aun asi hay negocios de la
+    // categoria que podrian tenerlo. Sin esto, el caso que motivo todo el
+    // trabajo seguiria enseñando el vacio pelado.
+    if (probables.isNotEmpty && onStore != null)
+      ProveedoresCoinciden(
+        proveedores: probables,
+        onStore: onStore,
+        etiqueta: kEtiquetaProbables,
+      ),
     Expanded(
       child: EmptyState(
         controller: controller,
@@ -232,6 +262,10 @@ Widget cuerpoCatalogo({
   required ValueChanged<String> onVerTodos,
   required ValueChanged<String> onStore,
   required VoidCallback onQuitarFiltro,
+
+  /// Negocios de la misma categoria que NO casaron por si mismos: solo los
+  /// trae el buscador nuevo (`buscar_catalogo`), y solo con busqueda.
+  List<Proveedor> probables = const [],
 }) {
   final negociosCat = {
     for (final e in negocios.entries) e.key: negocioCatalogoDe(e.value),
@@ -263,6 +297,8 @@ Widget cuerpoCatalogo({
       tipo: tipo,
       filtrado: filtrado,
       onQuitarFiltro: onQuitarFiltro,
+      probables: probables,
+      onStore: onStore,
     );
   }
   if (verSecciones) {
@@ -301,6 +337,7 @@ Widget cuerpoCatalogo({
       search: search!,
       tipo: tipo,
       onStore: onStore,
+      probables: probables,
     );
   }
   return rejillaCatalogo(
@@ -312,5 +349,6 @@ Widget cuerpoCatalogo({
     conBusqueda: search != null,
     esPaquete: tipo == 'paquete',
     onStore: onStore,
+    probables: probables,
   );
 }

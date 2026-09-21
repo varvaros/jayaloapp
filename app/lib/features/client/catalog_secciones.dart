@@ -472,9 +472,16 @@ class ProveedoresCoinciden extends StatelessWidget {
     super.key,
     required this.proveedores,
     required this.onStore,
+    this.etiqueta = 'Proveedores que coinciden:',
   });
   final List<Proveedor> proveedores;
   final ValueChanged<String> onStore;
+
+  /// Los «probables» del buscador nuevo (`buscar_catalogo`) son las MISMAS
+  /// píldoras bajo otra etiqueta: «Podrían tenerlo:», literal de la web
+  /// (`BloqueNegocios`). No son negocios que coincidan — son de la misma
+  /// categoría y podrían tenerlo; decir lo otro sería mentirle al cliente.
+  final String etiqueta;
 
   @override
   Widget build(BuildContext context) {
@@ -487,7 +494,7 @@ class ProveedoresCoinciden extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'Proveedores que coinciden:',
+            etiqueta,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,

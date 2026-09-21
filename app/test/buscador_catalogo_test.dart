@@ -200,4 +200,83 @@ void main() {
       expect(b.total, 0);
     });
   });
+
+  group('conPaquetesQueCasan — los paquetes no se pierden al buscar', () {
+    Map<String, dynamic> paquete({
+      String id = 'k1',
+      String name = 'Combo cable + cargador',
+      String? description,
+      List<String> items = const [],
+    }) => {
+      'id': id,
+      'user_id': 'u1',
+      'business_id': 'b9',
+      'name': name,
+      'description': description,
+      'price': 1200,
+      'items': items,
+      'image_url': null,
+      'created_at': '2026-09-01T00:00:00Z',
+    };
+
+    test('un paquete cuyo NOMBRE casa se suma a los artículos del RPC', () {
+      final out = conPaquetesQueCasan(
+        [_articulo()],
+        [paquete()],
+        'cable',
+      );
+      expect(out, hasLength(2));
+      expect(out.first['id'], 'p1', reason: 'los artículos del RPC van primero');
+      expect(out.last['kind'], 'paquete');
+      expect(out.last['image_urls'], isA<List<String>>());
+    });
+
+    test('casa por descripción y por un ítem suelto del paquete', () {
+      final porDescripcion = conPaquetesQueCasan(
+        const [],
+        [paquete(description: 'Incluye un cable de red')],
+        'cable',
+      );
+      expect(porDescripcion, hasLength(1));
+      final porItem = conPaquetesQueCasan(
+        const [],
+        [paquete(name: 'Combo', items: const ['Cable HDMI'])],
+        'cable',
+      );
+      expect(porItem, hasLength(1));
+    });
+
+    test('el que no casa se queda fuera, y las tildes no estorban', () {
+      expect(
+        conPaquetesQueCasan(const [], [paquete(name: 'Combo sillas')], 'cable'),
+        isEmpty,
+      );
+      expect(
+        conPaquetesQueCasan(
+          const [],
+          [paquete(name: 'Combo Instalación')],
+          'instalacion',
+        ),
+        hasLength(1),
+      );
+    });
+  });
+
+  group('buscaPorRpc — cuándo manda el buscador nuevo', () {
+    test('con término y sin filtros de servidor, manda la RPC', () {
+      expect(buscaPorRpc(search: 'cable'), isTrue);
+    });
+
+    test('sin término no hay búsqueda que hacer', () {
+      expect(buscaPorRpc(search: null), isFalse);
+    });
+
+    test('categoría, rubro o mayoreo devuelven el mando al camino viejo', () {
+      // `buscar_catalogo` no acepta filtro de categoría/rubro/mayoreo, y
+      // recortarlos en cliente mentiría sobre `total`.
+      expect(buscaPorRpc(search: 'cable', categoryId: 'ferreteria'), isFalse);
+      expect(buscaPorRpc(search: 'cable', rubro: 'Cables'), isFalse);
+      expect(buscaPorRpc(search: 'cable', wholesale: true), isFalse);
+    });
+  });
 }

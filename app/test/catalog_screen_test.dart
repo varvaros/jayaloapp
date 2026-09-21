@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jayalo_app/app.dart';
+import 'package:jayalo_app/data/buscador_catalogo.dart';
 import 'package:jayalo_app/data/repos.dart' show BusinessCardInfo;
 import 'package:jayalo_app/features/client/catalog_articulos.dart'
     show Proveedor;
@@ -19,6 +20,31 @@ Future<Map<String, BusinessCardInfo>> sinNegocios(List<String> ids) async =>
     const {};
 Future<Map<String, int>?> sinConteos() async => null;
 Future<List<Proveedor>> sinNombres(String term) async => const [];
+
+/// La RPC del buscador, doblada: vacía salvo que el test diga otra cosa.
+/// Desde el 09-21 la búsqueda del catálogo va por `buscar_catalogo`, no por
+/// el `like('search_norm', …)` — ver `catalog_screen_buscador_test.dart`.
+BusquedaCatalogo busquedaVacia({
+  List<Map<String, dynamic>> items = const [],
+  List<Proveedor> directos = const [],
+}) => (
+  termino: 'x',
+  corregidoA: null,
+  motivo: null,
+  rubros: const [],
+  items: items,
+  total: items.length,
+  negocios: const {},
+  directos: directos,
+  probables: const [],
+);
+
+Future<BusquedaCatalogo> sinBusqueda(
+  String termino, {
+  String? kind,
+  String? ciudad,
+  bool exacto = false,
+}) async => busquedaVacia();
 
 const _negocioB1 = (
   name: 'Ferretería Don Pepe',
@@ -80,9 +106,11 @@ void main() {
     CatalogBusinessesFetch businesses = sinNegocios,
     CatalogCountsFetch counts = sinConteos,
     CatalogNamesFetch names = sinNombres,
+    CatalogBuscar buscar = sinBusqueda,
   }) => host(
     CatalogView(
       fetch: fetch,
+      buscar: buscar,
       businesses: businesses,
       counts: counts,
       names: names,
@@ -269,7 +297,11 @@ void main() {
     },
   );
 
-  testWidgets('escribir y enviar la búsqueda se la pasa a fetch', (
+  // El camino VIEJO (`like('search_norm', …)`) no murió: sigue siendo el que
+  // manda en cuanto hay un filtro que la RPC no sabe resolver — categoría,
+  // rubro o mayoreo (`buscaPorRpc`). Sin filtro, el término va a la RPC y eso
+  // se prueba en `catalog_screen_buscador_test.dart`.
+  testWidgets('con mayoreo puesto, la búsqueda se la sigue pasando a fetch', (
     tester,
   ) async {
     final searches = <String?>[];
@@ -287,6 +319,7 @@ void main() {
 
     await tester.pumpWidget(catalogo(fetch: recorder));
     await tester.pumpAndSettle();
+    await tocarTipo(tester, 'Al por mayor');
 
     await tester.enterText(find.byType(TextField), 'taladro');
     await tester.testTextInput.receiveAction(TextInputAction.search);
@@ -302,9 +335,11 @@ void main() {
       await tester.pumpWidget(
         catalogo(
           fetch: fija([fixedItem]),
-          names: (term) async {
+          buscar: (term, {kind, ciudad, exacto = false}) async {
             pedidos.add(term);
-            return const [
+            return busquedaVacia(
+              items: [fixedItem],
+              directos: const [
               (
                 id: 'b9',
                 name: 'Ferretería Central',
@@ -314,12 +349,13 @@ void main() {
                 verificado: false,
                 queHace: '',
               ),
-            ];
+            ],
+            );
           },
         ),
       );
       await tester.pumpAndSettle();
-      // Sin búsqueda NO se piden nombres (una consulta de más por carga).
+      // Sin búsqueda NO se llama a la RPC (una consulta de más por carga).
       expect(pedidos, isEmpty);
 
       await tester.enterText(find.byType(TextField), 'ferre');
@@ -339,17 +375,20 @@ void main() {
       await tester.pumpWidget(
         catalogo(
           fetch: vacio,
-          names: (term) async => const [
-            (
-              id: 'b9',
-              name: 'Ferretería Central',
-              logoUrl: null,
-              hasPhysicalLocation: false,
-              city: null,
-              verificado: false,
-              queHace: '',
-            ),
-          ],
+          buscar: (term, {kind, ciudad, exacto = false}) async =>
+              busquedaVacia(
+                directos: const [
+                  (
+                    id: 'b9',
+                    name: 'Ferretería Central',
+                    logoUrl: null,
+                    hasPhysicalLocation: false,
+                    city: null,
+                    verificado: false,
+                    queHace: '',
+                  ),
+                ],
+              ),
         ),
       );
       await tester.pumpAndSettle();

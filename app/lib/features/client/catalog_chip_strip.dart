@@ -52,7 +52,11 @@ class CatalogChipStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final mayoreo = wholesale;
-    final mostrarRubros = categoryId != null && rubros.isNotEmpty;
+    // Con categoría, la fila de rubros es un SUB-filtro y lleva delante su
+    // «Todo <categoría>». Con el buscador nuevo (`buscar_catalogo`) la misma
+    // fila son los rubros ENTENDIDOS y no hay categoría a la que volver: la
+    // fila sale igual, sin ese primer chip.
+    final mostrarRubros = rubros.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -99,14 +103,16 @@ class CatalogChipStrip extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  CatalogChip(
-                    label: 'Todo ${categoryNameById(categoryId) ?? ''}',
-                    active: rubro == null,
-                    fontSize: 11,
-                    onTap: () => onRubro(null),
-                  ),
+                  if (categoryId != null)
+                    CatalogChip(
+                      label: 'Todo ${categoryNameById(categoryId) ?? ''}',
+                      active: rubro == null,
+                      fontSize: 11,
+                      onTap: () => onRubro(null),
+                    ),
                   for (final r in rubros) ...[
-                    const SizedBox(width: 8),
+                    if (categoryId != null || r != rubros.first)
+                      const SizedBox(width: 8),
                     CatalogChip(
                       label: r,
                       active: rubro == r,

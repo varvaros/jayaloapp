@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:go_router/go_router.dart';
 
+import '../../data/buscador_catalogo.dart';
 import '../../data/repos.dart';
 import '../../domain/catalog.dart';
 import '../shared/brand_kit.dart';
@@ -26,6 +27,16 @@ typedef CatalogFetch =
       String? rubro,
       bool wholesale,
       bool conPaquetes,
+    });
+
+/// El buscador NUEVO: la RPC pública `buscar_catalogo`, la misma que usa
+/// `/buscar` en la web. Inyectada como las demás para probar sin red.
+typedef CatalogBuscar =
+    Future<BusquedaCatalogo> Function(
+      String termino, {
+      String? kind,
+      String? ciudad,
+      bool exacto,
     });
 
 /// Cabecera de los negocios dueños de los ítems, por lote.
@@ -68,6 +79,7 @@ class CatalogView extends StatefulWidget {
   const CatalogView({
     super.key,
     this.fetch = catalogItemsWithRatings,
+    this.buscar = buscarCatalogo,
     this.businesses = businessesCardInfo,
     this.counts = categoryCountsUnion,
     this.names = catalogBusinessesByName,
@@ -76,6 +88,7 @@ class CatalogView extends StatefulWidget {
   });
 
   final CatalogFetch fetch;
+  final CatalogBuscar buscar;
   final CatalogBusinessesFetch businesses;
   final CatalogCountsFetch counts;
   final CatalogNamesFetch names;
@@ -103,6 +116,12 @@ class _CatalogViewState extends State<CatalogView> {
 
   /// Rubros de la categoría activa (segunda fila de chips).
   List<String> _rubros = const [];
+
+  /// La última respuesta del buscador nuevo; `null` cuando la carga no salió
+  /// de él (sin término, o con categoría/rubro/mayoreo puestos — ver
+  /// [buscaPorRpc]). De aquí salen los chips de rubro entendidos, la línea
+  /// «Resultados para …» y los negocios probables.
+  BusquedaCatalogo? _busqueda;
 
   /// Última página cargada, para poder derivar las ciudades de la hoja de
   /// filtros SIN mutar estado en `build`: la hoja se abre desde la cabecera,
@@ -186,6 +205,15 @@ class _CatalogViewState extends State<CatalogView> {
   /// mayoreo en la base, así que con esos filtros no podría respetarlos.
   Future<CatalogPage> _fetchPage() async {
     final search = _search;
+    if (buscaPorRpc(
+      search: search,
+      categoryId: _categoryId,
+      rubro: _rubro,
+      wholesale: _wholesale,
+    )) {
+      return _fetchBusqueda(search!);
+    }
+    _busqueda = null;
     final items = await widget.fetch(
       kind: _wholesale ? 'producto' : null,
       search: search,
@@ -206,6 +234,17 @@ class _CatalogViewState extends State<CatalogView> {
         ? const <Proveedor>[]
         : await _adorno(() => widget.names(search), const <Proveedor>[]);
     final page = (items: items, negocios: negocios, nombres: nombres);
+    _pagina = page;
+    return page;
+  }
+
+  /// Búsqueda por la RPC: UN viaje en vez de tres. La respuesta ya trae las
+  /// cabeceras de los negocios (dueños de los artículos incluidos) y los que
+  /// casan por sí mismos, así que `businesses` y `names` no se consultan.
+  Future<CatalogPage> _fetchBusqueda(String termino) async {
+    final b = await widget.buscar(termino);
+    _busqueda = b;
+    final page = (items: b.items, negocios: b.negocios, nombres: b.directos);
     _pagina = page;
     return page;
   }
@@ -343,8 +382,44 @@ class _CatalogViewState extends State<CatalogView> {
 
   void _abrirTienda(String id) => context.push('/store/$id');
 
+  /// Un chip de rubro entendido lleva AL CATÁLOGO de ese rubro, como en la
+  /// web: se suelta el término: si no, el LIKE del camino viejo se sumaría al
+  /// rubro y filtraría dos veces («cable» dentro de «Cables y conectores»
+  /// dejaría fuera media estantería).
+  void _aplicarRubroEntendido(String name) {
+    final r = _busqueda?.rubros.where((r) => r.name == name).firstOrNull;
+    _searchCtrl.clear();
+    setState(() => _search = null);
+    _applyFilter(categoryId: r?.categoryId, rubro: name);
+  }
+
   /// Tira de tipo + tira de chips, cabecera de los cuatro cuerpos posibles.
-  Widget _chips(Map<String, int> conteos) => chipsCatalogo(
+  /// Con búsqueda, encima va la línea que dice qué entendió el servidor
+  /// cuando corrigió el tecleo.
+  Widget _chips(Map<String, int> conteos) {
+    final corregido = _busqueda?.corregidoA;
+    if (corregido == null) return _tirasDeChips(conteos);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          // Literal de la web (`src/lib/buscar/composer.ts`,
+          // `lineaResultadosPara`), no inventada aquí.
+          child: Text(
+            'Resultados para «$corregido»',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        _tirasDeChips(conteos),
+      ],
+    );
+  }
+
+  Widget _tirasDeChips(Map<String, int> conteos) => chipsCatalogo(
     tipo: _tipo,
     conteos: conteos,
     categoryId: _categoryId,
@@ -354,7 +429,11 @@ class _CatalogViewState extends State<CatalogView> {
     wholesale: (_tipo == 'todos' || _tipo == 'producto' || _wholesale)
         ? _wholesale
         : null,
-    rubros: _categoryId == null ? const [] : _rubros,
+    // Con búsqueda, la segunda fila son los rubros que ENTENDIÓ el servidor
+    // («Entendido como» de la web); sin ella, los de la categoría activa.
+    rubros: _busqueda != null
+        ? [for (final r in _busqueda!.rubros) r.name]
+        : (_categoryId == null ? const [] : _rubros),
     rubro: _rubro,
     onTipo: _setTipo,
     onWholesale: _toggleWholesale,
@@ -365,7 +444,9 @@ class _CatalogViewState extends State<CatalogView> {
     onTodo: () {
       if (_categoryId != null || _rubro != null) _applyFilter();
     },
-    onRubro: (r) => _applyFilter(categoryId: _categoryId, rubro: r),
+    onRubro: (r) => _busqueda != null && r != null
+        ? _aplicarRubroEntendido(r)
+        : _applyFilter(categoryId: _categoryId, rubro: r),
   );
 
   /// Cuerpo con los derivados PUROS de la carga (`catalog_articulos.dart`,
@@ -386,6 +467,7 @@ class _CatalogViewState extends State<CatalogView> {
     onVerTodos: _setTipo,
     onStore: _abrirTienda,
     onQuitarFiltro: _quitarTodo,
+    probables: _busqueda?.probables ?? const [],
   );
 
   /// Misma anatomía que las demás pestañas: avatar (o atrás si viene apilada

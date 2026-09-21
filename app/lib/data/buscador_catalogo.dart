@@ -13,8 +13,16 @@
 /// puede probar sin red.
 library;
 
-import '../features/client/catalog_articulos.dart' show Proveedor, queHace;
-import 'repos.dart' show BusinessCardInfo, supa;
+import '../features/client/catalog_articulos.dart'
+    show Proveedor, coincideBusqueda, paqueteComoItem, queHace;
+import 'repos.dart'
+    show
+        BusinessCardInfo,
+        BusinessRating,
+        businessRatings,
+        catalogPackages,
+        mergeCatalogRatings,
+        supa;
 
 /// Un rubro que el resolutor dio por entendido («Entendido como» en la web).
 /// Se pinta como chip: al tocarlo, el catálogo se filtra por él.
@@ -137,6 +145,48 @@ BusquedaCatalogo busquedaDeJson(Map<String, dynamic> json) {
   );
 }
 
+/// ¿Manda el buscador nuevo en esta carga?
+///
+/// Solo con término y SIN los filtros que resuelve el servidor viejo:
+/// `buscar_catalogo` no acepta categoría, rubro ni mayoreo, y recortar su
+/// respuesta en el cliente mentiría sobre `total`. Con cualquiera de esos
+/// puesto, el catálogo vuelve al camino de siempre (`catalogItemsWithRatings`,
+/// que sí los filtra en el servidor).
+bool buscaPorRpc({
+  required String? search,
+  String? categoryId,
+  String? rubro,
+  bool wholesale = false,
+}) =>
+    search != null &&
+    search.trim().isNotEmpty &&
+    categoryId == null &&
+    rubro == null &&
+    !wholesale;
+
+/// Los paquetes que casan con el término, detrás de los artículos del RPC.
+///
+/// `buscar_catalogo` NO conoce los paquetes: `provider_packages` no tiene
+/// columna de texto que indexar (por eso el catálogo viejo también los casaba
+/// EN CLIENTE, `catalogItemsWithRatings`). Sin esto, al pasar la búsqueda al
+/// RPC los paquetes desaparecerían de los resultados sin que nadie lo pidiera.
+/// Mismo criterio que el catálogo viejo: nombre, descripción o cualquiera de
+/// sus ítems, plegando tildes y mayúsculas.
+List<Map<String, dynamic>> conPaquetesQueCasan(
+  List<Map<String, dynamic>> items,
+  List<Map<String, dynamic>> paquetes,
+  String termino,
+) => [
+  ...items,
+  for (final p in paquetes)
+    if (coincideBusqueda(p['name'] as String? ?? '', termino) ||
+        coincideBusqueda(p['description'] as String? ?? '', termino) ||
+        (p['items'] as List? ?? const []).cast<String>().any(
+          (it) => coincideBusqueda(it, termino),
+        ))
+      paqueteComoItem(p),
+];
+
 /// Llama a la RPC pública. `_por_pagina` va al TOPE del servidor (48): la
 /// pantalla no pagina y hoy traía 60 de golpe con el LIKE, así que pedir 24
 /// (el defecto de la RPC) acortaría la lista sin que nadie lo pidiera.
@@ -157,5 +207,28 @@ Future<BusquedaCatalogo> buscarCatalogo(
       '_exacto': exacto,
     },
   );
-  return busquedaDeJson(Map<String, dynamic>.from(res as Map));
+  final b = busquedaDeJson(Map<String, dynamic>.from(res as Map));
+
+  // Paquetes y reputación son ADORNOS, igual que en `catalogItemsWithRatings`:
+  // si cualquiera de los dos falla, la búsqueda se enseña igual — nunca se
+  // tira toda la pantalla a un error por una estrella que no llegó.
+  final paquetes = await catalogPackages().catchError(
+    (_) => const <Map<String, dynamic>>[],
+  );
+  final items = conPaquetesQueCasan(b.items, paquetes, termino);
+  final ratings = await businessRatings([
+    for (final it in items)
+      if (it['business_id'] is String) it['business_id'] as String,
+  ]).catchError((_) => <String, BusinessRating>{});
+  return (
+    termino: b.termino,
+    corregidoA: b.corregidoA,
+    motivo: b.motivo,
+    rubros: b.rubros,
+    items: mergeCatalogRatings(items, ratings),
+    total: b.total,
+    negocios: b.negocios,
+    directos: b.directos,
+    probables: b.probables,
+  );
 }
