@@ -76,19 +76,55 @@ class CotejoAceptado extends StatelessWidget {
 class _CotejoPainter extends CustomPainter {
   _CotejoPainter(this.t);
 
-  /// 0..1 de la coreografía: el anillo se cierra en el primer 45 % y el
-  /// palote se dibuja en el resto, solapando un pelín para que se lea como UN
-  /// gesto y no como dos.
+  /// 0..1 de la coreografía.
+  ///
+  /// Ritmo de motion graphic (PO 2026-09-21, «más lenta, estilo motion
+  /// graphic»): 1 400 ms en vez de los 700 del primer intento, y el tiempo
+  /// no se reparte a partes iguales — se gasta donde se mira.
+  ///
+  ///   • 0 → .20  el anillo ENTRA creciendo con un puntito de rebote
+  ///              (`easeOutBack`): la anticipación que hace que lo demás se
+  ///              lea como consecuencia y no como un arranque en frío.
+  ///   • 0 → .50  se cierra el anillo, desacelerando.
+  ///   • .46 → .88 se dibuja el palote, con `easeInOutCubic`: arranca y para
+  ///              suave por los dos lados, que es lo que distingue un trazo
+  ///              dibujado de uno barrido a velocidad constante.
+  ///   • .88 → 1  todo el cotejo ASIENTA con un golpe de escala (1 → 1,05 →
+  ///              1). Es el punto final del gesto.
+  ///
+  /// El anillo y el palote se solapan a propósito entre .46 y .50: sin ese
+  /// solape se leen como dos animaciones seguidas, no como un gesto.
   final double t;
 
-  static const _finAnillo = .45;
-  static const _arranquePalote = .38;
+  static const _finAnillo = .50;
+  static const _arranquePalote = .46;
+  static const _finPalote = .88;
+  static const _finEntrada = .20;
+
+  /// La escala del conjunto: entra creciendo y, al final, asienta con un
+  /// golpe. Entre medias vale 1 y no pasa nada — el gesto es el trazo.
+  double get _escala {
+    if (t < _finEntrada) {
+      final u = (t / _finEntrada).clamp(0.0, 1.0);
+      return .94 + .06 * Curves.easeOutBack.transform(u);
+    }
+    if (t < _finPalote) return 1;
+    final u = ((t - _finPalote) / (1 - _finPalote)).clamp(0.0, 1.0);
+    // Ida y vuelta: sube a 1,05 a mitad del tramo y vuelve a 1.
+    return 1 + .05 * math.sin(u * math.pi);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = size.center(Offset.zero);
     final r = size.width * .40;
     final grosor = size.width * .075;
+
+    final k = _escala;
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.scale(k, k);
+    canvas.translate(-c.dx, -c.dy);
 
     // El anillo, dibujándose desde arriba en el sentido del reloj.
     final uAnillo = (t / _finAnillo).clamp(0.0, 1.0);
@@ -105,14 +141,17 @@ class _CotejoPainter extends CustomPainter {
         ..color = Colors.white,
     );
 
-    if (t < _arranquePalote) return;
+    if (t < _arranquePalote) {
+      canvas.restore();
+      return;
+    }
 
     // El palote: dos tramos (bajada corta, subida larga) dibujados como UNA
     // polilínea con longitud creciente, que es lo que se lee como un trazo de
     // rotulador y no como dos palos que aparecen.
     final uPalote =
-        ((t - _arranquePalote) / (1 - _arranquePalote)).clamp(0.0, 1.0);
-    final avance = Curves.easeOutCubic.transform(uPalote);
+        ((t - _arranquePalote) / (_finPalote - _arranquePalote)).clamp(0.0, 1.0);
+    final avance = Curves.easeInOutCubic.transform(uPalote);
 
     final a = c + Offset(-r * .42, r * .02);
     final b = c + Offset(-r * .12, r * .32);
@@ -140,6 +179,7 @@ class _CotejoPainter extends CustomPainter {
         ..strokeJoin = StrokeJoin.round
         ..color = Colors.white,
     );
+    canvas.restore();
   }
 
   @override
@@ -417,7 +457,7 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
                                     : (((_ctrl.lastElapsedDuration ??
                                                           Duration.zero)
                                                       .inMilliseconds /
-                                                  700)
+                                                  1400)
                                               .clamp(0.0, 1.0))
                                           .toDouble(),
                               ),
