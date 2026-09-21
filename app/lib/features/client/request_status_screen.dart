@@ -553,9 +553,39 @@ class _OffersSheetState extends State<_OffersSheet> {
     );
   }
 
+  /// Atajo al chat desde la tarjeta (PO 2026-09-21), sin pasar por el detalle
+  /// de la oferta. Hace lo MISMO que el botón de allí (`_openChat` en
+  /// `offer_actions.dart`): abre o crea la conversación de esta oferta y
+  /// navega. Si el viaje falla no se navega a ninguna parte y se dice por qué
+  /// — mandar al chat sin conversación deja una pantalla vacía.
+  Future<void> _abrirChat(Map<String, dynamic> o) async {
+    String? convId;
+    try {
+      convId = await getOrCreateConversation(
+        kind: 'offer',
+        sourceId: o['id'] as String,
+      );
+    } catch (_) {}
+    if (!mounted) return;
+    if (convId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo abrir el chat. Intenta de nuevo.'),
+        ),
+      );
+      return;
+    }
+    Navigator.pop(context); // cierra la hoja de ofertas
+    if (!mounted) return;
+    context.push('/messages/$convId');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final list = widget.offers;
+    // «La desbloqueada pasa a ser la primera» (PO 2026-09-21): la que ya está
+    // «En contacto» encabeza la lista — es con la que el cliente está
+    // hablando, no una oferta más que haya que ir a buscar.
+    final list = ofertasEnContactoPrimero(widget.offers, widget.closedReasons);
     // Los requisitos son de la SOLICITUD: se calculan una vez, no por oferta.
     final reqs = requirementsFromRow(widget.request);
     return SizedBox(
@@ -623,6 +653,10 @@ class _OffersSheetState extends State<_OffersSheet> {
                           ),
                         ),
                         onTap: () => _open(o),
+                        onChat:
+                            enContacto(o, widget.closedReasons[o['id'] as String])
+                            ? () => _abrirChat(o)
+                            : null,
                       );
                     },
                   ),
@@ -631,6 +665,57 @@ class _OffersSheetState extends State<_OffersSheet> {
       ),
     );
   }
+}
+
+/// Atajo al chat en la tarjeta de una oferta «En contacto» (PO 2026-09-21):
+/// hasta hoy había que abrir el detalle para encontrar el botón.
+///
+/// La literal y el ícono son los MISMOS del detalle (`offer_actions.dart`,
+/// `_openChat`): dos botones que hacen lo mismo no pueden llamarse distinto.
+/// Público solo para poder probarlo aislado — `_OfferCard` es privado (mismo
+/// patrón que [OfferCardProviderHeader]).
+class OfferChatButton extends StatelessWidget {
+  const OfferChatButton({super.key, required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => FilledButton.icon(
+    onPressed: onTap,
+    icon: const Icon(Icons.forum_outlined, size: 18),
+    label: const Text('Hablar con el proveedor'),
+    style: FilledButton.styleFrom(
+      visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+    ),
+  );
+}
+
+/// ¿Esta oferta está «En contacto»? Es la MISMA condición que pinta el chip
+/// en [offerStatusChip], y vive aparte a propósito: el botón «Hablar con el
+/// proveedor» (PO 2026-09-21) tiene que aparecer exactamente donde el chip
+/// dice «En contacto» y en ningún otro sitio. Con la condición duplicada,
+/// un chat cerrado acabaría enseñando un botón que lleva a un chat muerto.
+bool enContacto(Map<String, dynamic> o, ClosedReason? closedReason) =>
+    o['status'] == 'accepted' &&
+    closedReason == null &&
+    o['unlocked_at'] != null;
+
+/// Las ofertas «En contacto» primero (PO 2026-09-21: «la desbloqueada pasa a
+/// ser la primera»). El resto conserva su orden — el servidor ya lo decidió
+/// (`offersForRequest` ordena por `created_at` descendente) y reordenarlo
+/// aquí sería decidir dos veces. Estable: entre las de arriba y entre las de
+/// abajo nadie se adelanta a nadie.
+List<Map<String, dynamic>> ofertasEnContactoPrimero(
+  List<Map<String, dynamic>> offers,
+  Map<String, ClosedReason> closedReasons,
+) {
+  final arriba = <Map<String, dynamic>>[];
+  final resto = <Map<String, dynamic>>[];
+  for (final o in offers) {
+    (enContacto(o, closedReasons[o['id'] as String]) ? arriba : resto).add(o);
+  }
+  return [...arriba, ...resto];
 }
 
 /// Id de la oferta más barata (numérica) — la que lleva el chip verde "Más
@@ -855,12 +940,18 @@ class _OfferCard extends StatelessWidget {
     this.unverified = false,
     this.unread = false,
     this.providerInfo,
+    this.onChat,
   });
 
   final Map<String, dynamic> offer;
   final bool cheapest;
   final Widget statusChip;
   final VoidCallback onTap;
+
+  /// Atajo al chat, SOLO en las que están «En contacto» (PO 2026-09-21). En
+  /// las demás es nulo y el botón no existe: quien decide es [enContacto], la
+  /// misma condición que pinta el chip.
+  final VoidCallback? onChat;
 
   /// Lo que el cliente exigió en la solicitud y si esta oferta lo cubre, ya
   /// cotejado por `requirementCoverage`. Vacío = no exigió nada cotejable, y
@@ -967,6 +1058,17 @@ class _OfferCard extends StatelessWidget {
                   ),
                 ],
                 OfferRequirementCoverage(coverage: coverage),
+                // Atajo al chat sin abrir el detalle (PO 2026-09-21). La
+                // literal y el ícono son los MISMOS del detalle de la oferta
+                // (`offer_actions.dart`): dos botones que hacen lo mismo no
+                // pueden llamarse distinto.
+                if (onChat != null) ...[
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OfferChatButton(onTap: onChat!),
+                  ),
+                ],
               ],
             ),
           ),
