@@ -172,7 +172,9 @@ void main() {
       onBuy: (_) {},
     )));
 
-    expect(find.text('Hasta 10 clientes desbloqueados'), findsOneWidget);
+    // 10 créditos / 2 (el desbloqueo más barato con la escala del PO,
+    // 2026-09-21) = 5. Con la escala vieja la tarjeta decía 10.
+    expect(find.text('Hasta 5 clientes desbloqueados'), findsOneWidget);
     expect(find.textContaining('contactos'), findsNothing);
   });
 

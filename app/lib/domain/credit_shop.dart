@@ -11,10 +11,15 @@
 /// localizado y con impuestos), no de aquí.
 library;
 
-/// Créditos del desbloqueo MÁS BARATO de la escala 1-10 de `pricing-tiers.ts`
-/// (nivel 1, hasta RD$3.000 = 1 crédito). Sostiene el "Hasta N clientes
+import 'pricing.dart' show kCreditosPorTramo;
+
+/// Créditos del desbloqueo MÁS BARATO con la escala del PO (2026-09-21):
+/// el primer tramo, hasta RD$5.000, cuesta 2. Sostiene el "Hasta N clientes
 /// desbloqueados" de la tarjeta: el tope honesto es créditos/este mínimo.
-const int minCreditsPerUnlock = 1;
+///
+/// Era 1 con la escala vieja. Dejarlo en 1 haría que un paquete de 10
+/// prometiera 10 desbloqueos cuando de verdad da 5.
+const int minCreditsPerUnlock = kCreditosPorTramo;
 
 class ShopPackage {
   const ShopPackage({

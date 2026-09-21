@@ -48,12 +48,14 @@ void main() {
     });
 
     // Decisión PO 2026-08-08: la tarjeta promete "Hasta X clientes
-    // desbloqueados". El desbloqueo más barato de la escala 1-10 cuesta
-    // 1 crédito, así que el tope honesto es créditos/1 = créditos.
-    test('el tope de clientes desbloqueables es créditos/1', () {
+    // desbloqueados". Con la escala del PO (2026-09-21) el desbloqueo más
+    // barato cuesta 2 créditos —el primer tramo, hasta RD$5.000—, así que el
+    // tope honesto es créditos/2. Con la escala vieja era créditos/1 y la
+    // tarjeta prometía el DOBLE de los que de verdad daba.
+    test('el tope de clientes desbloqueables es créditos/2', () {
       final tiers = buildShopTiers(packages);
-      expect(tiers.first.maxUnlocks, 10);
-      expect(tiers.last.maxUnlocks, 200);
+      expect(tiers.first.maxUnlocks, 5);
+      expect(tiers.last.maxUnlocks, 100);
     });
 
     test('descarta paquetes con puntos o precio no positivos', () {
