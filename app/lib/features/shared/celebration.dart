@@ -78,47 +78,45 @@ class _CotejoPainter extends CustomPainter {
 
   /// 0..1 de la coreografía.
   ///
-  /// Ritmo de motion graphic (PO 2026-09-21, «más lenta, estilo motion
-  /// graphic»): 1 400 ms en vez de los 700 del primer intento, y el tiempo
-  /// no se reparte a partes iguales — se gasta donde se mira.
+  /// Ritmo PREMIUM (PO 2026-09-21, tercera pasada: «más lento, menos animado,
+  /// más premium»). Las dos pasadas anteriores fueron 700 ms y 1 400 ms con
+  /// rebote de entrada y golpe final; aquí se quitan LOS DOS. Lo caro no
+  /// rebota: llega, se dibuja despacio y se queda.
   ///
-  ///   • 0 → .20  el anillo ENTRA creciendo con un puntito de rebote
-  ///              (`easeOutBack`): la anticipación que hace que lo demás se
-  ///              lea como consecuencia y no como un arranque en frío.
-  ///   • 0 → .50  se cierra el anillo, desacelerando.
-  ///   • .46 → .88 se dibuja el palote, con `easeInOutCubic`: arranca y para
-  ///              suave por los dos lados, que es lo que distingue un trazo
-  ///              dibujado de uno barrido a velocidad constante.
-  ///   • .88 → 1  todo el cotejo ASIENTA con un golpe de escala (1 → 1,05 →
-  ///              1). Es el punto final del gesto.
+  ///   • 0 → .12  aparece por opacidad, sin escala ni rebote. Un gesto caro
+  ///              no entra dando un salto.
+  ///   • 0 → .55  se cierra el anillo con `easeOutQuint`: cola de frenada
+  ///              larguísima, que es lo que da la sensación de peso.
+  ///   • .50 → .92 se dibuja el palote con `easeInOutCubic`, arrancando y
+  ///              parando suave por los dos lados.
+  ///   • 0 → 1    y por debajo de todo, la escala sube de .985 a 1 en TODA la
+  ///              coreografía: una deriva que no se ve mirándola de frente
+  ///              pero que hace que la pieza se sienta asentándose en su
+  ///              sitio. Es lo contrario del golpe que había antes.
   ///
-  /// El anillo y el palote se solapan a propósito entre .46 y .50: sin ese
-  /// solape se leen como dos animaciones seguidas, no como un gesto.
+  /// El trazo también adelgaza (de .075 a .066 del ancho): una línea más fina
+  /// se lee como más cuidada, y ya no tiene que compensar la velocidad.
   final double t;
 
-  static const _finAnillo = .50;
-  static const _arranquePalote = .46;
-  static const _finPalote = .88;
-  static const _finEntrada = .20;
+  static const _finAnillo = .55;
+  static const _arranquePalote = .50;
+  static const _finPalote = .92;
+  static const _finEntrada = .12;
 
-  /// La escala del conjunto: entra creciendo y, al final, asienta con un
-  /// golpe. Entre medias vale 1 y no pasa nada — el gesto es el trazo.
-  double get _escala {
-    if (t < _finEntrada) {
-      final u = (t / _finEntrada).clamp(0.0, 1.0);
-      return .94 + .06 * Curves.easeOutBack.transform(u);
-    }
-    if (t < _finPalote) return 1;
-    final u = ((t - _finPalote) / (1 - _finPalote)).clamp(0.0, 1.0);
-    // Ida y vuelta: sube a 1,05 a mitad del tramo y vuelve a 1.
-    return 1 + .05 * math.sin(u * math.pi);
-  }
+  /// La escala del conjunto: una deriva de .985 a 1 repartida por TODA la
+  /// coreografía. No hay rebote de entrada ni golpe final — los dos se
+  /// quitaron en la pasada premium. Esto no se ve como un movimiento: se
+  /// siente como que la pieza se asienta.
+  double get _escala => .985 + .015 * Curves.easeOutCubic.transform(t);
+
+  /// Aparece por opacidad, sin saltos.
+  double get _opacidad => (t / _finEntrada).clamp(0.0, 1.0);
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = size.center(Offset.zero);
     final r = size.width * .40;
-    final grosor = size.width * .075;
+    final grosor = size.width * .066;
 
     final k = _escala;
     canvas.save();
@@ -128,7 +126,7 @@ class _CotejoPainter extends CustomPainter {
 
     // El anillo, dibujándose desde arriba en el sentido del reloj.
     final uAnillo = (t / _finAnillo).clamp(0.0, 1.0);
-    final barrido = Curves.easeOutCubic.transform(uAnillo) * 2 * math.pi;
+    final barrido = Curves.easeOutQuint.transform(uAnillo) * 2 * math.pi;
     canvas.drawArc(
       Rect.fromCircle(center: c, radius: r),
       -math.pi / 2,
@@ -138,7 +136,7 @@ class _CotejoPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = grosor
         ..strokeCap = StrokeCap.round
-        ..color = Colors.white,
+        ..color = Colors.white.withValues(alpha: _opacidad),
     );
 
     if (t < _arranquePalote) {
@@ -177,7 +175,7 @@ class _CotejoPainter extends CustomPainter {
         ..strokeWidth = grosor
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        ..color = Colors.white,
+        ..color = Colors.white.withValues(alpha: _opacidad),
     );
     canvas.restore();
   }
@@ -457,7 +455,7 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
                                     : (((_ctrl.lastElapsedDuration ??
                                                           Duration.zero)
                                                       .inMilliseconds /
-                                                  1400)
+                                                  2000)
                                               .clamp(0.0, 1.0))
                                           .toDouble(),
                               ),
