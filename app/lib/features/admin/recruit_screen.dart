@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../shared/network_image.dart';
+import '../../domain/request_image.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/repos.dart';
@@ -286,6 +288,41 @@ class _RecruitScreenState extends State<RecruitScreen> {
   }
 }
 
+/// Miniatura de la solicitud en la fila de Reclutar: 56 px, esquinas de 12,
+/// la MISMA receta que la tarjeta de Mis solicitudes (`JayaloNetworkImage`
+/// con cache en disco, `cover`, y el hueco gris con icono cuando no hay foto o
+/// no carga). Publico para poder afirmar en las pruebas que URL lleva cada
+/// fila — `_Fila` es privada.
+class RecruitThumb extends StatelessWidget {
+  const RecruitThumb({super.key, required this.url});
+  final String? url;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    Widget hueco() => Container(
+      width: 56,
+      height: 56,
+      color: cs.surfaceContainerHighest,
+      child: Icon(Icons.image_outlined, color: cs.onSurfaceVariant),
+    );
+    final u = url;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: u == null
+          ? hueco()
+          : JayaloNetworkImage(
+              u,
+              width: 56,
+              height: 56,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => hueco(),
+              loadingBuilder: (_, child, p) => p == null ? child : hueco(),
+            ),
+    );
+  }
+}
+
 class _Fila extends StatelessWidget {
   const _Fila(
       {required this.fila,
@@ -319,6 +356,10 @@ class _Fila extends StatelessWidget {
       // El `IconButton` de compartir se come su propio toque, asi que este
       // `onTap` no se dispara al compartir.
       onTap: onTap,
+      // La foto de la solicitud (PO 2026-09-22: «así puedo identificarlas
+      // bien»). Con solo titulo + zona + fecha, dos «Instalacion de piezas de
+      // baño» eran la misma fila.
+      leading: RecruitThumb(url: firstRequestImage(fila)),
       title: Text(titulo == null || titulo.isEmpty ? 'Sin título' : titulo),
       subtitle: Wrap(
         spacing: 8,

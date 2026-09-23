@@ -3239,7 +3239,16 @@ Future<List<Map<String, dynamic>>> allOpenRequests({String? kind}) async {
 /// mas `created_at` para pintar la fecha. La frontera de privacidad NO es esta
 /// lista sino `ShareableRequest.fromRow`, que solo lee claves de
 /// `kShareableRequestCols` — ver `domain/request_share_message.dart`.
-const kAdminListCols = <String>[...kShareableRequestCols, 'created_at'];
+/// Mas las dos columnas de FOTO (2026-09-22): el PO no distinguia dos
+/// solicitudes con el mismo titulo en la lista de Reclutar. Siguen FUERA del
+/// mensaje que se comparte (`ShareableRequest.fromRow` solo lee la lista
+/// blanca): la foto se ve en la pantalla, no viaja por WhatsApp.
+const kAdminListCols = <String>[
+  ...kShareableRequestCols,
+  'created_at',
+  'image_url',
+  'image_urls',
+];
 
 /// Solicitudes abiertas para la pantalla "Reclutar".
 ///

@@ -10,6 +10,7 @@ import '../../core/motion.dart';
 import '../shared/buscando_indicator.dart';
 import '../../data/repos.dart';
 import '../../domain/phase.dart';
+import '../../domain/request_image.dart';
 import '../../domain/request_requirements.dart';
 import '../shared/request_requirement_badges.dart';
 import '../shell/floating_nav_bar.dart';
@@ -661,7 +662,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             createdAt: DateTime.parse(
                               r['created_at'] as String,
                             ),
-                            imageUrl: _firstImage(r),
+                            imageUrl: firstRequestImage(r),
                             kind: r['kind'] as String?,
                             wholesale: r['is_wholesale'] == true,
                             requirements: requirementsFromRow(r),
@@ -875,7 +876,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                     phase: phase,
                                     offerCount: offerCount,
                                     closedReason: closedReason,
-                                    imageUrl: _firstImage(r),
+                                    imageUrl: firstRequestImage(r),
                                     kind: r['kind'] as String?,
                                     wholesale: r['is_wholesale'] == true,
                                     unseen: unseen,
@@ -986,16 +987,6 @@ class _SecRow extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Primera foto de la solicitud (paridad con la web: `image_url` primaria,
-/// `image_urls` como respaldo). `null` si no tiene foto.
-String? _firstImage(Map<String, dynamic> r) {
-  final primary = r['image_url'] as String?;
-  if (primary != null && primary.isNotEmpty) return primary;
-  final list = (r['image_urls'] as List?)?.cast<String>() ?? const [];
-  final first = list.where((u) => u.isNotEmpty);
-  return first.isEmpty ? null : first.first;
 }
 
 /// Saturación 0 con los coeficientes de luminancia Rec. 709: pasa a gris sin

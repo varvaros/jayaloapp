@@ -10,7 +10,15 @@ void main() {
     // MENSAJE puede llevar; `kAdminListCols` es lo que la PANTALLA pide (le
     // hace falta la fecha). Si alguien mete `city` aqui para pintarla en la
     // fila, este test lo hace visible en el diff.
-    expect(kAdminListCols, [...kShareableRequestCols, 'created_at']);
+    // Y desde el 2026-09-22 las dos columnas de FOTO: el PO no distinguia dos
+    // solicitudes con el mismo titulo en la lista. Siguen FUERA del mensaje
+    // (`ShareableRequest.fromRow` lee solo `kShareableRequestCols`).
+    expect(kAdminListCols, [
+      ...kShareableRequestCols,
+      'created_at',
+      'image_url',
+      'image_urls',
+    ]);
     for (final prohibido in ['city', 'sector', 'lat', 'lng', 'user_id']) {
       expect(kAdminListCols, isNot(contains(prohibido)));
     }
